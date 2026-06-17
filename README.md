@@ -1,35 +1,19 @@
-# Referee Tracker — Interface GitHub Pages
+# Referee Tracker — GitHub Pages V4
 
-Ce dossier contient l'interface web prête à l'emploi pour afficher les données du Google Sheet Referee Tracker.
+Version V4 :
 
-## Fichiers inclus
+- carte fermée ultra-minimaliste ;
+- visible sans cliquer : niveau + équipe recevante + date et heure ;
+- tout le reste est visible uniquement après clic sur la carte ;
+- design FFBB conservé ;
+- modification du statut paiement conservée dans les détails.
 
-- index.html
-- style.css
-- app.js
+## Fichiers à remplacer sur GitHub
 
-## Installation simple sur GitHub
+Remplacer à la racine du dépôt :
 
-1. Créer un dépôt GitHub nommé `referee-tracker`.
-2. Uploader ces fichiers à la racine du dépôt.
-3. Aller dans `Settings` > `Pages`.
-4. Choisir :
-   - Source : Deploy from a branch
-   - Branch : main
-   - Folder : /root
-5. Cliquer sur Save.
-6. Attendre l'URL GitHub Pages.
+- `index.html`
+- `style.css`
+- `app.js`
 
-## API déjà configurée
-
-Le fichier `app.js` utilise déjà ton API Apps Script :
-
-https://script.google.com/macros/s/AKfycbysa6OgFq_vsFUMlOVYyMb2DdTB78JVzuZBHYosFMI4M7IusLzAxknk8TY5rmIaXSHS/exec
-
-## Test API
-
-Ping :
-https://script.google.com/macros/s/AKfycbysa6OgFq_vsFUMlOVYyMb2DdTB78JVzuZBHYosFMI4M7IusLzAxknk8TY5rmIaXSHS/exec?key=REFEREE_TRACKER_2026_PRIVATE&action=ping
-
-Données matchs :
-https://script.google.com/macros/s/AKfycbysa6OgFq_vsFUMlOVYyMb2DdTB78JVzuZBHYosFMI4M7IusLzAxknk8TY5rmIaXSHS/exec?key=REFEREE_TRACKER_2026_PRIVATE&action=matchs
+Le fichier `PATCH_APPS_SCRIPT_API.gs` est inclus uniquement si tu dois réinstaller le patch API pour la modification du paiement.

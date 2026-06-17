@@ -7,19 +7,33 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
   <header class="app-header">
     <div>
+      <p class="eyebrow">FFBB • Officiels</p>
       <h1>Referee Tracker</h1>
-      <p>Suivi des désignations, paiements et alertes</p>
+      <p>Suivi des désignations, indemnités et alertes</p>
     </div>
+
     <button id="refreshBtn" type="button">Actualiser</button>
   </header>
 
   <main>
     <section class="summary-grid">
-      <div class="summary-card"><span class="summary-label">Matchs actifs</span><strong id="activeCount">-</strong></div>
-      <div class="summary-card"><span class="summary-label">À vérifier</span><strong id="warningCount">-</strong></div>
-      <div class="summary-card"><span class="summary-label">À recevoir</span><strong id="amountDue">-</strong></div>
+      <div class="summary-card">
+        <span class="summary-label">Matchs actifs</span>
+        <strong id="activeCount">-</strong>
+      </div>
+
+      <div class="summary-card">
+        <span class="summary-label">Alertes</span>
+        <strong id="warningCount">-</strong>
+      </div>
+
+      <div class="summary-card highlight">
+        <span class="summary-label">Indemnités à recevoir</span>
+        <strong id="amountDue">-</strong>
+      </div>
     </section>
 
     <section class="filters" aria-label="Filtres">
@@ -30,11 +44,13 @@
       <button class="filter-btn" data-filter="cancelled" type="button">Annulés</button>
     </section>
 
-    <section id="statusBox" class="status-box">Chargement des données...</section>
+    <section id="statusBox" class="status-box">
+      Chargement des données...
+    </section>
+
     <section id="matchesList" class="matches-list"></section>
   </main>
 
-  <footer>Referee Tracker — Interface personnelle</footer>
   <script src="app.js"></script>
 </body>
 </html>
