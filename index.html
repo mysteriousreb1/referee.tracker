@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Referee Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Referee Tracker</h1>
+      <p>Suivi des désignations, paiements et alertes</p>
+    </div>
+    <button id="refreshBtn" type="button">Actualiser</button>
+  </header>
+
+  <main>
+    <section class="summary-grid">
+      <div class="summary-card"><span class="summary-label">Matchs actifs</span><strong id="activeCount">-</strong></div>
+      <div class="summary-card"><span class="summary-label">À vérifier</span><strong id="warningCount">-</strong></div>
+      <div class="summary-card"><span class="summary-label">À recevoir</span><strong id="amountDue">-</strong></div>
+    </section>
+
+    <section class="filters" aria-label="Filtres">
+      <button class="filter-btn active" data-filter="upcoming" type="button">À venir</button>
+      <button class="filter-btn" data-filter="all" type="button">Tous</button>
+      <button class="filter-btn" data-filter="warnings" type="button">Alertes</button>
+      <button class="filter-btn" data-filter="payments" type="button">Paiements</button>
+      <button class="filter-btn" data-filter="cancelled" type="button">Annulés</button>
+    </section>
+
+    <section id="statusBox" class="status-box">Chargement des données...</section>
+    <section id="matchesList" class="matches-list"></section>
+  </main>
+
+  <footer>Referee Tracker — Interface personnelle</footer>
+  <script src="app.js"></script>
+</body>
+</html>
