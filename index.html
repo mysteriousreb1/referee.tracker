@@ -7,48 +7,32 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
   <header class="app-header">
     <div>
       <p class="eyebrow">FFBB • Officiels</p>
       <h1>Referee Tracker</h1>
-      <p>Suivi des désignations, indemnités et alertes</p>
+      <p>Suivi des désignations, indemnités, kilomètres et alertes</p>
     </div>
-
     <button id="refreshBtn" type="button">Actualiser</button>
   </header>
 
   <main>
     <section class="summary-grid">
-      <div class="summary-card">
-        <span class="summary-label">Matchs actifs</span>
-        <strong id="activeCount">-</strong>
-      </div>
-
-      <div class="summary-card">
-        <span class="summary-label">Alertes</span>
-        <strong id="warningCount">-</strong>
-      </div>
-
-      <div class="summary-card highlight">
-        <span class="summary-label">Indemnités à recevoir</span>
-        <strong id="amountDue">-</strong>
-      </div>
+      <div class="summary-card"><span>Matchs actifs</span><strong id="activeCount">-</strong></div>
+      <div class="summary-card"><span>Alertes</span><strong id="warningCount">-</strong></div>
+      <div class="summary-card highlight"><span>Indemnités à recevoir</span><strong id="amountDue">-</strong></div>
     </section>
 
-    <section class="filters" aria-label="Filtres">
-      <button class="filter-btn active" data-filter="upcoming" type="button">À venir</button>
-      <button class="filter-btn" data-filter="all" type="button">Tous</button>
-      <button class="filter-btn" data-filter="warnings" type="button">Alertes</button>
-      <button class="filter-btn" data-filter="payments" type="button">Paiements</button>
-      <button class="filter-btn" data-filter="cancelled" type="button">Annulés</button>
-    </section>
+    <nav class="tabs">
+      <button class="tab-btn active" data-view="home" type="button">Matchs</button>
+      <button class="tab-btn" data-view="payments" type="button">Paiements</button>
+      <button class="tab-btn" data-view="stats" type="button">Statistiques</button>
+      <button class="tab-btn" data-view="alerts" type="button">Alertes</button>
+      <button class="tab-btn" data-view="export" type="button">Export</button>
+    </nav>
 
-    <section id="statusBox" class="status-box">
-      Chargement des données...
-    </section>
-
-    <section id="matchesList" class="matches-list"></section>
+    <section id="statusBox" class="status-box">Chargement des données...</section>
+    <section id="appContent"></section>
   </main>
 
   <script src="app.js"></script>

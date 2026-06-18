@@ -1,19 +1,19 @@
-# Referee Tracker — GitHub Pages V4
+# Referee Tracker — GitHub Pages V6
 
-Version V4 :
+Version V6 :
+- navigation : Matchs, Paiements, Statistiques, Alertes, Export ;
+- carte fermée minimaliste : niveau + équipe recevante + date + heure ;
+- statistiques indemnités par week-end / mois / saison / total ;
+- statistiques KM par week-end / mois / saison / total ;
+- records : salle, ville, club, niveau, collègue, plus gros déplacement, plus grosse indemnité, mois et week-end les plus chargés ;
+- top 5 clubs, salles, villes, collègues ;
+- export récap copiable ;
+- suppression de l'affichage “Indemnisé par” ;
+- nettoyage d'adresse côté interface.
 
-- carte fermée ultra-minimaliste ;
-- visible sans cliquer : niveau + équipe recevante + date et heure ;
-- tout le reste est visible uniquement après clic sur la carte ;
-- design FFBB conservé ;
-- modification du statut paiement conservée dans les détails.
+Remplacer sur GitHub :
+- index.html
+- style.css
+- app.js
 
-## Fichiers à remplacer sur GitHub
-
-Remplacer à la racine du dépôt :
-
-- `index.html`
-- `style.css`
-- `app.js`
-
-Le fichier `PATCH_APPS_SCRIPT_API.gs` est inclus uniquement si tu dois réinstaller le patch API pour la modification du paiement.
+PATCH_APPS_SCRIPT_ADRESSE.gs est inclus si tu veux corriger l'extraction d'adresse dans Apps Script.
