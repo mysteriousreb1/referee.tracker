@@ -1,21 +1,16 @@
-# Referee Tracker — Interface FFBB Pro
+# Referee Tracker — Interface GitHub V2
 
-Version visuelle améliorée et connectée à Apps Script.
+Nouveautés :
+- onglet `5x5` séparé
+- nouvel onglet `3x3`
+- dans chaque onglet : missions à venir affichées en premier, puis missions passées
+- paiements, stats, alertes et export conservés
 
-## URL Apps Script connectée
+Apps Script connecté :
 
 ```js
 const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyq0RfSZ6jEjhtGuNHrkAvqVmDs7ofMo6lpBvJQ_7_TJAahLqYpnESF-iCQrf4kymj-/exec";
 const API_KEY = "REFEREE_TRACKER_2026_PRIVATE";
 ```
 
-## Installation GitHub
-
-Copie ces fichiers à la racine du dépôt :
-
-- `index.html`
-- `style.css`
-- `app.js`
-- `README.md`
-
-Puis ouvre GitHub Pages.
+Copie les 4 fichiers à la racine du dépôt GitHub Pages.

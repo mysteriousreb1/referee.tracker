@@ -157,6 +157,7 @@ function normalizeRows(rows) {
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
     r._isActive = !["annulé", "annule", "alerte"].includes(cleanText(get(r, "Statut")).toLowerCase()) && r._format !== "Alerte";
+    r._isPast = isPastMission(r);
 
     return r;
   });
@@ -179,9 +180,17 @@ function normalizeSeason(value, date) {
   return "";
 }
 
+function isPastMission(row) {
+  if (!row._date) return false;
+  const endOfDay = new Date(row._date);
+  endOfDay.setHours(23, 59, 59, 999);
+  return endOfDay < new Date();
+}
+
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
   renderMatchs();
+  renderTroisx3();
   renderPaiements();
   renderStats();
   renderAlertes();
@@ -215,24 +224,46 @@ function filterRows(rows) {
   });
 }
 
-/* ---------------- Matchs ---------------- */
+/* ---------------- 5x5 ---------------- */
 
 function renderMatchs() {
   const root = document.getElementById("matchs");
   const rows = state.filteredRows
-    .filter(r => r._format !== "Alerte")
+    .filter(r => r._format === "5x5")
     .sort(sortByDateAsc);
 
-  if (!rows.length) {
-    root.innerHTML = empty("Aucun match ou tournoi pour cette saison.");
-    return;
-  }
+  const upcoming = rows.filter(r => !r._isPast);
+  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
 
   root.innerHTML = `
-    <h2 class="section-title">Matchs & missions</h2>
-    <div class="cards">
-      ${rows.map(renderMatchCard).join("")}
-    </div>
+    <h2 class="section-title">5x5 à venir <span class="count">(${upcoming.length})</span></h2>
+    ${upcoming.length ? `<div class="cards">${upcoming.map(renderMatchCard).join("")}</div>` : empty("Aucun match 5x5 à venir pour cette saison.")}
+
+    <h2 class="section-title">5x5 passés <span class="count">(${past.length})</span></h2>
+    ${past.length ? `<div class="cards">${past.map(renderMatchCard).join("")}</div>` : empty("Aucun match 5x5 passé pour cette saison.")}
+  `;
+
+  attachCardListeners(root);
+  attachPaymentListeners(root);
+}
+
+/* ---------------- 3x3 ---------------- */
+
+function renderTroisx3() {
+  const root = document.getElementById("troisx3");
+  const rows = state.filteredRows
+    .filter(r => r._format === "3x3")
+    .sort(sortByDateAsc);
+
+  const upcoming = rows.filter(r => !r._isPast);
+  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
+
+  root.innerHTML = `
+    <h2 class="section-title">3x3 à venir <span class="count">(${upcoming.length})</span></h2>
+    ${upcoming.length ? `<div class="cards">${upcoming.map(renderMatchCard).join("")}</div>` : empty("Aucun tournoi 3x3 à venir pour cette saison.")}
+
+    <h2 class="section-title">3x3 passés <span class="count">(${past.length})</span></h2>
+    ${past.length ? `<div class="cards">${past.map(renderMatchCard).join("")}</div>` : empty("Aucun tournoi 3x3 passé pour cette saison.")}
   `;
 
   attachCardListeners(root);
@@ -260,6 +291,7 @@ function renderMatchCard(row) {
           <div class="badges">
             ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
             ${badge(level, "gray")}
+            ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
             ${warning ? badge("À vérifier", "orange") : ""}
             ${isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gray" : "orange")}
           </div>
@@ -822,6 +854,10 @@ function sortByDateAsc(a, b) {
   const da = a._date ? a._date.getTime() : 0;
   const db = b._date ? b._date.getTime() : 0;
   return da - db;
+}
+
+function sortByDateDesc(a, b) {
+  return sortByDateAsc(b, a);
 }
 
 function sortByPaymentThenDate(a, b) {
