@@ -4,43 +4,59 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Referee Tracker</title>
-  <meta name="theme-color" content="#071b3a" />
+  <meta name="theme-color" content="#071B3A" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">RT</div>
-        <div>
-          <h1>Referee Tracker</h1>
-          <p>Suivi arbitrage 5x5 & 3x3</p>
+  <div class="page">
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-logo">RT</div>
+          <div>
+            <h1>Referee Tracker</h1>
+            <p>Arbitrage 5x5 · 3x3 · paiements · stats</p>
+          </div>
         </div>
-      </div>
 
-      <button id="refreshBtn" class="icon-btn" type="button" aria-label="Rafraîchir">
-        ↻
-      </button>
+        <button id="refreshBtn" class="refresh-btn" type="button" aria-label="Rafraîchir les données">
+          ↻
+        </button>
+      </div>
     </header>
 
-    <section class="filters-card">
-      <label for="seasonSelect">Saison</label>
-      <select id="seasonSelect"></select>
+    <main class="content">
+      <section class="toolbar">
+        <div class="field">
+          <label for="seasonSelect">Saison</label>
+          <select id="seasonSelect"></select>
+        </div>
 
-      <label for="searchInput">Recherche</label>
-      <input id="searchInput" type="search" placeholder="Club, salle, ville, collègue..." />
-    </section>
+        <div class="field search-field">
+          <label for="searchInput">Recherche</label>
+          <input id="searchInput" type="search" placeholder="Club, salle, ville, collègue..." />
+        </div>
+      </section>
 
-    <nav class="tabs" aria-label="Navigation principale">
-      <button class="tab active" data-tab="matchs" type="button">Matchs</button>
-      <button class="tab" data-tab="paiements" type="button">Paiements</button>
-      <button class="tab" data-tab="stats" type="button">Stats</button>
-      <button class="tab" data-tab="alertes" type="button">Alertes</button>
-      <button class="tab" data-tab="export" type="button">Export</button>
-    </nav>
-
-    <main>
       <section id="statusBar" class="status-bar">Chargement...</section>
+
+      <nav class="tabs" aria-label="Navigation principale">
+        <button class="tab active" data-tab="matchs" type="button">
+          <span>🏀</span> Matchs
+        </button>
+        <button class="tab" data-tab="paiements" type="button">
+          <span>💶</span> Paiements
+        </button>
+        <button class="tab" data-tab="stats" type="button">
+          <span>📊</span> Stats
+        </button>
+        <button class="tab" data-tab="alertes" type="button">
+          <span>⚠️</span> Alertes
+        </button>
+        <button class="tab" data-tab="export" type="button">
+          <span>📋</span> Export
+        </button>
+      </nav>
 
       <section id="matchs" class="panel active"></section>
       <section id="paiements" class="panel"></section>

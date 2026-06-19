@@ -1,48 +1,21 @@
-# Referee Tracker — Interface GitHub Pages
+# Referee Tracker — Interface FFBB Pro
 
-Interface mobile pour suivre les matchs et missions d'arbitrage.
+Version visuelle améliorée et connectée à Apps Script.
 
-## Fichiers
-
-- `index.html`
-- `style.css`
-- `app.js`
-
-## Connexion Apps Script
-
-Dans `app.js`, ces deux constantes doivent pointer vers ton Apps Script :
+## URL Apps Script connectée
 
 ```js
 const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyq0RfSZ6jEjhtGuNHrkAvqVmDs7ofMo6lpBvJQ_7_TJAahLqYpnESF-iCQrf4kymj-/exec";
 const API_KEY = "REFEREE_TRACKER_2026_PRIVATE";
 ```
 
-Si tu redéploies Apps Script avec une nouvelle URL, remplace uniquement `APP_SCRIPT_URL`.
+## Installation GitHub
 
-## Déploiement GitHub Pages
+Copie ces fichiers à la racine du dépôt :
 
-1. Mets ces fichiers à la racine du dépôt GitHub.
-2. Va dans `Settings`.
-3. Va dans `Pages`.
-4. Source : `Deploy from a branch`.
-5. Branch : `main`.
-6. Folder : `/root`.
-7. Enregistre.
-8. Ouvre l'URL GitHub Pages.
+- `index.html`
+- `style.css`
+- `app.js`
+- `README.md`
 
-## Fonctionnalités
-
-- Filtre saison automatique depuis 2022/2023.
-- Bascule de saison au 30 juillet.
-- Onglets :
-  - Matchs
-  - Paiements
-  - Stats
-  - Alertes
-  - Export
-- Paiements modifiables depuis l'interface.
-- Bouton Waze vers l'adresse.
-- Bouton SMS vers le collègue.
-- Bouton FBI.
-- Statistiques 5x5 / 3x3.
-- Top clubs, salles, collègues.
+Puis ouvre GitHub Pages.
