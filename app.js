@@ -3,7 +3,7 @@
    Connectée à Google Apps Script via JSONP.
    ===================================================== */
 
-const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbysa6OgFq_vsFUMlOVYyMb2DdTB78JVzuZBHYosFMI4M7IusLzAxknk8TY5rmIaXSHS/exec";
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyq0RfSZ6jEjhtGuNHrkAvqVmDs7ofMo6lpBvJQ_7_TJAahLqYpnESF-iCQrf4kymj-/exec";
 const API_KEY = "REFEREE_TRACKER_2026_PRIVATE";
 
 const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Écart à vérifier", "À vérifier"];

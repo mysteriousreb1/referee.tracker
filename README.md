@@ -13,7 +13,7 @@ Interface mobile pour suivre les matchs et missions d'arbitrage.
 Dans `app.js`, ces deux constantes doivent pointer vers ton Apps Script :
 
 ```js
-const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbysa6OgFq_vsFUMlOVYyMb2DdTB78JVzuZBHYosFMI4M7IusLzAxknk8TY5rmIaXSHS/exec";
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyq0RfSZ6jEjhtGuNHrkAvqVmDs7ofMo6lpBvJQ_7_TJAahLqYpnESF-iCQrf4kymj-/exec";
 const API_KEY = "REFEREE_TRACKER_2026_PRIVATE";
 ```
 
