@@ -241,6 +241,7 @@ function renderMatchCard(row) {
           <div class="badges">
             ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
             ${badge(level, "gray")}
+            ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
             ${warning ? badge("À vérifier", "orange") : ""}
             ${isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
@@ -277,6 +278,8 @@ function renderDetails(row) {
     ["Saison", row._season],
     ["Mon rôle", get(row, "Mon rôle")],
     ["Compétition", get(row, "Libellé compétition")],
+    ["Genre", get(row, "Genre")],
+    ["Catégorie", get(row, "Catégorie d'âge")],
     ["N° rencontre", get(row, "N° rencontre")],
     ["Recevant", get(row, "Recevant")],
     ["Visiteur / événement", get(row, "Visiteur / événement")],
@@ -613,13 +616,102 @@ function renderExport() {
    Audi A3     → 6,00 L/100 à partir du 01/08/2026
    Prix carburant : modifier FUEL ci-dessous ET dans Code.gs.
 ------------------------------------------------------- */
+/* Historique du prix E10 (€/L, par mois) — doit rester identique à Code.gs.
+   Sources : archives officielles data.gouv.fr (stations à moins de 15 km du
+   domicile) ajustées de -0,058 €/L pour refléter les stations fréquentées,
+   et relevés réels des pleins d'août 2025 à juin 2026. */
+const PRIX_E10 = {
+    // 2022
+    "2022-01": 1.6281,
+    "2022-02": 1.6986,
+    "2022-03": 1.8901,
+    "2022-04": 1.6916,
+    "2022-05": 1.8012,
+    "2022-06": 1.9578,
+    "2022-07": 1.8312,
+    "2022-08": 1.7041,
+    "2022-09": 1.4477,
+    "2022-10": 1.5527,
+    "2022-11": 1.6151,
+    "2022-12": 1.5643,
+
+    // 2023
+    "2023-01": 1.8238,
+    "2023-02": 1.8337,
+    "2023-03": 1.8228,
+    "2023-04": 1.8327,
+    "2023-05": 1.7755,
+    "2023-06": 1.7663,
+    "2023-07": 1.7662,
+    "2023-08": 1.8645,
+    "2023-09": 1.8884,
+    "2023-10": 1.7981,
+    "2023-11": 1.7703,
+    "2023-12": 1.7326,
+
+    // 2024
+    "2024-01": 1.7498,
+    "2024-02": 1.785,
+    "2024-03": 1.7969,
+    "2024-04": 1.8478,
+    "2024-05": 1.8096,
+    "2024-06": 1.7544,
+    "2024-07": 1.7362,
+    "2024-08": 1.6897,
+    "2024-09": 1.6424,
+    "2024-10": 1.6664,
+    "2024-11": 1.6683,
+    "2024-12": 1.6953,
+
+    // 2025
+    "2025-01": 1.7057,
+    "2025-02": 1.6905,
+    "2025-03": 1.6367,
+    "2025-04": 1.6421,
+    "2025-05": 1.6254,
+    "2025-06": 1.627,
+    "2025-07": 1.6125,
+    "2025-08": 1.6153,
+    "2025-09": 1.6403,
+    "2025-10": 1.6297,
+    "2025-11": 1.6647,
+    "2025-12": 1.5956,
+
+    // 2026
+    "2026-01": 1.6596,
+    "2026-02": 1.6883,
+    "2026-03": 1.861,
+    "2026-04": 1.995,
+    "2026-05": 2.0273,
+    "2026-06": 1.868
+};
+
+const PRIX_DEFAUT = 1.95;
+
+function prixCarburantPour(date) {
+  if (!date) return PRIX_DEFAUT;
+  const cle = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+  if (PRIX_E10[cle]) return PRIX_E10[cle];
+
+  // Mois absent de la table : on prend le plus proche connu
+  const mois = Object.keys(PRIX_E10);
+  if (!mois.length) return PRIX_DEFAUT;
+  const num = c => { const p = String(c).split("-"); return Number(p[0]) * 12 + Number(p[1]); };
+  const cible = num(cle);
+  let proche = mois[0], ecartMin = Infinity;
+  mois.forEach(m => {
+    const e = Math.abs(num(m) - cible);
+    if (e < ecartMin) { ecartMin = e; proche = m; }
+  });
+  return PRIX_E10[proche];
+}
+
 function realFuelCostClient(km, date) {
   const k = Number(km) || 0;
   if (!k) return 0;
-  const FUEL = 1.95;
   const cutover = new Date(2026, 7, 1);
   const conso = (date && date >= cutover) ? 6.0 : 6.58;
-  return round2((k * conso / 100) * FUEL);
+  return round2((k * conso / 100) * prixCarburantPour(date));
 }
 
 /* ---------------- Utils ---------------- */
@@ -782,6 +874,21 @@ function renderAnalyse() {
       </div>
     </div>
 
+    <h2 class="section-title">Public arbitré</h2>
+    <div class="chart-grid two">
+      <div class="chart-card">
+        <h3>Masculin / Féminin / Mixte</h3>
+        <p class="hint">Répartition des missions selon le genre de la compétition.</p>
+        <div class="chart-box small"><canvas id="chartGenre"></canvas></div>
+        ${insightGenre(rows)}
+      </div>
+      <div class="chart-card">
+        <h3>Par catégorie d'âge</h3>
+        <p class="hint">Des U11 aux séniors : où se situe le gros de ton activité.</p>
+        <div class="chart-box small"><canvas id="chartCategorie"></canvas></div>
+      </div>
+    </div>
+
     <h2 class="section-title">Rentabilité du déplacement</h2>
     <div class="chart-card">
       <h3>Distance et rentabilité horaire</h3>
@@ -818,6 +925,8 @@ function renderAnalyse() {
   buildChartMois(rows);
   buildChartFormat(five, three);
   buildChartNiveau(rows);
+  buildChartGenre(rows);
+  buildChartCategorie(rows);
   buildChartNuage(rows);
   buildChartTranches(rows);
   buildChartPaiements(rows);
@@ -861,8 +970,55 @@ function enrichirPourAnalyse_(r) {
     _eurHeure: heuresTotal > 0 ? round2(net / heuresTotal) : 0,
     _eurKm: km > 0 ? round2(brut / km) : 0,
     _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
-    _paye: get(r, "Statut paiement") === "Reçu"
+    _paye: get(r, "Statut paiement") === "Reçu",
+    // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
+    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition")),
+    _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
   };
+}
+
+/* ---------- Détection genre / catégorie (miroir de Code.gs) ----------
+   Permet d'afficher les stats même si le Sheet n'a pas encore été enrichi
+   par completerGenreEtCategorie(). Doit rester identique au serveur. */
+
+function normUp(v) {
+  return String(v || "").replace(/\s+/g, " ").trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
+function detecterGenreClient(code, libelle) {
+  const c = normUp(code);
+  const t = (c + " " + normUp(libelle)).replace(/[_.]+/g, " ").trim();
+
+  if (/\bU\d{2}MI\b/.test(t) || /\bMIXTE\b/.test(t)) return "Mixte";
+
+  let m = c.match(/^(?:D|R|N|PR|PN)(M|F)(?:U?\d|\d|$)/);
+  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+  if (/\bSM\b/.test(t)) return "Masculin";
+  if (/\bSF\b/.test(t)) return "Féminin";
+
+  m = t.match(/\bU\d{2}\s*(M|F)\b/);
+  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+  m = t.match(/\bRS(M|F)\b/);
+  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+  return "";
+}
+
+function detecterCategorieClient(code, libelle) {
+  const c = normUp(code);
+  const t = (c + " " + normUp(libelle)).replace(/[_.]+/g, " ").trim();
+
+  const m = t.match(/U(\d{2})/);
+  if (m) return "U" + m[1];
+
+  if (/\bS(M|F)\b/.test(t) || /\bRS(M|F)\b/.test(t)) return "Séniors";
+  if (/^(?:D|R|N)(?:M|F)\d/.test(c)) return "Séniors";
+  if (/^(?:PR|PN)(?:M|F)$/.test(c)) return "Séniors";
+
+  return "";
 }
 
 function filtrerParSaison_(rows, saison) {
@@ -1138,6 +1294,83 @@ function buildChartNiveau(rows) {
   });
 }
 
+function buildChartGenre(rows) {
+  const c = ctx("chartGenre"); if (!c || typeof Chart === "undefined") return;
+
+  const ordre = ["Masculin", "Féminin", "Mixte", "Non déterminé"];
+  const g = groupBySimple(rows, r => r._genre || "Non déterminé")
+    .sort((a, b) => ordre.indexOf(a.label) - ordre.indexOf(b.label));
+
+  const couleurs = {
+    "Masculin": AN.COLORS.navyMid,
+    "Féminin": AN.COLORS.red,
+    "Mixte": AN.COLORS.gold,
+    "Non déterminé": "#B8C4D8"
+  };
+
+  AN.charts.genre = new Chart(c, {
+    type: "doughnut",
+    data: {
+      labels: g.map(x => `${x.label} (${x.count})`),
+      datasets: [{
+        data: g.map(x => round2(x.net)),
+        backgroundColor: g.map(x => couleurs[x.label] || AN.COLORS.navyLight),
+        borderWidth: 0, hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: {
+        legend: { position: "bottom", labels: { font: { size: 12 }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
+        tooltip: {
+          ...chartBase.plugins.tooltip,
+          callbacks: {
+            label: (i) => {
+              const item = g[i.dataIndex];
+              return [`${item.label} : ${money(item.net)} nets`, `${item.count} mission(s) · ${formatNumber(item.km, " km")}`];
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function buildChartCategorie(rows) {
+  const c = ctx("chartCategorie"); if (!c || typeof Chart === "undefined") return;
+
+  // Ordre logique : des plus jeunes aux séniors
+  const ordre = ["U11", "U13", "U15", "U17", "U18", "U20", "U21", "Séniors", "Non déterminé"];
+  const g = groupBySimple(rows, r => r._categorie || "Non déterminé")
+    .sort((a, b) => {
+      const ia = ordre.indexOf(a.label), ib = ordre.indexOf(b.label);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+
+  AN.charts.categorie = new Chart(c, {
+    type: "bar",
+    data: {
+      labels: g.map(x => x.label),
+      datasets: [{
+        label: "Net réel",
+        data: g.map(x => round2(x.net)),
+        backgroundColor: g.map(x => x.label === "Séniors" ? AN.COLORS.navy : AN.COLORS.navyMid),
+        borderRadius: 5
+      }]
+    },
+    options: {
+      ...chartBase,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...chartBase.plugins.tooltip,
+          callbacks: { label: (i) => `${money(i.parsed.y)} — ${g[i.dataIndex].count} mission(s)` }
+        }
+      }
+    }
+  });
+}
+
 function buildChartNuage(rows) {
   const c = ctx("chartNuage"); if (!c || typeof Chart === "undefined") return;
   const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
@@ -1304,6 +1537,31 @@ function insightFormat(five, three) {
   return `<div class="insight">
     <b>${mieux}</b> rapporte davantage à l'heure : ${money(eurHFive)}/h en 5×5 contre ${money(eurHThree)}/h en 3×3,
     soit ${money(ecart)} d'écart horaire.
+  </div>`;
+}
+
+function insightGenre(rows) {
+  const g = groupBySimple(rows, r => r._genre || "Non déterminé")
+    .filter(x => x.label !== "Non déterminé");
+  if (g.length < 2) return "";
+
+  const total = g.reduce((t, x) => t + x.count, 0);
+  const dominant = g.reduce((a, b) => b.count > a.count ? b : a);
+  const part = total > 0 ? (dominant.count / total) * 100 : 0;
+
+  // Comparaison du rendement horaire entre genres
+  const avecHeures = g.filter(x => x.heures > 0).map(x => ({ ...x, eurH: x.net / x.heures }));
+  let comparaison = "";
+  if (avecHeures.length >= 2) {
+    const best = avecHeures.reduce((a, b) => b.eurH > a.eurH ? b : a);
+    const worst = avecHeures.reduce((a, b) => b.eurH < a.eurH ? b : a);
+    if (best.label !== worst.label) {
+      comparaison = ` Le <b>${escapeHtml(best.label.toLowerCase())}</b> rapporte le plus à l'heure (${money(best.eurH)}/h contre ${money(worst.eurH)}/h).`;
+    }
+  }
+
+  return `<div class="insight">
+    <b>${escapeHtml(dominant.label)}</b> domine avec ${dominant.count} mission(s), soit ${part.toFixed(0)} % du total.${comparaison}
   </div>`;
 }
 
