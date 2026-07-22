@@ -179,6 +179,7 @@ function renderAll() {
   renderTroisx3();
   renderPaiements();
   renderStats();
+  renderAnalyse();
   renderAlertes();
   renderExport();
 }
@@ -664,3 +665,693 @@ function sortByPaymentThenDate(a, b) {
   return pa !== pb ? pa - pb : sortByDateAsc(a, b);
 }
 function groupBy(rows, fn) { return rows.reduce((acc, r) => { const k = fn(r) || "Autre"; (acc[k] = acc[k] || []).push(r); return acc; }, {}); }
+
+/* =====================================================
+   ONGLET ANALYSE — graphiques, diagrammes, KPI avancés
+   Ne touche pas à l'onglet Stats existant.
+   Utilise Chart.js (CDN) + les données déjà chargées.
+   ===================================================== */
+
+const AN = {
+  charts: {},              // instances Chart.js, détruites avant re-render
+  VITESSE_MOY_KMH: 70,     // pour estimer le temps de route
+  DUREE_5X5_H: 1.5,        // temps sur place, match 5x5
+  DUREE_3X3_H: 6,          // temps sur place, tournoi 3x3
+  saison: "",              // saison choisie dans l'onglet Analyse ("" = auto)
+  COLORS: {
+    navy: "#0A1F44", navyMid: "#1E4E9C", navyLight: "#6C93D6",
+    red: "#E4002B", gold: "#F5B400", green: "#0E7B47", orange: "#B5590A",
+    grid: "#E3EAF4", muted: "#5B6884"
+  }
+};
+
+
+function renderAnalyse() {
+  const root = document.getElementById("analyse");
+  if (!root) return;
+
+  destroyCharts();
+
+  // Toutes les lignes actives, sans filtre de saison : le filtrage se fait
+  // ensuite via le sélecteur propre à cet onglet.
+  const toutes = analyseRowsToutesSaisons();
+
+  if (!toutes.length) {
+    root.innerHTML = empty("Aucune mission à analyser. Vide la recherche ou vérifie le chargement des données.");
+    return;
+  }
+
+  // Saison retenue pour l'ensemble de l'onglet Analyse
+  AN.saison = resoudreSaison_(AN.saison, toutes);
+  const rows = filtrerParSaison_(toutes, AN.saison);
+
+  if (!rows.length) {
+    root.innerHTML = `
+      <div class="analysis-toolbar">
+        <div class="chart-filter">
+          <label for="saisonAnalyse">Saison analysée</label>
+          <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
+        </div>
+      </div>
+      ${empty("Aucune mission pour cette saison.")}
+    `;
+    brancherSelecteurAnalyse_();
+    return;
+  }
+
+  const sum = (k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+
+  const brut = sum("_brut");
+  const carburant = sum("_carburant");
+  const net = round2(brut - carburant);
+  const kmTotal = sum("_km");
+  const heuresRoute = sum("_heuresRoute");
+  const heuresTotal = sum("_heuresTotal");
+  const partGardee = brut > 0 ? (net / brut) * 100 : 0;
+
+  const five = rows.filter(r => r._format === "5x5");
+  const three = rows.filter(r => r._format === "3x3");
+
+  const eurHeureGlobal = heuresTotal > 0 ? net / heuresTotal : 0;
+  const eurKmGlobal = kmTotal > 0 ? brut / kmTotal : 0;
+  const nonPayes = rows.filter(r => !r._paye);
+  const montantDu = nonPayes.reduce((t, r) => t + r._brut, 0);
+
+  root.innerHTML = `
+    <div class="analysis-toolbar">
+      <div class="chart-filter">
+        <label for="saisonAnalyse">Saison analysée</label>
+        <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
+      </div>
+      <div class="toolbar-summary">${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div>
+    </div>
+
+    ${renderAnalyseHero(brut, carburant, net, partGardee, rows.length, kmTotal, heuresTotal)}
+
+    <h2 class="section-title">Indicateurs clés</h2>
+    <div class="kpi-grid">
+      ${kpi("Net par mission", money(net / rows.length))}
+      ${kpi("Net par heure", money(eurHeureGlobal), "trajet + temps sur place")}
+      ${kpi("Indemnité par km", money(eurKmGlobal))}
+      ${kpi("Temps sur la route", formatHeures(heuresRoute), `sur ${formatHeures(heuresTotal)} au total`)}
+      ${kpi("Distance parcourue", formatNumber(kmTotal, " km"), `${formatNumber(kmTotal / rows.length, " km")} par mission`)}
+      ${kpi("Part absorbée par le carburant", (100 - partGardee).toFixed(1) + " %")}
+      ${kpi("Reste à percevoir", formatMoney(montantDu), `${nonPayes.length} mission(s)`)}
+      ${kpi("Litres consommés", formatNumber(litresTotal(rows), " L"))}
+    </div>
+
+    <h2 class="section-title">Évolution mensuelle</h2>
+    <div class="chart-card">
+      <h3>Ce que rapporte chaque mois</h3>
+      <p class="hint">Mois classés dans l'ordre de la saison sportive, de septembre à juillet. Barres empilées : la part nette conservée et la part partie en carburant. La ligne montre le nombre de missions.</p>
+      <div class="chart-box tall"><canvas id="chartMois"></canvas></div>
+      ${insightMois(rows)}
+    </div>
+
+    <div class="chart-grid two">
+      <div class="chart-card">
+        <h3>Répartition 5×5 / 3×3</h3>
+        <p class="hint">Part de chaque format dans le revenu net.</p>
+        <div class="chart-box small"><canvas id="chartFormat"></canvas></div>
+        ${insightFormat(five, three)}
+      </div>
+      <div class="chart-card">
+        <h3>Net réel par niveau</h3>
+        <p class="hint">Où se concentre réellement le gain.</p>
+        <div class="chart-box small"><canvas id="chartNiveau"></canvas></div>
+      </div>
+    </div>
+
+    <h2 class="section-title">Rentabilité du déplacement</h2>
+    <div class="chart-card">
+      <h3>Distance et rentabilité horaire</h3>
+      <p class="hint">Chaque point est une mission : distance parcourue en abscisse, gain net par heure en ordonnée. Plus un point est bas et à droite, moins la mission est rentable.</p>
+      <div class="chart-box tall"><canvas id="chartNuage"></canvas></div>
+      ${insightRentabilite(rows)}
+    </div>
+
+    <div class="chart-card">
+      <h3>Rentabilité par tranche de distance</h3>
+      <p class="hint">Gain net moyen par heure selon l'éloignement de la salle.</p>
+      <div class="chart-box"><canvas id="chartTranches"></canvas></div>
+      ${insightTranches(rows)}
+    </div>
+
+    <h2 class="section-title">Où va l'argent</h2>
+    ${renderClassementRentabilite(rows)}
+
+    <div class="chart-card">
+      <h3>Suivi des encaissements</h3>
+      <p class="hint">Montants perçus et restant dus, mois par mois.</p>
+      <div class="chart-box"><canvas id="chartPaiements"></canvas></div>
+      ${insightPaiements(rows)}
+    </div>
+
+    <div class="stat-note">
+      Temps estimé : ${AN.VITESSE_MOY_KMH} km/h de moyenne sur la route,
+      ${AN.DUREE_5X5_H} h sur place en 5×5, ${AN.DUREE_3X3_H} h en 3×3.
+      Le coût carburant ne comprend ni l'usure, ni l'entretien, ni l'assurance.
+    </div>
+  `;
+
+  // Les graphiques se construisent après l'injection du HTML
+  buildChartMois(rows);
+  buildChartFormat(five, three);
+  buildChartNiveau(rows);
+  buildChartNuage(rows);
+  buildChartTranches(rows);
+  buildChartPaiements(rows);
+
+  brancherSelecteurAnalyse_();
+}
+
+/* ---------- Filtre de saison propre à l'onglet Analyse ---------- */
+
+/* Toutes les missions actives, indépendamment du filtre de saison global :
+   l'onglet Analyse a son propre sélecteur. La recherche texte reste appliquée. */
+function analyseRowsToutesSaisons() {
+  const q = state.search;
+  return state.allRows
+    .filter(r => r._isActive && r._format !== "Alerte")
+    .filter(r => {
+      if (!q) return true;
+      const hay = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville", "Collègue nom", "Libellé compétition", "Niveau administratif", "Code compétition"]
+        .map(k => get(r, k)).join(" ").toLowerCase();
+      return hay.includes(q);
+    })
+    .map(enrichirPourAnalyse_);
+}
+
+function enrichirPourAnalyse_(r) {
+  const km = r._km || 0;
+  const brut = r._amount || 0;
+  const carburant = realFuelCostClient(km, r._date);
+  const net = round2(brut - carburant);
+
+  const heuresRoute = km ? km / AN.VITESSE_MOY_KMH : 0;
+  const heuresSurPlace = r._format === "3x3" ? AN.DUREE_3X3_H : AN.DUREE_5X5_H;
+  const heuresTotal = heuresRoute + heuresSurPlace;
+
+  return {
+    ...r,
+    _km: km, _brut: brut, _carburant: carburant, _net: net,
+    _heuresRoute: round2(heuresRoute),
+    _heuresSurPlace: heuresSurPlace,
+    _heuresTotal: round2(heuresTotal),
+    _eurHeure: heuresTotal > 0 ? round2(net / heuresTotal) : 0,
+    _eurKm: km > 0 ? round2(brut / km) : 0,
+    _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
+    _paye: get(r, "Statut paiement") === "Reçu"
+  };
+}
+
+function filtrerParSaison_(rows, saison) {
+  if (!saison || saison === "Toutes les saisons") return rows;
+  return rows.filter(r => r._season === saison);
+}
+
+/* Choisit une saison valide : celle déjà retenue si elle existe encore,
+   sinon celle du filtre global, sinon la plus récente. */
+function resoudreSaison_(courante, rows) {
+  const dispo = saisonsDisponibles(rows);
+  if (courante === "Toutes les saisons") return courante;
+  if (courante && dispo.includes(courante)) return courante;
+  if (state.selectedSeason && dispo.includes(state.selectedSeason)) return state.selectedSeason;
+  return dispo[0] || "Toutes les saisons";
+}
+
+function optionsSaison_(rows, selected) {
+  const choix = ["Toutes les saisons", ...saisonsDisponibles(rows)];
+  return choix.map(s =>
+    `<option value="${escapeHtml(s)}" ${s === selected ? "selected" : ""}>${escapeHtml(s)}</option>`
+  ).join("");
+}
+
+function brancherSelecteurAnalyse_() {
+  const sel = document.getElementById("saisonAnalyse");
+  if (!sel) return;
+  sel.addEventListener("change", e => {
+    AN.saison = e.target.value;
+    renderAnalyse();
+  });
+}
+
+function renderAnalyseHero(brut, carburant, net, partGardee, nb, kmTotal, heuresTotal) {
+  const partCarburant = 100 - partGardee;
+  return `
+    <div class="analysis-hero">
+      <div class="eyebrow">Ce que l'arbitrage rapporte vraiment · ${escapeHtml(state.selectedSeason)}</div>
+      <div class="big">${formatMoney(net)}</div>
+      <div class="breakdown">
+        <span><b>${formatMoney(brut)}</b> encaissés</span>
+        <span>−<b>${formatMoney(carburant)}</b> de carburant</span>
+        <span><b>${nb}</b> mission(s)</span>
+        <span><b>${formatNumber(kmTotal, " km")}</b> parcourus</span>
+        <span><b>${formatHeures(heuresTotal)}</b> mobilisées</span>
+      </div>
+      <div class="margin-bar">
+        <div class="kept" style="width:${partGardee.toFixed(1)}%"></div>
+        <div class="burned" style="width:${partCarburant.toFixed(1)}%"></div>
+      </div>
+      <div class="margin-legend">
+        <span><i style="background:var(--gold)"></i>${partGardee.toFixed(1)} % conservés</span>
+        <span><i style="background:var(--red)"></i>${partCarburant.toFixed(1)} % au carburant</span>
+      </div>
+    </div>
+  `;
+}
+
+function kpi(label, value, sub) {
+  return `<div class="kpi"><label>${escapeHtml(label)}</label><strong>${value}</strong>${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ""}</div>`;
+}
+
+function litresTotal(rows) {
+  return rows.reduce((t, r) => {
+    const cutover = new Date(2026, 7, 1);
+    const conso = (r._date && r._date >= cutover) ? 6.0 : 6.58;
+    return t + (r._km * conso / 100);
+  }, 0);
+}
+
+function formatHeures(h) {
+  const n = Number(h) || 0;
+  if (n < 1) return Math.round(n * 60) + " min";
+  const heures = Math.floor(n);
+  const min = Math.round((n - heures) * 60);
+  return min ? `${heures} h ${String(min).padStart(2, "0")}` : `${heures} h`;
+}
+
+/* ---------------- Agrégations ---------------- */
+
+/* Ordre des mois dans la saison sportive : septembre → juillet.
+   La saison bascule le 30 juillet, donc août est le mois de coupure. */
+const ORDRE_MOIS_SAISON = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8];
+
+function rangMoisSaison(moisIndex1a12) {
+  const i = ORDRE_MOIS_SAISON.indexOf(moisIndex1a12);
+  return i === -1 ? 99 : i;
+}
+
+/* Regroupe par mois. Trie dans l'ordre de la saison sportive
+   (sept, oct, nov, déc, janv, févr, mars, avr, mai, juin, juil),
+   et non par montant ni par année civile. */
+function groupMonths(rows, seasonFilter) {
+  const map = new Map();
+
+  rows.forEach(r => {
+    if (!r._date) return;
+    if (seasonFilter && seasonFilter !== "Toutes les saisons" && r._season !== seasonFilter) return;
+
+    const annee = r._date.getFullYear();
+    const mois = r._date.getMonth() + 1;
+    const key = annee + "-" + String(mois).padStart(2, "0");
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key, annee, mois,
+        saison: r._season || "",
+        net: 0, carburant: 0, brut: 0, count: 0, recu: 0, du: 0, km: 0, heures: 0
+      });
+    }
+
+    const m = map.get(key);
+    m.net += r._net; m.carburant += r._carburant; m.brut += r._brut;
+    m.km += r._km; m.heures += r._heuresTotal; m.count++;
+    if (r._paye) m.recu += r._brut; else m.du += r._brut;
+  });
+
+  return [...map.values()].sort((a, b) => {
+    // D'abord par saison (ordre chronologique des saisons)
+    if (a.saison !== b.saison) return String(a.saison).localeCompare(String(b.saison));
+    // Puis dans l'ordre des mois de la saison sportive
+    return rangMoisSaison(a.mois) - rangMoisSaison(b.mois);
+  });
+}
+
+/* Liste des saisons réellement présentes dans les données affichées */
+function saisonsDisponibles(rows) {
+  const set = new Set();
+  rows.forEach(r => { if (r._season) set.add(r._season); });
+  return [...set].sort().reverse();
+}
+
+function labelMois(key) {
+  const [y, m] = key.split("-");
+  const noms = ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"];
+  return `${noms[Number(m) - 1]} ${y.slice(2)}`;
+}
+
+function groupBySimple(rows, keyFn) {
+  const map = new Map();
+  rows.forEach(r => {
+    const k = String(keyFn(r) || "").trim();
+    if (!k) return;
+    if (!map.has(k)) map.set(k, { label: k, net: 0, brut: 0, km: 0, count: 0, heures: 0 });
+    const g = map.get(k);
+    g.net += r._net; g.brut += r._brut; g.km += r._km; g.count++; g.heures += r._heuresTotal;
+  });
+  return [...map.values()];
+}
+
+/* ---------------- Graphiques ---------------- */
+
+function destroyCharts() {
+  Object.values(AN.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+  AN.charts = {};
+}
+
+function ctx(id) {
+  const el = document.getElementById(id);
+  return el ? el.getContext("2d") : null;
+}
+
+const chartBase = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: "index", intersect: false },
+  plugins: {
+    legend: { labels: { font: { size: 11.5, family: "Inter, sans-serif" }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
+    tooltip: {
+      backgroundColor: "#0A1F44", padding: 10, cornerRadius: 8,
+      titleFont: { size: 12.5 }, bodyFont: { size: 12.5, family: "Inter, sans-serif" }
+    }
+  },
+  scales: {
+    x: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
+    y: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
+  }
+};
+
+function buildChartMois(rows) {
+  const c = ctx("chartMois"); if (!c || typeof Chart === "undefined") return;
+  const months = groupMonths(rows, AN.saison);
+
+  if (!months.length) {
+    AN.charts.mois = new Chart(c, {
+      type: "bar",
+      data: { labels: [], datasets: [] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    return;
+  }
+
+  AN.charts.mois = new Chart(c, {
+    data: {
+      labels: months.map(m => labelMois(m.key)),
+      datasets: [
+        { type: "bar", label: "Net conservé", data: months.map(m => round2(m.net)), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, stack: "s", yAxisID: "y" },
+        { type: "bar", label: "Carburant", data: months.map(m => round2(m.carburant)), backgroundColor: AN.COLORS.red, borderRadius: 5, stack: "s", yAxisID: "y" },
+        { type: "line", label: "Missions", data: months.map(m => m.count), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
+      ]
+    },
+    options: {
+      ...chartBase,
+      scales: {
+        x: { ...chartBase.scales.x, stacked: true },
+        y: { ...chartBase.scales.y, stacked: true, title: { display: true, text: "€", font: { size: 11 }, color: AN.COLORS.muted } },
+        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold, precision: 0 }, title: { display: true, text: "missions", font: { size: 11 }, color: AN.COLORS.gold } }
+      },
+      plugins: {
+        ...chartBase.plugins,
+        tooltip: {
+          ...chartBase.plugins.tooltip,
+          callbacks: {
+            label: (i) => i.dataset.label === "Missions"
+              ? `${i.parsed.y} mission(s)`
+              : `${i.dataset.label} : ${money(i.parsed.y)}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function buildChartFormat(five, three) {
+  const c = ctx("chartFormat"); if (!c || typeof Chart === "undefined") return;
+  const netFive = five.reduce((t, r) => t + r._net, 0);
+  const netThree = three.reduce((t, r) => t + r._net, 0);
+
+  AN.charts.format = new Chart(c, {
+    type: "doughnut",
+    data: {
+      labels: [`5×5 (${five.length})`, `3×3 (${three.length})`],
+      datasets: [{ data: [round2(netFive), round2(netThree)], backgroundColor: [AN.COLORS.navyMid, AN.COLORS.red], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: {
+        legend: { position: "bottom", labels: { font: { size: 12 }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
+        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${i.label} : ${money(i.parsed)}` } }
+      }
+    }
+  });
+}
+
+function buildChartNiveau(rows) {
+  const c = ctx("chartNiveau"); if (!c || typeof Chart === "undefined") return;
+  const g = groupBySimple(rows, r => get(r, "Niveau administratif") || "Non renseigné")
+    .sort((a, b) => b.net - a.net);
+
+  AN.charts.niveau = new Chart(c, {
+    type: "bar",
+    data: {
+      labels: g.map(x => x.label),
+      datasets: [{
+        label: "Net réel",
+        data: g.map(x => round2(x.net)),
+        backgroundColor: g.map(x => x.label === "3x3" ? AN.COLORS.red : x.label === "Régional" ? AN.COLORS.navy : AN.COLORS.navyMid),
+        borderRadius: 5
+      }]
+    },
+    options: {
+      ...chartBase,
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${money(i.parsed.x)} — ${g[i.dataIndex].count} mission(s)` } }
+      },
+      scales: {
+        x: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
+      }
+    }
+  });
+}
+
+function buildChartNuage(rows) {
+  const c = ctx("chartNuage"); if (!c || typeof Chart === "undefined") return;
+  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
+
+  AN.charts.nuage = new Chart(c, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "5×5",
+          data: pts.filter(r => r._format === "5x5").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Recevant", "Visiteur / événement"]), date: get(r, "Date match") })),
+          backgroundColor: AN.COLORS.navyMid, pointRadius: 5, pointHoverRadius: 7
+        },
+        {
+          label: "3×3",
+          data: pts.filter(r => r._format === "3x3").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Visiteur / événement", "Recevant"]), date: get(r, "Date match") })),
+          backgroundColor: AN.COLORS.red, pointRadius: 5, pointHoverRadius: 7
+        }
+      ]
+    },
+    options: {
+      ...chartBase,
+      interaction: { mode: "nearest", intersect: true },
+      plugins: {
+        ...chartBase.plugins,
+        tooltip: {
+          ...chartBase.plugins.tooltip,
+          callbacks: {
+            label: (i) => {
+              const d = i.raw;
+              return [`${d.lieu || "Mission"} — ${d.date || ""}`, `${formatNumber(d.x, " km")} · ${money(d.y)}/h`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ...chartBase.scales.x, grid: { color: AN.COLORS.grid }, title: { display: true, text: "distance aller-retour (km)", font: { size: 11 }, color: AN.COLORS.muted } },
+        y: { ...chartBase.scales.y, title: { display: true, text: "net par heure (€)", font: { size: 11 }, color: AN.COLORS.muted } }
+      }
+    }
+  });
+}
+
+function trancheDe(km) {
+  if (km < 20) return "0–20 km";
+  if (km < 40) return "20–40 km";
+  if (km < 60) return "40–60 km";
+  if (km < 100) return "60–100 km";
+  return "100 km et +";
+}
+const ORDRE_TRANCHES = ["0–20 km", "20–40 km", "40–60 km", "60–100 km", "100 km et +"];
+
+function buildChartTranches(rows) {
+  const c = ctx("chartTranches"); if (!c || typeof Chart === "undefined") return;
+  const withKm = rows.filter(r => r._km > 0);
+  const g = groupBySimple(withKm, r => trancheDe(r._km))
+    .sort((a, b) => ORDRE_TRANCHES.indexOf(a.label) - ORDRE_TRANCHES.indexOf(b.label));
+
+  AN.charts.tranches = new Chart(c, {
+    data: {
+      labels: g.map(x => x.label),
+      datasets: [
+        { type: "bar", label: "Net par heure", data: g.map(x => x.heures > 0 ? round2(x.net / x.heures) : 0), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, yAxisID: "y" },
+        { type: "line", label: "Missions", data: g.map(x => x.count), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
+      ]
+    },
+    options: {
+      ...chartBase,
+      scales: {
+        x: chartBase.scales.x,
+        y: { ...chartBase.scales.y, title: { display: true, text: "€ / heure", font: { size: 11 }, color: AN.COLORS.muted } },
+        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold, precision: 0 } }
+      },
+      plugins: {
+        ...chartBase.plugins,
+        tooltip: {
+          ...chartBase.plugins.tooltip,
+          callbacks: { label: (i) => i.dataset.label === "Missions" ? `${i.parsed.y} mission(s)` : `${money(i.parsed.y)} / heure` }
+        }
+      }
+    }
+  });
+}
+
+function buildChartPaiements(rows) {
+  const c = ctx("chartPaiements"); if (!c || typeof Chart === "undefined") return;
+  const months = groupMonths(rows);
+
+  AN.charts.paiements = new Chart(c, {
+    type: "bar",
+    data: {
+      labels: months.map(m => labelMois(m.key)),
+      datasets: [
+        { label: "Perçu", data: months.map(m => round2(m.recu)), backgroundColor: AN.COLORS.green, borderRadius: 5, stack: "p" },
+        { label: "En attente", data: months.map(m => round2(m.du)), backgroundColor: AN.COLORS.gold, borderRadius: 5, stack: "p" }
+      ]
+    },
+    options: {
+      ...chartBase,
+      scales: {
+        x: { ...chartBase.scales.x, stacked: true },
+        y: { ...chartBase.scales.y, stacked: true }
+      },
+      plugins: {
+        ...chartBase.plugins,
+        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${i.dataset.label} : ${money(i.parsed.y)}` } }
+      }
+    }
+  });
+}
+
+/* ---------------- Classement rentabilité ---------------- */
+
+function renderClassementRentabilite(rows) {
+  const five = rows.filter(r => r._format === "5x5");
+  const parClub = groupBySimple(five, r => get(r, "Recevant"))
+    .filter(g => g.count > 0)
+    .sort((a, b) => b.net - a.net)
+    .slice(0, 10);
+
+  if (!parClub.length) return "";
+
+  const maxNet = Math.max(...parClub.map(g => g.net));
+
+  return `
+    <div class="chart-card">
+      <h3>Clubs les plus rentables (5×5)</h3>
+      <p class="hint">Net réel cumulé par club recevant, nombre de missions et gain net par heure.</p>
+      ${parClub.map(g => `
+        <div class="rank-row">
+          <div class="rank-name">
+            <div class="label">${escapeHtml(g.label)}</div>
+            <div class="meter"><i style="width:${maxNet > 0 ? (g.net / maxNet) * 100 : 0}%"></i></div>
+          </div>
+          <div class="rank-count">${g.count}×</div>
+          <div class="rank-value ${g.net < 0 ? "neg" : ""}">${formatMoney(g.net)}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+/* ---------------- Lectures écrites sous les graphiques ---------------- */
+
+function insightMois(rows) {
+  const months = groupMonths(rows);
+  if (months.length < 2) return "";
+  const best = months.reduce((a, b) => b.net > a.net ? b : a);
+  const worst = months.reduce((a, b) => b.net < a.net ? b : a);
+  return `<div class="insight">
+    Mois le plus rentable : <b>${labelMois(best.key)}</b> avec ${formatMoney(best.net)} nets sur ${best.count} mission(s).
+    Le plus faible : <b>${labelMois(worst.key)}</b> à ${formatMoney(worst.net)}.
+  </div>`;
+}
+
+function insightFormat(five, three) {
+  if (!five.length || !three.length) return "";
+  const hFive = five.reduce((t, r) => t + r._heuresTotal, 0);
+  const hThree = three.reduce((t, r) => t + r._heuresTotal, 0);
+  const eurHFive = hFive > 0 ? five.reduce((t, r) => t + r._net, 0) / hFive : 0;
+  const eurHThree = hThree > 0 ? three.reduce((t, r) => t + r._net, 0) / hThree : 0;
+  const mieux = eurHFive >= eurHThree ? "Le 5×5" : "Le 3×3";
+  const ecart = Math.abs(eurHFive - eurHThree);
+  return `<div class="insight">
+    <b>${mieux}</b> rapporte davantage à l'heure : ${money(eurHFive)}/h en 5×5 contre ${money(eurHThree)}/h en 3×3,
+    soit ${money(ecart)} d'écart horaire.
+  </div>`;
+}
+
+function insightRentabilite(rows) {
+  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
+  if (pts.length < 3) return "";
+  const pire = pts.reduce((a, b) => b._eurHeure < a._eurHeure ? b : a);
+  const meilleure = pts.reduce((a, b) => b._eurHeure > a._eurHeure ? b : a);
+  return `<div class="insight warn">
+    Mission la moins rentable : <b>${escapeHtml(firstValue(pire, ["Recevant", "Visiteur / événement"]) || "—")}</b>
+    le ${escapeHtml(get(pire, "Date match"))} — ${formatNumber(pire._km, " km")} pour ${money(pire._eurHeure)}/h.
+    À l'inverse, ${escapeHtml(firstValue(meilleure, ["Recevant", "Visiteur / événement"]) || "—")} monte à ${money(meilleure._eurHeure)}/h.
+  </div>`;
+}
+
+function insightTranches(rows) {
+  const withKm = rows.filter(r => r._km > 0);
+  if (withKm.length < 4) return "";
+  const g = groupBySimple(withKm, r => trancheDe(r._km))
+    .map(x => ({ ...x, eurH: x.heures > 0 ? x.net / x.heures : 0 }))
+    .sort((a, b) => b.eurH - a.eurH);
+  if (!g.length) return "";
+  const best = g[0], worst = g[g.length - 1];
+  return `<div class="insight good">
+    Les missions <b>${escapeHtml(best.label)}</b> sont les plus rentables : ${money(best.eurH)}/h.
+    Les <b>${escapeHtml(worst.label)}</b> tombent à ${money(worst.eurH)}/h.
+  </div>`;
+}
+
+function insightPaiements(rows) {
+  const nonPayes = rows.filter(r => !r._paye);
+  if (!nonPayes.length) return `<div class="insight good">Tout est encaissé pour cette saison.</div>`;
+
+  const today = new Date();
+  const retard = nonPayes.filter(r => {
+    const d = parseFrDate(get(r, "Date paiement"));
+    return d && d < today;
+  });
+
+  const montantRetard = retard.reduce((t, r) => t + r._brut, 0);
+  const montantTotal = nonPayes.reduce((t, r) => t + r._brut, 0);
+
+  if (!retard.length) {
+    return `<div class="insight">${formatMoney(montantTotal)} restent à percevoir sur ${nonPayes.length} mission(s), aucune échéance dépassée.</div>`;
+  }
+
+  return `<div class="insight warn">
+    <b>${retard.length} paiement(s) en retard</b> pour ${formatMoney(montantRetard)} :
+    la date prévue est passée sans réception enregistrée. Total restant dû : ${formatMoney(montantTotal)}.
+  </div>`;
+}
