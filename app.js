@@ -446,6 +446,7 @@ function attachPaymentListeners(root) {
           if (status === "À recevoir") { row["Date réception"] = ""; row["Montant reçu"] = ""; }
         }
         setStatus("Paiement mis à jour", "ok");
+        AN.statsCache = {}; // les délais/KPI avancés doivent être recalculés
         loadStats();
         renderAll();
       } catch (err) {
@@ -770,6 +771,7 @@ const AN = {
   DUREE_5X5_H: 1.5,        // temps sur place, match 5x5
   DUREE_3X3_H: 6,          // temps sur place, tournoi 3x3
   saison: "",              // saison choisie dans l'onglet Analyse ("" = auto)
+  statsCache: {},          // cache des stats serveur par saison (délais, régularité, etc.)
   COLORS: {
     navy: "#0A1F44", navyMid: "#1E4E9C", navyLight: "#6C93D6",
     red: "#E4002B", gold: "#F5B400", green: "#0E7B47", orange: "#B5590A",
@@ -839,6 +841,8 @@ function renderAnalyse() {
     </div>
 
     ${renderAnalyseHero(brut, carburant, net, partGardee, rows.length, kmTotal, heuresTotal)}
+
+    <div id="analyseAvancee">${empty("Chargement des analyses avancées…")}</div>
 
     <h2 class="section-title">Indicateurs clés</h2>
     <div class="kpi-grid">
@@ -932,6 +936,188 @@ function renderAnalyse() {
   buildChartPaiements(rows);
 
   brancherSelecteurAnalyse_();
+  chargerStatsAvancees(AN.saison);
+}
+
+/* ---------- Stats avancées (calculées côté serveur) ----------
+   Délais de paiement, régularité, fidélité géographique, projection de
+   fin de saison, classement de rentabilité. Chargées à part de action=stats
+   car elles ont leur propre sélecteur de saison (AN.saison), indépendant
+   du sélecteur global en haut de page. Mises en cache par saison pour
+   éviter de re-télécharger à chaque clic d'onglet. */
+
+function chargerStatsAvancees(saison) {
+  if (AN.statsCache[saison]) {
+    injecterStatsAvancees(AN.statsCache[saison]);
+    return;
+  }
+
+  jsonp("stats", { season: saison })
+    .then(res => {
+      if (!res.success) throw new Error(res.error || "Erreur API");
+      AN.statsCache[saison] = res.stats;
+      // Si l'utilisateur a changé de saison entre-temps, ne pas injecter une réponse périmée
+      if (AN.saison === saison) injecterStatsAvancees(res.stats);
+    })
+    .catch(err => {
+      const el = document.getElementById("analyseAvancee");
+      if (el) el.innerHTML = `<div class="insight warn">Analyses avancées indisponibles : ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+function injecterStatsAvancees(stats) {
+  const el = document.getElementById("analyseAvancee");
+  if (!el) return;
+  el.innerHTML = renderStatsAvancees(stats);
+  buildChartJourSemaine(stats);
+}
+
+function renderStatsAvancees(stats) {
+  const cc = stats.cout_complet || {};
+  const emp = stats.empreinte || {};
+  const dp = stats.delais_paiement || {};
+  const reg = stats.regularite || {};
+  const fid = stats.fidelite_geographique || {};
+  const proj = stats.projection_saison || null;
+  const classement = stats.classement_rentabilite || { top: [], bottom: [] };
+
+  return `
+    <h2 class="section-title">Coût réel complet</h2>
+    <div class="kpi-grid">
+      ${kpi("Net réel (carburant seul)", formatMoney(stats.totaux ? stats.totaux.net_reel : 0))}
+      ${kpi("Usure & entretien estimés", "−" + formatMoney(cc.cout_usure_total), cc.cout_usure_par_km + " €/km")}
+      ${kpi("Net réel tout compris", formatMoney(cc.net_reel_tout_compris), "carburant + usure déduits")}
+      ${kpi("Distance d'équilibre", cc.km_equilibre ? formatNumber(cc.km_equilibre, " km") : "—", "au-delà, le trajet mange plus qu'il ne rapporte en moyenne")}
+    </div>
+    <div class="insight">${escapeHtml(cc.note || "")}</div>
+
+    ${proj ? renderProjection(proj) : ""}
+
+    <h2 class="section-title">Délais de paiement réels</h2>
+    ${dp.par_type && dp.par_type.length ? `
+      <div class="kpi-grid">
+        ${kpi("Délai moyen constaté", dp.delai_moyen_jours !== null ? dp.delai_moyen_jours + " j" : "—", "entre la date prévue et la réception")}
+        ${kpi("Paiements avec délai connu", dp.nb_avec_delai_connu)}
+      </div>
+      <div class="table-card"><div class="table-wrap"><table>
+        <thead><tr><th>Type de paiement</th><th class="num">Paiements</th><th class="num">Délai moyen</th><th class="num">En retard</th></tr></thead>
+        <tbody>${dp.par_type.map(t => `<tr>
+          <td>${escapeHtml(t.label)}</td>
+          <td class="num">${t.nb_paiements}</td>
+          <td class="num">${t.delai_moyen_jours >= 0 ? t.delai_moyen_jours + " j" : t.delai_moyen_jours + " j (anticipé)"}</td>
+          <td class="num">${t.nb_en_retard}</td>
+        </tr>`).join("")}</tbody>
+      </table></div></div>
+      ${dp.note ? `<div class="insight warn">${escapeHtml(dp.note)}</div>` : ""}
+    ` : `<div class="insight">Pas encore assez de paiements avec date de réception fiable pour calculer un délai. Ça s'affinera au fil des validations de paiement.</div>`}
+
+    <h2 class="section-title">Empreinte carbone</h2>
+    <div class="kpi-grid">
+      ${kpi("CO₂ émis", formatNumber(emp.co2_kg, " kg"))}
+      ${kpi("Carburant consommé", formatNumber(emp.litres_consommes, " L"))}
+      ${kpi("Équivalent pleins (50 L)", formatNumber(emp.equivalent_pleins_50l, ""))}
+    </div>
+
+    <h2 class="section-title">Régularité</h2>
+    ${reg.mois_analyses >= 2 ? `
+      <div class="kpi-grid">
+        ${kpi("Variation mensuelle", reg.coefficient_variation !== null ? reg.coefficient_variation + " %" : "—", "plus c'est bas, plus les revenus sont réguliers")}
+        ${kpi("Jour dominant", reg.jour_dominant || "—")}
+        ${kpi("Mois analysés", reg.mois_analyses)}
+      </div>
+      <div class="chart-card">
+        <h3>Répartition par jour de la semaine</h3>
+        <p class="hint">Nombre de missions et net réel cumulé selon le jour.</p>
+        <div class="chart-box small"><canvas id="chartJourSemaine"></canvas></div>
+      </div>
+    ` : `<div class="insight">Pas assez de mois différents sur cette saison pour mesurer la régularité.</div>`}
+
+    <h2 class="section-title">Fidélité géographique</h2>
+    ${fid.salles_distinctes ? `
+      <div class="kpi-grid">
+        ${kpi("Salles distinctes (5×5)", fid.salles_distinctes)}
+        ${kpi("Villes distinctes", fid.villes_distinctes)}
+        ${kpi("Indice de concentration", fid.indice_concentration + " / 100", "bas = très dispersé, haut = toujours les mêmes salles")}
+        ${kpi("Salle principale", fid.salle_principale || "—", fid.part_salle_principale ? fid.part_salle_principale + " % des missions" : "")}
+      </div>
+    ` : `<div class="insight">Pas de match 5×5 sur cette saison.</div>`}
+
+    <h2 class="section-title">Score de rentabilité des convocations</h2>
+    <p class="hint" style="margin:-4px 4px 10px">Score sur 100 basé sur le gain net par heure (trajet inclus), relatif aux autres missions de la période. 100 = la plus rentable, 0 = la moins rentable.</p>
+    ${classement.top.length ? `
+      <div class="chart-grid two">
+        <div class="chart-card">
+          <h3>Top 5 des convocations</h3>
+          ${renderClassementScore(classement.top, true)}
+        </div>
+        <div class="chart-card">
+          <h3>Les 5 moins rentables</h3>
+          ${renderClassementScore(classement.bottom, false)}
+        </div>
+      </div>
+    ` : `<div class="insight">Pas assez de missions avec distance connue pour établir un classement.</div>`}
+  `;
+}
+
+function renderProjection(proj) {
+  return `
+    <div class="analysis-hero" style="margin-top:14px;padding:18px 20px">
+      <div class="eyebrow">Projection fin de saison ${escapeHtml(proj.saison)} · ${proj.pourcentage_saison_ecoule.toFixed(0)} % écoulés</div>
+      <div class="big" style="font-size:32px">${formatMoney(proj.net_reel_projete_fin_saison)}</div>
+      <div class="breakdown">
+        <span><b>${formatMoney(proj.net_reel_actuel)}</b> déjà net</span>
+        <span><b>${proj.missions_actuelles}</b> missions faites</span>
+        <span>~<b>${proj.missions_projetees_fin_saison}</b> missions projetées</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderClassementScore(items, positif) {
+  return items.map(it => `
+    <div class="rank-row">
+      <div class="rank-name">
+        <div class="label">${escapeHtml(it.lieu)} · ${escapeHtml(it.date)}</div>
+        <div class="meter"><i style="width:${it.score}%; background:${positif ? "var(--green)" : "var(--red)"}"></i></div>
+      </div>
+      <div class="rank-count">${formatNumber(it.km, " km")}</div>
+      <div class="rank-value ${it.net_reel < 0 ? "neg" : ""}">${money(it.eur_heure)}/h</div>
+    </div>
+  `).join("");
+}
+
+function buildChartJourSemaine(stats) {
+  const c = ctx("chartJourSemaine"); if (!c || typeof Chart === "undefined") return;
+  const reg = stats.regularite || {};
+  const jours = reg.repartition_jours || [];
+  if (!jours.length) return;
+
+  const ordre = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+  const tries = [...jours].sort((a, b) => ordre.indexOf(a.label) - ordre.indexOf(b.label));
+
+  if (AN.charts.jourSemaine) { try { AN.charts.jourSemaine.destroy(); } catch (e) {} }
+
+  AN.charts.jourSemaine = new Chart(c, {
+    data: {
+      labels: tries.map(j => j.label),
+      datasets: [
+        { type: "bar", label: "Missions", data: tries.map(j => j.count), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, yAxisID: "y" },
+        { type: "line", label: "Net réel", data: tries.map(j => j.net_reel), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
+      ]
+    },
+    options: {
+      ...chartBase,
+      scales: {
+        x: chartBase.scales.x,
+        y: { ...chartBase.scales.y, precision: 0 },
+        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold } }
+      },
+      plugins: {
+        ...chartBase.plugins,
+        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => i.dataset.label === "Missions" ? `${i.parsed.y} mission(s)` : money(i.parsed.y) } }
+      }
+    }
+  });
 }
 
 /* ---------- Filtre de saison propre à l'onglet Analyse ---------- */
