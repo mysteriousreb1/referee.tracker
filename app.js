@@ -1398,8 +1398,6 @@ function renderStatsAvancees(stats) {
       ${kpi("Net réel tout compris", formatMoney(cc.net_reel_tout_compris), "carburant + usure déduits")}
       ${kpi("Distance d'équilibre", cc.km_equilibre ? formatNumber(cc.km_equilibre, " km") : "—", "au-delà, le trajet mange plus qu'il ne rapporte en moyenne")}
     </div>
-    <div class="insight">${escapeHtml(cc.note || "")}</div>
-
     ${proj ? renderProjection(proj) : ""}
 
     <h2 class="section-title">Délais de paiement réels</h2>
