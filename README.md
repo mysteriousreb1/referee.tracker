@@ -140,7 +140,7 @@ supplémentaire : il suffit que le skill contienne l'URL et la clé.
 À mettre dans le futur skill « revenus arbitrage » :
 
 ```
-URL   : https://script.google.com/macros/s/AKfycbxcCrf5UfrnaiMlfDvcKBKyFedzgnkgoDDCLhvicsxti9noP60Sz-VAGkHcnAtQP_rf/exec
+URL   : https://script.google.com/macros/s/AKfycbxETHFQ5vTXTo7ismnGBWscXbKPDiQLw9X6Wgn7U6WEd7FINf8wDSVmBjI9bF_phWmL/exec
 Clé   : REFEREE_TRACKER_2026_PRIVATE
 
 Pour les KPI financiers :  ?key=<clé>&action=stats&season=2025/2026
@@ -157,8 +157,23 @@ Claude lit ces URL directement. Le endpoint `stats` renvoie déjà tous les calc
 
 ## 8. Dépannage
 
+### Page de diagnostic
+
+`diagnostic.html` (à copier à la racine du dépôt, à côté de `index.html`) teste l'URL,
+l'appel direct (fetch/CORS) et l'appel JSONP, puis affiche la cause exacte et la marche
+à suivre. À ouvrir en premier dès que le site n'affiche plus de données.
+
+### Comment le site parle à l'API
+
+`app.js` appelle l'API en **fetch (CORS)** d'abord — c'est ce qui donne le vrai code HTTP
+et fonctionne sur tous les navigateurs — et retombe automatiquement sur le **JSONP**
+si fetch est bloqué (réseau filtré, extension). Le déploiement doit être en
+accès **« Tout le monde »** pour que fetch reçoive l'en-tête CORS de Google.
+
 | Symptôme | Cause probable | Solution |
 |---|---|---|
+| `Impossible de contacter l'API` / HTTP 404 | Déploiement supprimé, ou accès ≠ « Tout le monde » | Déployer → Gérer les déploiements → ✏️ → accès **Tout le monde** → Nouvelle version → recopier l'URL `/exec` |
+| Page HTML de connexion Google renvoyée | Déploiement réservé aux comptes Google | Même correction : accès « Tout le monde » |
 | `Clé API invalide` | Clé différente entre `app.js` et `Code.gs` | Vérifier `API_PRIVATE_KEY` |
 | Erreur 404 / « Impossible d'ouvrir le fichier » | L'URL contient un `/u/N/` | Utiliser l'URL brute donnée par Google, sans `/u/N/` |
 | « Impossible d'ouvrir le fichier » | Autorisations jamais validées | Exécuter une fonction à la main et accepter |
