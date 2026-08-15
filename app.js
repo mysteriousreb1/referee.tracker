@@ -5,7 +5,7 @@
    Stats : calculées côté serveur (endpoint action=stats).
    ===================================================== */
 
-const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcCrf5UfrnaiMlfDvcKBKyFedzgnkgoDDCLhvicsxti9noP60Sz-VAGkHcnAtQP_rf/exec";
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxETHFQ5vTXTo7ismnGBWscXbKPDiQLw9X6Wgn7U6WEd7FINf8wDSVmBjI9bF_phWmL/exec";
 const API_KEY = "REFEREE_TRACKER_2026_PRIVATE";
 
 const HOME = { label: "14 Rue des Faisans, 67240 Kaltenhouse", lat: 48.8241, lon: 7.8069 };
@@ -105,7 +105,32 @@ function loadData() {
       loadStats();
       renderAll();
     })
-    .catch(err => setStatus("Impossible de contacter l’API Apps Script : " + err.message, "error"));
+    .catch(showApiError);
+}
+
+/* Affiche l'erreur API + la marche à suivre, au lieu d'une phrase opaque. */
+function showApiError(err) {
+  const message = (err && err.message) || "erreur inconnue";
+  const hint = (err && err.hint) || "";
+  setStatus("Impossible de contacter l’API Apps Script : " + message, "error");
+
+  const panel = document.getElementById("matchs");
+  if (!panel) return;
+  panel.innerHTML = `
+    <div class="empty" style="text-align:left">
+      <div style="font-size:16px;color:var(--danger);margin-bottom:8px">Connexion à l’API impossible</div>
+      <div style="font-weight:600;margin-bottom:10px">${escapeHtml(message)}</div>
+      ${hint ? `<div style="font-weight:500;line-height:1.5;color:var(--muted)">${escapeHtml(hint)}</div>` : ""}
+      <div style="margin-top:14px">
+        <a class="action-link secondary" href="${escapeHtml(buildApiUrl("ping", {}))}" target="_blank" rel="noopener">
+          Tester l’URL de l’API dans un onglet
+        </a>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">
+        Si cet onglet affiche <code>{"success":true,"message":"pong"}</code>, l’API va bien : le problème vient du navigateur (extension, blocage réseau).
+        S’il affiche une page Google ou une erreur, c’est le déploiement qu’il faut corriger.
+      </div>
+    </div>`;
 }
 
 function loadStats() {
@@ -119,26 +144,146 @@ function loadStats() {
     .catch(() => { /* les stats serveur sont un bonus, jamais bloquantes */ });
 }
 
-/* ---------------- JSONP ---------------- */
+/* =====================================================
+   COUCHE API — fetch (CORS) en priorité, repli JSONP.
 
-function jsonp(action, extra = {}) {
+   Pourquoi deux méthodes :
+   - fetch() donne le vrai code HTTP → on peut dire précisément ce qui cloche
+     (404 = déploiement introuvable, 401/403 = déploiement non public…).
+     Apps Script renvoie « Access-Control-Allow-Origin: * » dès que le
+     déploiement est en accès « Tout le monde », donc fetch marche partout.
+   - Si fetch est bloqué (réseau d'entreprise, vieux navigateur, extension),
+     on retombe automatiquement sur le JSONP historique.
+   Le nom `jsonp()` est conservé pour ne rien casser ailleurs dans le fichier.
+   ===================================================== */
+
+const API_TIMEOUT_MS = 25000;
+
+function buildApiUrl(action, extra = {}, callbackName) {
+  const params = new URLSearchParams({ key: API_KEY, action, ...extra });
+  if (callbackName) params.set("callback", callbackName);
+  return `${APP_SCRIPT_URL}?${params.toString()}`;
+}
+
+/* Erreur enrichie : `hint` = marche à suivre affichée à l'écran. */
+function apiError(message, hint) {
+  const err = new Error(message);
+  if (hint) err.hint = hint;
+  return err;
+}
+
+const DEPLOY_HINT =
+  "Dans l'éditeur Apps Script : Déployer → Gérer les déploiements → ✏️ → " +
+  "Type « Application Web », Exécuter en tant que « Moi », " +
+  "Qui a accès « Tout le monde » → Déployer, puis recopier l'URL /exec " +
+  "dans app.js (ligne 8).";
+
+/* Vérifie la forme de l'URL avant même d'appeler le réseau. */
+function checkApiUrl() {
+  const url = String(APP_SCRIPT_URL || "");
+  if (!url || url.indexOf("AKfycb") === -1) {
+    return apiError("URL Apps Script absente ou incomplète dans app.js", DEPLOY_HINT);
+  }
+  if (/\/u\/\d+\//.test(url)) {
+    return apiError("L'URL contient un /u/N/ (index de compte Google)",
+      "Utilise l'URL brute fournie par Google, sans /u/0/, /u/1/, etc.");
+  }
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url)) {
+    return apiError("L'URL ne se termine pas par /exec",
+      "L'URL /dev n'est accessible qu'au propriétaire connecté. Il faut l'URL /exec d'un déploiement.");
+  }
+  return null;
+}
+
+/* Lit une réponse texte : JSON pur, ou enveloppe JSONP `cb({...});`. */
+function parseApiPayload(text) {
+  const raw = String(text || "").trim();
+  if (!raw) throw apiError("Réponse vide du serveur", DEPLOY_HINT);
+  if (raw.charAt(0) === "<") {
+    throw apiError("Google a renvoyé une page HTML au lieu des données (connexion demandée)", DEPLOY_HINT);
+  }
+  try { return JSON.parse(raw); } catch (e) { /* on tente le JSONP ci-dessous */ }
+  const m = raw.match(/^[^(]*\(([\s\S]*?)\)\s*;?\s*$/);
+  if (m) { try { return JSON.parse(m[1]); } catch (e) { /* ignore */ } }
+  throw apiError("Réponse illisible du serveur", DEPLOY_HINT);
+}
+
+/* Tentative n°1 : fetch classique (CORS). */
+function apiFetch(action, extra) {
+  const url = buildApiUrl(action, extra);
+  const hasAbort = typeof AbortController === "function";
+  const controller = hasAbort ? new AbortController() : null;
+  const timer = setTimeout(() => { if (controller) controller.abort(); }, API_TIMEOUT_MS);
+
+  const options = { method: "GET", redirect: "follow", credentials: "omit", cache: "no-store" };
+  if (controller) options.signal = controller.signal;
+
+  return fetch(url, options)
+    .then(res => {
+      if (!res.ok) {
+        const err = apiError("HTTP " + res.status, DEPLOY_HINT);
+        err.httpStatus = res.status;
+        throw err;
+      }
+      return res.text();
+    })
+    .then(parseApiPayload)
+    .finally(() => clearTimeout(timer));
+}
+
+/* Tentative n°2 : JSONP (aucune contrainte CORS, mais erreurs opaques). */
+function apiJsonp(action, extra) {
   return new Promise((resolve, reject) => {
     const callbackName = "rt_cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    const params = new URLSearchParams({ key: API_KEY, action, callback: callbackName, ...extra });
     const script = document.createElement("script");
-    script.src = `${APP_SCRIPT_URL}?${params.toString()}`;
+    script.src = buildApiUrl(action, extra, callbackName);
     script.async = true;
 
-    const timer = setTimeout(() => { cleanup(); reject(new Error("Timeout API")); }, 20000);
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(apiError("Délai dépassé (25 s) sans réponse de l'API",
+        "Vérifie que le script n'est pas bloqué par une extension (bloqueur de pub, VPN) et que le déploiement répond."));
+    }, API_TIMEOUT_MS);
+
     window[callbackName] = data => { cleanup(); resolve(data); };
-    script.onerror = () => { cleanup(); reject(new Error("Script bloqué ou URL invalide")); };
+    script.onerror = () => {
+      cleanup();
+      reject(apiError("Le navigateur n'a pas pu charger l'URL de l'API", DEPLOY_HINT));
+    };
 
     function cleanup() {
       clearTimeout(timer);
-      delete window[callbackName];
+      try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
       if (script.parentNode) script.parentNode.removeChild(script);
     }
     document.body.appendChild(script);
+  });
+}
+
+/* Point d'entrée unique utilisé par toute l'application. */
+function jsonp(action, extra = {}) {
+  const shapeError = checkApiUrl();
+  if (shapeError) return Promise.reject(shapeError);
+
+  return apiFetch(action, extra).catch(err => {
+    const status = err && err.httpStatus;
+    // Erreurs qui viennent du serveur : inutile de retenter en JSONP, même cause.
+    if (status === 404) {
+      throw apiError("Déploiement introuvable (HTTP 404) — l'URL /exec ne correspond à aucun déploiement actif, ou il n'est pas public", DEPLOY_HINT);
+    }
+    if (status === 401 || status === 403) {
+      throw apiError("Accès refusé (HTTP " + status + ") — le déploiement n'est pas ouvert à « Tout le monde »", DEPLOY_HINT);
+    }
+    if (status >= 500) {
+      throw apiError("Erreur côté Apps Script (HTTP " + status + ")",
+        "Ouvre Apps Script → Exécutions pour lire l'erreur exacte de la dernière requête.");
+    }
+    if (err && err.name === "AbortError") {
+      throw apiError("Délai dépassé (25 s) sans réponse de l'API",
+        "Le script met peut-être trop de temps à répondre. Relance, puis vérifie Apps Script → Exécutions.");
+    }
+    // Ici : échec réseau/CORS/extension → on tente le JSONP.
+    return apiJsonp(action, extra).catch(err2 => { throw err2.hint ? err2 : apiError(err2.message, DEPLOY_HINT); });
   });
 }
 
