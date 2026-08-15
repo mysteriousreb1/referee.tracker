@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Referee Tracker — Diagnostic API</title>
+<style>
+  :root { --navy:#0A1F44; --line:#DCE3EF; --muted:#5B6884; --green:#0E7B47; --red:#B42318; --orange:#B5590A; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px 16px 60px; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:#0C1730; background:#EEF1F7; }
+  .wrap { width:min(760px,100%); margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; color:var(--navy); }
+  p.lead { margin:0 0 20px; color:var(--muted); font-size:14px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 8px 22px rgba(10,31,68,.06); }
+  label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }
+  input { width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:11px; font-size:14px; font-family:ui-monospace,monospace; }
+  input + label { margin-top:12px; }
+  button { margin-top:14px; width:100%; padding:13px; border:0; border-radius:12px; background:var(--navy); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:default; }
+  .test { display:flex; gap:10px; align-items:flex-start; padding:11px 0; border-top:1px solid #EEF1F7; }
+  .test:first-child { border-top:0; }
+  .ico { flex:0 0 22px; font-size:17px; line-height:1.3; }
+  .test b { display:block; font-size:14px; margin-bottom:2px; }
+  .test span { display:block; font-size:13px; color:var(--muted); line-height:1.45; word-break:break-word; }
+  .verdict { padding:14px 16px; border-radius:13px; font-size:14px; line-height:1.55; }
+  .verdict.ok { background:#E4F5EC; border:1px solid #B3E1C1; color:#0B5733; }
+  .verdict.ko { background:#FFEDEB; border:1px solid #FFB8B2; color:var(--red); }
+  .verdict.warn { background:#FFF0DE; border:1px solid #F3D08A; color:#6B3A00; }
+  .verdict ol { margin:10px 0 0; padding-left:20px; }
+  .verdict li { margin-bottom:6px; }
+  code { background:#F2F5FB; padding:1px 5px; border-radius:5px; font-size:12.5px; }
+  pre { background:#0C1730; color:#D6E2FA; padding:12px; border-radius:11px; overflow:auto; font-size:12px; max-height:220px; margin:10px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Diagnostic API — Referee Tracker</h1>
+  <p class="lead">Teste la connexion entre le site et le déploiement Google Apps Script, et indique précisément ce qui bloque.</p>
+
+  <div class="card">
+    <label for="url">URL du déploiement (/exec)</label>
+    <input id="url" spellcheck="false" value="https://script.google.com/macros/s/AKfycbxETHFQ5vTXTo7ismnGBWscXbKPDiQLw9X6Wgn7U6WEd7FINf8wDSVmBjI9bF_phWmL/exec" />
+    <label for="key">Clé API</label>
+    <input id="key" spellcheck="false" value="REFEREE_TRACKER_2026_PRIVATE" />
+    <button id="run" type="button">Lancer le diagnostic</button>
+  </div>
+
+  <div class="card" id="results" hidden></div>
+  <div id="verdict"></div>
+</div>
+
+<script>
+const TIMEOUT = 25000;
+const $ = id => document.getElementById(id);
+
+function row(icon, title, detail) {
+  const d = document.createElement("div");
+  d.className = "test";
+  d.innerHTML = '<div class="ico"></div><div><b></b><span></span></div>';
+  d.querySelector(".ico").textContent = icon;
+  d.querySelector("b").textContent = title;
+  d.querySelector("span").textContent = detail || "";
+  $("results").appendChild(d);
+  return d;
+}
+
+function buildUrl(base, key, callback) {
+  const p = new URLSearchParams({ key: key, action: "ping" });
+  if (callback) p.set("callback", callback);
+  return base + "?" + p.toString();
+}
+
+function testFetch(url) {
+  const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = setTimeout(() => ctrl && ctrl.abort(), TIMEOUT);
+  const opts = { method: "GET", redirect: "follow", credentials: "omit", cache: "no-store" };
+  if (ctrl) opts.signal = ctrl.signal;
+  return fetch(url, opts)
+    .then(res => res.text().then(text => ({ status: res.status, ok: res.ok, text: text })))
+    .finally(() => clearTimeout(timer));
+}
+
+function testJsonp(base, key) {
+  return new Promise((resolve, reject) => {
+    const cb = "rt_diag_" + Date.now();
+    const s = document.createElement("script");
+    s.src = buildUrl(base, key, cb);
+    const timer = setTimeout(() => { clean(); reject(new Error("timeout")); }, TIMEOUT);
+    window[cb] = data => { clean(); resolve(data); };
+    s.onerror = () => { clean(); reject(new Error("script non chargé")); };
+    function clean() { clearTimeout(timer); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    document.body.appendChild(s);
+  });
+}
+
+function verdict(cls, html) { $("verdict").innerHTML = '<div class="verdict ' + cls + '">' + html + "</div>"; }
+
+const FIX_DEPLOY = `
+  <b>Cause la plus probable : le déploiement n'est pas public (ou l'URL n'est plus valide).</b>
+  <ol>
+    <li>Ouvre le projet Apps Script → <code>Déployer</code> → <code>Gérer les déploiements</code>.</li>
+    <li>Clique le crayon ✏️ sur le déploiement « Application Web ».</li>
+    <li><code>Exécuter en tant que</code> : <b>Moi</b> — <code>Qui a accès</code> : <b>Tout le monde</b>.</li>
+    <li><code>Version</code> : <b>Nouvelle version</b> → <code>Déployer</code>.</li>
+    <li>Copie l'URL <code>/exec</code> affichée, colle-la ligne 8 de <code>app.js</code> (et retire tout <code>/u/0/</code>).</li>
+    <li>Recharge cette page et relance le diagnostic.</li>
+  </ol>`;
+
+$("run").addEventListener("click", async () => {
+  const base = $("url").value.trim();
+  const key = $("key").value.trim();
+  $("run").disabled = true;
+  $("results").hidden = false;
+  $("results").innerHTML = "";
+  $("verdict").innerHTML = "";
+
+  // 1. Forme de l'URL
+  let formatOk = true;
+  if (/\/u\/\d+\//.test(base)) {
+    row("❌", "Format de l'URL", "L'URL contient un /u/N/ : Google exigera ce compte précis. Utilise l'URL brute.");
+    formatOk = false;
+  } else if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(base)) {
+    row("❌", "Format de l'URL", "Attendu : https://script.google.com/macros/s/…/exec (pas /dev, pas de paramètre).");
+    formatOk = false;
+  } else {
+    row("✅", "Format de l'URL", "URL de déploiement /exec valide.");
+  }
+
+  // 2. fetch
+  let fetchResult = null, fetchError = null;
+  try {
+    fetchResult = await testFetch(buildUrl(base, key));
+    const head = fetchResult.text.trim().slice(0, 120);
+    if (fetchResult.ok && fetchResult.text.trim().charAt(0) === "{") {
+      row("✅", "Appel direct (fetch/CORS) — HTTP " + fetchResult.status, head);
+    } else if (fetchResult.ok) {
+      row("⚠️", "Appel direct (fetch/CORS) — HTTP " + fetchResult.status, "Réponse non JSON : " + head);
+    } else {
+      row("❌", "Appel direct (fetch/CORS) — HTTP " + fetchResult.status, head || "Aucun corps de réponse.");
+    }
+  } catch (e) {
+    fetchError = e;
+    row("❌", "Appel direct (fetch/CORS)", e.name === "AbortError" ? "Délai dépassé (25 s)." : "Échec réseau ou CORS : " + e.message);
+  }
+
+  // 3. JSONP
+  let jsonpResult = null, jsonpError = null;
+  try {
+    jsonpResult = await testJsonp(base, key);
+    row("✅", "Appel JSONP", JSON.stringify(jsonpResult).slice(0, 160));
+  } catch (e) {
+    jsonpError = e;
+    row("❌", "Appel JSONP", e.message === "timeout" ? "Aucune réponse en 25 s." : "Le navigateur n'a pas pu charger le script (URL invalide, 404, ou extension qui bloque).");
+  }
+
+  // 4. Verdict
+  const jsonOk = jsonpResult && jsonpResult.success;
+  const httpOk = fetchResult && fetchResult.ok && fetchResult.text.trim().charAt(0) === "{";
+
+  if (!formatOk) {
+    verdict("ko", "<b>L'URL est mal formée.</b> Corrige-la d'abord, puis relance." + FIX_DEPLOY);
+  } else if (httpOk && jsonOk) {
+    verdict("ok", "<b>Tout fonctionne.</b> L'API répond en direct et en JSONP : le site doit s'afficher normalement sur ce navigateur.");
+  } else if (httpOk && !jsonOk) {
+    verdict("warn", "<b>L'API répond, mais le JSONP est bloqué sur ce navigateur</b> (extension type bloqueur de pub, ou protection anti-pistage). La version corrigée de <code>app.js</code> utilise <code>fetch</code> en priorité : le site fonctionnera quand même.");
+  } else if (!httpOk && jsonOk) {
+    verdict("warn", "<b>Le JSONP passe mais l'appel direct est bloqué</b> (CORS ou réseau filtré). Le repli JSONP de <code>app.js</code> prendra le relais automatiquement.");
+  } else if (fetchResult && fetchResult.status === 404) {
+    verdict("ko", "<b>HTTP 404 : ce déploiement n'existe pas ou n'est pas accessible sans connexion Google.</b>" + FIX_DEPLOY);
+  } else if (fetchResult && (fetchResult.status === 401 || fetchResult.status === 403)) {
+    verdict("ko", "<b>HTTP " + fetchResult.status + " : accès refusé.</b>" + FIX_DEPLOY);
+  } else if (fetchResult && fetchResult.status >= 500) {
+    verdict("ko", "<b>HTTP " + fetchResult.status + " : le script plante côté Google.</b> Ouvre Apps Script → <code>Exécutions</code> pour lire l'erreur exacte de la dernière requête.");
+  } else if (fetchResult && fetchResult.text.trim().charAt(0) === "<") {
+    verdict("ko", "<b>Google renvoie une page HTML de connexion</b> au lieu des données : le déploiement demande un compte Google." + FIX_DEPLOY);
+  } else {
+    verdict("ko", "<b>Aucune des deux méthodes n'aboutit.</b> Dans la quasi-totalité des cas, le déploiement n'est pas ouvert à « Tout le monde », ou l'URL date d'un déploiement supprimé." + FIX_DEPLOY);
+  }
+
+  if (fetchResult && fetchResult.text) {
+    const pre = document.createElement("pre");
+    pre.textContent = fetchResult.text.slice(0, 2000);
+    $("verdict").appendChild(pre);
+  }
+
+  $("run").disabled = false;
+});
+</script>
+</body>
+</html>
