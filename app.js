@@ -18,7 +18,9 @@ let state = {
   activeTab: "matchs",
   selectedSeason: "",
   search: "",
-  maps: {}
+  maps: {},
+  exportSeason: "",   // filtres propres à l'onglet Export
+  exportMonth: ""
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -720,40 +722,302 @@ function renderAlertes() {
   attachPaymentListeners(root);
 }
 
-/* ---------------- Export ---------------- */
+/* ---------------- Export ----------------
+   Filtres propres à l'onglet (saison + mois), indépendants de la barre
+   de recherche du haut : un export doit être reproductible à l'identique.
+   Mois vide = toute la saison.
+------------------------------------------- */
+
+function monthKeyOf(date) {
+  return date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` : "";
+}
+
+function monthLabelOf(key) {
+  const [y, m] = String(key).split("-").map(Number);
+  const label = new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/* Les 12 mois d'une saison (août → juillet), plus tout mois réellement
+   présent dans les données qui sortirait de cette fenêtre. */
+function monthsOfSeason(season) {
+  const start = Number(String(season).split("/")[0]);
+  const keys = [];
+  for (let i = 0; i < 12; i++) keys.push(monthKeyOf(new Date(start, 7 + i, 1)));
+  state.allRows
+    .filter(r => r._season === season && r._date)
+    .forEach(r => { const k = monthKeyOf(r._date); if (keys.indexOf(k) === -1) keys.push(k); });
+  return keys.sort().map(k => ({ value: k, label: monthLabelOf(k) }));
+}
+
+function exportRows() {
+  return state.allRows
+    .filter(r => r._isActive && r._format !== "Alerte")
+    .filter(r => r._season === state.exportSeason)
+    .filter(r => !state.exportMonth || monthKeyOf(r._date) === state.exportMonth)
+    .slice()
+    .sort(sortByDateAsc);
+}
+
+function exportTotals(rows) {
+  const gross = rows.reduce((t, r) => t + r._amount, 0);
+  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
+  return {
+    gross, cost, net: gross - cost,
+    km: rows.reduce((t, r) => t + r._km, 0),
+    five: rows.filter(r => r._format === "5x5").length,
+    three: rows.filter(r => r._format === "3x3").length
+  };
+}
+
+/* Sur un document exporté, on veut la rencontre complète, pas seulement
+   le club recevant. Les 3×3 sont des événements : séparateur neutre. */
+function rencontreLabel(row) {
+  const recevant = get(row, "Recevant");
+  const adverse = get(row, "Visiteur / événement");
+  if (!recevant) return adverse;
+  if (!adverse) return recevant;
+  return `${recevant} ${row._format === "3x3" ? "—" : "vs"} ${adverse}`;
+}
+
+function exportPeriodLabel() {
+  return state.exportMonth ? monthLabelOf(state.exportMonth) : `Saison complète ${state.exportSeason}`;
+}
 
 function renderExport() {
   const root = document.getElementById("export");
-  const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive);
-  const gross = rows.reduce((t, r) => t + r._amount, 0);
-  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
-  const five = rows.filter(r => r._format === "5x5"), three = rows.filter(r => r._format === "3x3");
 
-  const text = [
-    `REFEREE TRACKER — EXPORT`,
-    `Saison : ${state.selectedSeason}`,
-    ``,
-    `Indemnités brutes : ${formatMoney(gross)}`,
-    `Coût carburant réel : ${formatMoney(cost)}`,
-    `REVENU NET RÉEL : ${formatMoney(gross - cost)}`,
-    `KM total A/R : ${formatNumber(rows.reduce((t, r) => t + r._km, 0), " km")}`,
-    `Matchs 5×5 : ${five.length} · Tournois 3×3 : ${three.length}`,
-    ``,
-    `Détail :`,
-    ...rows.slice().sort(sortByDateAsc).map(r => {
-      const c = realFuelCostClient(r._km, r._date);
-      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${firstValue(r, ["Recevant", "Visiteur / événement"])} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
-    })
-  ].join("\n");
+  // Valeurs par défaut : la saison courante, tous les mois.
+  const seasons = getSeasonsFrom2022ToCurrent();
+  if (!state.exportSeason || seasons.indexOf(state.exportSeason) === -1) {
+    state.exportSeason = seasons.indexOf(state.selectedSeason) !== -1 ? state.selectedSeason : getCurrentSeason();
+  }
+  const months = monthsOfSeason(state.exportSeason);
+  if (state.exportMonth && !months.some(m => m.value === state.exportMonth)) state.exportMonth = "";
+
+  const rows = exportRows();
+  const t = exportTotals(rows);
 
   root.innerHTML = `
-    <h2 class="section-title">Export copiable</h2>
-    <textarea class="export-box" readonly>${escapeHtml(text)}</textarea>
-    <div class="actions"><button class="small-btn" type="button" id="copyExportBtn">Copier</button></div>`;
-  document.getElementById("copyExportBtn").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(text); setStatus("Export copié", "ok"); }
-    catch { setStatus("Copie impossible — sélectionne le texte manuellement", "error"); }
+    <h2 class="section-title">Export PDF</h2>
+
+    <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+      <div class="field">
+        <label for="exportSeasonSelect">Saison</label>
+        <select id="exportSeasonSelect">
+          ${seasons.map(s => `<option value="${s}"${s === state.exportSeason ? " selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
+        <label for="exportMonthSelect">Mois</label>
+        <select id="exportMonthSelect">
+          <option value="">Toute la saison</option>
+          ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
+        </select>
+      </div>
+    </section>
+
+    <div class="kpi-grid" style="margin-top:14px">
+      <div class="kpi hero">
+        <label>Revenu net réel</label>
+        <strong>${formatMoney(t.net)}</strong>
+        <span class="sub">${escapeHtml(exportPeriodLabel())}</span>
+      </div>
+      <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(t.gross)}</strong></div>
+      <div class="kpi"><label>Coût carburant</label><strong>${formatMoney(t.cost)}</strong></div>
+      <div class="kpi"><label>Missions</label><strong>${rows.length}</strong><span class="sub">${t.five} en 5×5 · ${t.three} en 3×3</span></div>
+      <div class="kpi"><label>Kilomètres A/R</label><strong>${formatNumber(t.km, " km")}</strong></div>
+    </div>
+
+    <div class="actions" style="margin-top:14px">
+      <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>Générer le PDF</button>
+      <button class="small-btn secondary" type="button" id="copyExportBtn"${rows.length ? "" : " disabled"}>Copier en texte</button>
+    </div>
+
+    ${rows.length ? `
+    <div class="table-card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th>
+                <th class="num">Km</th><th class="num">Brut</th><th class="num">Carburant</th><th class="num">Net</th><th>Paiement</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const c = realFuelCostClient(r._km, r._date);
+              return `<tr>
+                <td>${escapeHtml(get(r, "Date match"))}</td>
+                <td>${escapeHtml(r._format)}</td>
+                <td>${escapeHtml(rencontreLabel(r))}</td>
+                <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
+                <td class="num">${formatNumber(r._km, "")}</td>
+                <td class="num">${formatMoney(r._amount)}</td>
+                <td class="num">${formatMoney(c)}</td>
+                <td class="num pos">${formatMoney(r._amount - c)}</td>
+                <td>${escapeHtml(get(r, "Statut paiement"))}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>` : empty("Aucune mission pour cette période.")}
+  `;
+
+  document.getElementById("exportSeasonSelect").addEventListener("change", e => {
+    state.exportSeason = e.target.value;
+    state.exportMonth = ""; // les mois changent avec la saison
+    renderExport();
   });
+  document.getElementById("exportMonthSelect").addEventListener("change", e => {
+    state.exportMonth = e.target.value;
+    renderExport();
+  });
+
+  const pdfBtn = document.getElementById("genPdfBtn");
+  if (pdfBtn) pdfBtn.addEventListener("click", generateExportPdf);
+
+  const copyBtn = document.getElementById("copyExportBtn");
+  if (copyBtn) copyBtn.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(buildExportText()); setStatus("Export copié", "ok"); }
+    catch { setStatus("Copie impossible — utilise le PDF", "error"); }
+  });
+}
+
+function buildExportText() {
+  const rows = exportRows();
+  const t = exportTotals(rows);
+  return [
+    `REFEREE TRACKER — EXPORT`,
+    `Saison : ${state.exportSeason}`,
+    `Période : ${exportPeriodLabel()}`,
+    ``,
+    `Indemnités brutes : ${formatMoney(t.gross)}`,
+    `Coût carburant réel : ${formatMoney(t.cost)}`,
+    `REVENU NET RÉEL : ${formatMoney(t.net)}`,
+    `KM total A/R : ${formatNumber(t.km, " km")}`,
+    `Matchs 5×5 : ${t.five} · Tournois 3×3 : ${t.three}`,
+    ``,
+    `Détail :`,
+    ...rows.map(r => {
+      const c = realFuelCostClient(r._km, r._date);
+      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
+    })
+  ].join("\n");
+}
+
+/* ---------------- Génération du PDF ----------------
+   jsPDF + autoTable, chargés depuis le CDN dans index.html.
+   Les polices PDF standard n'acceptent pas les espaces fines
+   insécables produites par toLocaleString : on les normalise.
+------------------------------------------------------ */
+
+function pdfSafe(value) {
+  return String(value == null ? "" : value).replace(/[   ]/g, " ");
+}
+
+function generateExportPdf() {
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDFCtor) {
+    setStatus("Bibliothèque PDF non chargée — recharge la page (Cmd+Maj+R)", "error");
+    return;
+  }
+
+  const rows = exportRows();
+  if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
+
+  const t = exportTotals(rows);
+  const doc = new jsPDFCtor({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const navy = [10, 31, 68], gold = [245, 180, 0], grey = [91, 104, 132], green = [14, 123, 71];
+
+  // Bandeau de titre
+  doc.setFillColor(navy[0], navy[1], navy[2]);
+  doc.rect(0, 0, pageW, 26, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("REFEREE TRACKER", 12, 12);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
+  doc.setFontSize(10);
+  doc.text(pdfSafe(`Arbitrage FFBB — ${exportPeriodLabel()}`), 12, 19);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text(pdfSafe(`Édité le ${new Date().toLocaleDateString("fr-FR")}`), pageW - 12, 19, { align: "right" });
+
+  // Bandeau de synthèse
+  const summary = [
+    ["Revenu net réel", formatMoney(t.net), green],
+    ["Indemnités brutes", formatMoney(t.gross), navy],
+    ["Coût carburant", formatMoney(t.cost), [181, 89, 10]],
+    ["Missions", `${rows.length}  (${t.five} en 5x5 · ${t.three} en 3x3)`, navy],
+    ["Kilomètres A/R", formatNumber(t.km, " km"), navy]
+  ];
+  let x = 12;
+  const cellW = (pageW - 24) / summary.length;
+  summary.forEach(([label, value, color]) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(grey[0], grey[1], grey[2]);
+    doc.text(pdfSafe(label.toUpperCase()), x, 35);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(color[0], color[1], color[2]);
+    doc.text(pdfSafe(value), x, 42);
+    x += cellW;
+  });
+  doc.setDrawColor(220, 227, 239);
+  doc.line(12, 46, pageW - 12, 46);
+
+  // Tableau détaillé
+  const body = rows.map(r => {
+    const c = realFuelCostClient(r._km, r._date);
+    return [
+      pdfSafe(get(r, "Date match")),
+      pdfSafe(get(r, "Heure/RDV")),
+      pdfSafe(r._format),
+      pdfSafe(rencontreLabel(r)),
+      pdfSafe(get(r, "Ville") || get(r, "Salle")),
+      pdfSafe(formatNumber(r._km, "")),
+      pdfSafe(formatMoney(r._amount)),
+      pdfSafe(formatMoney(c)),
+      pdfSafe(formatMoney(r._amount - c)),
+      pdfSafe(get(r, "Statut paiement"))
+    ];
+  });
+
+  doc.autoTable({
+    startY: 52,
+    head: [["Date", "Heure", "Format", "Rencontre", "Lieu", "Km", "Brut", "Carburant", "Net", "Paiement"]],
+    body: body,
+    foot: [["", "", "", "TOTAL", "", pdfSafe(formatNumber(t.km, "")), pdfSafe(formatMoney(t.gross)),
+            pdfSafe(formatMoney(t.cost)), pdfSafe(formatMoney(t.net)), ""]],
+    theme: "grid",
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: [12, 23, 48], lineColor: [220, 227, 239] },
+    headStyles: { fillColor: navy, textColor: 255, fontStyle: "bold", fontSize: 8 },
+    footStyles: { fillColor: [242, 245, 251], textColor: navy, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [246, 248, 252] },
+    columnStyles: {
+      0: { cellWidth: 20 }, 1: { cellWidth: 15 }, 2: { cellWidth: 16 },
+      5: { halign: "right", cellWidth: 16 }, 6: { halign: "right", cellWidth: 22 },
+      7: { halign: "right", cellWidth: 22 }, 8: { halign: "right", cellWidth: 22, textColor: green },
+      9: { cellWidth: 26 }
+    },
+    margin: { left: 12, right: 12 },
+    didDrawPage: data => {
+      const page = doc.internal.getNumberOfPages();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(grey[0], grey[1], grey[2]);
+      doc.text("Referee Tracker — net réel = indemnité versée moins coût carburant réel",
+        data.settings.margin.left, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`Page ${page}`, pageW - 12, doc.internal.pageSize.getHeight() - 8, { align: "right" });
+    }
+  });
+
+  const suffix = state.exportMonth || state.exportSeason.replace("/", "-");
+  doc.save(`referee-tracker-${suffix}.pdf`);
+  setStatus(`PDF généré — ${rows.length} mission(s)`, "ok");
 }
 
 /* ---------------- Coût carburant client ----------------
