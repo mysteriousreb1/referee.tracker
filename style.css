@@ -657,9 +657,11 @@ tr:last-child td { border-bottom: 0; }
   .chart-filter { min-width: 0; }
   .toolbar-summary { padding-bottom: 0; }
 }
+
 /* =====================================================
    REFEREE TRACKER — écran de connexion
-   À coller à la fin de style.css (reprend tes variables existantes).
+   Utilise les variables réelles de ton thème (--navy-900, --gold, --red…).
+   Aucune variable inventée : plus de texte invisible.
    ===================================================== */
 
 .rt-login {
@@ -670,98 +672,103 @@ tr:last-child td { border-bottom: 0; }
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--bg, #0f1115);
+  background: var(--navy-900, #0A1F44);
 }
 
 .rt-login.is-visible { display: flex; }
 
 .rt-login-card {
   width: 100%;
-  max-width: 380px;
-  padding: 32px 28px;
-  border-radius: 14px;
-  background: var(--card, #171a21);
-  border: 1px solid var(--border, #262b36);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
+  max-width: 400px;
+  padding: 36px 32px;
+  border-radius: var(--radius-xl, 24px);
+  background: var(--navy-800, #0E2A5C);
+  border: 1px solid rgba(245, 180, 0, .18);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
 }
 
 .rt-login-card h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: -0.01em;
-  color: var(--text, #e8ecf3);
+  color: var(--gold, #F5B400);
 }
 
 .rt-login-sub {
-  margin: 6px 0 26px;
+  margin: 6px 0 28px;
   font-size: 14px;
-  color: var(--muted, #8b94a7);
+  color: rgba(255, 255, 255, .62);
 }
 
 .rt-login-card label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted, #8b94a7);
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: rgba(255, 255, 255, .72);
 }
 
 .rt-login-card input {
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: 18px;
-  padding: 11px 13px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
   font-size: 15px;
   font-family: inherit;
-  color: var(--text, #e8ecf3);
-  background: var(--bg, #0f1115);
-  border: 1px solid var(--border, #262b36);
-  border-radius: 9px;
-  transition: border-color .15s;
+  color: var(--text, #0C1730);
+  background: #FFFFFF;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  transition: border-color .15s, box-shadow .15s;
 }
 
 .rt-login-card input:focus {
   outline: none;
-  border-color: var(--accent, #4c8dff);
+  border-color: var(--gold, #F5B400);
+  box-shadow: 0 0 0 3px rgba(245, 180, 0, .25);
 }
 
 .rt-login-card button {
   width: 100%;
-  padding: 12px;
+  padding: 13px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 800;
   font-family: inherit;
-  color: #fff;
-  background: var(--accent, #4c8dff);
+  color: var(--navy-900, #0A1F44);
+  background: var(--gold, #F5B400);
   border: 0;
-  border-radius: 9px;
+  border-radius: 11px;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: filter .15s;
 }
 
-.rt-login-card button:hover:not(:disabled) { opacity: .9; }
-.rt-login-card button:disabled { opacity: .5; cursor: default; }
+.rt-login-card button:hover:not(:disabled) { filter: brightness(1.08); }
+.rt-login-card button:disabled { opacity: .55; cursor: default; }
 
 .rt-login-msg {
   min-height: 20px;
-  margin-top: 14px;
+  margin-top: 15px;
   font-size: 13px;
-  line-height: 1.4;
-  color: var(--muted, #8b94a7);
+  line-height: 1.45;
+  color: rgba(255, 255, 255, .62);
 }
 
-.rt-login-msg.is-error { color: var(--danger, #ff6b6b); }
+.rt-login-msg.is-error { color: #FF8A80; }
 
 .rt-login-note {
-  margin: 20px 0 0;
+  margin: 22px 0 0;
   font-size: 12px;
-  color: var(--muted, #8b94a7);
-  opacity: .75;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .42);
 }
 
-/* Badge utilisateur + déconnexion dans l'en-tête */
+/* Badge utilisateur dans l'en-tête */
 .rt-user {
   font-size: 13px;
-  color: var(--muted, #8b94a7);
+  font-weight: 600;
+  color: var(--muted, #5B6884);
   margin-right: 10px;
 }
