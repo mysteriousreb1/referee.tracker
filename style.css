@@ -1004,21 +1004,33 @@ tr:last-child td { border-bottom: 0; }
 
 .rt-details[open] summary { margin-bottom: 10px; }
 
-.rt-link {
-  display: block;
-  width: 100%;
-  margin-top: 12px;
-  padding: 4px;
-  font-size: 13px;
+/* Lien discret : il faut annuler explicitement le style « gros bouton »
+   qui s'applique à tous les <button> de la carte de connexion. */
+.rt-login-card button.rt-link,
+.rt-modal-card button.rt-link {
+  display: inline-block;
+  width: auto;
+  margin: 14px 0 0;
+  padding: 2px 0;
+  font-size: 12.5px;
+  font-weight: 500;
   font-family: inherit;
-  color: var(--gold, #F5B400);
+  color: rgba(255, 255, 255, .55);
   background: transparent;
   border: 0;
+  border-radius: 0;
   text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
-.rt-modal-card .rt-link { color: var(--navy-600, #1E4E9C); }
+.rt-login-card button.rt-link:hover {
+  color: var(--gold, #F5B400);
+  filter: none;
+  background: transparent;
+}
+
+.rt-modal-card button.rt-link { color: var(--navy-600, #1E4E9C); }
 
 .rt-toast {
   margin-top: 14px;
@@ -1037,4 +1049,12 @@ tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 520px) {
   .rt-row { flex-direction: column; gap: 0; }
+}
+
+/* Boutons de l'en-tête regroupés : profil, rafraîchir, déconnexion */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
