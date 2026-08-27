@@ -292,7 +292,6 @@ function buildLoginOverlay() {
       <button type="submit" id="rtLoginBtn">Se connecter</button>
       <div class="rt-login-msg" id="rtLoginMsg" role="status"></div>
       <button type="button" class="rt-link" id="rtForgotBtn">Mot de passe oublié ?</button>
-      <p class="rt-login-note">Tu resteras connecté 30 jours sur cet appareil.</p>
     </form>
 
     <form class="rt-login-card" id="rtResetForm" style="display:none" autocomplete="off">
@@ -666,14 +665,41 @@ function showProfile() {
   if (!Profil.config) {
     jsonp("settings.get")
       .then(res => {
-        if (res && res.success) {
+        if (res && res.success && res.config) {
           Profil.config = res.config;
           try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
           renderProfile();
+          return;
         }
+        // Cas le plus fréquent : Config.gs pas encore déployé côté Apps Script.
+        // On le DIT, au lieu de laisser « Chargement… » tourner sans fin.
+        profilErreur((res && res.error) || "Réglages indisponibles.");
       })
-      .catch(() => toast("Réglages indisponibles.", true));
+      .catch(err => profilErreur(err.message || "Serveur injoignable."));
   }
+}
+
+/* Message explicite à la place du « Chargement… » perpétuel. */
+function profilErreur(message) {
+  const body = document.getElementById("rtProfileBody");
+  if (!body) return;
+  const inconnue = /action inconnue/i.test(message);
+  body.innerHTML = `
+    <section class="rt-sect">
+      <h3>Réglages indisponibles</h3>
+      <p class="rt-help">${esc(message)}</p>
+      ${inconnue ? `<p class="rt-help">Cela arrive quand <strong>Config.gs</strong> n'est pas
+        encore en place, ou qu'un déploiement manque : Apps Script &rarr; Déployer &rarr;
+        Gérer les déploiements &rarr; Nouvelle version.</p>` : ""}
+      <button type="button" class="rt-btn" id="pfRetry">Réessayer</button>
+      <button type="button" class="rt-btn-danger" id="rtLogoutBtn">Se déconnecter</button>
+    </section>`;
+  document.getElementById("pfRetry").addEventListener("click", () => {
+    body.innerHTML = '<p class="rt-loading">Chargement…</p>';
+    Profil.config = null;
+    showProfile();
+  });
+  document.getElementById("rtLogoutBtn").addEventListener("click", logout);
 }
 
 function hideProfile() {
@@ -713,4 +739,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const btn = document.getElementById("rtProfileBtn");
   if (btn) btn.addEventListener("click", showProfile);
+
+  const dec = document.getElementById("rtHeaderLogout");
+  if (dec) dec.addEventListener("click", logout);
 });
