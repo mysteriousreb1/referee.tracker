@@ -12,7 +12,7 @@
    sans ouvrir l'application.
    ===================================================== */
 
-const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxETHFQ5vTXTo7ismnGBWscXbKPDiQLw9X6Wgn7U6WEd7FINf8wDSVmBjI9bF_phWmL/exec";
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwIB962NoMwZjdv_CN4T3QQzmUpV24bNhYQ0pIy9qcZ0fXN984AzwGyBU2n2tHbheN_/exec";
 const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premier appel (démarrage à froid)
 const TOKEN_KEY = "rt_session_token";
 const EMAIL_KEY = "rt_session_email";
