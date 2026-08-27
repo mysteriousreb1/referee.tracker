@@ -51,6 +51,9 @@ const Session = {
       localStorage.removeItem(EMAIL_KEY);
       localStorage.removeItem(SINCE_KEY);
       localStorage.removeItem(CFG_KEY);
+      Object.keys(localStorage)
+        .filter(k => k.indexOf("rt_c_") === 0)
+        .forEach(k => localStorage.removeItem(k));
     } catch (e) {}
   }
 };
@@ -130,11 +133,123 @@ function apiCall(action, extra = {}, withToken = true) {
     .finally(() => clearTimeout(timer));
 }
 
+/* ---------------- Cache « affiche d'abord, rafraîchis ensuite » ----------------
+
+   Apps Script met 1 à 5 s à répondre, et relit toute la feuille à chaque appel.
+   Plutôt que d'attendre, on affiche immédiatement la dernière réponse connue
+   puis on va chercher la version fraîche en arrière-plan. Si elle diffère,
+   l'écran se met à jour tout seul.
+
+   Seules les lectures sont concernées. Les écritures (updatePaymentStatus,
+   settings.*, password.*) ne passent jamais par le cache, et invalident tout. */
+
+const CACHE_PREFIX  = "rt_c_";
+const CACHE_MAX_AGE = 12 * 3600 * 1000;   // au-delà, on attend le réseau
+const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
+const LECTURES = { matchs: 1, stats: 1, config: 1 };
+
+/* Seules ces actions modifient la feuille : elles seules doivent purger le
+   cache. Tout le reste (« me », lectures diverses) passe simplement au
+   travers — sans quoi « me », appelé à chaque démarrage, viderait le cache
+   avant même qu'il ne serve. */
+const ECRITURES = {
+  updatePaymentStatus: 1,
+  "settings.profil": 1, "settings.tarifs": 1,
+  "settings.vehicule.add": 1, "settings.vehicule.del": 1
+};
+
+function _cacheKey(action, extra) {
+  return CACHE_PREFIX + action + ":" + JSON.stringify(extra || {});
+}
+
+function _cacheLire(cle) {
+  try {
+    const brut = localStorage.getItem(cle);
+    if (!brut) return null;
+    const o = JSON.parse(brut);
+    return (o && o.t && Date.now() - o.t < CACHE_MAX_AGE) ? o : null;
+  } catch (e) { return null; }
+}
+
+function _cacheEcrire(cle, data) {
+  try {
+    localStorage.setItem(cle, JSON.stringify({ t: Date.now(), d: data }));
+  } catch (e) {
+    // Quota atteint : on purge nos propres entrées et on abandonne sans bruit
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.indexOf(CACHE_PREFIX) === 0)
+        .forEach(k => localStorage.removeItem(k));
+    } catch (e2) {}
+  }
+}
+
+function cacheVider() {
+  try {
+    Object.keys(localStorage)
+      .filter(k => k.indexOf(CACHE_PREFIX) === 0)
+      .forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+}
+
+/* Redemande le rendu après l'arrivée de données fraîches. Les appels
+   repassent par jsonp, qui trouve alors un cache tout juste écrit : pas
+   de boucle possible. */
+let _rafraichissementEnCours = false;
+function _rafraichirEcran() {
+  if (_rafraichissementEnCours) return;
+  _rafraichissementEnCours = true;
+  setTimeout(() => {
+    _rafraichissementEnCours = false;
+    try {
+      if (typeof loadData === "function") loadData();
+      if (typeof loadStats === "function") loadStats();
+    } catch (e) { /* le rendu suivant repartira du cache */ }
+  }, 0);
+}
+
 /* Point d'entrée unique de l'application.
    Le nom `jsonp` est conservé pour ne rien casser dans app.js —
    le transport n'est plus du JSONP, qui exposait le jeton à n'importe
    quel script tiers. */
 function jsonp(action, extra = {}) {
+  if (LECTURES[action]) {
+    const cle = _cacheKey(action, extra);
+    const hit = _cacheLire(cle);
+
+    if (hit) {
+      const age = Date.now() - hit.t;
+      if (age > CACHE_FRESH) {
+        // Revalidation silencieuse : ni spinner, ni erreur à l'écran
+        _jsonpReseau(action, extra)
+          .then(frais => {
+            if (JSON.stringify(frais) !== JSON.stringify(hit.d)) {
+              _cacheEcrire(cle, frais);
+              _rafraichirEcran();
+            } else {
+              _cacheEcrire(cle, frais);   // rafraîchit l'horodatage
+            }
+          })
+          .catch(() => { /* hors ligne : on garde l'affichage courant */ });
+      }
+      return Promise.resolve(hit.d);
+    }
+
+    return _jsonpReseau(action, extra).then(res => {
+      if (res && res.success !== false) _cacheEcrire(cle, res);
+      return res;
+    });
+  }
+
+  // Écriture : jamais de cache, et on invalide ce qui devient périmé.
+  // Les autres actions passent au travers sans rien toucher.
+  return _jsonpReseau(action, extra).then(res => {
+    if (ECRITURES[action] && res && res.success !== false) cacheVider();
+    return res;
+  });
+}
+
+function _jsonpReseau(action, extra = {}) {
   return apiCall(action, extra).then(res => {
     if (res && res.success === false && res.error === "AUTH_REQUIRED") {
       Session.clear();
@@ -571,6 +686,12 @@ function hideProfile() {
    de connexion. */
 
 function startApp() {
+  // On affiche AVANT de parler au serveur. `loadData` passe par le cache :
+  // s'il y a quelque chose, c'est à l'écran immédiatement. Sinon il ira au
+  // réseau comme avant. Auparavant tout le rendu attendait la réponse de
+  // « me » — un aller-retour Apps Script, soit 1 à 5 s d'écran vide.
+  if (typeof loadData === "function") loadData();
+
   jsonp("me")
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
@@ -581,7 +702,6 @@ function startApp() {
         try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
         if (document.getElementById("rtProfile")) renderProfile();
       }
-      if (typeof loadData === "function") loadData();
     })
     .catch(() => { /* jsonp a déjà réaffiché l'écran de connexion si besoin */ });
 }
