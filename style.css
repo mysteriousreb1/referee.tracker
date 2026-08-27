@@ -657,3 +657,111 @@ tr:last-child td { border-bottom: 0; }
   .chart-filter { min-width: 0; }
   .toolbar-summary { padding-bottom: 0; }
 }
+/* =====================================================
+   REFEREE TRACKER — écran de connexion
+   À coller à la fin de style.css (reprend tes variables existantes).
+   ===================================================== */
+
+.rt-login {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #0f1115);
+}
+
+.rt-login.is-visible { display: flex; }
+
+.rt-login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px 28px;
+  border-radius: 14px;
+  background: var(--card, #171a21);
+  border: 1px solid var(--border, #262b36);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
+}
+
+.rt-login-card h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text, #e8ecf3);
+}
+
+.rt-login-sub {
+  margin: 6px 0 26px;
+  font-size: 14px;
+  color: var(--muted, #8b94a7);
+}
+
+.rt-login-card label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #8b94a7);
+}
+
+.rt-login-card input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 18px;
+  padding: 11px 13px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text, #e8ecf3);
+  background: var(--bg, #0f1115);
+  border: 1px solid var(--border, #262b36);
+  border-radius: 9px;
+  transition: border-color .15s;
+}
+
+.rt-login-card input:focus {
+  outline: none;
+  border-color: var(--accent, #4c8dff);
+}
+
+.rt-login-card button {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: var(--accent, #4c8dff);
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+
+.rt-login-card button:hover:not(:disabled) { opacity: .9; }
+.rt-login-card button:disabled { opacity: .5; cursor: default; }
+
+.rt-login-msg {
+  min-height: 20px;
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted, #8b94a7);
+}
+
+.rt-login-msg.is-error { color: var(--danger, #ff6b6b); }
+
+.rt-login-note {
+  margin: 20px 0 0;
+  font-size: 12px;
+  color: var(--muted, #8b94a7);
+  opacity: .75;
+}
+
+/* Badge utilisateur + déconnexion dans l'en-tête */
+.rt-user {
+  font-size: 13px;
+  color: var(--muted, #8b94a7);
+  margin-right: 10px;
+}
