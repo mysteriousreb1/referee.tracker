@@ -17,6 +17,7 @@ const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premie
 const TOKEN_KEY = "rt_session_token";
 const EMAIL_KEY = "rt_session_email";
 const SINCE_KEY = "rt_session_since";
+const CFG_KEY   = "rt_config_cache";
 
 /* HOME est renseigné par le serveur après authentification :
    l'adresse ne figure plus dans le dépôt public. */
@@ -49,6 +50,7 @@ const Session = {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(EMAIL_KEY);
       localStorage.removeItem(SINCE_KEY);
+      localStorage.removeItem(CFG_KEY);
     } catch (e) {}
   }
 };
@@ -483,6 +485,7 @@ function envoyer(action, corps, succes) {
     if (res.profil) Profil.config.profil = res.profil;
     if (res.tarifs) Profil.config.tarifs = res.tarifs;
     if (res.vehicules) Profil.config.vehicules = res.vehicules;
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(Profil.config)); } catch (e) {}
     renderProfile();
     toast(res.message || succes);
     return res;
@@ -528,14 +531,34 @@ function changePassword() {
   }).catch(err => toast(err.message || "Échec", true));
 }
 
+/* Ouverture instantanée : la config est déjà en mémoire (renvoyée par « me »
+   au démarrage) ou en cache local. Aucun aller-retour réseau à l'ouverture —
+   c'est ce qui rendait le panneau lent, Apps Script mettant 1 à 3 s à répondre.
+   On ne va chercher la config que si on ne l'a vraiment nulle part. */
 function showProfile() {
   buildProfilePanel();
+
+  if (!Profil.config) {
+    try {
+      const cache = localStorage.getItem(CFG_KEY);
+      if (cache) Profil.config = JSON.parse(cache);
+    } catch (e) { /* cache illisible : on ira la chercher */ }
+  }
+
   renderProfile();
   document.getElementById("rtProfile").classList.add("is-visible");
 
-  jsonp("settings.get").then(res => {
-    if (res && res.success) { Profil.config = res.config; renderProfile(); }
-  }).catch(() => toast("Réglages indisponibles.", true));
+  if (!Profil.config) {
+    jsonp("settings.get")
+      .then(res => {
+        if (res && res.success) {
+          Profil.config = res.config;
+          try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
+          renderProfile();
+        }
+      })
+      .catch(() => toast("Réglages indisponibles.", true));
+  }
 }
 
 function hideProfile() {
@@ -553,6 +576,11 @@ function startApp() {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
       if (res.home && res.home.lat) HOME = res.home;
       Profil.email = res.email || "";
+      if (res.config) {
+        Profil.config = res.config;
+        try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
+        if (document.getElementById("rtProfile")) renderProfile();
+      }
       if (typeof loadData === "function") loadData();
     })
     .catch(() => { /* jsonp a déjà réaffiché l'écran de connexion si besoin */ });
