@@ -13,7 +13,7 @@
    ===================================================== */
 
 const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxETHFQ5vTXTo7ismnGBWscXbKPDiQLw9X6Wgn7U6WEd7FINf8wDSVmBjI9bF_phWmL/exec";
-const API_TIMEOUT_MS = 25000;
+const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premier appel (démarrage à froid)
 const TOKEN_KEY = "rt_session_token";
 const EMAIL_KEY = "rt_session_email";
 
@@ -104,6 +104,17 @@ function apiCall(action, extra = {}, withToken = true) {
       try { return JSON.parse(raw); }
       catch (e) { throw apiError("Réponse illisible du serveur", DEPLOY_HINT); }
     })
+    .catch(err => {
+      if (err && (err.name === "AbortError" || /aborted/i.test(err.message || ""))) {
+        throw apiError(
+          "Pas de réponse du serveur après 60 s.",
+          "Ouvre les outils développeur (⌥⌘I) → onglet Réseau, retente, et regarde la ligne script.google.com : " +
+          "statut « (pending) » = Apps Script ne répond pas ; « CORS error » = problème de déploiement ; " +
+          "302 sans suite = redirection bloquée."
+        );
+      }
+      throw err;
+    })
     .finally(() => clearTimeout(timer));
 }
 
@@ -179,6 +190,11 @@ function buildLoginOverlay() {
       .catch(err => {
         msg.textContent = err.message || "Connexion impossible";
         msg.className = "rt-login-msg is-error";
+        if (err && err.hint) {
+          var note = document.querySelector(".rt-login-note");
+          if (note) note.textContent = err.hint;
+        }
+        console.error("[RefereeTracker] échec de connexion :", err);
       })
       .finally(() => { btn.disabled = false; });
   });
