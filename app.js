@@ -46,6 +46,7 @@ function bindUi() {
 
   document.getElementById("seasonSelect").addEventListener("change", e => {
     state.selectedSeason = e.target.value;
+    state.serverStats = null;   // les stats en mémoire portent sur l'ancienne saison
     loadStats();
     renderAll();
   });
@@ -157,9 +158,13 @@ function showApiError(err) {
     </div>`;
 }
 
-function loadStats() {
+/* @param {boolean} force  ignore le cache et interroge le serveur.
+   Nécessaire quand l'entrée en cache porte sur une autre saison : sa clé
+   est pourtant la bonne, seul son contenu est périmé. */
+function loadStats(force) {
   const demandee = state.selectedSeason;
-  jsonp("stats", { season: demandee })
+  const appel = (force && typeof jsonpFrais === "function") ? jsonpFrais : jsonp;
+  appel("stats", { season: demandee })
     .then(res => {
       if (res && res.success && res.stats) {
         state.serverStats = res.stats;
@@ -755,8 +760,10 @@ function renderStats() {
     root.innerHTML = renderStatsClient(s && !bonnePeriode ? s.season : null);
     if (!state._statsEnAttente) {
       state._statsEnAttente = true;
-      loadStats();
-      setTimeout(() => { state._statsEnAttente = false; }, 4000);
+      // Mauvaise période en cache : on va rechercher la bonne au serveur,
+      // sans repasser par le cache qui redonnerait la même réponse.
+      loadStats(!bonnePeriode);
+      setTimeout(() => { state._statsEnAttente = false; }, 8000);
     }
     return;
   }
@@ -1559,7 +1566,7 @@ document.addEventListener("click", function (e) {
     state._statsEnAttente = false;
     state.serverStats = null;
     setStatus("Recalcul des statistiques…", "");
-    loadStats();
+    loadStats(true);
     setTimeout(renderStats, 1200);
   }
 });
