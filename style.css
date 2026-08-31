@@ -1171,10 +1171,10 @@ tr:last-child td { border-bottom: 0; }
 .past-block { margin-top: 26px; }
 .past-block[open] { margin-bottom: 8px; }
 
+/* Safari refuse de replier un <details> dont le <summary> porte un
+   display autre que le sien : la mise en page flex vit donc dans un
+   <span> à l'intérieur, jamais sur le <summary> lui-même. */
 .past-summary {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
   margin: 0 4px;
   padding: 11px 14px;
   list-style: none;
@@ -1192,6 +1192,13 @@ tr:last-child td { border-bottom: 0; }
 }
 
 .past-summary::-webkit-details-marker { display: none; }
+.past-summary::marker { content: ""; }
+
+.past-summary-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
 .past-summary:hover { background: #EDF2FA; border-color: #C2D0E8; }
 .past-summary:focus-visible { outline: 2px solid var(--gold, #F5B400); outline-offset: 2px; }
 
@@ -1223,3 +1230,8 @@ tr:last-child td { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .past-chevron { transition: none; }
 }
+
+/* Rencontre annulée : conservée mais visiblement hors jeu. */
+.match-card.is-annule { opacity: .62; }
+.match-card.is-annule .card-title { text-decoration: line-through; text-decoration-thickness: 1px; }
+.match-card.is-annule:hover { opacity: 1; }
