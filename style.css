@@ -1161,3 +1161,65 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 480px) {
   .comp-logo { width: 28px; height: 28px; }
 }
+
+/* =====================================================
+   Matchs passés repliés
+   La page s'ouvre sur ce qui arrive ; l'historique reste
+   à un clic, sans encombrer la vue.
+   ===================================================== */
+
+.past-block { margin-top: 26px; }
+.past-block[open] { margin-bottom: 8px; }
+
+.past-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 4px;
+  padding: 11px 14px;
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface-2, #F6F8FC);
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--navy-900);
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.past-summary::-webkit-details-marker { display: none; }
+.past-summary:hover { background: #EDF2FA; border-color: #C2D0E8; }
+.past-summary:focus-visible { outline: 2px solid var(--gold, #F5B400); outline-offset: 2px; }
+
+.past-chevron {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.16s ease;
+}
+
+.past-block[open] .past-chevron { transform: rotate(45deg); }
+
+.past-summary .count {
+  margin-left: auto;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.past-body { padding-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .past-chevron { transition: none; }
+}
