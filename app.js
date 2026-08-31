@@ -27,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
   bindUi();
   buildSeasonSelect();
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
+  setTimeout(verifierAffichageInitial, 1500);
+  setTimeout(verifierAffichageInitial, 5000);
 });
 
 function bindUi() {
@@ -104,10 +106,30 @@ function loadData() {
       if (!res.success) throw new Error(res.error || "Erreur API");
       state.allRows = normalizeRows(res.data || []);
       setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
-      loadStats();
+
+      // L'affichage d'abord, et rien entre les deux. Les statistiques serveur
+      // sont un supplément : si leur appel échoue, la liste doit rester à
+      // l'écran. C'est l'inverse qui se produisait — une erreur dans
+      // loadStats() sautait le rendu et laissait la page à zéro match.
       renderAll();
+
+      try { loadStats(); } catch (e) { console.warn("Stats serveur indisponibles :", e); }
     })
     .catch(showApiError);
+}
+
+/* Filet de sécurité au démarrage.
+   Si des lignes sont chargées mais que l'écran affiche encore une liste vide,
+   c'est qu'un rendu a été manqué : on le rejoue. Une seule fois, et seulement
+   dans ce cas précis — jamais en boucle. */
+function verifierAffichageInitial() {
+  if (state.allRows.length && !state.filteredRows.length) {
+    const auraitDuAfficher = filterRows(state.allRows).length;
+    if (auraitDuAfficher) {
+      console.warn("Rendu manqué au démarrage : " + auraitDuAfficher + " mission(s) réaffichée(s).");
+      renderAll();
+    }
+  }
 }
 
 /* Affiche l'erreur API + la marche à suivre, au lieu d'une phrase opaque. */
