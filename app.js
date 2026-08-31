@@ -158,14 +158,21 @@ function showApiError(err) {
 }
 
 function loadStats() {
-  jsonp("stats", { season: state.selectedSeason })
+  const demandee = state.selectedSeason;
+  jsonp("stats", { season: demandee })
     .then(res => {
-      if (res && res.success) {
+      if (res && res.success && res.stats) {
         state.serverStats = res.stats;
+        state._statsEnAttente = false;
         if (state.activeTab === "stats") renderStats();
       }
     })
-    .catch(() => { /* les stats serveur sont un bonus, jamais bloquantes */ });
+    .catch(err => {
+      // Jamais bloquant pour le reste de l'app, mais on le dit dans l'onglet
+      // Stats plutôt que de laisser un « chargement… » éternel.
+      state._statsEnAttente = false;
+      console.warn("Statistiques serveur indisponibles :", err && err.message);
+    });
 }
 
 /* ---------------- Normalisation ---------------- */
@@ -736,8 +743,21 @@ function renderStats() {
   const root = document.getElementById("stats");
   const s = state.serverStats;
 
-  if (!s || !s.totaux || s.totaux.missions === undefined) {
-    root.innerHTML = renderStatsClient();
+  // La période demandée. Le serveur renvoie « Toutes les saisons » quand
+  // aucun filtre n'est passé : c'est ce libellé qu'il faut comparer.
+  const periodeAttendue = state.selectedSeason || "Toutes les saisons";
+  const bonnePeriode = s && s.season === periodeAttendue;
+
+  if (!s || !s.totaux || s.totaux.missions === undefined || !bonnePeriode) {
+    // Statistiques absentes, ou calculées pour une autre saison que celle
+    // sélectionnée : on affiche le calcul local, juste par construction,
+    // et on redemande les statistiques serveur pour la bonne période.
+    root.innerHTML = renderStatsClient(s && !bonnePeriode ? s.season : null);
+    if (!state._statsEnAttente) {
+      state._statsEnAttente = true;
+      loadStats();
+      setTimeout(() => { state._statsEnAttente = false; }, 4000);
+    }
     return;
   }
 
@@ -821,17 +841,44 @@ function renderTop(title, rows) {
     </table></div></div>`;
 }
 
-function renderStatsClient() {
+/* Calcul local, sur la saison réellement sélectionnée. Sert quand les
+   statistiques serveur manquent ou portent sur une autre période.
+   @param {string|null} periodeRecue  la période des stats serveur en mémoire,
+                                      si elle ne correspond pas à la sélection. */
+function renderStatsClient(periodeRecue) {
+  const periode = state.selectedSeason || "Toutes les saisons";
   const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
+
   const gross = rows.reduce((t, r) => t + r._amount, 0);
   const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
+  const km = rows.reduce((t, r) => t + (r._km || 0), 0);
+  const benevoles = rows.filter(r => r._benevole);
+  const cinq = rows.filter(r => r._format === "5x5").length;
+  const trois = rows.filter(r => r._format === "3x3").length;
+
+  const note = periodeRecue
+    ? `Les statistiques détaillées affichées par le serveur portaient sur « ${escapeHtml(periodeRecue)} ». Elles sont en cours de recalcul pour ${escapeHtml(periode)}.`
+    : "Statistiques détaillées en cours de chargement depuis le serveur…";
+
   return `
+    <h2 class="section-title">Bilan financier <span class="count">${escapeHtml(periode)}</span></h2>
     <div class="kpi-grid">
-      <div class="kpi hero"><label>Revenu net réel</label><strong>${formatMoney(gross - cost)}</strong><span class="sub">${rows.length} mission(s)</span></div>
-      <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(gross)}</strong></div>
+      <div class="kpi hero">
+        <label>Revenu net réel (indemnités − carburant)</label>
+        <strong>${formatMoney(gross - cost)}</strong>
+        <span class="sub">${rows.length} mission(s) · ${cinq} en 5×5 · ${trois} en 3×3</span>
+      </div>
+      <div class="kpi"><label>Indemnités perçues</label><strong>${formatMoney(gross)}</strong></div>
       <div class="kpi"><label>Carburant réel</label><strong>−${formatMoney(cost)}</strong></div>
+      <div class="kpi"><label>KM total A/R</label><strong>${formatNumber(km, " km")}</strong></div>
+      <div class="kpi"><label>€ / km</label><strong>${money(km > 0 ? gross / km : 0)}</strong></div>
+      <div class="kpi"><label>Net moyen / mission</label><strong>${money(rows.length ? (gross - cost) / rows.length : 0)}</strong></div>
+      ${benevoles.length ? `<div class="kpi"><label>Dont bénévolat</label><strong>${benevoles.length}</strong><span class="sub">mission(s) sans indemnité</span></div>` : ""}
     </div>
-    <div class="stat-note">Statistiques détaillées en cours de chargement depuis le serveur…</div>`;
+    <div class="stat-note">${note}</div>
+    <div style="margin:12px 4px">
+      <button class="small-btn secondary" id="btnRechargerStats">Recharger les statistiques</button>
+    </div>`;
 }
 
 /* ---------------- Alertes ---------------- */
@@ -1505,6 +1552,17 @@ function injecterStatsAvancees(stats) {
   el.innerHTML = renderStatsAvancees(stats);
   buildChartJourSemaine(stats);
 }
+
+/* Le bouton « Recharger les statistiques » du repli local. */
+document.addEventListener("click", function (e) {
+  if (e.target && e.target.id === "btnRechargerStats") {
+    state._statsEnAttente = false;
+    state.serverStats = null;
+    setStatus("Recalcul des statistiques…", "");
+    loadStats();
+    setTimeout(renderStats, 1200);
+  }
+});
 
 function renderStatsAvancees(stats) {
   const cc = stats.cout_complet || {};
