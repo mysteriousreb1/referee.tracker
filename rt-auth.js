@@ -208,6 +208,20 @@ function _rafraichirEcran() {
   }, 0);
 }
 
+/* Lecture forcée : ignore le cache et va toujours au serveur, puis remplace
+   l'entrée en cache. Sert quand le contenu mis en cache est manifestement
+   inadapté — par exemple des statistiques calculées pour une autre saison
+   que celle demandée. Le cache normal ne peut pas s'en apercevoir tout seul :
+   sa clé est correcte, c'est son contenu qui ne l'est pas. */
+function jsonpFrais(action, extra = {}) {
+  return _jsonpReseau(action, extra).then(res => {
+    if (LECTURES[action] && res && res.success !== false) {
+      _cacheEcrire(_cacheKey(action, extra), res);
+    }
+    return res;
+  });
+}
+
 /* Point d'entrée unique de l'application.
    Le nom `jsonp` est conservé pour ne rien casser dans app.js —
    le transport n'est plus du JSONP, qui exposait le jeton à n'importe
@@ -712,11 +726,18 @@ function hideProfile() {
    de connexion. */
 
 function startApp() {
-  // On affiche AVANT de parler au serveur. `loadData` passe par le cache :
-  // s'il y a quelque chose, c'est à l'écran immédiatement. Sinon il ira au
-  // réseau comme avant. Auparavant tout le rendu attendait la réponse de
-  // « me » — un aller-retour Apps Script, soit 1 à 5 s d'écran vide.
-  if (typeof loadData === "function") loadData();
+  // On affiche AVANT de parler au serveur : `loadData` passe par le cache,
+  // donc le contenu est à l'écran immédiatement au lieu d'attendre la réponse
+  // de « me » — un aller-retour Apps Script, soit 1 à 5 s d'écran vide.
+  //
+  // setTimeout(0) est indispensable : rt-auth.js est chargé AVANT app.js, donc
+  // son écouteur DOMContentLoaded s'exécute en premier. Sans ce report,
+  // loadData() rendrait la liste avant buildSeasonSelect(), alors que
+  // state.selectedSeason vaut encore "" — et filterRows ne retiendrait
+  // aucune ligne. Le report laisse app.js finir son initialisation.
+  setTimeout(function () {
+    if (typeof loadData === "function") loadData();
+  }, 0);
 
   jsonp("me")
     .then(res => {
