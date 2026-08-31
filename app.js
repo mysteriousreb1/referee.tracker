@@ -230,8 +230,13 @@ function renderTroisx3() { renderMatchPanel("troisx3", "3x3", "3×3"); }
 function renderMatchPanel(rootId, format, label) {
   const root = document.getElementById(rootId);
   const rows = state.filteredRows.filter(r => r._format === format).sort(sortByDateAsc);
-  const upcoming = rows.filter(r => !r._isPast);
-  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
+  // Une rencontre annulée n'est plus une mission : elle sort des matchs à
+  // venir et rejoint l'historique replié, avec son badge, plutôt que de
+  // disparaître sans laisser de trace.
+  const annules = rows.filter(r => !r._isActive);
+  const actifs = rows.filter(r => r._isActive);
+  const upcoming = actifs.filter(r => !r._isPast);
+  const past = actifs.filter(r => r._isPast).concat(annules).sort(sortByDateDesc);
 
   const ouvert = PASSES_OUVERTS[rootId] === true;
 
@@ -482,12 +487,14 @@ function renderMatchCard(row) {
   const net = round2(row._amount - cost);
 
   const elite = niveauElite(row);
+  const annule = row._isActive === false && format !== "Alerte";
 
   return `
-    <article class="match-card${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
+    <article class="match-card${annule ? " is-annule" : ""}${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
       <div class="card-head" role="button" tabindex="0">
         <div>
           <div class="badges">
+            ${annule ? badge("Annulé", "red") : ""}
             ${elite ? `<span class="badge badge-elite">${escapeHtml(elite.badge)}</span>` : ""}
             ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
             ${elite ? "" : badge(level, "gray")}
@@ -660,7 +667,7 @@ function attachCardListeners(root) {
 
 function renderPaiements() {
   const root = document.getElementById("paiements");
-  const rows = state.filteredRows.filter(r => r._format !== "Alerte").sort(sortByPaymentThenDate);
+  const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
 
   const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
