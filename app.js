@@ -174,7 +174,13 @@ function normalizeRows(rows) {
   return rows.map(row => {
     const r = { ...row };
     r._date = parseFrDate(get(r, "Date match"));
-    r._amount = toNumber(get(r, "Indemnité totale"));
+
+    /* Bénévolat : le déplacement a bien eu lieu, mais rien n'a été perçu.
+       On retient 0 € de recette pour ne pas gonfler les revenus ; le montant
+       théorique reste consultable dans _amountTheorique. */
+    r._benevole = cleanText(get(r, "Statut paiement")) === "Bénévole";
+    r._amountTheorique = toNumber(get(r, "Indemnité totale"));
+    r._amount = r._benevole ? 0 : r._amountTheorique;
     r._km = toNumber(get(r, "Km A/R stats"));
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
@@ -229,14 +235,14 @@ function renderTroisx3() { renderMatchPanel("troisx3", "3x3", "3×3"); }
 
 function renderMatchPanel(rootId, format, label) {
   const root = document.getElementById(rootId);
-  const rows = state.filteredRows.filter(r => r._format === format).sort(sortByDateAsc);
-  // Une rencontre annulée n'est plus une mission : elle sort des matchs à
-  // venir et rejoint l'historique replié, avec son badge, plutôt que de
-  // disparaître sans laisser de trace.
-  const annules = rows.filter(r => !r._isActive);
-  const actifs = rows.filter(r => r._isActive);
-  const upcoming = actifs.filter(r => !r._isPast);
-  const past = actifs.filter(r => r._isPast).concat(annules).sort(sortByDateDesc);
+  // Une rencontre annulée n'est plus une mission : elle disparaît de l'app,
+  // listes comme totaux. La ligne reste dans le Sheet, statut « Annulé »,
+  // pour garder la trace de la désignation.
+  const rows = state.filteredRows
+    .filter(r => r._format === format && r._isActive)
+    .sort(sortByDateAsc);
+  const upcoming = rows.filter(r => !r._isPast);
+  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
 
   const ouvert = PASSES_OUVERTS[rootId] === true;
 
@@ -487,14 +493,13 @@ function renderMatchCard(row) {
   const net = round2(row._amount - cost);
 
   const elite = niveauElite(row);
-  const annule = row._isActive === false && format !== "Alerte";
+
 
   return `
-    <article class="match-card${annule ? " is-annule" : ""}${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
+    <article class="match-card${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
       <div class="card-head" role="button" tabindex="0">
         <div>
           <div class="badges">
-            ${annule ? badge("Annulé", "red") : ""}
             ${elite ? `<span class="badge badge-elite">${escapeHtml(elite.badge)}</span>` : ""}
             ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
             ${elite ? "" : badge(level, "gray")}
@@ -1684,7 +1689,6 @@ function enrichirPourAnalyse_(r) {
     _eurKm: km > 0 ? round2(brut / km) : 0,
     _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
     _paye: get(r, "Statut paiement") === "Reçu",
-    _benevole: get(r, "Statut paiement") === BENEVOLE,
     // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
     _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition")),
     _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
