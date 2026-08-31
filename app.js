@@ -376,13 +376,19 @@ function niveauElite(row) {
   const code = cleanText(get(row, "Code compétition")).toUpperCase();
   const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
 
-  if (niveau.indexOf("championnat de france") >= 0 || /^(NM|NF)\d/.test(code)) {
+  // Championnat de France : NM1-3, NF1-3, NMU15/18, NFU15/18 — tout code
+  // commençant par NM ou NF. Aucune autre compétition FFBB ne commence par N.
+  if (niveau.indexOf("championnat de france") >= 0 || /^N[MF]/.test(code) ||
+      /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) {
     return { classe: "is-france", badge: "Championnat de France", court: "France" };
   }
-  if (/^PN[MF]\b/.test(code) || /\bPR[ÉE]?-?NATIONAL/.test(libelle) || /^PN[MF]/.test(code)) {
+
+  // Pré-national : PNM / PNF. À ne pas confondre avec PRM / PRF (pré-région).
+  if (/^PN[MF]/.test(code) || /\bPR[ÉE]-?NATIONAL/.test(libelle)) {
     const feminin = code.charAt(2) === "F";
     return { classe: "is-pn", badge: feminin ? "Pré-national F" : "Pré-national M", court: "PN" };
   }
+
   return null;
 }
 
