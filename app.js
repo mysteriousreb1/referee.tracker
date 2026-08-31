@@ -1,1215 +1,381 @@
-/* =====================================================
-   REFEREE TRACKER — INTERFACE GITHUB PAGES
-   Connectée à Google Apps Script via rt-auth.js (POST authentifié).
-   Carte : OpenStreetMap (Leaflet) + itinéraire OSRM.
-   Stats : calculées côté serveur (endpoint action=stats).
-   ===================================================== */
+/****************************************************
+ * REFEREE TRACKER — VERSION SÉCURISÉE (27/08/2026)
+ *
+ * Google Sheet connecté :
+ * https://docs.google.com/spreadsheets/d/1euFXtXS7vWVBHGKbY0Wv0X9M4uWwCuC04PmfReZgmFc/edit
+ *
+ * Google Calendar connecté :
+ * 14a0edc54f3b05223c45a259beed853a5013d248fe6ccf81de60bd4a8e4b6407@group.calendar.google.com
+ *
+ * Fonctions visibles :
+ * setup()
+ * auto()
+ * testMailInstant()
+ * testerOcrIsole()
+ *
+ * ---------------------------------------------------------------------
+ * MODIFICATIONS DU 27/08/2026 (sécurité + réglages)
+ *
+ * A. doGet ne sert plus les données. L'ancien accès en GET les délivrait
+ *    à qui connaissait la clé API — laquelle était en clair dans app.js,
+ *    sur un dépôt GitHub public. Les données transitent désormais par
+ *    doPost (Auth.gs), protégé par un jeton de session.
+ *    RT.doGet est conservé tel quel : Auth.gs l'appelle en interne et
+ *    lui fournit la clé côté serveur, où elle reste réellement secrète.
+ *
+ * B. Les réglages modifiables (adresse, véhicules, tarifs) viennent de
+ *    Config.gs et sont pilotables depuis l'écran « Mon profil ».
+ *    _syncConfig_() les recharge en début de traitement.
+ *
+ * C. vehicleForDate_ s'appuie sur un HISTORIQUE DATÉ de véhicules :
+ *    un match reste calculé avec la voiture en service à SA date.
+ *    Changer de voiture n'altère jamais un calcul déjà fait.
+ * ---------------------------------------------------------------------
+ *
+ * CORRECTIONS ANTÉRIEURES (22/07/2026), validées contre 5 vraies
+ * convocations : comité, ligue régionale, coupe, amical, observateur.
+ *
+ * 1. "Niveau administratif" était déduit du CODE de compétition
+ *    (regex sur DFU/RMU/etc.) → pour les Coupes (CPE) le code ne
+ *    matchait rien, niveau = "" → mauvais calendrier de paiement.
+ *    -> Nouveau : déduit de l'ORGANISME émetteur (2e ligne du
+ *    document : "COMITE DU ..." / "LIGUE REGIONALE ...") + code
+ *    "AMI" pour les amicaux. C'est écrit noir sur blanc dans le
+ *    PDF, donc fiable à 100%.
+ *
+ * 2. Le type et la date de paiement étaient aussi déduits du
+ *    niveau administratif → même bug en cascade pour les Coupes.
+ *    -> Nouveau : déduits directement du texte littéral
+ *    "C. Arbitre INDEMNISES PAR : ..." qui dit explicitement qui
+ *    paie (comité / ligue / club recevant).
+ *
+ * 3. "Observateur :" ne matchait jamais — le vrai libellé FFBB est
+ *    "Observateur Arb :". Corrigé.
+ *
+ * 4. Extraction de l'adresse de la salle fragile : le texte extrait
+ *    du PDF est en réalité "entrelacé" (mise en page 2 colonnes lue
+ *    par blocs), donc l'adresse n'est pas forcément juste après le
+ *    libellé "Adresse de la salle :". Corrigé en cherchant, dans
+ *    toute la zone jusqu'à "A. GROUPEMENT SPORTIF RECEVANT", la
+ *    ligne qui ressemble vraiment à une adresse (code postal +
+ *    ville), au lieu de prendre le texte immédiatement après le
+ *    libellé.
+ *
+ * 5. Un match déjà marqué "Reçu" pouvait être repassé à "À vérifier"
+ *    si une convocation MODIFICATIVE du même match était retraitée
+ *    et ne retrouvait pas le montant. Corrigé : on ne rétrograde
+ *    plus jamais un statut de paiement déjà avancé.
+ *    (Les convocations modificatives sont gérées nativement : même
+ *    N° de rencontre + même saison = même UID = mise à jour de la
+ *    même ligne, pas de doublon. Rien à faire de spécial pour ça.)
+ *
+ * 6. Le libellé de compétition capturait parfois du texte parasite
+ *    en fin de document ("Signature 1er arbitre..."). Corrigé.
+ ****************************************************/
 
-/* "Bénévole" : match arbitré gratuitement, en accord avec le club recevant.
-   Rien n'est dû : ces missions sortent du restant à encaisser et des retards. */
-const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
-const BENEVOLE = "Bénévole";
-
-let state = {
-  allRows: [],
-  filteredRows: [],
-  serverStats: null,
-  activeTab: "matchs",
-  selectedSeason: "",
-  search: "",
-  maps: {},
-  exportSeason: "",   // filtres propres à l'onglet Export
-  exportMonth: ""
-};
-
-
-document.addEventListener("DOMContentLoaded", () => {
-  bindUi();
-  buildSeasonSelect();
-  // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
-  setTimeout(verifierAffichageInitial, 1500);
-  setTimeout(verifierAffichageInitial, 5000);
-});
-
-function bindUi() {
-  document.querySelectorAll(".tab").forEach(btn => {
-    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
-  });
-
-  const refresh = document.getElementById("refreshBtn");
-  refresh.addEventListener("click", () => {
-    refresh.classList.remove("spin");
-    void refresh.offsetWidth;
-    refresh.classList.add("spin");
-    loadData();
-  });
-
-  document.getElementById("seasonSelect").addEventListener("change", e => {
-    state.selectedSeason = e.target.value;
-    state.serverStats = null;   // les stats en mémoire portent sur l'ancienne saison
-    loadStats();
-    renderAll();
-  });
-
-  document.getElementById("searchInput").addEventListener("input", e => {
-    state.search = e.target.value.trim().toLowerCase();
-    renderAll();
-  });
+function setup() {
+  RT.setup();
 }
 
-/* ---------------- Saisons ---------------- */
-
-function buildSeasonSelect() {
-  const select = document.getElementById("seasonSelect");
-  select.innerHTML = "";
-  const options = ["Toutes les saisons", ...getSeasonsFrom2022ToCurrent()];
-  options.forEach(season => {
-    const opt = document.createElement("option");
-    opt.value = season;
-    opt.textContent = season;
-    select.appendChild(opt);
-  });
-  const current = getCurrentSeason();
-  state.selectedSeason = current;
-  select.value = current;
+function auto() {
+  RT.auto();
 }
 
-function getCurrentSeason() {
-  const now = new Date();
-  const switchDate = new Date(now.getFullYear(), 6, 30);
-  const startYear = now >= switchDate ? now.getFullYear() : now.getFullYear() - 1;
-  return `${startYear}/${startYear + 1}`;
+function testMailInstant() {
+  RT.testMailInstant();
 }
 
-function getSeasonsFrom2022ToCurrent() {
-  const current = getCurrentSeason();
-  const currentStartYear = Number(current.split("/")[0]);
-  const seasons = [];
-  for (let y = 2022; y <= currentStartYear; y++) seasons.push(`${y}/${y + 1}`);
-  return seasons;
-}
+/**
+ * MODIFICATION A — l'accès en GET ne sert plus aucune donnée.
+ *
+ * Auparavant, cette fonction déléguait à RT2_route puis RT.doGet, qui
+ * renvoyaient matchs, salles, collègues et montants à toute requête
+ * portant la clé API. Cette clé étant publique, l'endpoint l'était aussi.
+ *
+ * Les données passent maintenant par doPost (Auth.gs), qui vérifie un
+ * jeton de session puis rejoue exactement le même enchaînement en interne.
+ */
+/**
+ * Point d'entrée GET.
+ *
+ * Le site n'utilise plus cette porte : il passe par doPost (Auth.gs) avec un
+ * jeton de session. Elle ne sert plus qu'au skill Claude « arbitrage ».
+ *
+ * Sécurité : l'ancienne clé "REFEREE_TRACKER_2026_PRIVATE" a été publiée en
+ * clair sur GitHub, elle ne peut donc plus servir de laissez-passer. Une clé
+ * distincte, stockée dans les propriétés du script (jamais dans le code, jamais
+ * dans un dépôt), garde l'entrée. Une fois franchie, la requête est rejouée
+ * telle quelle sur la logique d'origine, à qui l'on fournit la clé interne.
+ *
+ * Sans paramètre `key`, la réponse reste un simple "pong" : aucune donnée.
+ */
+function doGet(e) {
+  var params = (e && e.parameter) ? e.parameter : {};
 
-/* ---------------- Tabs ---------------- */
+  if (!params.key) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: true, message: "pong", auth: "required" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
-function setActiveTab(tab) {
-  state.activeTab = tab;
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
-  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
-  renderAll();
-}
+  var attendue = PropertiesService.getScriptProperties().getProperty("RT_CLAUDE_KEY");
 
-/* ---------------- Chargement données ---------------- */
+  if (!attendue) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: "Accès Claude non configuré — lancer AUTORISER_CLAUDE() dans l'éditeur" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
-function loadData() {
-  setStatus("Chargement des données…", "");
-  jsonp("matchs")
-    .then(res => {
-      if (!res.success) throw new Error(res.error || "Erreur API");
-      state.allRows = normalizeRows(res.data || []);
-      setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
+  if (params.key !== attendue) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: "Clé API invalide" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
-      // L'affichage d'abord, et rien entre les deux. Les statistiques serveur
-      // sont un supplément : si leur appel échoue, la liste doit rester à
-      // l'écran. C'est l'inverse qui se produisait — une erreur dans
-      // loadStats() sautait le rendu et laissait la page à zéro match.
-      renderAll();
+  // Requête rejouée à l'identique, la clé interne étant fournie côté serveur.
+  // `wkey` passe intact : c'est RT2 qui contrôle les écritures, comme avant.
+  var q = {};
+  Object.keys(params).forEach(function (k) { q[k] = params[k]; });
+  q.key = "REFEREE_TRACKER_2026_PRIVATE";
 
-      try { loadStats(); } catch (e) { console.warn("Stats serveur indisponibles :", e); }
-    })
-    .catch(showApiError);
-}
+  var e2 = { parameter: q, parameters: q };
 
-/* Filet de sécurité au démarrage.
-   Si des lignes sont chargées mais que l'écran affiche encore une liste vide,
-   c'est qu'un rendu a été manqué : on le rejoue. Une seule fois, et seulement
-   dans ce cas précis — jamais en boucle. */
-function verifierAffichageInitial() {
-  if (state.allRows.length && !state.filteredRows.length) {
-    const auraitDuAfficher = filterRows(state.allRows).length;
-    if (auraitDuAfficher) {
-      console.warn("Rendu manqué au démarrage : " + auraitDuAfficher + " mission(s) réaffichée(s).");
-      renderAll();
+  try {
+    if (typeof RT2_route === "function") {
+      var v2 = RT2_route(e2);
+      if (v2) return v2;
     }
+    return RT.doGet(e2);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: String(err && err.message ? err.message : err) }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-/* Affiche l'erreur API + la marche à suivre, au lieu d'une phrase opaque. */
-function showApiError(err) {
-  const message = (err && err.message) || "erreur inconnue";
-  const hint = (err && err.hint) || "";
-  setStatus("Impossible de contacter l’API Apps Script : " + message, "error");
-
-  const panel = document.getElementById("matchs");
-  if (!panel) return;
-  panel.innerHTML = `
-    <div class="empty" style="text-align:left">
-      <div style="font-size:16px;color:var(--danger);margin-bottom:8px">Connexion à l’API impossible</div>
-      <div style="font-weight:600;margin-bottom:10px">${escapeHtml(message)}</div>
-      ${hint ? `<div style="font-weight:500;line-height:1.5;color:var(--muted)">${escapeHtml(hint)}</div>` : ""}
-      <div style="margin-top:14px">
-        <a class="action-link secondary" href="${escapeHtml(buildApiUrl("ping", {}))}" target="_blank" rel="noopener">
-          Tester l’URL de l’API dans un onglet
-        </a>
-      </div>
-      <div style="margin-top:10px;font-size:12px;color:var(--muted)">
-        Si cet onglet affiche <code>{"success":true,"message":"pong"}</code>, l’API va bien : le problème vient du navigateur (extension, blocage réseau).
-        S’il affiche une page Google ou une erreur, c’est le déploiement qu’il faut corriger.
-      </div>
-    </div>`;
-}
-
-/* @param {boolean} force  ignore le cache et interroge le serveur.
-   Nécessaire quand l'entrée en cache porte sur une autre saison : sa clé
-   est pourtant la bonne, seul son contenu est périmé. */
-function loadStats(force) {
-  const demandee = state.selectedSeason;
-  const appel = (force && typeof jsonpFrais === "function") ? jsonpFrais : jsonp;
-  appel("stats", { season: demandee })
-    .then(res => {
-      if (res && res.success && res.stats) {
-        state.serverStats = res.stats;
-        state._statsEnAttente = false;
-        if (state.activeTab === "stats") renderStats();
-      }
-    })
-    .catch(err => {
-      // Jamais bloquant pour le reste de l'app, mais on le dit dans l'onglet
-      // Stats plutôt que de laisser un « chargement… » éternel.
-      state._statsEnAttente = false;
-      console.warn("Statistiques serveur indisponibles :", err && err.message);
-    });
-}
-
-/* ---------------- Normalisation ---------------- */
-
-function normalizeRows(rows) {
-  return rows.map(row => {
-    const r = { ...row };
-    r._date = parseFrDate(get(r, "Date match"));
-
-    /* Bénévolat : le déplacement a bien eu lieu, mais rien n'a été perçu.
-       On retient 0 € de recette pour ne pas gonfler les revenus ; le montant
-       théorique reste consultable dans _amountTheorique. */
-    r._benevole = cleanText(get(r, "Statut paiement")) === "Bénévole";
-    r._amountTheorique = toNumber(get(r, "Indemnité totale"));
-    r._amount = r._benevole ? 0 : r._amountTheorique;
-    r._km = toNumber(get(r, "Km A/R stats"));
-    r._format = get(r, "Format");
-    r._season = normalizeSeason(get(r, "Saison"), r._date);
-    r._isActive = !["annulé", "annule", "alerte"].includes(cleanText(get(r, "Statut")).toLowerCase()) && r._format !== "Alerte";
-    r._isPast = isPastMission(r);
-    return r;
-  });
-}
-
-function normalizeSeason(value, date) {
-  if (value && value.includes("/")) return value;
-  if (value && value.includes("-")) { const p = value.split("-"); if (p.length === 2) return `${p[0]}/${p[1]}`; }
-  if (date) { const sw = new Date(date.getFullYear(), 6, 30); const sy = date >= sw ? date.getFullYear() : date.getFullYear() - 1; return `${sy}/${sy + 1}`; }
-  return "";
-}
-
-function isPastMission(row) {
-  if (!row._date) return false;
-  const eod = new Date(row._date); eod.setHours(23, 59, 59, 999);
-  return eod < new Date();
-}
-
-/* ---------------- Render global ---------------- */
-
-function renderAll() {
-  state.filteredRows = filterRows(state.allRows);
-  renderMatchs();
-  renderTroisx3();
-  renderPaiements();
-  renderStats();
-  renderAnalyse();
-  renderAlertes();
-  renderExport();
-}
-
-function filterRows(rows) {
-  const s = state.selectedSeason, q = state.search;
-  return rows.filter(row => {
-    const seasonOk = s === "Toutes les saisons" || row._season === s;
-    if (!seasonOk) return false;
-    if (!q) return true;
-    const hay = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville", "Collègue nom", "Libellé compétition", "Niveau administratif", "Code compétition"]
-      .map(k => get(row, k)).join(" ").toLowerCase();
-    return hay.includes(q);
-  });
-}
-
-/* ---------------- 5x5 / 3x3 ---------------- */
-
-function renderMatchs() { renderMatchPanel("matchs", "5x5", "5×5"); }
-function renderTroisx3() { renderMatchPanel("troisx3", "3x3", "3×3"); }
-
-function renderMatchPanel(rootId, format, label) {
-  const root = document.getElementById(rootId);
-  // Une rencontre annulée n'est plus une mission : elle disparaît de l'app,
-  // listes comme totaux. La ligne reste dans le Sheet, statut « Annulé »,
-  // pour garder la trace de la désignation.
-  const rows = state.filteredRows
-    .filter(r => r._format === format && r._isActive)
-    .sort(sortByDateAsc);
-  const upcoming = rows.filter(r => !r._isPast);
-  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
-
-  const ouvert = PASSES_OUVERTS[rootId] === true;
-
-  root.innerHTML = `
-    <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
-    ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
-    ${past.length ? `
-      <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
-        <summary class="past-summary">
-          <span class="past-summary-inner">
-            <span class="past-chevron" aria-hidden="true"></span>
-            <span class="past-title">${label} passés</span>
-            <span class="count">${past.length}</span>
-          </span>
-        </summary>
-        <div class="past-body">${renderWeekendGroups(past, true)}</div>
-      </details>`
-      : `<h2 class="section-title">${label} passés <span class="count">0</span></h2>
-         ${empty(`Aucun match ${label} passé pour cette saison.`)}`}
-  `;
-  attachCardListeners(root);
-  attachPaymentListeners(root);
-  attachPastToggle(root);
-}
-
-/* Les matchs passés sont repliés par défaut : la page s'ouvre sur ce qui
-   arrive, pas sur ce qui est fait. L'état choisi survit aux rafraîchissements
-   de la liste (changement de saison, mise à jour d'un paiement). */
-const PASSES_OUVERTS = {};
-
-function attachPastToggle(root) {
-  root.querySelectorAll("details.past-block").forEach(function (bloc) {
-    bloc.addEventListener("toggle", function () {
-      PASSES_OUVERTS[bloc.dataset.panel] = bloc.open;
-    });
-  });
-}
-
-/* ---------------- regroupement par week-end ----------------
-   Les désignations tombent par week-end : c'est l'unité de temps qui
-   compte pour un arbitre, pas le match isolé. On regroupe donc par
-   semaine calendaire et on nomme le groupe d'après ce qu'il contient. */
-
-const JOURS_SEMAINE = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-
-/* Lundi de la semaine contenant cette date — clé de regroupement. */
-function lundiDeLaSemaine(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const jour = d.getDay();               // 0 = dimanche
-  d.setDate(d.getDate() - (jour === 0 ? 6 : jour - 1));
-  return d;
-}
-
-function cleSemaine(date) {
-  const l = lundiDeLaSemaine(date);
-  return l.getFullYear() + "-" + String(l.getMonth() + 1).padStart(2, "0") + "-" + String(l.getDate()).padStart(2, "0");
-}
-
-function jourEtMois(date) {
-  const mois = date.toLocaleDateString("fr-FR", { month: "long" });
-  const jour = date.getDate();
-  return (jour === 1 ? "1er" : String(jour)) + " " + mois;
-}
-
-/* Intitulé du groupe : « Week-end du 6 & 7 septembre », « Samedi 6 septembre »
-   ou « Semaine du 2 au 8 septembre » si des matchs tombent en semaine. */
-function libelleGroupe(dates) {
-  const uniques = [];
-  dates.forEach(d => {
-    const c = d.toDateString();
-    if (!uniques.some(u => u.toDateString() === c)) uniques.push(d);
-  });
-  uniques.sort((a, b) => a - b);
-
-  const tousWeekEnd = uniques.every(d => d.getDay() === 0 || d.getDay() === 6);
-
-  if (tousWeekEnd && uniques.length === 1) {
-    const d = uniques[0];
-    return JOURS_SEMAINE[d.getDay()].charAt(0).toUpperCase() + JOURS_SEMAINE[d.getDay()].slice(1) + " " + jourEtMois(d);
+/**
+ * À lancer une fois depuis l'éditeur : génère la clé d'accès du skill Claude,
+ * l'enregistre dans les propriétés du script et l'affiche dans le journal.
+ * Relancer cette fonction révoque la clé précédente.
+ */
+function AUTORISER_CLAUDE() {
+  var alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  var cle = "RTC_";
+  for (var i = 0; i < 32; i++) {
+    cle += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   }
-  if (tousWeekEnd && uniques.length === 2) {
-    const a = uniques[0], b = uniques[1];
-    const memeMois = a.getMonth() === b.getMonth();
-    return "Week-end du " + (memeMois ? a.getDate() : jourEtMois(a)) + " & " + jourEtMois(b);
+  PropertiesService.getScriptProperties().setProperty("RT_CLAUDE_KEY", cle);
+
+  Logger.log("=================================================");
+  Logger.log("Clé d'accès Claude (read_key) :");
+  Logger.log(cle);
+  Logger.log("=================================================");
+  Logger.log("À recopier dans config.json du skill « arbitrage ».");
+  Logger.log("Toute clé précédente est désormais refusée.");
+  return cle;
+}
+
+/**
+ * Marque comme "Reçu" tous les paiements prévus jusqu'à la date indiquée.
+ * Modifie les 2 dates ci-dessous puis exécute cette fonction à la main.
+ */
+function marquerPaiementsRecus() {
+  RT.marquerPaiementsRecusJusquA_("01/05/2026", "01/05/2026");
+}
+
+/**
+ * Complète les kilomètres manquants via OpenStreetMap (gratuit).
+ * Lent (~1 ligne/seconde). Traite 20 lignes par exécution par défaut.
+ */
+function completerKmManquants() {
+  RT.backfillKmManquants_(20);
+}
+
+/**
+ * Récupère le prix E10 moyen actuel autour du domicile (API gouvernementale
+ * gratuite) et le met en cache pour valoriser les matchs à venir.
+ * Installé automatiquement en hebdomadaire par auto().
+ */
+function majPrixCarburant() {
+  RT.majPrixCarburantActuel_();
+}
+
+/**
+ * Remplit les colonnes Genre et Catégorie d'âge sur toute la base,
+ * à partir du code et du libellé de compétition.
+ * Rapide, aucun appel réseau. À lancer une fois après la mise à jour.
+ */
+function completerGenreEtCategorie() {
+  RT.backfillGenreCategorie_();
+}
+
+/**
+ * Nettoie rétroactivement les noms de clubs déjà enregistrés.
+ * Retire la couleur de maillot et le nom du correspondant qui avaient été
+ * avalés par l'ancien parser. Idempotent : relançable sans risque.
+ */
+/**
+ * Met à jour la liste déroulante « Statut paiement » de l'onglet MATCHS.
+ * À lancer une fois après avoir collé ce fichier — puis à chaque fois
+ * qu'un statut est ajouté à PAYMENT_STATUSES.
+ *
+ * La validation est appliquée sur toute la colonne, lignes futures comprises,
+ * et remplace la liste existante sans toucher aux valeurs déjà saisies.
+ */
+function MAJ_LISTE_STATUTS_PAIEMENT() {
+  var statuts = ["À recevoir", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
+
+  // Ce projet Apps Script est autonome : il n'est rattaché à aucun classeur.
+  // getActiveSpreadsheet() y renvoie null — on ouvre donc le classeur par son id.
+  var ss = SpreadsheetApp.openById("1euFXtXS7vWVBHGKbY0Wv0X9M4uWwCuC04PmfReZgmFc");
+  var sheet = ss.getSheetByName("MATCHS");
+  if (!sheet) throw new Error("Onglet MATCHS introuvable dans « " + ss.getName() + " »");
+
+  var entetes = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var col = -1;
+  for (var i = 0; i < entetes.length; i++) {
+    if (String(entetes[i]).trim().toLowerCase() === "statut paiement") { col = i + 1; break; }
   }
-  if (tousWeekEnd) return "Week-end du " + jourEtMois(uniques[0]);
+  if (col === -1) throw new Error("Colonne « Statut paiement » introuvable");
 
-  const lundi = lundiDeLaSemaine(uniques[0]);
-  const dimanche = new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + 6);
-  return "Semaine du " + (lundi.getMonth() === dimanche.getMonth() ? lundi.getDate() : jourEtMois(lundi)) +
-         " au " + jourEtMois(dimanche);
-}
+  var nbLignes = Math.max(sheet.getMaxRows() - 1, 1);
+  var plage = sheet.getRange(2, col, nbLignes, 1);
 
-function renderWeekendGroups(rows, decroissant) {
-  const groupes = [];
-  const index = {};
+  var regle = SpreadsheetApp.newDataValidation()
+    .requireValueInList(statuts, true)
+    .setAllowInvalid(false)
+    .setHelpText("Bénévole = arbitré gratuitement en accord avec le club recevant : aucune indemnité attendue.")
+    .build();
 
-  rows.forEach(r => {
-    const cle = r._date ? cleSemaine(r._date) : "sans-date";
-    if (!index[cle]) { index[cle] = { cle, rows: [], dates: [] }; groupes.push(index[cle]); }
-    index[cle].rows.push(r);
-    if (r._date) index[cle].dates.push(r._date);
-  });
+  plage.setDataValidation(regle);
 
-  return groupes.map(g => {
-    const titre = g.dates.length ? libelleGroupe(g.dates) : "Date à confirmer";
-    const nb = g.rows.length;
-    const rowsTriees = g.rows.slice().sort(decroissant ? sortByDateDesc : sortByDateAsc);
-    return `
-      <section class="we-group">
-        <div class="we-head">
-          <span class="we-label">${escapeHtml(titre)}</span>
-          <span class="we-count">${nb} match${nb > 1 ? "s" : ""}</span>
-        </div>
-        <div class="cards">${rowsTriees.map(renderMatchCard).join("")}</div>
-      </section>`;
-  }).join("");
-}
-
-/* ---------------- niveaux à distinguer ----------------
-   Championnat de France et Pré-national ne se noient pas dans le lot :
-   ils portent un liseré et un badge propres. */
-
-/* ---------------- logo de compétition ----------------
-   Le code compétition FFBB encode déjà tout ce que porte l'arborescence
-   des logos : championnat, jeune/senior, genre, catégorie ou niveau.
-   « DFU18-P2 » = Départemental Féminin U18, phase 2 → logo DFU18.
-   Les suffixes de phase (-P1, -P2, -5, -7, -FF, -QR, -T1…) ne changent
-   pas le logo : on les retire.
-
-   Les fichiers vivent à plat dans img/competitions/, sous le nom qu'ils
-   portent déjà dans le Drive — aucun renommage nécessaire. */
-
-const LOGOS_DISPONIBLES = {
-  /* 3x3 */
-  "3X3":   "3x3.png",
-
-  /* Coupes et phases finales */
-  "CPE":   "Coupe de France de Basket FFBB.png",
-  "FD":    "FFBB LOGO FINALES.png",
-
-  /* National — séniors */
-  "NM1": "NM1.png", "NM2": "NM2.png", "NM3": "NM3.png",
-  "NF1": "NF1.png", "NF2": "NF2.png", "NF3": "NF3.png",
-
-  /* National — jeunes */
-  "NMU15": "NMU15.png", "NMU18": "NMU18.png",
-  "NFU15": "NFU15.png", "NFU18": "NFU18.png",
-
-  /* Région — séniors */
-  "PNM": "PNM.png", "PNF": "PNF.png",
-  "RM2": "RM2.png", "RM3": "RM3.png",
-  "RF2": "RF2.png", "RF3": "RF3.png",
-
-  /* Région — jeunes */
-  "RMU13": "RMU13.png", "RMU15": "RMU15.png", "RMU18": "RMU18.png", "RMU21": "RMU21.png",
-  "RFU13": "RFU13.png", "RFU15": "RFU15.png", "RFU18": "RFU18.png",
-
-  /* Département — séniors */
-  "DM2": "DM2.png", "DM3": "DM3.png",
-  "DF1": "DF1.png", "DF2": "DF2.png", "DF3": "DF3.png",
-
-  /* Département — jeunes */
-  "DMU11": "DMU11.png", "DMU13": "DMU13.png", "DMU21": "DMU21.png",
-  "DFU11": "DFU11.png", "DFU13": "DFU13.png", "DFU15": "DFU15.png", "DFU18": "DFU18.png"
-};
-
-/* Le parsing des convocations range parfois le NUMÉRO de rencontre dans la
-   colonne « Code compétition » (« 6 », « 4 »…) : le vrai code ne subsiste
-   alors que dans le libellé (« PNM », « 4 - AMI NM3 + ESP.PB »).
-   On récupère donc le code où qu'il soit. */
-
-const RE_CODE_FFBB = /\b(?:3X3|CPE|CMUT|ENCOU|FD|OPEN|(?:PN|PR)[MF]|[NRD][MF](?:U\d{2}|\d))\b/;
-
-function codeCompetition(row) {
-  if (cleanText(get(row, "Format")) === "3x3") return "3X3";
-
-  const brut = cleanText(get(row, "Code compétition")).toUpperCase();
-  const codeNu = brut.split("-")[0].replace(/[^A-Z0-9]/g, "");
-
-  // Un code exploitable commence toujours par une lettre.
-  if (codeNu && !/^\d+$/.test(codeNu)) return codeNu;
-
-  // Sinon on va le chercher dans le libellé.
-  const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
-  const trouve = libelle.match(RE_CODE_FFBB);
-  return trouve ? trouve[0].replace(/[^A-Z0-9]/g, "") : "";
-}
-
-function slugCompetition(row) {
-  return codeCompetition(row);
-}
-
-function logoCompetition(row) {
-  const slug = slugCompetition(row);
-  const fichier = LOGOS_DISPONIBLES[slug];
-  if (!fichier) return "";                     // pas de logo connu : rien, la carte reste intacte
-
-  const alt = cleanText(get(row, "Libellé compétition")) || slug;
-  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(fichier)}"
-               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}"
-               loading="lazy" decoding="async" onerror="this.remove()">`;
-}
-
-function niveauElite(row) {
-  const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
-  const code = codeCompetition(row);
-  const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
-  const amical = /\bAMI(CAL)?\b/.test(libelle);
-
-  // Championnat de France : NM1-3, NF1-3, NMU15/18, NFU15/18 — tout code
-  // commençant par NM ou NF. Aucune autre compétition FFBB ne commence par N.
-  if (niveau.indexOf("championnat de france") >= 0 || /^N[MF]/.test(code) ||
-      /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) {
-    return {
-      classe: "is-france",
-      badge: amical ? "National · amical" : "Championnat de France",
-      court: "France"
-    };
+  // Signale les valeurs déjà présentes qui ne figurent pas dans la liste :
+  // elles resteraient affichées mais deviendraient invalides.
+  var valeurs = plage.getValues();
+  var horsListe = {};
+  for (var r = 0; r < valeurs.length; r++) {
+    var v = String(valeurs[r][0] || "").trim();
+    if (v && statuts.indexOf(v) === -1) horsListe[v] = (horsListe[v] || 0) + 1;
   }
 
-  // Pré-national : PNM / PNF. À ne pas confondre avec PRM / PRF (pré-région).
-  if (/^PN[MF]/.test(code)) {
-    const feminin = code.charAt(2) === "F";
-    const libelleBadge = feminin ? "Pré-national F" : "Pré-national M";
-    return { classe: "is-pn", badge: amical ? libelleBadge + " · amical" : libelleBadge, court: "PN" };
+  Logger.log("Liste déroulante appliquée sur %s ligne(s) : %s", nbLignes, statuts.join(" / "));
+  var restes = Object.keys(horsListe);
+  if (restes.length) {
+    Logger.log("ATTENTION — valeurs déjà saisies hors liste :");
+    restes.forEach(function (v) { Logger.log("  %s (%s ligne(s))", v, horsListe[v]); });
+  } else {
+    Logger.log("Aucune valeur existante hors liste.");
+  }
+}
+
+function nettoyerNomsClubs() {
+  RT.backfillNomsClubs_();
+}
+
+/**
+ * Test isolé de l'OCR, indépendant du reste du système.
+ * Prend le PDF le plus récent trouvé dans un mail avec pièce jointe
+ * PDF, tente l'OCR, et logue le résultat (succès + extrait de texte,
+ * ou l'erreur précise). Ne touche à rien dans le Sheet.
+ * À exécuter manuellement depuis l'éditeur Apps Script pour vérifier
+ * que le service Drive avancé + OCR fonctionne AVANT de lancer auto().
+ */
+function testerOcrIsole() {
+  const threads = GmailApp.search("has:attachment filename:pdf", 0, 5);
+
+  if (threads.length === 0) {
+    Logger.log("Aucun mail avec PDF trouvé.");
+    return;
   }
 
-  return null;
-}
+  let attachment = null;
+  let foundSubject = "";
 
-function renderMatchCard(row) {
-  const uid = escapeHtml(get(row, "UID"));
-  const format = get(row, "Format");
-  const title = format === "3x3"
-    ? firstValue(row, ["Visiteur / événement", "Recevant", "Libellé compétition"])
-    : firstValue(row, ["Recevant", "Visiteur / événement", "Libellé compétition"]);
-
-  const date = formatDateShort(row._date);
-  const time = get(row, "Heure/RDV");
-  const level = get(row, "Niveau administratif") || format;
-  const warning = hasWarning(row);
-  const paiement = get(row, "Statut paiement") || "À recevoir";
-  const isPaid = paiement === "Reçu";
-  const isBenevole = paiement === BENEVOLE;
-
-  const cost = realFuelCostClient(row._km, row._date);
-  const net = round2(row._amount - cost);
-
-  const elite = niveauElite(row);
-
-
-  return `
-    <article class="match-card${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
-      <div class="card-head" role="button" tabindex="0">
-        <div>
-          <div class="badges">
-            ${elite ? `<span class="badge badge-elite">${escapeHtml(elite.badge)}</span>` : ""}
-            ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
-            ${elite ? "" : badge(level, "gray")}
-            ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
-            ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
-            ${warning ? badge("À vérifier", "orange") : ""}
-            ${isBenevole ? badge("Bénévole", "gray")
-              : isPaid ? badge("Payé", "green")
-              : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
-          </div>
-          <div class="title-row">
-            ${logoCompetition(row)}
-            <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
-          </div>
-          <p class="card-sub">${escapeHtml(get(row, "Visiteur / événement") || get(row, "Libellé compétition") || "")}</p>
-        </div>
-        <div class="date-pill"><strong>${escapeHtml(date)}</strong><span>${escapeHtml(time)}</span></div>
-      </div>
-      <div class="card-body">
-        ${renderMoneyStrip(row._amount, cost, net)}
-        ${renderDetails(row)}
-        ${renderMapContainer(row, uid)}
-        ${renderActions(row)}
-        ${renderPaymentControl(row)}
-      </div>
-    </article>
-  `;
-}
-
-function renderMoneyStrip(gross, cost, net) {
-  return `
-    <div class="money-strip">
-      <div class="money-cell gross"><label>Indemnité</label><strong>${formatMoney(gross)}</strong></div>
-      <div class="money-cell cost"><label>Carburant réel</label><strong>−${formatMoney(cost)}</strong></div>
-      <div class="money-cell net"><label>Net réel</label><strong>${formatMoney(net)}</strong></div>
-    </div>
-  `;
-}
-
-function renderDetails(row) {
-  const details = [
-    ["Format", get(row, "Format")],
-    ["Saison", row._season],
-    ["Mon rôle", get(row, "Mon rôle")],
-    ["Compétition", get(row, "Libellé compétition")],
-    ["Genre", get(row, "Genre")],
-    ["Catégorie", get(row, "Catégorie d'âge")],
-    ["N° rencontre", get(row, "N° rencontre")],
-    ["Recevant", get(row, "Recevant")],
-    ["Visiteur / événement", get(row, "Visiteur / événement")],
-    ["Salle", get(row, "Salle")],
-    ["Adresse", get(row, "Adresse")],
-    ["Ville", get(row, "Ville")],
-    ["Code e-Marque", get(row, "Code e-Marque")],
-    ["Collègue", formatColleague(row)],
-    ["Référent 3x3", get(row, "Référent 3x3")],
-    ["Observateur", get(row, "Observateur")],
-    ["KM A/R", row._km ? formatNumber(row._km, " km") : ""],
-    ["Paiement prévu", get(row, "Date paiement")],
-    ["Warnings", [get(row, "Warning général"), get(row, "Warning finance"), get(row, "Warning FBI")].filter(Boolean).join(" | ")]
-  ].filter(([, v]) => v !== "" && v !== null && v !== undefined);
-
-  return `<div class="detail-grid">${details.map(([l, v]) => `
-    <div class="detail"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div>`;
-}
-
-/* ---------------- Carte OSM ---------------- */
-
-function renderMapContainer(row, uid) {
-  const addr = get(row, "Adresse") || get(row, "Ville");
-  if (!addr) return "";
-  return `<div class="card-map" id="map-${uid}" data-addr="${escapeHtml(addr)}"></div>`;
-}
-
-function initMapFor(uid, addr) {
-  if (state.maps[uid]) { setTimeout(() => state.maps[uid].invalidateSize(), 60); return; }
-  const el = document.getElementById(`map-${uid}`);
-  if (!el || typeof L === "undefined") return;
-
-  const map = L.map(el, { scrollWheelZoom: false }).setView([HOME.lat, HOME.lon], 9);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18, attribution: "© OpenStreetMap"
-  }).addTo(map);
-  L.marker([HOME.lat, HOME.lon]).addTo(map).bindPopup("Domicile");
-  state.maps[uid] = map;
-
-  geocode(addr).then(dest => {
-    if (!dest) return;
-    L.marker([dest.lat, dest.lon]).addTo(map).bindPopup("Salle");
-    route(HOME, dest).then(r => {
-      if (r && r.geometry) {
-        const line = L.geoJSON(r.geometry, { style: { color: "#E4002B", weight: 4, opacity: 0.85 } }).addTo(map);
-        map.fitBounds(line.getBounds().pad(0.2));
-        const km = Math.round(r.distanceKm * 2);
-        L.popup().setLatLng([dest.lat, dest.lon])
-          .setContent(`<b>${km} km A/R</b><br>${(km * 0.4).toFixed(2)} € remboursés`).openOn(map);
-      } else {
-        map.fitBounds(L.latLngBounds([[HOME.lat, HOME.lon], [dest.lat, dest.lon]]).pad(0.3));
-      }
-    });
-  });
-  setTimeout(() => map.invalidateSize(), 80);
-}
-
-function geocode(address) {
-  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(address);
-  return fetch(url, { headers: { "Accept": "application/json" } })
-    .then(r => r.json())
-    .then(d => (d && d.length) ? { lat: Number(d[0].lat), lon: Number(d[0].lon) } : null)
-    .catch(() => null);
-}
-
-function route(from, to) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=geojson`;
-  return fetch(url).then(r => r.json())
-    .then(d => (d.routes && d.routes.length) ? { geometry: d.routes[0].geometry, distanceKm: d.routes[0].distance / 1000 } : null)
-    .catch(() => null);
-}
-
-/* ---------------- Actions ---------------- */
-
-function renderActions(row) {
-  const address = get(row, "Adresse");
-  const phone = onlyDigits(get(row, "Collègue téléphone"));
-  const links = [];
-  if (address) {
-    links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
-    links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
-  }
-  if (phone) links.push(`<a class="action-link secondary" href="sms:${phone}">SMS collègue</a>`);
-  if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
-    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
-  }
-  return links.length ? `<div class="actions">${links.join("")}</div>` : "";
-}
-
-function renderPaymentControl(row) {
-  const uid = escapeHtml(get(row, "UID"));
-  const current = get(row, "Statut paiement") || "À recevoir";
-  const prevu = get(row, "Date paiement");
-  return `
-    <div class="payment-row">
-      <div>
-        <strong>Statut paiement</strong>
-        <div class="card-sub">${escapeHtml(prevu ? "Prévu : " + prevu : "Date à vérifier")}</div>
-      </div>
-      <select class="payment-select" data-uid="${uid}">
-        ${PAYMENT_STATUSES.map(s => `<option value="${escapeHtml(s)}" ${s === current ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
-      </select>
-    </div>`;
-}
-
-function attachCardListeners(root) {
-  root.querySelectorAll(".card-head").forEach(head => {
-    const toggle = () => {
-      const card = head.closest(".match-card");
-      card.classList.toggle("open");
-      if (card.classList.contains("open")) {
-        const uid = card.dataset.uid;
-        const mapEl = card.querySelector(".card-map");
-        if (mapEl) initMapFor(uid, mapEl.dataset.addr);
-      }
-    };
-    head.addEventListener("click", toggle);
-    head.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-  });
-}
-
-/* ---------------- Paiements ---------------- */
-
-function renderPaiements() {
-  const root = document.getElementById("paiements");
-  const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
-  if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
-
-  const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
-  const order = ["À recevoir", "Écart à vérifier", "À vérifier", "Reçu", BENEVOLE];
-
-  const statutDe = r => get(r, "Statut paiement") || "À recevoir";
-  // Le bénévolat ne compte ni comme encaissé, ni comme dû.
-  const totalDu = rows.filter(r => statutDe(r) !== "Reçu" && statutDe(r) !== BENEVOLE).reduce((t, r) => t + r._amount, 0);
-  const totalRecu = rows.filter(r => statutDe(r) === "Reçu").reduce((t, r) => t + r._amount, 0);
-  const benevoles = rows.filter(r => statutDe(r) === BENEVOLE);
-
-  root.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi"><label>En attente de paiement</label><strong>${formatMoney(totalDu)}</strong></div>
-      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
-      ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
-    </div>
-    ${order.filter(k => grouped[k]).map(status => `
-      <h2 class="section-title">${escapeHtml(status)} <span class="count">${grouped[status].length}</span></h2>
-      <div class="cards">${grouped[status].map(renderMatchCard).join("")}</div>`).join("")}
-  `;
-  attachCardListeners(root);
-  attachPaymentListeners(root);
-}
-
-function attachPaymentListeners(root) {
-  root.querySelectorAll(".payment-select").forEach(select => {
-    select.addEventListener("change", async e => {
-      const uid = e.target.dataset.uid, status = e.target.value;
-      e.target.disabled = true;
-      setStatus("Mise à jour du paiement…", "");
-      try {
-        const res = await jsonp("updatePaymentStatus", { uid, status });
-        if (!res.success) throw new Error(res.error || "Erreur update");
-        const row = state.allRows.find(r => get(r, "UID") === uid);
-        if (row) {
-          row["Statut paiement"] = status;
-          if (status === "Reçu") {
-            row["Date réception"] = new Date().toLocaleDateString("fr-FR");
-            if (!get(row, "Montant reçu")) row["Montant reçu"] = get(row, "Indemnité totale");
-          }
-          if (status === "À recevoir") { row["Date réception"] = ""; row["Montant reçu"] = ""; }
-          if (status === BENEVOLE) { row["Date réception"] = ""; row["Montant reçu"] = 0; }
+  outer:
+  for (const thread of threads) {
+    for (const msg of thread.getMessages()) {
+      for (const att of msg.getAttachments()) {
+        if (/\.pdf$/i.test(att.getName() || "")) {
+          attachment = att;
+          foundSubject = msg.getSubject();
+          break outer;
         }
-        setStatus("Paiement mis à jour", "ok");
-        AN.statsCache = {}; // les délais/KPI avancés doivent être recalculés
-        loadStats();
-        renderAll();
-      } catch (err) {
-        setStatus("Erreur paiement : " + err.message, "error");
-      } finally {
-        e.target.disabled = false;
       }
-    });
-  });
-}
-
-/* ---------------- Stats ---------------- */
-
-function renderStats() {
-  const root = document.getElementById("stats");
-  const s = state.serverStats;
-
-  // La période demandée. Le serveur renvoie « Toutes les saisons » quand
-  // aucun filtre n'est passé : c'est ce libellé qu'il faut comparer.
-  const periodeAttendue = state.selectedSeason || "Toutes les saisons";
-  const bonnePeriode = s && s.season === periodeAttendue;
-
-  if (!s || !s.totaux || s.totaux.missions === undefined || !bonnePeriode) {
-    // Statistiques absentes, ou calculées pour une autre saison que celle
-    // sélectionnée : on affiche le calcul local, juste par construction,
-    // et on redemande les statistiques serveur pour la bonne période.
-    root.innerHTML = renderStatsClient(s && !bonnePeriode ? s.season : null);
-    if (!state._statsEnAttente) {
-      state._statsEnAttente = true;
-      // Mauvaise période en cache : on va rechercher la bonne au serveur,
-      // sans repasser par le cache qui redonnerait la même réponse.
-      loadStats(!bonnePeriode);
-      setTimeout(() => { state._statsEnAttente = false; }, 8000);
     }
+  }
+
+  if (!attachment) {
+    Logger.log("Pas de PDF trouvé dans les 5 threads les plus récents avec pièce jointe.");
     return;
   }
 
-  const t = s.totaux, m = s.moyennes, rec = s.records;
+  Logger.log("Mail : " + foundSubject);
+  Logger.log("PDF : " + attachment.getName());
 
-  root.innerHTML = `
-    <h2 class="section-title">Bilan financier <span class="count">${escapeHtml(s.season)}</span></h2>
-    <div class="kpi-grid">
-      <div class="kpi hero">
-        <label>Revenu net réel (indemnités − carburant)</label>
-        <strong>${formatMoney(t.net_reel)}</strong>
-        <span class="sub">${t.missions} mission(s) · ${t.matchs5x5} en 5×5 · ${t.tournois3x3} en 3×3</span>
-      </div>
-      <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(t.indemnite_brute)}</strong></div>
-      <div class="kpi"><label>Coût carburant réel</label><strong>−${formatMoney(t.cout_reel_carburant)}</strong></div>
-      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(t.recu_total)}</strong><span class="sub">${t.nb_recu} paiement(s)</span></div>
-      <div class="kpi"><label>Reste à percevoir</label><strong>${formatMoney(t.a_recevoir_total)}</strong><span class="sub">${t.nb_a_recevoir} en attente</span></div>
-    </div>
+  let file;
+  try {
+    file = Drive.Files.create(
+      { name: "TEST_OCR_" + new Date().getTime(), mimeType: MimeType.GOOGLE_DOCS },
+      attachment.copyBlob(),
+      { ocr: true, ocrLanguage: "fr" }
+    );
 
-    <h2 class="section-title">Efficacité</h2>
-    <div class="kpi-grid">
-      <div class="kpi"><label>€ / km (indemnité)</label><strong>${money(m.eur_par_km)}</strong><span class="sub">0,40 €/km + match</span></div>
-      <div class="kpi"><label>€ / heure (net réel)</label><strong>${money(m.eur_par_heure_moyen)}</strong><span class="sub">trajet inclus</span></div>
-      <div class="kpi"><label>Coût réel / 100 km</label><strong>${money(m.cout_reel_par_100km)}</strong></div>
-      <div class="kpi"><label>KM total A/R</label><strong>${formatNumber(t.km_total_AR, " km")}</strong></div>
-      <div class="kpi"><label>Net moyen / mission</label><strong>${money(m.net_reel_par_mission)}</strong></div>
-      <div class="kpi"><label>Indemnité moy. 5×5</label><strong>${money(m.indemnite_par_5x5)}</strong></div>
-      <div class="kpi"><label>Indemnité moy. 3×3</label><strong>${money(m.indemnite_par_3x3)}</strong></div>
-      <div class="kpi"><label>Équiv. barème fiscal*</label><strong>${formatMoney(t.equivalent_bareme_fiscal)}</strong><span class="sub">info — non versé</span></div>
-    </div>
-    <div class="stat-note">* Le barème fiscal (chevaux fiscaux) est indicatif : la FFBB rembourse toujours 0,40 €/km, jamais au barème. ${s.note_3x3 ? escapeHtml(s.note_3x3) : ""}</div>
+    const doc = DocumentApp.openById(file.id);
+    const text = doc.getBody().getText();
 
-    ${renderRecords(rec)}
-    ${renderAggTable("Par saison", s.par_saison, "Saison")}
-    ${renderAggTable("Par mois", s.par_mois, "Mois")}
-    ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}
-    ${renderTop("Top clubs (5×5)", s.top_clubs)}
-    ${renderTop("Top salles (5×5)", s.top_salles)}
-    ${renderTop("Top villes", s.top_villes)}
-    ${renderTop("Top collègues (5×5)", s.top_collegues)}
-    ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
-  `;
-}
+    Logger.log("=== OCR RÉUSSI ===");
+    Logger.log(text.substring(0, 800));
 
-function renderRecords(rec) {
-  if (!rec) return "";
-  const items = [];
-  if (rec.plus_gros_deplacement) items.push(["Plus gros déplacement", `${rec.plus_gros_deplacement.km} km — ${rec.plus_gros_deplacement.lieu}`]);
-  if (rec.plus_grosse_indemnite) items.push(["Plus grosse indemnité", `${formatMoney(rec.plus_grosse_indemnite.montant)} — ${rec.plus_grosse_indemnite.lieu}`]);
-  if (rec.meilleur_net_reel) items.push(["Meilleur net réel", `${formatMoney(rec.meilleur_net_reel.net)} — ${rec.meilleur_net_reel.lieu}`]);
-  if (rec.pire_rentabilite_horaire) items.push(["Pire rentabilité horaire", `${money(rec.pire_rentabilite_horaire.eur_heure)}/h — ${rec.pire_rentabilite_horaire.lieu}`]);
-  if (!items.length) return "";
-  return `<h2 class="section-title">Records</h2><div class="kpi-grid">${items.map(([l, v]) =>
-    `<div class="kpi"><label>${escapeHtml(l)}</label><strong style="font-size:15px">${escapeHtml(v)}</strong></div>`).join("")}</div>`;
-}
+    DriveApp.getFileById(file.id).setTrashed(true);
 
-function renderAggTable(title, rows, keyLabel) {
-  if (!rows || !rows.length) return "";
-  return `
-    <h2 class="section-title">${escapeHtml(title)}</h2>
-    <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>${escapeHtml(keyLabel || "Clé")}</th><th class="num">Missions</th><th class="num">Indemnités</th><th class="num">Carburant</th><th class="num">Net réel</th><th class="num">KM</th></tr></thead>
-      <tbody>${rows.map(r => `<tr>
-        <td>${escapeHtml(r.label)}</td>
-        <td class="num">${r.count}</td>
-        <td class="num">${formatMoney(r.indemnite)}</td>
-        <td class="num">${formatMoney(r.cout_reel)}</td>
-        <td class="num pos">${formatMoney(r.net_reel)}</td>
-        <td class="num">${formatNumber(r.km, "")}</td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>`;
-}
+  } catch (e) {
+    Logger.log("=== OCR A ÉCHOUÉ ===");
+    Logger.log("Message : " + e.message);
+    Logger.log("Stack : " + (e.stack || "(non disponible)"));
+    Logger.log("");
+    Logger.log("Vérifie : Services (icône +) > Drive API doit apparaître dans la liste.");
+    Logger.log("Si absent : Services > Ajouter un service > Drive API > Ajouter.");
 
-function renderTop(title, rows) {
-  if (!rows || !rows.length) return "";
-  return `
-    <h2 class="section-title">${escapeHtml(title)}</h2>
-    <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Nom</th><th class="num">Nombre</th><th class="num">Indemnités</th><th class="num">Net réel</th></tr></thead>
-      <tbody>${rows.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
-    </table></div></div>`;
-}
-
-/* Calcul local, sur la saison réellement sélectionnée. Sert quand les
-   statistiques serveur manquent ou portent sur une autre période.
-   @param {string|null} periodeRecue  la période des stats serveur en mémoire,
-                                      si elle ne correspond pas à la sélection. */
-function renderStatsClient(periodeRecue) {
-  const periode = state.selectedSeason || "Toutes les saisons";
-  const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
-
-  const gross = rows.reduce((t, r) => t + r._amount, 0);
-  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
-  const km = rows.reduce((t, r) => t + (r._km || 0), 0);
-  const benevoles = rows.filter(r => r._benevole);
-  const cinq = rows.filter(r => r._format === "5x5").length;
-  const trois = rows.filter(r => r._format === "3x3").length;
-
-  const note = periodeRecue
-    ? `Les statistiques détaillées affichées par le serveur portaient sur « ${escapeHtml(periodeRecue)} ». Elles sont en cours de recalcul pour ${escapeHtml(periode)}.`
-    : "Statistiques détaillées en cours de chargement depuis le serveur…";
-
-  return `
-    <h2 class="section-title">Bilan financier <span class="count">${escapeHtml(periode)}</span></h2>
-    <div class="kpi-grid">
-      <div class="kpi hero">
-        <label>Revenu net réel (indemnités − carburant)</label>
-        <strong>${formatMoney(gross - cost)}</strong>
-        <span class="sub">${rows.length} mission(s) · ${cinq} en 5×5 · ${trois} en 3×3</span>
-      </div>
-      <div class="kpi"><label>Indemnités perçues</label><strong>${formatMoney(gross)}</strong></div>
-      <div class="kpi"><label>Carburant réel</label><strong>−${formatMoney(cost)}</strong></div>
-      <div class="kpi"><label>KM total A/R</label><strong>${formatNumber(km, " km")}</strong></div>
-      <div class="kpi"><label>€ / km</label><strong>${money(km > 0 ? gross / km : 0)}</strong></div>
-      <div class="kpi"><label>Net moyen / mission</label><strong>${money(rows.length ? (gross - cost) / rows.length : 0)}</strong></div>
-      ${benevoles.length ? `<div class="kpi"><label>Dont bénévolat</label><strong>${benevoles.length}</strong><span class="sub">mission(s) sans indemnité</span></div>` : ""}
-    </div>
-    <div class="stat-note">${note}</div>
-    <div style="margin:12px 4px">
-      <button class="small-btn secondary" id="btnRechargerStats">Recharger les statistiques</button>
-    </div>`;
-}
-
-/* ---------------- Alertes ---------------- */
-
-function renderAlertes() {
-  const root = document.getElementById("alertes");
-  const rows = state.filteredRows.filter(r =>
-    r._format === "Alerte" || hasWarning(r) || cleanText(get(r, "Statut paiement")) === "À vérifier"
-  ).sort(sortByDateAsc);
-  if (!rows.length) { root.innerHTML = empty("Aucune alerte pour cette saison."); return; }
-  root.innerHTML = `<h2 class="section-title">Alertes <span class="count">${rows.length}</span></h2><div class="cards">${rows.map(renderMatchCard).join("")}</div>`;
-  attachCardListeners(root);
-  attachPaymentListeners(root);
-}
-
-/* ---------------- Export ----------------
-   Filtres propres à l'onglet (saison + mois), indépendants de la barre
-   de recherche du haut : un export doit être reproductible à l'identique.
-   Mois vide = toute la saison.
-------------------------------------------- */
-
-function monthKeyOf(date) {
-  return date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` : "";
-}
-
-function monthLabelOf(key) {
-  const [y, m] = String(key).split("-").map(Number);
-  const label = new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-/* Les 12 mois d'une saison (août → juillet), plus tout mois réellement
-   présent dans les données qui sortirait de cette fenêtre. */
-function monthsOfSeason(season) {
-  const start = Number(String(season).split("/")[0]);
-  const keys = [];
-  for (let i = 0; i < 12; i++) keys.push(monthKeyOf(new Date(start, 7 + i, 1)));
-  state.allRows
-    .filter(r => r._season === season && r._date)
-    .forEach(r => { const k = monthKeyOf(r._date); if (keys.indexOf(k) === -1) keys.push(k); });
-  return keys.sort().map(k => ({ value: k, label: monthLabelOf(k) }));
-}
-
-function exportRows() {
-  return state.allRows
-    .filter(r => r._isActive && r._format !== "Alerte")
-    .filter(r => r._season === state.exportSeason)
-    .filter(r => !state.exportMonth || monthKeyOf(r._date) === state.exportMonth)
-    .slice()
-    .sort(sortByDateAsc);
-}
-
-function exportTotals(rows) {
-  const gross = rows.reduce((t, r) => t + r._amount, 0);
-  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
-  return {
-    gross, cost, net: gross - cost,
-    km: rows.reduce((t, r) => t + r._km, 0),
-    five: rows.filter(r => r._format === "5x5").length,
-    three: rows.filter(r => r._format === "3x3").length
-  };
-}
-
-/* Sur un document exporté, on veut la rencontre complète, pas seulement
-   le club recevant. Les 3×3 sont des événements : séparateur neutre. */
-function rencontreLabel(row) {
-  const recevant = get(row, "Recevant");
-  const adverse = get(row, "Visiteur / événement");
-  if (!recevant) return adverse;
-  if (!adverse) return recevant;
-  return `${recevant} ${row._format === "3x3" ? "—" : "vs"} ${adverse}`;
-}
-
-function exportPeriodLabel() {
-  return state.exportMonth ? monthLabelOf(state.exportMonth) : `Saison complète ${state.exportSeason}`;
-}
-
-function renderExport() {
-  const root = document.getElementById("export");
-
-  // Valeurs par défaut : la saison courante, tous les mois.
-  const seasons = getSeasonsFrom2022ToCurrent();
-  if (!state.exportSeason || seasons.indexOf(state.exportSeason) === -1) {
-    state.exportSeason = seasons.indexOf(state.selectedSeason) !== -1 ? state.selectedSeason : getCurrentSeason();
-  }
-  const months = monthsOfSeason(state.exportSeason);
-  if (state.exportMonth && !months.some(m => m.value === state.exportMonth)) state.exportMonth = "";
-
-  const rows = exportRows();
-  const t = exportTotals(rows);
-
-  root.innerHTML = `
-    <h2 class="section-title">Export PDF</h2>
-
-    <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
-      <div class="field">
-        <label for="exportSeasonSelect">Saison</label>
-        <select id="exportSeasonSelect">
-          ${seasons.map(s => `<option value="${s}"${s === state.exportSeason ? " selected" : ""}>${s}</option>`).join("")}
-        </select>
-      </div>
-      <div class="field">
-        <label for="exportMonthSelect">Mois</label>
-        <select id="exportMonthSelect">
-          <option value="">Toute la saison</option>
-          ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
-        </select>
-      </div>
-    </section>
-
-    <div class="kpi-grid" style="margin-top:14px">
-      <div class="kpi hero">
-        <label>Revenu net réel</label>
-        <strong>${formatMoney(t.net)}</strong>
-        <span class="sub">${escapeHtml(exportPeriodLabel())}</span>
-      </div>
-      <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(t.gross)}</strong></div>
-      <div class="kpi"><label>Coût carburant</label><strong>${formatMoney(t.cost)}</strong></div>
-      <div class="kpi"><label>Missions</label><strong>${rows.length}</strong><span class="sub">${t.five} en 5×5 · ${t.three} en 3×3</span></div>
-      <div class="kpi"><label>Kilomètres A/R</label><strong>${formatNumber(t.km, " km")}</strong></div>
-    </div>
-
-    <div class="actions" style="margin-top:14px">
-      <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>Générer le PDF</button>
-      <button class="small-btn secondary" type="button" id="copyExportBtn"${rows.length ? "" : " disabled"}>Copier en texte</button>
-    </div>
-
-    ${rows.length ? `
-    <div class="table-card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th>
-                <th class="num">Km</th><th class="num">Brut</th><th class="num">Carburant</th><th class="num">Net</th><th>Paiement</th></tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => {
-              const c = realFuelCostClient(r._km, r._date);
-              return `<tr>
-                <td>${escapeHtml(get(r, "Date match"))}</td>
-                <td>${escapeHtml(r._format)}</td>
-                <td>${escapeHtml(rencontreLabel(r))}</td>
-                <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
-                <td class="num">${formatNumber(r._km, "")}</td>
-                <td class="num">${formatMoney(r._amount)}</td>
-                <td class="num">${formatMoney(c)}</td>
-                <td class="num pos">${formatMoney(r._amount - c)}</td>
-                <td>${escapeHtml(get(r, "Statut paiement"))}</td>
-              </tr>`;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
-    </div>` : empty("Aucune mission pour cette période.")}
-  `;
-
-  document.getElementById("exportSeasonSelect").addEventListener("change", e => {
-    state.exportSeason = e.target.value;
-    state.exportMonth = ""; // les mois changent avec la saison
-    renderExport();
-  });
-  document.getElementById("exportMonthSelect").addEventListener("change", e => {
-    state.exportMonth = e.target.value;
-    renderExport();
-  });
-
-  const pdfBtn = document.getElementById("genPdfBtn");
-  if (pdfBtn) pdfBtn.addEventListener("click", generateExportPdf);
-
-  const copyBtn = document.getElementById("copyExportBtn");
-  if (copyBtn) copyBtn.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(buildExportText()); setStatus("Export copié", "ok"); }
-    catch { setStatus("Copie impossible — utilise le PDF", "error"); }
-  });
-}
-
-function buildExportText() {
-  const rows = exportRows();
-  const t = exportTotals(rows);
-  return [
-    `REFEREE TRACKER — EXPORT`,
-    `Saison : ${state.exportSeason}`,
-    `Période : ${exportPeriodLabel()}`,
-    ``,
-    `Indemnités brutes : ${formatMoney(t.gross)}`,
-    `Coût carburant réel : ${formatMoney(t.cost)}`,
-    `REVENU NET RÉEL : ${formatMoney(t.net)}`,
-    `KM total A/R : ${formatNumber(t.km, " km")}`,
-    `Matchs 5×5 : ${t.five} · Tournois 3×3 : ${t.three}`,
-    ``,
-    `Détail :`,
-    ...rows.map(r => {
-      const c = realFuelCostClient(r._km, r._date);
-      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
-    })
-  ].join("\n");
-}
-
-/* ---------------- Génération du PDF ----------------
-   jsPDF + autoTable, chargés depuis le CDN dans index.html.
-   Les polices PDF standard n'acceptent pas les espaces fines
-   insécables produites par toLocaleString : on les normalise.
------------------------------------------------------- */
-
-function pdfSafe(value) {
-  return String(value == null ? "" : value).replace(/[   ]/g, " ");
-}
-
-function generateExportPdf() {
-  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
-  if (!jsPDFCtor) {
-    setStatus("Bibliothèque PDF non chargée — recharge la page (Cmd+Maj+R)", "error");
-    return;
-  }
-
-  const rows = exportRows();
-  if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
-
-  const t = exportTotals(rows);
-  const doc = new jsPDFCtor({ orientation: "landscape", unit: "mm", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const navy = [10, 31, 68], gold = [245, 180, 0], grey = [91, 104, 132], green = [14, 123, 71];
-
-  // Bandeau de titre
-  doc.setFillColor(navy[0], navy[1], navy[2]);
-  doc.rect(0, 0, pageW, 26, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("REFEREE TRACKER", 12, 12);
-  doc.setTextColor(gold[0], gold[1], gold[2]);
-  doc.setFontSize(10);
-  doc.text(pdfSafe(`Arbitrage FFBB — ${exportPeriodLabel()}`), 12, 19);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.text(pdfSafe(`Édité le ${new Date().toLocaleDateString("fr-FR")}`), pageW - 12, 19, { align: "right" });
-
-  // Bandeau de synthèse
-  const summary = [
-    ["Revenu net réel", formatMoney(t.net), green],
-    ["Indemnités brutes", formatMoney(t.gross), navy],
-    ["Coût carburant", formatMoney(t.cost), [181, 89, 10]],
-    ["Missions", `${rows.length}  (${t.five} en 5x5 · ${t.three} en 3x3)`, navy],
-    ["Kilomètres A/R", formatNumber(t.km, " km"), navy]
-  ];
-  let x = 12;
-  const cellW = (pageW - 24) / summary.length;
-  summary.forEach(([label, value, color]) => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(grey[0], grey[1], grey[2]);
-    doc.text(pdfSafe(label.toUpperCase()), x, 35);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(color[0], color[1], color[2]);
-    doc.text(pdfSafe(value), x, 42);
-    x += cellW;
-  });
-  doc.setDrawColor(220, 227, 239);
-  doc.line(12, 46, pageW - 12, 46);
-
-  // Tableau détaillé
-  const body = rows.map(r => {
-    const c = realFuelCostClient(r._km, r._date);
-    return [
-      pdfSafe(get(r, "Date match")),
-      pdfSafe(get(r, "Heure/RDV")),
-      pdfSafe(r._format),
-      pdfSafe(rencontreLabel(r)),
-      pdfSafe(get(r, "Ville") || get(r, "Salle")),
-      pdfSafe(formatNumber(r._km, "")),
-      pdfSafe(formatMoney(r._amount)),
-      pdfSafe(formatMoney(c)),
-      pdfSafe(formatMoney(r._amount - c)),
-      pdfSafe(get(r, "Statut paiement"))
-    ];
-  });
-
-  doc.autoTable({
-    startY: 52,
-    head: [["Date", "Heure", "Format", "Rencontre", "Lieu", "Km", "Brut", "Carburant", "Net", "Paiement"]],
-    body: body,
-    foot: [["", "", "", "TOTAL", "", pdfSafe(formatNumber(t.km, "")), pdfSafe(formatMoney(t.gross)),
-            pdfSafe(formatMoney(t.cost)), pdfSafe(formatMoney(t.net)), ""]],
-    theme: "grid",
-    styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: [12, 23, 48], lineColor: [220, 227, 239] },
-    headStyles: { fillColor: navy, textColor: 255, fontStyle: "bold", fontSize: 8 },
-    footStyles: { fillColor: [242, 245, 251], textColor: navy, fontStyle: "bold" },
-    alternateRowStyles: { fillColor: [246, 248, 252] },
-    columnStyles: {
-      0: { cellWidth: 20 }, 1: { cellWidth: 15 }, 2: { cellWidth: 16 },
-      5: { halign: "right", cellWidth: 16 }, 6: { halign: "right", cellWidth: 22 },
-      7: { halign: "right", cellWidth: 22 }, 8: { halign: "right", cellWidth: 22, textColor: green },
-      9: { cellWidth: 26 }
-    },
-    margin: { left: 12, right: 12 },
-    didDrawPage: data => {
-      const page = doc.internal.getNumberOfPages();
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(grey[0], grey[1], grey[2]);
-      doc.text("Referee Tracker — net réel = indemnité versée moins coût carburant réel",
-        data.settings.margin.left, doc.internal.pageSize.getHeight() - 8);
-      doc.text(`Page ${page}`, pageW - 12, doc.internal.pageSize.getHeight() - 8, { align: "right" });
+    if (file && file.id) {
+      try { DriveApp.getFileById(file.id).setTrashed(true); } catch (ignore) {}
     }
-  });
-
-  const suffix = state.exportMonth || state.exportSeason.replace("/", "-");
-  doc.save(`referee-tracker-${suffix}.pdf`);
-  setStatus(`PDF généré — ${rows.length} mission(s)`, "ok");
+  }
 }
 
-/* ---------------- Coût carburant client ----------------
-   Doit rester cohérent avec le serveur (Code.gs) :
-   Peugeot 108 → 6,58 L/100 avant le 01/08/2026
-   Audi A3     → 6,00 L/100 à partir du 01/08/2026
-   Prix carburant : modifier FUEL ci-dessous ET dans Code.gs.
-------------------------------------------------------- */
-/* Historique du prix E10 (€/L, par mois) — doit rester identique à Code.gs.
-   Sources : archives officielles data.gouv.fr (stations à moins de 15 km du
-   domicile) ajustées de -0,058 €/L pour refléter les stations fréquentées,
-   et relevés réels des pleins d'août 2025 à juin 2026. */
-const PRIX_E10 = {
+const RT = (() => {
+  /*************** CONFIGURATION ***************/
+
+  const SPREADSHEET_ID = "1euFXtXS7vWVBHGKbY0Wv0X9M4uWwCuC04PmfReZgmFc";
+  const CALENDAR_ID = "14a0edc54f3b05223c45a259beed853a5013d248fe6ccf81de60bd4a8e4b6407@group.calendar.google.com";
+  const API_PRIVATE_KEY = "REFEREE_TRACKER_2026_PRIVATE";
+
+  const REFEREE_NAME_NORM = "REBHOLZ CLEMENT";
+  const REFEREE_EMAIL = "gabel.carine@orange.fr";
+
+  // MODIFICATION B — `var` et non `const` : _syncConfig_() les remplace par
+  // les valeurs saisies dans « Mon profil ». Ce qui suit sert de repli si
+  // Config.gs venait à manquer.
+  var START_ADDRESS = "14 Rue des Faisans, 67240 Kaltenhouse";
+  var START_COORDS = { lat: 48.8241, lon: 7.8069 }; // Kaltenhouse (fallback si géocodage indispo)
+  const FBI_URL = "https://extranet.ffbb.com/fbi/connexion.fbi";
+
+  // ===== VÉHICULES / CARBURANT (modifiable depuis « Mon profil ») =====
+  // Le taux FFBB (ce qui est REMBOURSÉ) est fixe : 0,40 €/km, sans lien avec les CV.
+  // Le coût RÉEL sert uniquement à calculer le bénéfice net réel.
+  var RATE_PER_KM_FFBB = 0.40;
+
+  // Prix du carburant par défaut, utilisé si aucune donnée historique ni temps réel.
+  var FUEL_PRICE_PER_L = 1.95;
+
+  // ===== HISTORIQUE DU PRIX E10 (€/L, par mois) =====
+  // Sources : archives officielles data.gouv.fr (prix relevés dans les
+  // 39-41 stations situées à moins de 15 km de Kaltenhouse), ajustées de
+  // -0,058 €/L pour refléter les stations réellement fréquentées, et
+  // relevés réels des pleins pour août 2025 → juin 2026.
+  // Un mois passé ne change plus : cette table est figée par construction,
+  // et reste volontairement dans le code — la rendre modifiable
+  // n'ouvrirait que la porte à une corruption de l'historique.
+  const PRIX_E10_HISTORIQUE = {
     // 2022
     "2022-01": 1.6281,
     "2022-02": 1.6986,
@@ -1273,1126 +439,2527 @@ const PRIX_E10 = {
     "2026-04": 1.995,
     "2026-05": 2.0273,
     "2026-06": 1.868
-};
+  };
 
-const PRIX_DEFAUT = 1.95;
+  // Prix relevé en temps réel (rempli par majPrixCarburantActuel_), utilisé
+  // pour les matchs à venir tant que leur date n'est pas passée.
+  const CACHE_PRIX_ACTUEL = "RT_PRIX_E10_ACTUEL";
 
-function prixCarburantPour(date) {
-  if (!date) return PRIX_DEFAUT;
-  const cle = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
-  if (PRIX_E10[cle]) return PRIX_E10[cle];
+  // Repli si Config.gs est absent. L'historique réel des véhicules vit
+  // désormais dans Config.gs, au format { nom, conso, cv, depuis }.
+  var VEHICLES = [
+    { name: "Peugeot 108", cutoverBefore: "2026-08-01", consoL100: 6.58, cv: 4 },
+    { name: "Audi A3 35 TFSI", consoL100: 6.0, cv: 8 }
+  ];
 
-  // Mois absent de la table : on prend le plus proche connu
-  const mois = Object.keys(PRIX_E10);
-  if (!mois.length) return PRIX_DEFAUT;
-  const num = c => { const p = String(c).split("-"); return Number(p[0]) * 12 + Number(p[1]); };
-  const cible = num(cle);
-  let proche = mois[0], ecartMin = Infinity;
-  mois.forEach(m => {
-    const e = Math.abs(num(m) - cible);
-    if (e < ecartMin) { ecartMin = e; proche = m; }
-  });
-  return PRIX_E10[proche];
-}
+  // Barème kilométrique fiscal 2025 (info seulement, JAMAIS utilisé pour l'indemnité) :
+  // d = distance annuelle. Ici on donne juste le coef "par km" simplifié par tranche CV
+  // pour un KPI indicatif "équivalent barème fiscal".
+  const BAREME_FISCAL_PAR_KM = { 3: 0.529, 4: 0.606, 5: 0.636, 6: 0.665, 7: 0.697, 8: 0.697 };
 
-function realFuelCostClient(km, date) {
-  const k = Number(km) || 0;
-  if (!k) return 0;
-  const cutover = new Date(2026, 7, 1);
-  const conso = (date && date >= cutover) ? 6.0 : 6.58;
-  return round2((k * conso / 100) * prixCarburantPour(date));
-}
+  // Lieux connus comme étant exclusivement 3x3 (pour les stats)
+  const LIEUX_3X3 = ["BASKET CENTER"];
 
-/* ---------------- Utils ---------------- */
+  // Durées forfaitaires (heures) pour le KPI €/heure — trajet ajouté dynamiquement
+  const DUREE_MATCH_H = { "5x5": 1.5, "3x3": 6, "default": 1.5 };
 
-function get(row, key) { return row && row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : ""; }
-function firstValue(row, keys) { for (const k of keys) { const v = get(row, k); if (v) return v; } return ""; }
-function hasWarning(row) { return Boolean(get(row, "Warning général") || get(row, "Warning finance") || get(row, "Warning FBI")); }
-function formatColleague(row) { const n = get(row, "Collègue nom"), r = get(row, "Collègue rôle"), p = get(row, "Collègue téléphone"); return n ? [n, r, p].filter(Boolean).join(" — ") : ""; }
-function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
-function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
+  // Usure/entretien du véhicule (pneus, vidanges, décote), hors carburant
+  // qui est déjà compté à part. Modifiable depuis « Mon profil » — n'est
+  // versé par personne, sert uniquement à calculer un "net réel tout
+  // compris" plus honnête.
+  var COUT_USURE_PAR_KM = 0.12;
 
-function setStatus(message, type) {
-  const bar = document.getElementById("statusBar");
-  bar.textContent = message;
-  bar.className = "status-bar show" + (type ? " " + type : "");
-  if (type === "ok") setTimeout(() => bar.classList.remove("show"), 2600);
-}
+  // kg de CO2 par litre d'E10 (SP95-E10) — valeur ADEME / Base Carbone.
+  const CO2_KG_PAR_LITRE_E10 = 2.28;
 
-function parseFrDate(value) {
-  if (!value) return null;
-  const s = String(value).trim();
-  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const d = new Date(s); return isNaN(d.getTime()) ? null : d;
-}
+  // Saison sportive : début (1er septembre) et fin (31 juillet), pour la projection.
+  const SAISON_DEBUT_MOIS = 9;  // septembre
+  const SAISON_FIN_MOIS = 7;    // juillet (bascule le 30/07, cf getSeasonStartYear_)
 
-function formatDateShort(date) { return date ? date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : ""; }
-function formatMoney(v) { return (Number(v) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }); }
-function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
-function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + suffix; }
-function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }
-function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
-function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
-function onlyDigits(v) { return String(v || "").replace(/[^\d+]/g, ""); }
-function escapeHtml(v) { return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
+  /**
+   * MODIFICATION B — recharge les réglages saisis dans « Mon profil ».
+   *
+   * Apps Script réévalue tout le script à chaque requête : un appel en
+   * début de traitement suffit à prendre en compte la dernière config.
+   * Si Config.gs est absent, on conserve les valeurs ci-dessus.
+   */
+  function _syncConfig_() {
+    if (typeof CFG === "undefined") return;
 
-function sortByDateAsc(a, b) { return (a._date ? a._date.getTime() : 0) - (b._date ? b._date.getTime() : 0); }
-function sortByDateDesc(a, b) { return sortByDateAsc(b, a); }
-function sortByPaymentThenDate(a, b) {
-  const pa = PAYMENT_STATUSES.indexOf(get(a, "Statut paiement")), pb = PAYMENT_STATUSES.indexOf(get(b, "Statut paiement"));
-  return pa !== pb ? pa - pb : sortByDateAsc(a, b);
-}
-function groupBy(rows, fn) { return rows.reduce((acc, r) => { const k = fn(r) || "Autre"; (acc[k] = acc[k] || []).push(r); return acc; }, {}); }
+    var c = CFG.tout();
 
-/* =====================================================
-   ONGLET ANALYSE — graphiques, diagrammes, KPI avancés
-   Ne touche pas à l'onglet Stats existant.
-   Utilise Chart.js (CDN) + les données déjà chargées.
-   ===================================================== */
+    RATE_PER_KM_FFBB  = c.tarifs.indemnite_km;
+    COUT_USURE_PAR_KM = c.tarifs.usure_km;
+    FUEL_PRICE_PER_L  = c.tarifs.carburant_defaut;
 
-const AN = {
-  charts: {},              // instances Chart.js, détruites avant re-render
-  VITESSE_MOY_KMH: 70,     // pour estimer le temps de route
-  DUREE_5X5_H: 1.5,        // temps sur place, match 5x5
-  DUREE_3X3_H: 6,          // temps sur place, tournoi 3x3
-  saison: "",              // saison choisie dans l'onglet Analyse ("" = auto)
-  statsCache: {},          // cache des stats serveur par saison (délais, régularité, etc.)
-  COLORS: {
-    navy: "#0A1F44", navyMid: "#1E4E9C", navyLight: "#6C93D6",
-    red: "#E4002B", gold: "#F5B400", green: "#0E7B47", orange: "#B5590A",
-    grid: "#E3EAF4", muted: "#5B6884"
-  }
-};
+    START_ADDRESS = [c.profil.adresse, c.profil.code_postal, c.profil.ville]
+                      .filter(String).join(", ");
+    START_COORDS  = { lat: c.profil.lat, lon: c.profil.lon };
 
-
-function renderAnalyse() {
-  const root = document.getElementById("analyse");
-  if (!root) return;
-
-  destroyCharts();
-
-  // Toutes les lignes actives, sans filtre de saison : le filtrage se fait
-  // ensuite via le sélecteur propre à cet onglet.
-  const toutes = analyseRowsToutesSaisons();
-
-  if (!toutes.length) {
-    root.innerHTML = empty("Aucune mission à analyser. Vide la recherche ou vérifie le chargement des données.");
-    return;
-  }
-
-  // Saison retenue pour l'ensemble de l'onglet Analyse
-  AN.saison = resoudreSaison_(AN.saison, toutes);
-  const rows = filtrerParSaison_(toutes, AN.saison);
-
-  if (!rows.length) {
-    root.innerHTML = `
-      <div class="analysis-toolbar">
-        <div class="chart-filter">
-          <label for="saisonAnalyse">Saison analysée</label>
-          <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
-        </div>
-      </div>
-      ${empty("Aucune mission pour cette saison.")}
-    `;
-    brancherSelecteurAnalyse_();
-    return;
-  }
-
-  const sum = (k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0);
-
-  const brut = sum("_brut");
-  const carburant = sum("_carburant");
-  const net = round2(brut - carburant);
-  const kmTotal = sum("_km");
-  const heuresRoute = sum("_heuresRoute");
-  const heuresTotal = sum("_heuresTotal");
-  const partGardee = brut > 0 ? (net / brut) * 100 : 0;
-
-  const five = rows.filter(r => r._format === "5x5");
-  const three = rows.filter(r => r._format === "3x3");
-
-  const eurHeureGlobal = heuresTotal > 0 ? net / heuresTotal : 0;
-  const eurKmGlobal = kmTotal > 0 ? brut / kmTotal : 0;
-  const nonPayes = rows.filter(r => !r._paye);
-  const montantDu = nonPayes.reduce((t, r) => t + r._brut, 0);
-
-  root.innerHTML = `
-    <div class="analysis-toolbar">
-      <div class="chart-filter">
-        <label for="saisonAnalyse">Saison analysée</label>
-        <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
-      </div>
-      <div class="toolbar-summary">${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div>
-    </div>
-
-    ${renderAnalyseHero(brut, carburant, net, partGardee, rows.length, kmTotal, heuresTotal)}
-
-    <div id="analyseAvancee">${empty("Chargement des analyses avancées…")}</div>
-
-    <h2 class="section-title">Indicateurs clés</h2>
-    <div class="kpi-grid">
-      ${kpi("Net par mission", money(net / rows.length))}
-      ${kpi("Net par heure", money(eurHeureGlobal), "trajet + temps sur place")}
-      ${kpi("Indemnité par km", money(eurKmGlobal))}
-      ${kpi("Temps sur la route", formatHeures(heuresRoute), `sur ${formatHeures(heuresTotal)} au total`)}
-      ${kpi("Distance parcourue", formatNumber(kmTotal, " km"), `${formatNumber(kmTotal / rows.length, " km")} par mission`)}
-      ${kpi("Part absorbée par le carburant", (100 - partGardee).toFixed(1) + " %")}
-      ${kpi("Reste à percevoir", formatMoney(montantDu), `${nonPayes.length} mission(s)`)}
-      ${kpi("Litres consommés", formatNumber(litresTotal(rows), " L"))}
-    </div>
-
-    <h2 class="section-title">Évolution mensuelle</h2>
-    <div class="chart-card">
-      <h3>Ce que rapporte chaque mois</h3>
-      <p class="hint">Mois classés dans l'ordre de la saison sportive, de septembre à juillet. Barres empilées : la part nette conservée et la part partie en carburant. La ligne montre le nombre de missions.</p>
-      <div class="chart-box tall"><canvas id="chartMois"></canvas></div>
-      ${insightMois(rows)}
-    </div>
-
-    <div class="chart-grid two">
-      <div class="chart-card">
-        <h3>Répartition 5×5 / 3×3</h3>
-        <p class="hint">Part de chaque format dans le revenu net.</p>
-        <div class="chart-box small"><canvas id="chartFormat"></canvas></div>
-        ${insightFormat(five, three)}
-      </div>
-      <div class="chart-card">
-        <h3>Net réel par niveau</h3>
-        <p class="hint">Où se concentre réellement le gain.</p>
-        <div class="chart-box small"><canvas id="chartNiveau"></canvas></div>
-      </div>
-    </div>
-
-    <h2 class="section-title">Public arbitré</h2>
-    <div class="chart-grid two">
-      <div class="chart-card">
-        <h3>Masculin / Féminin / Mixte</h3>
-        <p class="hint">Répartition des missions selon le genre de la compétition.</p>
-        <div class="chart-box small"><canvas id="chartGenre"></canvas></div>
-        ${insightGenre(rows)}
-      </div>
-      <div class="chart-card">
-        <h3>Par catégorie d'âge</h3>
-        <p class="hint">Des U11 aux séniors : où se situe le gros de ton activité.</p>
-        <div class="chart-box small"><canvas id="chartCategorie"></canvas></div>
-      </div>
-    </div>
-
-    <h2 class="section-title">Rentabilité du déplacement</h2>
-    <div class="chart-card">
-      <h3>Distance et rentabilité horaire</h3>
-      <p class="hint">Chaque point est une mission : distance parcourue en abscisse, gain net par heure en ordonnée. Plus un point est bas et à droite, moins la mission est rentable.</p>
-      <div class="chart-box tall"><canvas id="chartNuage"></canvas></div>
-      ${insightRentabilite(rows)}
-    </div>
-
-    <div class="chart-card">
-      <h3>Rentabilité par tranche de distance</h3>
-      <p class="hint">Gain net moyen par heure selon l'éloignement de la salle.</p>
-      <div class="chart-box"><canvas id="chartTranches"></canvas></div>
-      ${insightTranches(rows)}
-    </div>
-
-    <h2 class="section-title">Où va l'argent</h2>
-    ${renderClassementRentabilite(rows)}
-
-    <div class="chart-card">
-      <h3>Suivi des encaissements</h3>
-      <p class="hint">Montants perçus et restant dus, mois par mois.</p>
-      <div class="chart-box"><canvas id="chartPaiements"></canvas></div>
-      ${insightPaiements(rows)}
-    </div>
-
-    <div class="stat-note">
-      Temps estimé : ${AN.VITESSE_MOY_KMH} km/h de moyenne sur la route,
-      ${AN.DUREE_5X5_H} h sur place en 5×5, ${AN.DUREE_3X3_H} h en 3×3.
-      Le coût carburant ne comprend ni l'usure, ni l'entretien, ni l'assurance.
-    </div>
-  `;
-
-  // Les graphiques se construisent après l'injection du HTML
-  buildChartMois(rows);
-  buildChartFormat(five, three);
-  buildChartNiveau(rows);
-  buildChartGenre(rows);
-  buildChartCategorie(rows);
-  buildChartNuage(rows);
-  buildChartTranches(rows);
-  buildChartPaiements(rows);
-
-  brancherSelecteurAnalyse_();
-  chargerStatsAvancees(AN.saison);
-}
-
-/* ---------- Stats avancées (calculées côté serveur) ----------
-   Délais de paiement, régularité, fidélité géographique, projection de
-   fin de saison, classement de rentabilité. Chargées à part de action=stats
-   car elles ont leur propre sélecteur de saison (AN.saison), indépendant
-   du sélecteur global en haut de page. Mises en cache par saison pour
-   éviter de re-télécharger à chaque clic d'onglet. */
-
-function chargerStatsAvancees(saison) {
-  if (AN.statsCache[saison]) {
-    injecterStatsAvancees(AN.statsCache[saison]);
-    return;
-  }
-
-  jsonp("stats", { season: saison })
-    .then(res => {
-      if (!res.success) throw new Error(res.error || "Erreur API");
-      AN.statsCache[saison] = res.stats;
-      // Si l'utilisateur a changé de saison entre-temps, ne pas injecter une réponse périmée
-      if (AN.saison === saison) injecterStatsAvancees(res.stats);
-    })
-    .catch(err => {
-      const el = document.getElementById("analyseAvancee");
-      if (el) el.innerHTML = `<div class="insight warn">Analyses avancées indisponibles : ${escapeHtml(err.message)}</div>`;
+    VEHICLES = c.vehicules.map(function (v) {
+      return { name: v.nom, consoL100: v.conso, cv: v.cv, depuis: v.depuis };
     });
-}
-
-function injecterStatsAvancees(stats) {
-  const el = document.getElementById("analyseAvancee");
-  if (!el) return;
-  el.innerHTML = renderStatsAvancees(stats);
-  buildChartJourSemaine(stats);
-}
-
-/* Le bouton « Recharger les statistiques » du repli local. */
-document.addEventListener("click", function (e) {
-  if (e.target && e.target.id === "btnRechargerStats") {
-    state._statsEnAttente = false;
-    state.serverStats = null;
-    setStatus("Recalcul des statistiques…", "");
-    loadStats(true);
-    setTimeout(renderStats, 1200);
   }
-});
 
-function renderStatsAvancees(stats) {
-  const cc = stats.cout_complet || {};
-  const emp = stats.empreinte || {};
-  const dp = stats.delais_paiement || {};
-  const reg = stats.regularite || {};
-  const fid = stats.fidelite_geographique || {};
-  const proj = stats.projection_saison || null;
-  const classement = stats.classement_rentabilite || { top: [], bottom: [] };
+  const SHEET_MATCHS = "MATCHS";
+  const SHEET_LOGS = "LOGS";
+  const SHEET_PROCESSED = "PROCESSED_MESSAGES";
 
-  return `
-    <h2 class="section-title">Coût réel complet</h2>
-    <div class="kpi-grid">
-      ${kpi("Net réel (carburant seul)", formatMoney(stats.totaux ? stats.totaux.net_reel : 0))}
-      ${kpi("Usure & entretien estimés", "−" + formatMoney(cc.cout_usure_total), cc.cout_usure_par_km + " €/km")}
-      ${kpi("Net réel tout compris", formatMoney(cc.net_reel_tout_compris), "carburant + usure déduits")}
-      ${kpi("Distance d'équilibre", cc.km_equilibre ? formatNumber(cc.km_equilibre, " km") : "—", "au-delà, le trajet mange plus qu'il ne rapporte en moyenne")}
-    </div>
-    ${proj ? renderProjection(proj) : ""}
+  const LABEL_TRAITE = "RefereeTracker_Traite";
+  const LABEL_A_VERIFIER = "RefereeTracker_A_Verifier";
+  const LABEL_ANOMALIE = "RefereeTracker_Anomalie";
 
-    <h2 class="section-title">Délais de paiement réels</h2>
-    ${dp.par_type && dp.par_type.length ? `
-      <div class="kpi-grid">
-        ${kpi("Délai moyen constaté", dp.delai_moyen_jours !== null ? dp.delai_moyen_jours + " j" : "—", "entre la date prévue et la réception")}
-        ${kpi("Paiements avec délai connu", dp.nb_avec_delai_connu)}
-      </div>
-      <div class="table-card"><div class="table-wrap"><table>
-        <thead><tr><th>Type de paiement</th><th class="num">Paiements</th><th class="num">Délai moyen</th><th class="num">En retard</th></tr></thead>
-        <tbody>${dp.par_type.map(t => `<tr>
-          <td>${escapeHtml(t.label)}</td>
-          <td class="num">${t.nb_paiements}</td>
-          <td class="num">${t.delai_moyen_jours >= 0 ? t.delai_moyen_jours + " j" : t.delai_moyen_jours + " j (anticipé)"}</td>
-          <td class="num">${t.nb_en_retard}</td>
-        </tr>`).join("")}</tbody>
-      </table></div></div>
-      ${dp.note ? `<div class="insight warn">${escapeHtml(dp.note)}</div>` : ""}
-    ` : `<div class="insight">Pas encore assez de paiements avec date de réception fiable pour calculer un délai. Ça s'affinera au fil des validations de paiement.</div>`}
+  const MATCH_HEADERS = [
+    "UID", "Source", "Format", "Saison", "Statut", "Date match", "Heure/RDV",
+    "Niveau administratif", "Type compétition", "Code compétition", "Libellé compétition",
+    "Genre", "Catégorie d'âge",
+    "N° rencontre", "Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville",
+    "Code e-Marque", "Mon rôle", "Collègue nom", "Collègue rôle", "Collègue téléphone",
+    "Référent 3x3", "Observateur", "Km A/R stats", "Indemnité totale", "Indemnisé par",
+    "Paiement Type", "Date paiement", "Statut paiement", "Date réception", "Montant reçu",
+    "Warning général", "Warning finance", "Warning FBI", "Agenda Event ID", "Dernière MAJ",
+    "Sujet mail", "Gmail Message ID"
+  ];
 
-    <h2 class="section-title">Empreinte carbone</h2>
-    <div class="kpi-grid">
-      ${kpi("CO₂ émis", formatNumber(emp.co2_kg, " kg"))}
-      ${kpi("Carburant consommé", formatNumber(emp.litres_consommes, " L"))}
-      ${kpi("Équivalent pleins (50 L)", formatNumber(emp.equivalent_pleins_50l, ""))}
-    </div>
+  const PROCESSED_HEADERS = ["Date traitement", "Processing Key", "Gmail Message ID", "UID", "Statut traitement", "Sujet"];
+  /* "Bénévole" : match arbitré gratuitement, en accord avec le club recevant.
+     Aucune indemnité n'est due — la ligne ne doit donc jamais apparaître
+     dans ce qui reste à encaisser ni dans les retards de paiement. */
+  const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
 
-    <h2 class="section-title">Régularité</h2>
-    ${reg.mois_analyses >= 2 ? `
-      <div class="kpi-grid">
-        ${kpi("Variation mensuelle", reg.coefficient_variation !== null ? reg.coefficient_variation + " %" : "—", "plus c'est bas, plus les revenus sont réguliers")}
-        ${kpi("Jour dominant", reg.jour_dominant || "—")}
-        ${kpi("Mois analysés", reg.mois_analyses)}
-      </div>
-      <div class="chart-card">
-        <h3>Répartition par jour de la semaine</h3>
-        <p class="hint">Nombre de missions et net réel cumulé selon le jour.</p>
-        <div class="chart-box small"><canvas id="chartJourSemaine"></canvas></div>
-      </div>
-    ` : `<div class="insight">Pas assez de mois différents sur cette saison pour mesurer la régularité.</div>`}
+  // Statuts de paiement rangés par "niveau d'avancement" — sert à ne jamais
+  // rétrograder un paiement suite au retraitement d'une convocation modificative.
+  const PAYMENT_RANK = { "À vérifier": 0, "À recevoir": 1, "Écart à vérifier": 1, "Reçu": 2, "Bénévole": 2 };
 
-    <h2 class="section-title">Fidélité géographique</h2>
-    ${fid.salles_distinctes ? `
-      <div class="kpi-grid">
-        ${kpi("Salles distinctes (5×5)", fid.salles_distinctes)}
-        ${kpi("Villes distinctes", fid.villes_distinctes)}
-        ${kpi("Indice de concentration", fid.indice_concentration + " / 100", "bas = très dispersé, haut = toujours les mêmes salles")}
-        ${kpi("Salle principale", fid.salle_principale || "—", fid.part_salle_principale ? fid.part_salle_principale + " % des missions" : "")}
-      </div>
-    ` : `<div class="insight">Pas de match 5×5 sur cette saison.</div>`}
+  /*************** CACHE DES RÉPONSES API ***************/
+  // Chaque appel relisait toute la feuille MATCHS — deux fois pour les stats.
+  // On garde le résultat en cache 6 h, invalidé par un numéro de version :
+  // toute écriture l'incrémente, les anciennes entrées deviennent
+  // inatteignables et expirent seules. Impossible de servir du périmé.
+  //
+  // CacheService plafonne à 100 Ko par clé : on découpe en tranches.
 
-    <h2 class="section-title">Score de rentabilité des convocations</h2>
-    <p class="hint" style="margin:-4px 4px 10px">Score sur 100 basé sur le gain net par heure (trajet inclus), relatif aux autres missions de la période. 100 = la plus rentable, 0 = la moins rentable.</p>
-    ${classement.top.length ? `
-      <div class="chart-grid two">
-        <div class="chart-card">
-          <h3>Top 5 des convocations</h3>
-          ${renderClassementScore(classement.top, true)}
-        </div>
-        <div class="chart-card">
-          <h3>Les 5 moins rentables</h3>
-          ${renderClassementScore(classement.bottom, false)}
-        </div>
-      </div>
-    ` : `<div class="insight">Pas assez de missions avec distance connue pour établir un classement.</div>`}
-  `;
-}
+  const CACHE_VERSION_KEY = "RT_CACHE_V";
+  const CACHE_TTL = 21600;          // 6 h, le maximum autorisé
+  const CACHE_CHUNK = 90000;        // marge sous la limite de 100 Ko
+  var _cacheDejaInvalide = false;   // remis à false à chaque exécution
 
-function renderProjection(proj) {
-  return `
-    <div class="analysis-hero" style="margin-top:14px;padding:18px 20px">
-      <div class="eyebrow">Projection fin de saison ${escapeHtml(proj.saison)} · ${proj.pourcentage_saison_ecoule.toFixed(0)} % écoulés</div>
-      <div class="big" style="font-size:32px">${formatMoney(proj.net_reel_projete_fin_saison)}</div>
-      <div class="breakdown">
-        <span><b>${formatMoney(proj.net_reel_actuel)}</b> déjà net</span>
-        <span><b>${proj.missions_actuelles}</b> missions faites</span>
-        <span>~<b>${proj.missions_projetees_fin_saison}</b> missions projetées</span>
-      </div>
-    </div>
-  `;
-}
+  function _cacheVersion_() {
+    try { return PropertiesService.getScriptProperties().getProperty(CACHE_VERSION_KEY) || "1"; }
+    catch (e) { return "1"; }
+  }
 
-function renderClassementScore(items, positif) {
-  return items.map(it => `
-    <div class="rank-row">
-      <div class="rank-name">
-        <div class="label">${escapeHtml(it.lieu)} · ${escapeHtml(it.date)}</div>
-        <div class="meter"><i style="width:${it.score}%; background:${positif ? "var(--green)" : "var(--red)"}"></i></div>
-      </div>
-      <div class="rank-count">${formatNumber(it.km, " km")}</div>
-      <div class="rank-value ${it.net_reel < 0 ? "neg" : ""}">${money(it.eur_heure)}/h</div>
-    </div>
-  `).join("");
-}
+  /** Rend inatteignable tout ce qui a été mis en cache jusqu'ici. */
+  function _cacheInvalider_() {
+    if (_cacheDejaInvalide) return;   // une seule fois par exécution
+    try {
+      const p = PropertiesService.getScriptProperties();
+      p.setProperty(CACHE_VERSION_KEY, String(Number(_cacheVersion_()) + 1));
+      _cacheDejaInvalide = true;
+    } catch (e) { /* le cache n'est qu'une optimisation, jamais bloquant */ }
+  }
 
-function buildChartJourSemaine(stats) {
-  const c = ctx("chartJourSemaine"); if (!c || typeof Chart === "undefined") return;
-  const reg = stats.regularite || {};
-  const jours = reg.repartition_jours || [];
-  if (!jours.length) return;
+  function _cacheLire_(nom) {
+    try {
+      const c = CacheService.getScriptCache();
+      const cle = nom + ":" + _cacheVersion_();
+      const nb = c.get(cle + ":n");
+      if (!nb) return null;
 
-  const ordre = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-  const tries = [...jours].sort((a, b) => ordre.indexOf(a.label) - ordre.indexOf(b.label));
+      const clesTranches = [];
+      for (var i = 0; i < Number(nb); i++) clesTranches.push(cle + ":" + i);
 
-  if (AN.charts.jourSemaine) { try { AN.charts.jourSemaine.destroy(); } catch (e) {} }
+      const tranches = c.getAll(clesTranches);
+      let json = "";
+      for (var j = 0; j < Number(nb); j++) {
+        const t = tranches[cle + ":" + j];
+        if (t === undefined || t === null) return null;   // tranche expirée : on repart du Sheet
+        json += t;
+      }
+      return JSON.parse(json);
+    } catch (e) { return null; }
+  }
 
-  AN.charts.jourSemaine = new Chart(c, {
-    data: {
-      labels: tries.map(j => j.label),
-      datasets: [
-        { type: "bar", label: "Missions", data: tries.map(j => j.count), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, yAxisID: "y" },
-        { type: "line", label: "Net réel", data: tries.map(j => j.net_reel), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
-      ]
-    },
-    options: {
-      ...chartBase,
-      scales: {
-        x: chartBase.scales.x,
-        y: { ...chartBase.scales.y, precision: 0 },
-        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold } }
-      },
-      plugins: {
-        ...chartBase.plugins,
-        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => i.dataset.label === "Missions" ? `${i.parsed.y} mission(s)` : money(i.parsed.y) } }
+  function _cacheEcrire_(nom, valeur) {
+    try {
+      const c = CacheService.getScriptCache();
+      const cle = nom + ":" + _cacheVersion_();
+      const json = JSON.stringify(valeur);
+
+      const paquet = {};
+      let nb = 0;
+      for (var i = 0; i < json.length; i += CACHE_CHUNK) {
+        paquet[cle + ":" + nb] = json.substring(i, i + CACHE_CHUNK);
+        nb++;
+      }
+      if (nb > 40) return valeur;   // volume anormal : on ne met pas en cache
+
+      paquet[cle + ":n"] = String(nb);
+      c.putAll(paquet, CACHE_TTL);
+    } catch (e) { /* silencieux */ }
+    return valeur;
+  }
+
+  /*************** FONCTIONS PUBLIQUES ***************/
+
+  function setup() {
+    ensureLabels_();
+    ensureSheets_();
+    log_("SETUP", "Installation terminée");
+  }
+
+  function auto() {
+    setup();
+
+    ScriptApp.getProjectTriggers().forEach(t => {
+      if (t.getHandlerFunction() === "testMailInstant") ScriptApp.deleteTrigger(t);
+    });
+
+    ScriptApp.newTrigger("testMailInstant").timeBased().everyMinutes(10).create();
+
+    // Prix du carburant : une fois par semaine suffit (il bouge lentement)
+    ScriptApp.getProjectTriggers().forEach(t => {
+      if (t.getHandlerFunction() === "majPrixCarburant") ScriptApp.deleteTrigger(t);
+    });
+    ScriptApp.newTrigger("majPrixCarburant").timeBased().everyWeeks(1).onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(6).create();
+
+    majPrixCarburantActuel_();  // première récupération immédiate
+
+    log_("AUTO", "Déclencheurs installés : mails toutes les 10 min, prix carburant chaque lundi");
+  }
+
+  function testMailInstant() {
+    _syncConfig_();   // MODIFICATION B
+
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) {
+      log_("LOCK", "Traitement déjà en cours");
+      return;
+    }
+
+    try {
+      setup();
+      const processedKeys = getProcessedKeys_();
+      const threads = GmailApp.search("newer_than:2000d", 0, 100);
+
+      let processed = 0, skipped = 0, warnings = 0, errors = 0;
+
+      for (const thread of threads) {
+        const result = processThread_(thread, processedKeys);
+        processed += result.processed;
+        skipped += result.skipped;
+        warnings += result.warnings;
+        errors += result.errors;
+      }
+
+      log_("TEST/PROCESS", `${processed} élément(s) traité(s), ${skipped} déjà traité(s), ${warnings} warning(s), ${errors} erreur(s)`);
+    } catch (e) {
+      log_("ERREUR", e.stack || e.message);
+      throw e;
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /**
+   * Conservée à l'identique. N'est plus atteignable depuis l'extérieur :
+   * seul doPost (Auth.gs) l'appelle, après vérification du jeton de session,
+   * en lui fournissant la clé API côté serveur.
+   */
+  function doGet(e) {
+    _syncConfig_();   // MODIFICATION B
+
+    const params = e && e.parameter ? e.parameter : {};
+    const callback = params.callback || "";
+
+    try {
+      if (params.key !== API_PRIVATE_KEY) return apiResponse_({ success: false, error: "Clé API invalide" }, callback);
+
+      const action = params.action || "matchs";
+      if (action === "ping") return apiResponse_({ success: true, message: "pong", date: new Date() }, callback);
+      if (action === "matchs") return apiResponse_({ success: true, data: getMatchsForApi_() }, callback);
+      if (action === "stats") return apiResponse_({ success: true, stats: buildStatsForApi_(params.season || "") }, callback);
+      if (action === "config") {
+        return apiResponse_({
+          success: true,
+          config: {
+            start_address: START_ADDRESS,
+            rate_per_km_ffbb: RATE_PER_KM_FFBB,
+            fuel_price_per_l: FUEL_PRICE_PER_L,
+            // Prix E10 temps réel relevé autour du domicile. Le front s'en sert
+            // pour valoriser les matchs à venir exactement comme le serveur :
+            // sans lui, les deux calculs divergent sur toute la saison en cours.
+            prix_e10_actuel: lirePrixActuel_() || FUEL_PRICE_PER_L,
+            vehicles: VEHICLES,
+            lieux_3x3: LIEUX_3X3
+          }
+        }, callback);
+      }
+      if (action === "updatePaymentStatus") {
+        return apiResponse_({ success: true, result: updatePaymentStatusForApi_(params.uid, params.status) }, callback);
+      }
+      return apiResponse_({ success: false, error: "Action inconnue" }, callback);
+    } catch (err) {
+      return apiResponse_({ success: false, error: err.message, stack: err.stack }, callback);
+    }
+  }
+
+  /*************** GMAIL ***************/
+
+  function processThread_(thread, processedKeys) {
+    let processed = 0, skipped = 0, warnings = 0, errors = 0;
+    let threadHasProcessed = false, threadHasWarning = false, threadHasError = false;
+
+    const messages = thread.getMessages();
+
+    for (const message of messages) {
+      const messageId = message.getId();
+      const subject = message.getSubject() || "";
+      const body = getMessageText_(message);
+
+      const attachments = message.getAttachments({ includeInlineImages: false, includeAttachments: true });
+      let pdfCount = 0;
+
+      for (let i = 0; i < attachments.length; i++) {
+        const att = attachments[i];
+        const name = att.getName() || `attachment_${i}`;
+        const contentType = String(att.getContentType() || "").toLowerCase();
+        const isPdf = /\.pdf$/i.test(name) || contentType.includes("pdf");
+        if (!isPdf) continue;
+
+        pdfCount++;
+        const processingKey = `${messageId}::PDF::${i}::${name}::${att.getSize()}`;
+        if (processedKeys.has(processingKey)) { skipped++; continue; }
+
+        try {
+          const pdfText = extractPdfText_(att.copyBlob().setName(name));
+          const result = processTextSource_(pdfText, subject, messageId, "PDF", name);
+          markProcessed_(processingKey, messageId, result.uid, result.status, subject);
+          processedKeys.add(processingKey);
+          processed++;
+          threadHasProcessed = true;
+          if (result.warning) { warnings++; threadHasWarning = true; }
+        } catch (e) {
+          errors++; threadHasError = true; threadHasProcessed = true;
+          const alertRow = buildAlertRow_({ subject, body, messageId, warning: `PDF non reconnu ou erreur OCR (${name}) : ${e.message}` });
+          upsertMatch_(alertRow);
+          markProcessed_(processingKey, messageId, alertRow["UID"], "ANOMALIE", subject);
+          processedKeys.add(processingKey);
+          log_("PDF_ERROR", e.stack || e.message);
+        }
+      }
+
+      if (pdfCount === 0) {
+        const processingKey = `${messageId}::BODY`;
+        if (processedKeys.has(processingKey)) { skipped++; continue; }
+
+        try {
+          const result = processTextSource_(body, subject, messageId, "MAIL", "");
+          markProcessed_(processingKey, messageId, result.uid, result.status, subject);
+          processedKeys.add(processingKey);
+          processed++;
+          threadHasProcessed = true;
+          if (result.warning) { warnings++; threadHasWarning = true; }
+        } catch (e) {
+          errors++; threadHasError = true; threadHasProcessed = true;
+          const alertRow = buildAlertRow_({ subject, body, messageId, warning: "Erreur traitement mail : " + e.message });
+          upsertMatch_(alertRow);
+          markProcessed_(processingKey, messageId, alertRow["UID"], "ANOMALIE", subject);
+          processedKeys.add(processingKey);
+          log_("MAIL_ERROR", e.stack || e.message);
+        }
       }
     }
-  });
-}
 
-/* ---------- Filtre de saison propre à l'onglet Analyse ---------- */
+    if (threadHasProcessed) {
+      if (threadHasError) thread.addLabel(GmailApp.getUserLabelByName(LABEL_ANOMALIE));
+      else if (threadHasWarning) thread.addLabel(GmailApp.getUserLabelByName(LABEL_A_VERIFIER));
+      else thread.addLabel(GmailApp.getUserLabelByName(LABEL_TRAITE));
+    }
 
-/* Toutes les missions actives, indépendamment du filtre de saison global :
-   l'onglet Analyse a son propre sélecteur. La recherche texte reste appliquée. */
-function analyseRowsToutesSaisons() {
-  const q = state.search;
-  return state.allRows
-    .filter(r => r._isActive && r._format !== "Alerte")
-    .filter(r => {
-      if (!q) return true;
-      const hay = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville", "Collègue nom", "Libellé compétition", "Niveau administratif", "Code compétition"]
-        .map(k => get(r, k)).join(" ").toLowerCase();
-      return hay.includes(q);
-    })
-    .map(enrichirPourAnalyse_);
-}
+    return { processed, skipped, warnings, errors };
+  }
 
-function enrichirPourAnalyse_(r) {
-  const km = r._km || 0;
-  const brut = r._amount || 0;
-  const carburant = realFuelCostClient(km, r._date);
-  const net = round2(brut - carburant);
+  function processTextSource_(text, subject, messageId, sourceType, sourceName) {
+    const full = clean_(subject + " " + text);
 
-  const heuresRoute = km ? km / AN.VITESSE_MOY_KMH : 0;
-  const heuresSurPlace = r._format === "3x3" ? AN.DUREE_3X3_H : AN.DUREE_5X5_H;
-  const heuresTotal = heuresRoute + heuresSurPlace;
+    if (is3x3Text_(full)) {
+      const row = parse3x3Convocation_(subject, text, messageId, sourceType, sourceName);
+      const rowNumber = upsertMatch_(row);
+      updateCalendarForRow_(row, rowNumber);
+      return { uid: row["UID"], status: row["Warning général"] || row["Warning finance"] ? "A_VERIFIER" : "TRAITE", warning: Boolean(row["Warning général"] || row["Warning finance"]) };
+    }
 
-  return {
-    ...r,
-    _km: km, _brut: brut, _carburant: carburant, _net: net,
-    _heuresRoute: round2(heuresRoute),
-    _heuresSurPlace: heuresSurPlace,
-    _heuresTotal: round2(heuresTotal),
-    _eurHeure: heuresTotal > 0 ? round2(net / heuresTotal) : 0,
-    _eurKm: km > 0 ? round2(brut / km) : 0,
-    _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
-    _paye: get(r, "Statut paiement") === "Reçu",
-    // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
-    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition")),
-    _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
-  };
-}
+    if (/N°\s*RENCONTRE|N° RENCONTRE|GROUPEMENT SPORTIF RECEVANT/i.test(full)) {
+      const row = parse5x5Convocation_(text, subject, messageId, sourceType, sourceName);
+      const rowNumber = upsertMatch_(row);
+      updateCalendarForRow_(row, rowNumber);
+      return { uid: row["UID"], status: row["Warning général"] || row["Warning finance"] ? "A_VERIFIER" : "TRAITE", warning: Boolean(row["Warning général"] || row["Warning finance"] || row["Warning FBI"]) };
+    }
 
-/* ---------- Détection genre / catégorie (miroir de Code.gs) ----------
-   Permet d'afficher les stats même si le Sheet n'a pas encore été enrichi
-   par completerGenreEtCategorie(). Doit rester identique au serveur. */
+    if (isFbiWarningText_(full)) {
+      const row = buildFbiWarningRow_(subject, text, messageId);
+      upsertMatch_(row);
+      return { uid: row["UID"], status: "A_VERIFIER", warning: true };
+    }
 
-function normUp(v) {
-  return String(v || "").replace(/\s+/g, " ").trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-}
+    if (isCancellationText_(full)) {
+      // On tente d'abord l'annulation ciblée : c'est le cas courant, le mail
+      // ne contient qu'un numéro de rencontre.
+      const numero = extraireNumeroRencontre_(subject + " " + full);
+      const indiceDate = extractDateFromText_(subject + " " + full);
+      const res = annulerRencontreParNumero_(numero, indiceDate);
 
-function detecterGenreClient(code, libelle) {
-  const c = normUp(code);
-  const t = (c + " " + normUp(libelle)).replace(/[_.]+/g, " ").trim();
+      if (res.fait) {
+        log_("ANNULATION", "Rencontre " + numero + " annulée (ligne " + res.rowNumber +
+             ", " + res.date + ")" + (res.agenda ? " — événement d'agenda supprimé." : " — aucun événement d'agenda à supprimer."));
+        return { uid: res.uid, status: "ANNULE", warning: false };
+      }
 
-  if (/\bU\d{2}MI\b/.test(t) || /\bMIXTE\b/.test(t)) return "Mixte";
+      if (res.raison === "DEJA_ANNULE") {
+        log_("ANNULATION", "Rencontre " + numero + " déjà annulée : rien à faire.");
+        return { uid: "", status: "ANNULE", warning: false };
+      }
 
-  let m = c.match(/^(?:D|R|N|PR|PN)(M|F)(?:U?\d|\d|$)/);
-  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+      // Identification impossible ou douteuse : on ne devine pas, on alerte.
+      log_("ANNULATION", "Annulation non appliquée automatiquement (" +
+           (res.raison || "INCONNU") + (numero ? ", n° " + numero : ", aucun numéro lu") + ") — alerte créée.");
+      const row = buildCancellationAlertRow_(subject, text, messageId);
+      upsertMatch_(row);
+      return { uid: row["UID"], status: "A_VERIFIER", warning: true };
+    }
 
-  if (/\bSM\b/.test(t)) return "Masculin";
-  if (/\bSF\b/.test(t)) return "Féminin";
+    const alertRow = buildAlertRow_({ subject, body: text, messageId, warning: "Mail non reconnu automatiquement" });
+    upsertMatch_(alertRow);
+    return { uid: alertRow["UID"], status: "A_VERIFIER", warning: true };
+  }
 
-  m = t.match(/\bU\d{2}\s*(M|F)\b/);
-  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+  /*************** PARSING 5X5 ***************/
 
-  m = t.match(/\bRS(M|F)\b/);
-  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+  function parse5x5Convocation_(text, subject, messageId, sourceType, sourceName) {
+    const oneLine = String(text || "").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
 
-  return "";
-}
+    const main = extractMainMatchLine_(oneLine);
+    const date = main.date || "";
+    const heure = main.heure || "";
+    const numero = main.numero || "";
+    const competition = main.competition || "";
 
-function detecterCategorieClient(code, libelle) {
-  const c = normUp(code);
-  const t = (c + " " + normUp(libelle)).replace(/[_.]+/g, " ").trim();
+    const season = computeSeason_(date);
+    const codeCompetition = extractCompetitionCode_(competition);
 
-  const m = t.match(/U(\d{2})/);
-  if (m) return "U" + m[1];
+    // FIX #1 : organisme lu directement dans le texte (ligne juste après
+    // l'en-tête), pas deviné à partir du code de compétition.
+    const organisme = extractOrganisme_(text);
+    const niveauAdmin = classifyNiveau_(codeCompetition, organisme);
 
-  if (/\bS(M|F)\b/.test(t) || /\bRS(M|F)\b/.test(t)) return "Séniors";
-  if (/^(?:D|R|N)(?:M|F)\d/.test(c)) return "Séniors";
-  if (/^(?:PR|PN)(?:M|F)$/.test(c)) return "Séniors";
+    // FIX #7 (27/08/2026) : le nom du club avalait la couleur du maillot ET le
+    // nom du correspondant — on voyait « ASA WEYERSHEIM Maillot : GRENAT KAISER
+    // ESTELLE » au lieu de « ASA WEYERSHEIM ». On s'arrête désormais aussi sur
+    // « Maillot : » et sur le bloc visiteur.
+    let receiving = extractBetween_(oneLine, /A\.\s*GROUPEMENT SPORTIF RECEVANT\s*:/i, [
+      /Maillot\s*:/i, /Correspondant\s*:/i, /Adresse de la salle\s*:/i,
+      /Code\s+e-?Marque/i, /C\.\s*Arbitre/i, /B\.\s*GROUPEMENT SPORTIF VISITEUR/i
+    ]);
 
-  return "";
-}
+    let visitor = extractBetween_(oneLine, /B\.\s*GROUPEMENT SPORTIF VISITEUR\s*:/i, [
+      /Maillot\s*:/i, /Adresse de la salle\s*:/i, /Correspondant\s*:/i,
+      /A\.\s*GROUPEMENT SPORTIF RECEVANT/i
+    ]);
 
-function filtrerParSaison_(rows, saison) {
-  if (!saison || saison === "Toutes les saisons") return rows;
-  return rows.filter(r => r._season === saison);
-}
+    // FIX #8 : le code officiel prime sur le nom lu dans le PDF.
+    receiving = nomClubOfficiel_(oneLine, /A\.\s*GROUPEMENT SPORTIF RECEVANT\s*:/i,
+      [/C\.\s*Arbitre/i, /B\.\s*GROUPEMENT SPORTIF VISITEUR/i], receiving);
 
-/* Choisit une saison valide : celle déjà retenue si elle existe encore,
-   sinon celle du filtre global, sinon la plus récente. */
-function resoudreSaison_(courante, rows) {
-  const dispo = saisonsDisponibles(rows);
-  if (courante === "Toutes les saisons") return courante;
-  if (courante && dispo.includes(courante)) return courante;
-  if (state.selectedSeason && dispo.includes(state.selectedSeason)) return state.selectedSeason;
-  return dispo[0] || "Toutes les saisons";
-}
+    visitor = nomClubOfficiel_(oneLine, /B\.\s*GROUPEMENT SPORTIF VISITEUR\s*:/i,
+      [/C\.\s*Arbitre/i, /A\.\s*GROUPEMENT SPORTIF RECEVANT/i], visitor);
 
-function optionsSaison_(rows, selected) {
-  const choix = ["Toutes les saisons", ...saisonsDisponibles(rows)];
-  return choix.map(s =>
-    `<option value="${escapeHtml(s)}" ${s === selected ? "selected" : ""}>${escapeHtml(s)}</option>`
-  ).join("");
-}
+    // FIX #4 : extraction de salle/adresse robuste au texte "entrelacé"
+    // (mise en page 2 colonnes) — cherche la ligne d'adresse (code postal +
+    // ville) n'importe où dans la zone, plutôt que juste après le libellé.
+    const salleAdresse = extractSalleAdresse_(text);
+    const ville = extractVilleFromAddress_(salleAdresse.adresse);
 
-function brancherSelecteurAnalyse_() {
-  const sel = document.getElementById("saisonAnalyse");
-  if (!sel) return;
-  sel.addEventListener("change", e => {
-    AN.saison = e.target.value;
-    renderAnalyse();
-  });
-}
+    const emarque = extractEmarque_(oneLine);
+    const observer = extractObserver_(oneLine); // FIX #3
 
-function renderAnalyseHero(brut, carburant, net, partGardee, nb, kmTotal, heuresTotal) {
-  const partCarburant = 100 - partGardee;
-  return `
-    <div class="analysis-hero">
-      <div class="eyebrow">Ce que l'arbitrage rapporte vraiment · ${escapeHtml(state.selectedSeason)}</div>
-      <div class="big">${formatMoney(net)}</div>
-      <div class="breakdown">
-        <span><b>${formatMoney(brut)}</b> encaissés</span>
-        <span>−<b>${formatMoney(carburant)}</b> de carburant</span>
-        <span><b>${nb}</b> mission(s)</span>
-        <span><b>${formatNumber(kmTotal, " km")}</b> parcourus</span>
-        <span><b>${formatHeures(heuresTotal)}</b> mobilisées</span>
-      </div>
-      <div class="margin-bar">
-        <div class="kept" style="width:${partGardee.toFixed(1)}%"></div>
-        <div class="burned" style="width:${partCarburant.toFixed(1)}%"></div>
-      </div>
-      <div class="margin-legend">
-        <span><i style="background:var(--gold)"></i>${partGardee.toFixed(1)} % conservés</span>
-        <span><i style="background:var(--red)"></i>${partCarburant.toFixed(1)} % au carburant</span>
-      </div>
-    </div>
-  `;
-}
+    const indemnisedBy = extractIndemnisedBy_(oneLine);
+    const officials = extractOfficials_(oneLine);
 
-function kpi(label, value, sub) {
-  return `<div class="kpi"><label>${escapeHtml(label)}</label><strong>${value}</strong>${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ""}</div>`;
-}
+    const userOfficial = officials.find(isUserOfficial_);
+    const colleague = officials.find(o => !isUserOfficial_(o));
 
-function litresTotal(rows) {
-  return rows.reduce((t, r) => {
-    const cutover = new Date(2026, 7, 1);
-    const conso = (r._date && r._date >= cutover) ? 6.0 : 6.58;
-    return t + (r._km * conso / 100);
-  }, 0);
-}
+    let warningGeneral = "";
+    let warningFinance = "";
+    let kmAR = "";
+    let amount = "";
 
-function formatHeures(h) {
-  const n = Number(h) || 0;
-  if (n < 1) return Math.round(n * 60) + " min";
-  const heures = Math.floor(n);
-  const min = Math.round((n - heures) * 60);
-  return min ? `${heures} h ${String(min).padStart(2, "0")}` : `${heures} h`;
-}
+    if (userOfficial) {
+      kmAR = userOfficial.kmAller ? Number(userOfficial.kmAller) * 2 : "";
+      amount = userOfficial.indemnity || "";
+    } else {
+      warningGeneral = addWarning_(warningGeneral, "Bloc arbitre REBHOLZ Clement non trouvé");
+    }
 
-/* ---------------- Agrégations ---------------- */
+    if (!amount) warningFinance = addWarning_(warningFinance, "Indemnité manquante");
+    if (!kmAR) warningFinance = addWarning_(warningFinance, "Kilométrage manquant");
+    if (!salleAdresse.adresse) warningGeneral = addWarning_(warningGeneral, "Adresse salle manquante");
 
-/* Ordre des mois dans la saison sportive : septembre → juillet.
-   La saison bascule le 30 juillet, donc août est le mois de coupure. */
-const ORDRE_MOIS_SAISON = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8];
+    // FIX #2 : type + date de paiement déduits directement du texte
+    // littéral "INDEMNISES PAR", pas du niveau administratif.
+    const paymentClass = classifyPayment_(indemnisedBy);
+    let paymentType = paymentClass.type;
+    let paymentDate = "";
 
-function rangMoisSaison(moisIndex1a12) {
-  const i = ORDRE_MOIS_SAISON.indexOf(moisIndex1a12);
-  return i === -1 ? 99 : i;
-}
+    if (paymentClass.schedule === "departemental") {
+      paymentDate = compute11thNextMonth_(date);
+    } else if (paymentClass.schedule === "regional") {
+      paymentDate = computeRegionalPaymentDate_(date);
+    } else if (paymentClass.schedule === "club") {
+      warningFinance = addWarning_(warningFinance, "Paiement club à vérifier");
+    } else {
+      warningFinance = addWarning_(warningFinance, "Indemniseur non reconnu : " + (indemnisedBy || "(vide)"));
+    }
 
-/* Regroupe par mois. Trie dans l'ordre de la saison sportive
-   (sept, oct, nov, déc, janv, févr, mars, avr, mai, juin, juil),
-   et non par montant ni par année civile. */
-function groupMonths(rows, seasonFilter) {
-  const map = new Map();
+    const uid = `5X5_${season}_${numero || hash_(subject + date + heure + competition)}`;
 
-  rows.forEach(r => {
-    if (!r._date) return;
-    if (seasonFilter && seasonFilter !== "Toutes les saisons" && r._season !== seasonFilter) return;
+    return {
+      "UID": uid,
+      "Source": `${sourceType || "Gmail"}${sourceName ? " / " + sourceName : ""}`,
+      "Format": "5x5",
+      "Saison": season,
+      "Statut": "Actif",
+      "Date match": date,
+      "Heure/RDV": heure,
+      "Niveau administratif": niveauAdmin,
+      "Type compétition": codeCompetition === "AMI" ? "Amical" : (codeCompetition === "CPE" ? "Coupe" : "Championnat"),
+      "Genre": detecterGenre_(codeCompetition, competition),
+      "Catégorie d'âge": detecterCategorie_(codeCompetition, competition),
+      "Code compétition": codeCompetition,
+      "Libellé compétition": competition,
+      "N° rencontre": numero,
+      "Recevant": receiving,
+      "Visiteur / événement": visitor,
+      "Salle": salleAdresse.salle,
+      "Adresse": salleAdresse.adresse,
+      "Ville": ville,
+      "Code e-Marque": emarque,
+      "Mon rôle": userOfficial ? userOfficial.role : "",
+      "Collègue nom": colleague ? colleague.name : "",
+      "Collègue rôle": colleague ? colleague.role : "",
+      "Collègue téléphone": colleague ? colleague.phone : "",
+      "Référent 3x3": "",
+      "Observateur": observer,
+      "Km A/R stats": kmAR,
+      "Indemnité totale": amount,
+      "Indemnisé par": indemnisedBy,
+      "Paiement Type": paymentType,
+      "Date paiement": paymentDate,
+      "Statut paiement": amount ? "À recevoir" : "À vérifier",
+      "Date réception": "",
+      "Montant reçu": "",
+      "Warning général": warningGeneral,
+      "Warning finance": warningFinance,
+      "Warning FBI": "",
+      "Agenda Event ID": "",
+      "Dernière MAJ": new Date(),
+      "Sujet mail": subject,
+      "Gmail Message ID": messageId
+    };
+  }
 
-    const annee = r._date.getFullYear();
-    const mois = r._date.getMonth() + 1;
-    const key = annee + "-" + String(mois).padStart(2, "0");
+  function extractMainMatchLine_(oneLine) {
+    // Prend la DERNIÈRE occurrence (le pied de page répète l'en-tête) car le
+    // libellé de compétition dans l'en-tête peut être tronqué par une
+    // coupure de page/colonne (ex: "(Poule" sans le "A)" qui suit) alors que
+    // le pied de page est généralement complet.
+    const re = /DATE\s*:\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*HEURE\s*:\s*(\d{1,2}:\d{2})\s*N°\s*RENCONTRE\s*:?\s*([0-9]+)\s*COMPETITION\s*:?\s*(.+?)(?=\s+LIGUE REGIONALE|\s+COMITE\s|\s+FEDERATION|\s+REBHOLZ|\s+A\.\s*GROUPEMENT|\s+Signature|$)/ig;
 
-    if (!map.has(key)) {
-      map.set(key, {
-        key, annee, mois,
-        saison: r._season || "",
-        net: 0, carburant: 0, brut: 0, count: 0, recu: 0, du: 0, km: 0, heures: 0
+    let match;
+    let selected = null;
+
+    while ((match = re.exec(oneLine)) !== null) {
+      selected = { date: clean_(match[1]), heure: clean_(match[2]), numero: clean_(match[3]), competition: clean_(match[4]) };
+    }
+
+    return selected || { date: "", heure: "", numero: "", competition: "" };
+  }
+
+  // NOUVEAU : organisme émetteur = ligne autonome juste après l'en-tête,
+  // lu depuis le texte BRUT (retours à la ligne réels), pas depuis la
+  // version "aplatie" en une seule ligne.
+  function extractOrganisme_(rawText) {
+    const lines = String(rawText || "").split(/\r?\n/).map(l => clean_(l)).filter(Boolean);
+    const line = lines.find(l => /^(COMITE|LIGUE REGIONALE|FEDERATION)/i.test(l));
+    return line || "";
+  }
+
+  // NOUVEAU : niveau administratif = organisme émetteur (fiable à 100%,
+  // c'est écrit dans le document) + code AMI pour les amicaux qui priment.
+  /* Déduit le genre du match depuis le code et le libellé de compétition.
+     Structure FFBB : niveau (D/R/N, PR/PN) + genre (M/F/MI) + catégorie.
+     Couvre aussi les coupes (CPE U18M, CPE CMUT. SM), finales départementales
+     (FD - U11M), opens (OPEN 1 - U15MI) et amicaux (AMI RSF-10).
+     Validé à 100 % sur les 154 missions 5x5 de la base au 22/07/2026.
+     Renvoie "Masculin", "Féminin", "Mixte", ou "" si indéterminable. */
+  function detecterGenre_(code, libelle) {
+    const c = normalize_(code);
+    // Certains libellés utilisent _ ou . comme séparateurs (CPE_U13M_T2_1/8)
+    const t = (c + " " + normalize_(libelle)).replace(/[_.]+/g, " ").trim();
+
+    // Mixte en premier : sinon le "M" de "MI" serait pris pour Masculin
+    if (/\bU\d{2}MI\b/.test(t) || /\bMIXTE\b/.test(t)) return "Mixte";
+
+    // Championnats : DMU18, RFU13, NM2, DF2, PRM, PNF, RM2...
+    let m = c.match(/^(?:D|R|N|PR|PN)(M|F)(?:U?\d|\d|$)/);
+    if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+    // Séniors en coupe : SM / SF
+    if (/\bSM\b/.test(t)) return "Masculin";
+    if (/\bSF\b/.test(t)) return "Féminin";
+
+    // Genre accolé à la catégorie : U18M, U13F (coupes, finales, opens)
+    m = t.match(/\bU\d{2}\s*(M|F)\b/);
+    if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+    // Amicaux : RSF-10, RSM-10
+    m = t.match(/\bRS(M|F)\b/);
+    if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+    return "";
+  }
+
+  /* Catégorie d'âge : U11, U13, U15, U17, U18, U20, U21, ou "Séniors".
+     (U17 et U20 n'existent plus depuis 3 saisons, mais restent dans l'historique.) */
+  function detecterCategorie_(code, libelle) {
+    const c = normalize_(code);
+    const t = (c + " " + normalize_(libelle)).replace(/[_.]+/g, " ").trim();
+
+    // Ni \b avant le U (collé au genre : DMU18), ni après les chiffres (U18M)
+    const m = t.match(/U(\d{2})/);
+    if (m) return "U" + m[1];
+
+    if (/\bS(M|F)\b/.test(t) || /\bRS(M|F)\b/.test(t)) return "Séniors";
+    if (/^(?:D|R|N)(?:M|F)\d/.test(c)) return "Séniors";   // DM2, RF2, NM1
+    if (/^(?:PR|PN)(?:M|F)$/.test(c)) return "Séniors";    // PRM, PNF
+
+    return "";
+  }
+
+  function classifyNiveau_(codeCompetition, organisme) {
+    const code = normalize_(codeCompetition);
+    const org = normalize_(organisme);
+
+    if (/^AMI\b/.test(code)) return "Amical";
+    if (org.includes("COMITE")) return "Départemental";
+    if (org.includes("LIGUE REGIONALE")) return "Régional";
+    if (org.includes("FEDERATION") || org.includes("FFBB")) return "Championnat de France";
+
+    return "";
+  }
+
+  function extractCompetitionCode_(competition) {
+    const txt = clean_(competition);
+    const m = txt.match(/^([A-Z0-9]+(?:-[A-Z0-9]+)?)/i);
+    return m ? clean_(m[1]).toUpperCase() : "";
+  }
+
+  // NOUVEAU : type + calendrier de paiement déduits du texte littéral
+  // "INDEMNISES PAR", plus fiable que de re-déduire depuis le niveau admin.
+  function classifyPayment_(indemnisedBy) {
+    const v = normalize_(indemnisedBy);
+
+    if (v.includes("COMITE")) return { type: "Paiement départemental", schedule: "departemental" };
+    if (v.includes("LIGUE REGIONALE")) return { type: "Caisse de péréquation", schedule: "regional" };
+    if (v.includes("ASSOCIATION RECEVANTE") || v.includes("CLUB")) return { type: "Warning paiement club", schedule: "club" };
+
+    return { type: "", schedule: "unknown" };
+  }
+
+  // CORRIGÉ : cherche toute la zone entre "Adresse de la salle :" et
+  // "A. GROUPEMENT SPORTIF RECEVANT" (le texte y est parfois entrelacé à
+  // cause de la mise en page 2 colonnes du PDF), puis repère DANS cette
+  // zone la ligne qui ressemble vraiment à une adresse (code postal + ville).
+  function extractSalleAdresse_(text) {
+    const oneLine = String(text || "").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+
+    const chunk = extractBetween_(oneLine, /Adresse de la salle\s*:/i, [
+      /A\.\s*GROUPEMENT SPORTIF RECEVANT/i,
+      /Code\s+e-?Marque/i,
+      /C\.\s*Arbitre/i
+    ]);
+
+    if (!chunk) return { salle: "", adresse: "" };
+
+    const m = chunk.match(/([A-ZÀ-Ÿ0-9][A-ZÀ-Ÿ0-9'".\-\s]{2,80}?\d{5}\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'\-\s]+?)(?=\s*\(T[ée]l|\s+Correspondant|\s+T[ée]l[ée]phone|$)/i);
+
+    if (!m) return { salle: "", adresse: "" };
+
+    return splitSalleAndAdresse_(clean_(m[1]));
+  }
+
+  function splitSalleAndAdresse_(raw) {
+    const txt = clean_(raw);
+
+    // Gère aussi les numéros en plage type "4-6 RUE ..."
+    const streetStartRegex =
+      /\b\d{1,4}(?:\s*-\s*\d{1,4})?\s*(?:BIS|TER)?\s+(?:RUE|AVENUE|AV\.?|BOULEVARD|BD|ROUTE|RTE|CHEMIN|PLACE|IMPASSE|ALL[ÉE]E|ALLEE|QUAI|SQUARE|PASSAGE|ROND[- ]POINT|FAUBOURG|PARC|VOIE)\b/i;
+
+    let m = txt.match(streetStartRegex);
+    if (m && m.index > 0) return { salle: clean_(txt.substring(0, m.index)), adresse: clean_(txt.substring(m.index)) };
+
+    const streetNoNumberRegex =
+      /\b(?:RUE|AVENUE|AV\.?|BOULEVARD|BD|ROUTE|RTE|CHEMIN|PLACE|IMPASSE|ALL[ÉE]E|ALLEE|QUAI|SQUARE|PASSAGE|ROND[- ]POINT|FAUBOURG|PARC|VOIE)\b/i;
+
+    m = txt.match(streetNoNumberRegex);
+    if (m && m.index > 0) return { salle: clean_(txt.substring(0, m.index)), adresse: clean_(txt.substring(m.index)) };
+
+    const postal = txt.match(/\b\d{5}\b/);
+    if (postal && postal.index > 0) return { salle: clean_(txt.substring(0, postal.index)), adresse: clean_(txt) };
+
+    return { salle: txt, adresse: txt };
+  }
+
+  function extractVilleFromAddress_(adresse) {
+    const txt = clean_(adresse);
+    let m = txt.match(/\b\d{5}\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ\-\s']+)$/i);
+    if (m) return clean_(m[1]);
+    m = txt.match(/\b(?:à|a)\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ\-\s']+)$/i);
+    if (m) return clean_(m[1]);
+    return "";
+  }
+
+  function extractOfficials_(oneLine) {
+    const text = String(oneLine || "").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    const sectionMatch = text.match(/C\.\s*Arbitre[\s\S]+$/i);
+    if (!sectionMatch) return [];
+
+    const section = sectionMatch[0];
+    const officials = [];
+    // Arrêt explicite sur "D. OTM" et "E. Evaluateur" (au lieu du générique
+    // "OTM" seul) pour ne jamais capturer les blocs OTM/observateur comme
+    // s'ils étaient des arbitres.
+    const re = /Arbitre\s*:\s*([\s\S]*?)(?=\s+Arbitre\s*:|\s+D\.\s*OTM|\s+E\.\s*Evaluateur|\s+Observateur|\s+Signature|\s+RECU|$)/gi;
+
+    let match;
+    let index = 0;
+
+    while ((match = re.exec(section)) !== null) {
+      const block = clean_(match[1]);
+      const nameMatch = block.match(/^(.+?)(?=\s*\(Licence|\s*\(Mail|\s+Téléphone|\s+Telephone|\s+Nbre|\s+Indemnit|$)/i);
+      const name = nameMatch ? clean_(nameMatch[1]) : "";
+
+      const emailMatch = block.match(/\(Mail\s*:\s*([^)]+)\)/i);
+      const email = emailMatch ? clean_(emailMatch[1]) : "";
+
+      const phoneMatch = block.match(/Portable\s*:?\s*([0-9 .-]{8,})/i);
+      const phone = phoneMatch ? cleanPhone_(phoneMatch[1]) : "";
+
+      const kmMatch = block.match(/Nbre\s+de\s+kms\s+aller\s*:?\s*([0-9]+(?:[,.][0-9]+)?)/i);
+      const kmAller = kmMatch ? toNumber_(kmMatch[1]) : "";
+
+      const indemnityMatch = block.match(/Indemnit[ée]?\s*:?\s*([0-9]+(?:[,.][0-9]+)?)\s*€/i);
+      const indemnity = indemnityMatch ? toNumber_(indemnityMatch[1]) : "";
+
+      if (name) {
+        officials.push({ name, email, phone, kmAller, indemnity, role: roleFromOfficialIndex_(index) });
+        index++;
+      }
+    }
+
+    return officials;
+  }
+
+  function roleFromOfficialIndex_(index) {
+    if (index === 0) return "Crew Chief";
+    if (index === 1) return "Arbitre n°2";
+    return `Arbitre n°${index + 1}`;
+  }
+
+  function isUserOfficial_(official) {
+    const nameNorm = normalize_(official.name || "");
+    const email = String(official.email || "").toLowerCase();
+    return nameNorm.includes(REFEREE_NAME_NORM) || email.includes(REFEREE_EMAIL);
+  }
+
+  function extractIndemnisedBy_(oneLine) {
+    const m = oneLine.match(/C\.\s*Arbitre\s+INDEMNISES PAR\s*:\s*(.+?)(?=\s+Arbitre\s*:|\s+Observateur|\s+D\.\s*OTM|$)/i);
+    return m ? clean_(m[1]) : "";
+  }
+
+  // CORRIGÉ : le vrai libellé FFBB est "Observateur Arb :", pas
+  // "Observateur :" — [^():]* absorbe le mot "Arb" (ou toute variante)
+  // entre "Observateur" et les deux-points.
+  function extractObserver_(oneLine) {
+    const m = oneLine.match(/Observateur[^():]*:\s*([^()]+?)(?=\s*\(|\s+Téléphone|\s+Nbre|\s+Indemnité|$)/i);
+    return m ? clean_(m[1]) : "";
+  }
+
+  function extractEmarque_(oneLine) {
+    const m = oneLine.match(/Code\s+e-?Marque\s*(?:V2)?\s*:?\s*([A-Z0-9]+)/i);
+    return m ? clean_(m[1]) : "";
+  }
+
+  /*************** PARSING 3X3 ***************/
+
+  function is3x3Text_(text) {
+    return /3x3|OPEN PLUS|CORPORATE SERIES|CONVOCATION.*3X3/i.test(text);
+  }
+
+  function parse3x3Convocation_(subject, body, messageId, sourceType, sourceName) {
+    const text = clean_(subject + " " + body);
+
+    const date = extractDateFromText_(text);
+    const rdv = extractRdvTime_(text);
+    const season = computeSeason_(date);
+
+    const eventName = extract3x3EventName_(subject, text);
+    const address = extract3x3Address_(text);
+    const ville = extractVilleFromAddress_(address);
+
+    const fixedAmount = extractFixed3x3Amount_(text);
+    const kmAR = estimateKmRoundTrip_(address);
+    const travelAmount = kmAR ? Number(kmAR) * 0.40 : 0;
+    const amount = fixedAmount ? Number((Number(fixedAmount) + travelAmount).toFixed(2)) : "";
+
+    const referent = extract3x3Referent_(text);
+
+    let warningGeneral = "";
+    let warningFinance = "";
+
+    if (!date) warningGeneral = addWarning_(warningGeneral, "Date 3x3 non trouvée");
+    if (!rdv) warningGeneral = addWarning_(warningGeneral, "Heure de RDV 3x3 non trouvée");
+    if (!address) warningGeneral = addWarning_(warningGeneral, "Adresse 3x3 non trouvée");
+    if (!kmAR) warningFinance = addWarning_(warningFinance, "Kilométrage 3x3 à vérifier");
+    if (!fixedAmount) warningFinance = addWarning_(warningFinance, "Indemnité fixe 3x3 non trouvée");
+
+    const uid = `3X3_${season}_${date || hash_(subject)}_${hash_(eventName + date + rdv)}`;
+
+    return {
+      "UID": uid,
+      "Source": `${sourceType || "Gmail"}${sourceName ? " / " + sourceName : ""}`,
+      "Format": "3x3",
+      "Saison": season,
+      "Statut": "Actif",
+      "Date match": date,
+      "Heure/RDV": rdv,
+      "Niveau administratif": "3x3",
+      "Type compétition": "3x3",
+      "Genre": detecterGenre_("", eventName),
+      "Catégorie d'âge": detecterCategorie_("", eventName),
+      "Code compétition": "3X3",
+      "Libellé compétition": eventName,
+      "N° rencontre": "",
+      "Recevant": eventName,
+      "Visiteur / événement": eventName,
+      "Salle": "",
+      "Adresse": address,
+      "Ville": ville,
+      "Code e-Marque": "",
+      "Mon rôle": "Arbitre 3x3",
+      "Collègue nom": "",
+      "Collègue rôle": "",
+      "Collègue téléphone": "",
+      "Référent 3x3": referent,
+      "Observateur": "",
+      "Km A/R stats": kmAR,
+      "Indemnité totale": amount,
+      "Indemnisé par": "",
+      "Paiement Type": "Paiement départemental / 3x3",
+      "Date paiement": compute11thNextMonth_(date),
+      "Statut paiement": amount ? "À recevoir" : "À vérifier",
+      "Date réception": "",
+      "Montant reçu": "",
+      "Warning général": warningGeneral,
+      "Warning finance": warningFinance,
+      "Warning FBI": "",
+      "Agenda Event ID": "",
+      "Dernière MAJ": new Date(),
+      "Sujet mail": subject,
+      "Gmail Message ID": messageId
+    };
+  }
+
+  function extract3x3EventName_(subject, text) {
+    const subj = clean_(subject);
+    const fromSubject = subj.replace(/^Objet\s*:\s*/i, "").replace(/CONVOCATION\s*:\s*/i, "").replace(/\s+\/\/\s+.*/i, "").trim();
+    if (fromSubject && /3x3|OPEN|CORPORATE/i.test(fromSubject)) return fromSubject;
+    const m = text.match(/(OPEN PLUS ACCESS|FINALES BC CORPORATE SERIES|CORPORATE SERIES|OPEN PLUS).{0,80}/i);
+    return m ? clean_(m[0]) : "Mission 3x3";
+  }
+
+  function extract3x3Address_(text) {
+    const t = clean_(text);
+
+    let m = t.match(/rendez-vous\s+à\s+\d{1,2}[H:]\d{0,2}\s+sur\s+le\s+(.+?)(?=\.\s+Tu|\.\s+Indemnit|\.\s+Le planning|Tu voudras|Indemnit|Le planning|$)/i);
+    if (m) return clean3x3Address_(m[1]);
+
+    m = t.match(/RDV\s*[:\-]?\s*\d{1,2}[H:]\d{0,2}\s+(.+?)(?=\.\s+Tu|\.\s+Indemnit|\.\s+Le planning|Tu voudras|Indemnit|Le planning|$)/i);
+    if (m) return clean3x3Address_(m[1]);
+
+    m = t.match(/(?:Adresse|Lieu|Salle)\s*[:\-]\s*(.+?)(?=\s+RDV|\s+Rendez-vous|\s+Indemnité|\s+Merci|\s*$)/i);
+    if (m) return clean3x3Address_(m[1]);
+
+    const postal = t.match(/(.{0,80}\b\d{5}\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ\-\s']+)/i);
+    return postal ? clean3x3Address_(postal[1]) : "";
+  }
+
+  function clean3x3Address_(value) {
+    return clean_(value).replace(/\s+à\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ\-\s']+)$/i, ", $1").replace(/\s+a\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ\-\s']+)$/i, ", $1");
+  }
+
+  function extractFixed3x3Amount_(text) {
+    const t = clean_(text);
+    let m = t.match(/Indemnit[ée]s?\s+d[’']?arbitrage\s*:\s*([0-9]+(?:[,.][0-9]+)?)\s*€/i);
+    if (m) return toNumber_(m[1]);
+    m = t.match(/([0-9]+(?:[,.][0-9]+)?)\s*€\s*(?:uros)?\s*\+\s*d[ée]placement/i);
+    if (m) return toNumber_(m[1]);
+    m = t.match(/([0-9]+(?:[,.][0-9]+)?)\s*€/);
+    return m ? toNumber_(m[1]) : "";
+  }
+
+  function extract3x3Referent_(text) {
+    const t = clean_(text);
+    const m = t.match(/r[ée]f[ée]rent des [‘'"]?OFFICIELS[’'"]?\s+est\s+(.+?)\s*:/i);
+    return m ? clean_(m[1]) : "";
+  }
+
+  /*************** ALERTES ***************/
+
+  function isFbiWarningText_(text) {
+    return /V[ÉE]RIFIER FBI|REVERIFIER VOS DESIGNATIONS|CONSULTER FBI|CHANGEMENTS DE DERNIERE MINUTE|NOUVELLES CONVOCATIONS|COLLEGUE A ETE REMPLACE|MODIFICATION DE DESIGNATION/i.test(normalize_(text));
+  }
+
+  /*************** ANNULATION AUTOMATIQUE ***************/
+  /* Un mail d'annulation ne porte souvent qu'un numéro de rencontre :
+       Sujet : « Annulation rencontre 461 »
+       Corps : « La rencontre 461 du 19/09 est annulée. »
+     On récupère ce numéro, on cherche la ligne correspondante et on l'annule
+     — mais seulement si l'identification est certaine. Dans le doute, on
+     retombe sur l'ancien comportement : une alerte à traiter à la main.
+     Aucune ligne n'est jamais supprimée : elle passe en statut « Annulé ». */
+
+  function extraireNumeroRencontre_(texte) {
+    const t = clean_(texte);
+    const motifs = [
+      /(?:annulation|report)[^0-9]{0,20}?(?:rencontre|match)\s*(?:n\s*°|no|num[ée]ro)?\s*:?\s*(\d{1,7})\b/i,
+      /\b(?:la\s+)?(?:rencontre|match)\s*(?:n\s*°|no|num[ée]ro)?\s*:?\s*(\d{1,7})\b/i,
+      /\bn\s*°\s*(?:de\s+)?(?:rencontre|match)\s*:?\s*(\d{2,7})\b/i
+    ];
+    for (let i = 0; i < motifs.length; i++) {
+      const m = t.match(motifs[i]);
+      if (m) return m[1].replace(/^0+(?=\d)/, "");
+    }
+    return "";
+  }
+
+  /* Supprime l'événement d'agenda d'une ligne, s'il existe. */
+  function supprimerEvenement_(eventId, rowObj) {
+    if (!eventId) return false;
+    try {
+      const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+      if (!calendar) return false;
+      const event = calendar.getEventById(eventId);
+      if (!event) return false;
+      event.deleteEvent();
+      return true;
+    } catch (e) {
+      log_("CALENDAR_ERROR", "Suppression événement impossible : " + (e.message || e));
+      return false;
+    }
+  }
+
+  /**
+   * Annule la rencontre portant ce numéro.
+   * @return {Object} { fait, raison, uid, rowNumber, agenda }
+   *   fait=false et raison="INTROUVABLE" ou "AMBIGU" laissent le mail
+   *   suivre le chemin normal de l'alerte.
+   */
+  function annulerRencontreParNumero_(numero, dateIndice) {
+    if (!numero) return { fait: false, raison: "PAS_DE_NUMERO" };
+
+    const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+    const headerMap = getHeaderMap_(sheet);
+
+    const cNum    = headerMap[normalizeHeader_("N° rencontre")];
+    const cStatut = headerMap[normalizeHeader_("Statut")];
+    const cUid    = headerMap[normalizeHeader_("UID")];
+    const cDate   = headerMap[normalizeHeader_("Date match")];
+    const cFormat = headerMap[normalizeHeader_("Format")];
+    const cWarn   = headerMap[normalizeHeader_("Warning général")];
+    const cAgenda = headerMap[normalizeHeader_("Agenda Event ID")];
+    const cMaj    = headerMap[normalizeHeader_("Dernière MAJ")];
+
+    if (!cNum || !cStatut) return { fait: false, raison: "COLONNES_MANQUANTES" };
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { fait: false, raison: "INTROUVABLE" };
+
+    const values = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const cible = String(numero).replace(/^0+(?=\d)/, "");
+
+    const candidats = [];
+    for (let i = 0; i < values.length; i++) {
+      const row = values[i];
+      if (String(row[cFormat - 1] || "") === "Alerte") continue;
+
+      const num = String(row[cNum - 1] || "").split(".")[0].replace(/^0+(?=\d)/, "").trim();
+      if (!num || num !== cible) continue;
+
+      const statut = normalize_(String(row[cStatut - 1] || ""));
+      if (statut.indexOf("ANNUL") >= 0) return { fait: false, raison: "DEJA_ANNULE", rowNumber: i + 2 };
+
+      candidats.push({ i: i, rowNumber: i + 2, row: row, date: String(row[cDate - 1] || "") });
+    }
+
+    if (!candidats.length) return { fait: false, raison: "INTROUVABLE" };
+
+    // Plusieurs lignes portent ce numéro : on départage par la date si le mail
+    // en donne une (« du 19/09 »). Sinon on refuse d'agir au hasard.
+    let choisi = candidats[0];
+    if (candidats.length > 1) {
+      const parDate = dateIndice
+        ? candidats.filter(c => memeJourEtMois_(c.date, dateIndice))
+        : [];
+      if (parDate.length !== 1) {
+        return { fait: false, raison: "AMBIGU", nb: candidats.length };
+      }
+      choisi = parDate[0];
+    }
+
+    const r = choisi.rowNumber;
+    sheet.getRange(r, cStatut).setValue("Annulé");
+    if (cWarn)  sheet.getRange(r, cWarn).setValue("Annulée par mail du " + formatDate_(new Date()));
+    if (cMaj)   sheet.getRange(r, cMaj).setValue(new Date());
+
+    let agenda = false;
+    if (cAgenda) {
+      const eventId = String(sheet.getRange(r, cAgenda).getValue() || "");
+      agenda = supprimerEvenement_(eventId);
+      if (agenda) sheet.getRange(r, cAgenda).setValue("");
+    }
+
+    _cacheInvalider_();
+
+    return {
+      fait: true,
+      uid: cUid ? String(choisi.row[cUid - 1] || "") : "",
+      rowNumber: r,
+      date: choisi.date,
+      agenda: agenda
+    };
+  }
+
+  /* Compare deux dates sur le jour et le mois seulement : le mail écrit
+     « du 19/09 » sans l'année. */
+  function memeJourEtMois_(dateFr, indice) {
+    const a = String(dateFr).match(/(\d{1,2})\/(\d{1,2})/);
+    const b = String(indice).match(/(\d{1,2})\/(\d{1,2})/);
+    if (!a || !b) return false;
+    return Number(a[1]) === Number(b[1]) && Number(a[2]) === Number(b[2]);
+  }
+
+  function isCancellationText_(text) {
+    return /ANNULEE|ANNULÉE|ANNULE|ANNULER|REPORTEE|REPORTÉE|RETIRE CETTE DESIGNATION|RETIRÉ CETTE DÉSIGNATION/i.test(normalize_(text));
+  }
+
+  function buildFbiWarningRow_(subject, body, messageId) {
+    const date = extractDateFromText_(subject + " " + body);
+    const season = computeSeason_(date);
+    return buildGenericAlertRow_("ALERTE_FBI", "Alerte FBI", "Alerte mail : vérifier FBI", "Vérifier les désignations FBI", subject, body, messageId, date, season);
+  }
+
+  function buildCancellationAlertRow_(subject, body, messageId) {
+    const date = extractDateFromText_(subject + " " + body);
+    const season = computeSeason_(date);
+    return buildGenericAlertRow_("ALERTE_ANNULATION", "Annulation / report", "Mail d’annulation / report à vérifier", "", subject, body, messageId, date, season);
+  }
+
+  function buildAlertRow_(params) {
+    const subject = params.subject || "";
+    const body = params.body || "";
+    const messageId = params.messageId || "";
+    const warning = params.warning || "À vérifier";
+    const date = extractDateFromText_(subject + " " + body);
+    const season = computeSeason_(date);
+    return buildGenericAlertRow_("ALERTE", "Alerte", warning, "", subject, body, messageId, date, season);
+  }
+
+  function buildGenericAlertRow_(prefix, typeCompetition, warningGeneral, warningFbi, subject, body, messageId, date, season) {
+    return {
+      "UID": `${prefix}_${season}_${date || hash_(subject)}_${hash_(messageId + warningGeneral)}`,
+      "Source": "Gmail / Alerte", "Format": "Alerte", "Saison": season, "Statut": "À vérifier",
+      "Date match": date, "Heure/RDV": "", "Niveau administratif": "Alerte", "Type compétition": typeCompetition,
+      "Genre": "", "Catégorie d'âge": "",
+      "Code compétition": "", "Libellé compétition": subject, "N° rencontre": "", "Recevant": "",
+      "Visiteur / événement": subject, "Salle": "", "Adresse": "", "Ville": "", "Code e-Marque": "",
+      "Mon rôle": "", "Collègue nom": "", "Collègue rôle": "", "Collègue téléphone": "", "Référent 3x3": "",
+      "Observateur": "", "Km A/R stats": "", "Indemnité totale": "", "Indemnisé par": "", "Paiement Type": "",
+      "Date paiement": "", "Statut paiement": "À vérifier", "Date réception": "", "Montant reçu": "",
+      "Warning général": warningGeneral, "Warning finance": "", "Warning FBI": warningFbi, "Agenda Event ID": "",
+      "Dernière MAJ": new Date(), "Sujet mail": subject, "Gmail Message ID": messageId
+    };
+  }
+
+  /*************** SHEETS ***************/
+
+  function ensureSheets_() {
+    const ss = getSS_();
+    let matchs = ss.getSheetByName(SHEET_MATCHS);
+    if (!matchs) matchs = ss.insertSheet(SHEET_MATCHS);
+    ensureHeaders_(matchs, MATCH_HEADERS);
+
+    let logs = ss.getSheetByName(SHEET_LOGS);
+    if (!logs) logs = ss.insertSheet(SHEET_LOGS);
+    ensureHeaders_(logs, ["Date", "Type", "Message"]);
+
+    let processed = ss.getSheetByName(SHEET_PROCESSED);
+    if (!processed) processed = ss.insertSheet(SHEET_PROCESSED);
+    ensureHeaders_(processed, PROCESSED_HEADERS);
+  }
+
+  function ensureHeaders_(sheet, headers) {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const current = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+    if (sheet.getLastRow() === 0 || current.every(v => !v)) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      return;
+    }
+
+    const existingNorm = current.map(h => normalizeHeader_(h));
+    headers.forEach(header => {
+      if (!existingNorm.includes(normalizeHeader_(header))) {
+        const newCol = sheet.getLastColumn() + 1;
+        sheet.getRange(1, newCol).setValue(header);
+        existingNorm.push(normalizeHeader_(header));
+      }
+    });
+  }
+
+  function upsertMatch_(rowObj) {
+    ensureSheets_();
+    const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+    const headerMap = getHeaderMap_(sheet);
+
+    const uidCol = headerMap[normalizeHeader_("UID")];
+    if (!uidCol) throw new Error("Colonne UID introuvable");
+
+    const uid = rowObj["UID"];
+    if (!uid) throw new Error("UID manquant");
+
+    const lastRow = Math.max(sheet.getLastRow(), 1);
+    const uidValues = lastRow > 1 ? sheet.getRange(2, uidCol, lastRow - 1, 1).getValues().flat() : [];
+
+    let targetRow = -1;
+    let existingRowFound = false;
+
+    for (let i = 0; i < uidValues.length; i++) {
+      if (String(uidValues[i]).trim() === uid) { targetRow = i + 2; existingRowFound = true; break; }
+    }
+
+    if (targetRow === -1) targetRow = findFirstEmptyUidRow_(sheet, uidCol);
+    if (targetRow > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), targetRow - sheet.getMaxRows());
+
+    const lastCol = sheet.getLastColumn();
+    const existingValues = targetRow <= sheet.getLastRow() ? sheet.getRange(targetRow, 1, 1, lastCol).getValues()[0] : new Array(lastCol).fill("");
+    const newValues = existingValues.slice();
+
+    const statutPaiementCol = headerMap[normalizeHeader_("Statut paiement")];
+    const agendaCol = headerMap[normalizeHeader_("Agenda Event ID")];
+    const dateReceptionCol = headerMap[normalizeHeader_("Date réception")];
+    const montantRecuCol = headerMap[normalizeHeader_("Montant reçu")];
+
+    Object.keys(rowObj).forEach(key => {
+      const col = headerMap[normalizeHeader_(key)];
+      if (!col) return;
+
+      const incomingValue = rowObj[key];
+      const existingValue = existingValues[col - 1];
+      const keyNorm = normalizeHeader_(key);
+
+      // Ne pas écraser l'Event ID existant.
+      if (existingRowFound && agendaCol && col === agendaCol && !incomingValue && existingValue) return;
+
+      // FIX #5 : ne JAMAIS rétrograder un statut de paiement déjà avancé
+      // (ex: "Reçu" ne doit jamais repasser à "À recevoir" ou "À vérifier"
+      // suite au retraitement d'une convocation modificative du même match).
+      if (existingRowFound && statutPaiementCol && col === statutPaiementCol && existingValue) {
+        const existingRank = PAYMENT_RANK[existingValue] !== undefined ? PAYMENT_RANK[existingValue] : -1;
+        const incomingRank = PAYMENT_RANK[incomingValue] !== undefined ? PAYMENT_RANK[incomingValue] : -1;
+        if (incomingRank < existingRank) return;
+      }
+
+      // Ne pas vider une réception déjà saisie.
+      if (existingRowFound && (col === dateReceptionCol || col === montantRecuCol) && !incomingValue && existingValue) return;
+
+      newValues[col - 1] = incomingValue;
+    });
+
+    sheet.getRange(targetRow, 1, 1, lastCol).setValues([newValues]);
+    _cacheInvalider_();
+    return targetRow;
+  }
+
+  function findFirstEmptyUidRow_(sheet, uidCol) {
+    const maxRows = Math.max(sheet.getMaxRows(), 2);
+    const values = sheet.getRange(2, uidCol, maxRows - 1, 1).getValues().flat();
+    for (let i = 0; i < values.length; i++) {
+      if (!String(values[i] || "").trim()) return i + 2;
+    }
+    return sheet.getLastRow() + 1;
+  }
+
+  function getHeaderMap_(sheet) {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const map = {};
+    headers.forEach((h, i) => { if (h) map[normalizeHeader_(h)] = i + 1; });
+    return map;
+  }
+
+  function getRowObject_(sheet, rowNumber) {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+    const values = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i]);
+    return obj;
+  }
+
+  /*************** PROCESSED ***************/
+
+  function getProcessedKeys_() {
+    const sheet = getSS_().getSheetByName(SHEET_PROCESSED);
+    const headerMap = getHeaderMap_(sheet);
+    const col = headerMap[normalizeHeader_("Processing Key")];
+    const keys = new Set();
+    if (!col || sheet.getLastRow() < 2) return keys;
+    const values = sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues().flat();
+    values.forEach(v => { const key = String(v || "").trim(); if (key) keys.add(key); });
+    return keys;
+  }
+
+  function markProcessed_(processingKey, messageId, uid, status, subject) {
+    const sheet = getSS_().getSheetByName(SHEET_PROCESSED);
+    const rowObj = { "Date traitement": new Date(), "Processing Key": processingKey, "Gmail Message ID": messageId, "UID": uid || "", "Statut traitement": status || "", "Sujet": subject || "" };
+    const row = [];
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    headers.forEach(h => row.push(rowObj[h] || ""));
+    sheet.appendRow(row);
+  }
+
+  /*************** CALENDAR ***************/
+
+  function updateCalendarForRow_(rowObj, rowNumber) {
+    try {
+      const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+      if (!calendar) { log_("CALENDAR", "Agenda introuvable : " + CALENDAR_ID); return; }
+
+      const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+      if (rowNumber) rowObj = Object.assign({}, rowObj, getRowObject_(sheet, rowNumber));
+
+      const date = parseDate_(rowObj["Date match"]);
+      if (!date) return;
+
+      const time = rowObj["Heure/RDV"] || "12:00";
+      const start = combineDateAndTime_(date, time);
+      const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+
+      const title = rowObj["Format"] === "3x3"
+        ? `🏀 3x3 - ${rowObj["Visiteur / événement"] || rowObj["Recevant"] || "Mission"}`
+        : `🏀 ${rowObj["Niveau administratif"] || ""} - ${rowObj["Recevant"] || ""}`;
+
+      const location = rowObj["Adresse"] || "";
+      const description = buildCalendarDescription_(rowObj);
+
+      const headerMap = getHeaderMap_(sheet);
+      const eventCol = headerMap[normalizeHeader_("Agenda Event ID")];
+
+      let eventId = rowObj["Agenda Event ID"] || "";
+      let event = null;
+
+      if (eventId) {
+        try { event = calendar.getEventById(eventId); } catch (e) { event = null; }
+      }
+
+      if (!event) event = findExistingCalendarEvent_(calendar, rowObj, title, start, location);
+
+      if (event) {
+        event.setTitle(title);
+        event.setTime(start, end);
+        event.setLocation(location);
+        event.setDescription(description);
+      } else {
+        event = calendar.createEvent(title, start, end, { location, description });
+      }
+
+      if (eventCol && rowNumber && event) sheet.getRange(rowNumber, eventCol).setValue(event.getId());
+    } catch (e) {
+      log_("CALENDAR_ERROR", e.stack || e.message);
+    }
+  }
+
+  function findExistingCalendarEvent_(calendar, rowObj, title, start, location) {
+    const uid = String(rowObj["UID"] || "").trim();
+    const matchNumber = String(rowObj["N° rencontre"] || "").trim();
+
+    const dayStart = new Date(start.getTime()); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(start.getTime()); dayEnd.setHours(23, 59, 59, 999);
+
+    const events = calendar.getEvents(dayStart, dayEnd);
+
+    for (const event of events) {
+      const eventTitle = clean_(event.getTitle());
+      const eventLocation = clean_(event.getLocation());
+      const eventDescription = clean_(event.getDescription());
+      const eventStart = event.getStartTime();
+
+      if (uid && eventDescription.includes("UID : " + uid)) return event;
+      if (uid && eventDescription.includes("UID: " + uid)) return event;
+      if (matchNumber && eventDescription.includes("N° rencontre : " + matchNumber)) return event;
+
+      const sameTitle = normalize_(eventTitle) === normalize_(title);
+      const sameLocation = !location || normalize_(eventLocation) === normalize_(location);
+      const sameStart = Math.abs(eventStart.getTime() - start.getTime()) < 5 * 60 * 1000;
+
+      if (sameTitle && sameStart && sameLocation) return event;
+    }
+
+    return null;
+  }
+
+  function buildCalendarDescription_(row) {
+    const lines = [];
+    lines.push("Referee Tracker");
+    lines.push("UID : " + (row["UID"] || ""));
+    lines.push("");
+    lines.push("Format : " + (row["Format"] || ""));
+    lines.push("Saison : " + (row["Saison"] || ""));
+    lines.push("Compétition : " + (row["Libellé compétition"] || ""));
+    lines.push("N° rencontre : " + (row["N° rencontre"] || ""));
+    lines.push("Mon rôle : " + (row["Mon rôle"] || ""));
+    lines.push("Recevant : " + (row["Recevant"] || ""));
+    lines.push("Visiteur / événement : " + (row["Visiteur / événement"] || ""));
+    lines.push("Salle : " + (row["Salle"] || ""));
+    lines.push("Adresse : " + (row["Adresse"] || ""));
+    lines.push("");
+    lines.push("Collègue : " + (row["Collègue nom"] || ""));
+    lines.push("Rôle collègue : " + (row["Collègue rôle"] || ""));
+    lines.push("Téléphone collègue : " + (row["Collègue téléphone"] || ""));
+    lines.push("Référent 3x3 : " + (row["Référent 3x3"] || ""));
+    lines.push("Code e-Marque : " + (row["Code e-Marque"] || ""));
+    lines.push("");
+    lines.push("Indemnité : " + (row["Indemnité totale"] || ""));
+    lines.push("KM A/R : " + (row["Km A/R stats"] || ""));
+    lines.push("Paiement prévu : " + (row["Date paiement"] || ""));
+    lines.push("");
+    lines.push("FBI : " + FBI_URL);
+    return lines.join("\n");
+  }
+
+  /*************** API ***************/
+
+  function apiResponse_(obj, callback) {
+    const json = JSON.stringify(obj);
+    if (callback) return ContentService.createTextOutput(`${callback}(${json});`).setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  function getMatchsForApi_() {
+    const enCache = _cacheLire_("matchs");
+    if (enCache) return enCache;
+    return _cacheEcrire_("matchs", getMatchsForApiBrut_());
+  }
+
+  function getMatchsForApiBrut_() {
+    const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getDisplayValues();
+    const headers = values[0];
+    return values.slice(1).filter(row => String(row[0] || "").trim()).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = row[i] || "");
+      return obj;
+    });
+  }
+
+  function updatePaymentStatusForApi_(uid, status) {
+    if (!uid) throw new Error("UID manquant");
+    if (!status) throw new Error("Statut paiement manquant");
+    if (!PAYMENT_STATUSES.includes(status)) throw new Error("Statut paiement non autorisé : " + status);
+
+    const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+    const headerMap = getHeaderMap_(sheet);
+
+    const uidCol = headerMap[normalizeHeader_("UID")];
+    const statusCol = headerMap[normalizeHeader_("Statut paiement")];
+    const dateReceptionCol = headerMap[normalizeHeader_("Date réception")];
+    const montantRecuCol = headerMap[normalizeHeader_("Montant reçu")];
+    const montantAttenduCol = headerMap[normalizeHeader_("Indemnité totale")];
+    const majCol = headerMap[normalizeHeader_("Dernière MAJ")];
+
+    if (!uidCol || !statusCol) throw new Error("Colonnes UID ou Statut paiement introuvables");
+
+    const lastRow = sheet.getLastRow();
+    const uids = sheet.getRange(2, uidCol, Math.max(lastRow - 1, 1), 1).getValues().flat();
+
+    let rowNumber = -1;
+    for (let i = 0; i < uids.length; i++) {
+      if (String(uids[i]).trim() === uid) { rowNumber = i + 2; break; }
+    }
+    if (rowNumber === -1) throw new Error("UID introuvable : " + uid);
+
+    sheet.getRange(rowNumber, statusCol).setValue(status);
+
+    if (status === "Reçu") {
+      if (dateReceptionCol) sheet.getRange(rowNumber, dateReceptionCol).setValue(new Date());
+      if (montantRecuCol && montantAttenduCol) {
+        const currentReceived = sheet.getRange(rowNumber, montantRecuCol).getValue();
+        const expected = sheet.getRange(rowNumber, montantAttenduCol).getValue();
+        if (!currentReceived && expected) sheet.getRange(rowNumber, montantRecuCol).setValue(expected);
+      }
+    }
+
+    if (status === "À recevoir") {
+      if (dateReceptionCol) sheet.getRange(rowNumber, dateReceptionCol).setValue("");
+      if (montantRecuCol) sheet.getRange(rowNumber, montantRecuCol).setValue("");
+    }
+
+    // Bénévole : rien n'est dû, rien ne sera reçu. Le montant encaissé
+    // est explicitement mis à 0 pour ne pas laisser croire à un impayé.
+    if (status === "Bénévole") {
+      if (dateReceptionCol) sheet.getRange(rowNumber, dateReceptionCol).setValue("");
+      if (montantRecuCol) sheet.getRange(rowNumber, montantRecuCol).setValue(0);
+    }
+
+    if (majCol) sheet.getRange(rowNumber, majCol).setValue(new Date());
+    _cacheInvalider_();
+    return { uid, status, rowNumber };
+  }
+
+  /*************** PAIEMENTS ***************/
+
+  function compute11thNextMonth_(dateStr) {
+    const d = parseDate_(dateStr);
+    if (!d) return "";
+    const payment = new Date(d.getFullYear(), d.getMonth() + 1, 11);
+    return formatDate_(payment);
+  }
+
+  function computeRegionalPaymentDate_(dateStr) {
+    const d = parseDate_(dateStr);
+    if (!d) return "";
+    const year = getSeasonStartYear_(d);
+
+    const periods = [
+      ["09/09", "20/10", "21/10"], ["21/10", "24/11", "25/11"], ["25/11", "22/12", "23/12"],
+      ["23/12", "02/02", "03/02"], ["03/02", "23/02", "24/02"], ["24/02", "30/03", "31/03"],
+      ["31/03", "20/04", "21/04"], ["21/04", "25/05", "26/05"], ["26/05", "15/06", "16/06"]
+    ];
+
+    for (const p of periods) {
+      const start = makeSeasonDate_(p[0], year);
+      let end = makeSeasonDate_(p[1], year);
+      const pay = makeSeasonDate_(p[2], year);
+      if (end < start) end = new Date(end.getFullYear() + 1, end.getMonth(), end.getDate());
+      if (d >= start && d <= end) return formatDate_(pay);
+    }
+
+    return compute11thNextMonth_(dateStr);
+  }
+
+  function makeSeasonDate_(ddmm, seasonYear) {
+    const parts = ddmm.split("/");
+    const day = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const year = month >= 8 ? seasonYear : seasonYear + 1;
+    return new Date(year, month, day);
+  }
+
+  /*************** PDF OCR ***************/
+
+  function extractPdfText_(blob) {
+    let file;
+    try {
+      if (Drive.Files && Drive.Files.create) {
+        file = Drive.Files.create({ name: "OCR_" + new Date().getTime(), mimeType: MimeType.GOOGLE_DOCS }, blob, { ocr: true, ocrLanguage: "fr" });
+      } else if (Drive.Files && Drive.Files.insert) {
+        file = Drive.Files.insert({ title: "OCR_" + new Date().getTime(), mimeType: MimeType.GOOGLE_DOCS }, blob, { ocr: true, ocrLanguage: "fr" });
+      } else {
+        throw new Error("Service avancé Drive non disponible");
+      }
+
+      const doc = DocumentApp.openById(file.id);
+      const text = doc.getBody().getText();
+      DriveApp.getFileById(file.id).setTrashed(true);
+      return text;
+    } catch (e) {
+      if (file && file.id) { try { DriveApp.getFileById(file.id).setTrashed(true); } catch (ignore) {} }
+      throw e;
+    }
+  }
+
+  /*************** OUTILS ***************/
+
+  function getMessageText_(message) {
+    let body = "";
+    try { body = message.getPlainBody(); } catch (e) { body = ""; }
+    if (!body) { try { body = message.getBody().replace(/<[^>]+>/g, " "); } catch (e) { body = ""; } }
+    return clean_(body);
+  }
+
+  function ensureLabels_() {
+    [LABEL_TRAITE, LABEL_A_VERIFIER, LABEL_ANOMALIE].forEach(name => {
+      if (!GmailApp.getUserLabelByName(name)) GmailApp.createLabel(name);
+    });
+  }
+
+  function extractBetween_(text, startRegex, endRegexes) {
+    const start = text.search(startRegex);
+    if (start < 0) return "";
+    const after = text.substring(start).replace(startRegex, "");
+    let endIndex = after.length;
+    endRegexes.forEach(re => { const idx = after.search(re); if (idx >= 0 && idx < endIndex) endIndex = idx; });
+    return clean_(after.substring(0, endIndex));
+  }
+
+  /* FIX #8 (28/08/2026) — nom de club par CODE OFFICIEL FFBB.
+     La convocation porte, en face de chaque groupement sportif, son code
+     officiel (3 lettres de ligue + 7 chiffres, ex. GES0051055). On le lit et
+     on demande le nom exact au référentiel (ClubResolver.gs / onglet
+     CLUBS_REF). Le nom lu dans le PDF ne sert plus que de repli. */
+
+  var RE_CODE_CLUB_ = /\b(?:ARA|BFC|BRE|COR|CVL|GES|HDF|IDF|NAQ|NOR|OCC|PDL|SUD|GUA|GUY|MAR|MAY|REU|NCA|PFR|WEF|SPM|HAN|LNB)\d{7}\b/;
+
+  function codeClubDansZone_(oneLine, startRegex, endRegexes) {
+    const zone = extractBetween_(oneLine, startRegex, endRegexes);
+    const m = String(zone).toUpperCase().match(RE_CODE_CLUB_);
+    return m ? m[0] : "";
+  }
+
+  /* Le code officiel ne doit jamais rester collé au nom du club. */
+  var RE_CODE_CLUB_G_ = new RegExp(RE_CODE_CLUB_.source, "gi");
+
+  function sansCodeClub_(nom) {
+    return clean_(String(nom || "").replace(RE_CODE_CLUB_G_, " "));
+  }
+
+  function nomClubOfficiel_(oneLine, startRegex, endRegexes, nomLu) {
+    const repli = sansCodeClub_(nomLu);
+    if (typeof CR === "undefined") return repli;          // ClubResolver.gs absent
+    const code = codeClubDansZone_(oneLine, startRegex, endRegexes);
+    if (!code) return repli;                              // pas de code : on garde le PDF
+    try {
+      const officiel = CR.nom(code, "");
+      return officiel || repli;                           // code inconnu : on garde le PDF
+    } catch (e) {
+      return repli;                                       // référentiel HS : jamais bloquant
+    }
+  }
+
+  function extractDateFromText_(text) {
+    const t = clean_(text);
+
+    let numeric = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+    if (numeric) return `${pad2_(numeric[1])}/${pad2_(numeric[2])}/${numeric[3]}`;
+
+    numeric = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2})\b/);
+    if (numeric) return `${pad2_(numeric[1])}/${pad2_(numeric[2])}/20${numeric[3]}`;
+
+    const months = {
+      JANVIER: "01", FEVRIER: "02", FÉVRIER: "02", MARS: "03", AVRIL: "04", MAI: "05", JUIN: "06",
+      JUILLET: "07", AOUT: "08", AOÛT: "08", SEPTEMBRE: "09", OCTOBRE: "10", NOVEMBRE: "11", DECEMBRE: "12", DÉCEMBRE: "12"
+    };
+
+    const re = /\b(\d{1,2})\s+(JANVIER|FEVRIER|FÉVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AOUT|AOÛT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DECEMBRE|DÉCEMBRE)\s+(\d{4})\b/i;
+    const m = t.match(re);
+    if (m) return `${pad2_(m[1])}/${months[m[2].toUpperCase()]}/${m[3]}`;
+
+    return "";
+  }
+
+  function extractRdvTime_(text) {
+    const t = clean_(text);
+    let m = t.match(/(?:RDV|rendez-vous)\s*(?:à|a|:|-)?\s*(\d{1,2})[H:](\d{0,2})/i);
+    if (m) return `${pad2_(m[1])}:${pad2_(m[2] || "00")}`;
+    m = t.match(/\b(\d{1,2})[H:](\d{2})\b/);
+    if (m) return `${pad2_(m[1])}:${pad2_(m[2])}`;
+    return "";
+  }
+
+  function estimateKmRoundTrip_(destination) {
+    if (!destination) return "";
+    try {
+      const directions = Maps.newDirectionFinder().setOrigin(START_ADDRESS).setDestination(destination).setMode(Maps.DirectionFinder.Mode.DRIVING).getDirections();
+      const meters = directions.routes[0].legs[0].distance.value;
+      const kmOneWay = meters / 1000;
+      return Math.round(kmOneWay * 2);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function computeSeason_(dateStr) {
+    const d = parseDate_(dateStr) || new Date();
+    const y = getSeasonStartYear_(d);
+    return `${y}/${y + 1}`;
+  }
+
+  function getSeasonStartYear_(date) {
+    const d = date || new Date();
+    const year = d.getFullYear();
+    const switchDate = new Date(year, 6, 30); // 30 juillet
+    return d >= switchDate ? year : year - 1;
+  }
+
+  function parseDate_(dateStr) {
+    if (!dateStr) return null;
+    if (Object.prototype.toString.call(dateStr) === "[object Date]") return dateStr;
+    const s = String(dateStr).trim();
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return null;
+  }
+
+  function combineDateAndTime_(date, timeStr) {
+    const d = new Date(date.getTime());
+    const m = String(timeStr || "12:00").match(/(\d{1,2})[:hH](\d{0,2})/);
+    if (m) d.setHours(Number(m[1]), Number(m[2] || 0), 0, 0);
+    else d.setHours(12, 0, 0, 0);
+    return d;
+  }
+
+  function formatDate_(date) {
+    return `${pad2_(date.getDate())}/${pad2_(date.getMonth() + 1)}/${date.getFullYear()}`;
+  }
+
+  function getSS_() {
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  }
+
+  function clean_(value) {
+    return String(value || "").replace(/\u00A0/g, " ").replace(/[ \t\r\n]+/g, " ").trim();
+  }
+
+  function normalize_(value) {
+    return clean_(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  }
+
+  function normalizeHeader_(value) {
+    return normalize_(value).replace(/[^A-Z0-9]/g, "");
+  }
+
+  function cleanPhone_(value) {
+    let digits = String(value || "").replace(/[^\d]/g, "");
+    if (digits.length === 9) digits = "0" + digits;
+    if (/^0+$/.test(digits)) return "";
+    return digits;
+  }
+
+  function toNumber_(value) {
+    if (value === "" || value === null || value === undefined) return "";
+    const n = Number(String(value).replace(",", ".").replace(/[^\d.]/g, ""));
+    return isNaN(n) ? "" : n;
+  }
+
+  function pad2_(value) {
+    return String(value || "0").padStart(2, "0");
+  }
+
+  function hash_(value) {
+    const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(value || ""));
+    return raw.map(b => (b + 256).toString(16).slice(-2)).join("").substring(0, 10).toUpperCase();
+  }
+
+  function addWarning_(existing, warning) {
+    if (!warning) return existing || "";
+    if (!existing) return warning;
+    if (existing.indexOf(warning) >= 0) return existing;
+    return existing + " | " + warning;
+  }
+
+  function log_(type, message) {
+    try {
+      const ss = getSS_();
+      let sh = ss.getSheetByName(SHEET_LOGS);
+      if (!sh) { sh = ss.insertSheet(SHEET_LOGS); sh.appendRow(["Date", "Type", "Message"]); }
+      sh.appendRow([new Date(), type, message]);
+    } catch (e) {
+      console.log(type + " - " + message);
+    }
+  }
+
+  /*************** VÉHICULE / COÛT RÉEL CARBURANT ***************/
+
+  /**
+   * MODIFICATION C — véhicule en service à la DATE DU MATCH.
+   *
+   * Config.gs conserve un historique daté : chaque voiture a une date
+   * « depuis ». On retient la dernière dont la date précède celle du match.
+   * Conséquence : ajouter une voiture ne modifie AUCUN calcul déjà fait.
+   *
+   * Repli sur la liste écrite en dur (ancien format cutoverBefore) si
+   * Config.gs est absent.
+   */
+  function vehicleForDate_(dateStr) {
+    if (typeof CFG !== "undefined") {
+      var v = CFG.vehiculePour(parseDate_(dateStr));
+      if (v) return { name: v.nom, consoL100: v.conso, cv: v.cv };
+    }
+
+    var d = parseDate_(dateStr);
+    if (!d) return VEHICLES[VEHICLES.length - 1];
+    for (var i = 0; i < VEHICLES.length; i++) {
+      var cut = VEHICLES[i].cutoverBefore ? parseDate_(VEHICLES[i].cutoverBefore) : null;
+      if (cut && d < cut) return VEHICLES[i];
+    }
+    return VEHICLES[VEHICLES.length - 1];
+  }
+
+  /* Prix du litre applicable à une date donnée.
+     - Match passé  : prix historique du mois (figé, ne bougera plus)
+     - Match à venir : prix temps réel le plus récent connu
+     - À défaut      : constante FUEL_PRICE_PER_L */
+  function prixCarburantPour_(dateStr) {
+    const d = parseDate_(dateStr);
+    if (!d) return FUEL_PRICE_PER_L;
+
+    const cle = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+
+    // 1. Le mois figure dans l'historique : c'est la valeur définitive
+    if (PRIX_E10_HISTORIQUE[cle]) return PRIX_E10_HISTORIQUE[cle];
+
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+
+    // 2. Match passé hors historique : on prend le mois connu le plus proche
+    if (d < aujourdhui) {
+      const mois = Object.keys(PRIX_E10_HISTORIQUE).sort();
+      if (!mois.length) return FUEL_PRICE_PER_L;
+      let proche = mois[0];
+      let ecartMin = Infinity;
+      mois.forEach(m => {
+        const ecart = Math.abs(moisEnNombre_(m) - moisEnNombre_(cle));
+        if (ecart < ecartMin) { ecartMin = ecart; proche = m; }
       });
+      return PRIX_E10_HISTORIQUE[proche];
     }
 
-    const m = map.get(key);
-    m.net += r._net; m.carburant += r._carburant; m.brut += r._brut;
-    m.km += r._km; m.heures += r._heuresTotal; m.count++;
-    if (r._paye) m.recu += r._brut; else m.du += r._brut;
-  });
-
-  return [...map.values()].sort((a, b) => {
-    // D'abord par saison (ordre chronologique des saisons)
-    if (a.saison !== b.saison) return String(a.saison).localeCompare(String(b.saison));
-    // Puis dans l'ordre des mois de la saison sportive
-    return rangMoisSaison(a.mois) - rangMoisSaison(b.mois);
-  });
-}
-
-/* Liste des saisons réellement présentes dans les données affichées */
-function saisonsDisponibles(rows) {
-  const set = new Set();
-  rows.forEach(r => { if (r._season) set.add(r._season); });
-  return [...set].sort().reverse();
-}
-
-function labelMois(key) {
-  const [y, m] = key.split("-");
-  const noms = ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"];
-  return `${noms[Number(m) - 1]} ${y.slice(2)}`;
-}
-
-function groupBySimple(rows, keyFn) {
-  const map = new Map();
-  rows.forEach(r => {
-    const k = String(keyFn(r) || "").trim();
-    if (!k) return;
-    if (!map.has(k)) map.set(k, { label: k, net: 0, brut: 0, km: 0, count: 0, heures: 0 });
-    const g = map.get(k);
-    g.net += r._net; g.brut += r._brut; g.km += r._km; g.count++; g.heures += r._heuresTotal;
-  });
-  return [...map.values()];
-}
-
-/* ---------------- Graphiques ---------------- */
-
-function destroyCharts() {
-  Object.values(AN.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
-  AN.charts = {};
-}
-
-function ctx(id) {
-  const el = document.getElementById(id);
-  return el ? el.getContext("2d") : null;
-}
-
-const chartBase = {
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: { mode: "index", intersect: false },
-  plugins: {
-    legend: { labels: { font: { size: 11.5, family: "Inter, sans-serif" }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
-    tooltip: {
-      backgroundColor: "#0A1F44", padding: 10, cornerRadius: 8,
-      titleFont: { size: 12.5 }, bodyFont: { size: 12.5, family: "Inter, sans-serif" }
-    }
-  },
-  scales: {
-    x: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
-    y: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
+    // 3. Match à venir : prix temps réel s'il est en cache
+    const actuel = lirePrixActuel_();
+    return actuel || FUEL_PRICE_PER_L;
   }
-};
 
-function buildChartMois(rows) {
-  const c = ctx("chartMois"); if (!c || typeof Chart === "undefined") return;
-  const months = groupMonths(rows, AN.saison);
+  function moisEnNombre_(cle) {
+    const p = String(cle).split("-");
+    return Number(p[0]) * 12 + Number(p[1]);
+  }
 
-  if (!months.length) {
-    AN.charts.mois = new Chart(c, {
-      type: "bar",
-      data: { labels: [], datasets: [] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  function lirePrixActuel_() {
+    try {
+      const v = PropertiesService.getScriptProperties().getProperty(CACHE_PRIX_ACTUEL);
+      const n = Number(v);
+      return (n > 0.5 && n < 4) ? n : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Coût réel carburant pour un aller-retour donné (km A/R déjà doublés).
+  function realFuelCost_(kmAR, dateStr) {
+    const km = Number(kmAR) || 0;
+    if (!km) return 0;
+    const v = vehicleForDate_(dateStr);
+    const prix = prixCarburantPour_(dateStr);
+    return Number(((km * v.consoL100 / 100) * prix).toFixed(2));
+  }
+
+  /* Récupère le prix E10 moyen actuel dans un rayon de 15 km autour du
+     domicile, via l'API open data du ministère de l'Économie (gratuite,
+     sans clé). Stocké en cache pour les matchs à venir.
+     À lancer une fois par semaine par déclencheur. */
+  function majPrixCarburantActuel_() {
+    try {
+      _syncConfig_();   // MODIFICATION B : utilise l'adresse à jour
+
+      const lat = START_COORDS.lat, lon = START_COORDS.lon;
+      const url = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
+        + "prix-des-carburants-en-france-flux-instantane-v2/records"
+        + "?select=prix_e10&where=distance(geom%2C%20geom%27POINT(" + lon + "%20" + lat + ")%27%2C%2015km)"
+        + "&limit=100";
+
+      const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      if (resp.getResponseCode() !== 200) {
+        log_("PRIX_CARBURANT", "API indisponible (code " + resp.getResponseCode() + ")");
+        return;
+      }
+
+      const data = JSON.parse(resp.getContentText());
+      const prix = (data.results || [])
+        .map(r => Number(r.prix_e10))
+        .filter(v => v > 0.5 && v < 4);
+
+      if (!prix.length) {
+        log_("PRIX_CARBURANT", "Aucun prix E10 exploitable dans le rayon");
+        return;
+      }
+
+      const moyenne = prix.reduce((t, v) => t + v, 0) / prix.length;
+      PropertiesService.getScriptProperties().setProperty(CACHE_PRIX_ACTUEL, String(moyenne.toFixed(4)));
+      log_("PRIX_CARBURANT", moyenne.toFixed(3) + " €/L sur " + prix.length + " station(s)");
+    } catch (e) {
+      log_("PRIX_CARBURANT_ERROR", e.message);
+    }
+  }
+
+  // Équivalent barème fiscal (KPI info seulement — jamais versé).
+  function baremeFiscalCost_(kmAR, dateStr) {
+    const km = Number(kmAR) || 0;
+    if (!km) return 0;
+    const v = vehicleForDate_(dateStr);
+    const coef = BAREME_FISCAL_PAR_KM[v.cv] || BAREME_FISCAL_PAR_KM[5];
+    return Number((km * coef).toFixed(2));
+  }
+
+  /*************** GÉOCODAGE OSM (Nominatim) + DISTANCE (OSRM) ***************/
+  // 100% gratuit, sans clé ni CB. Utilisé seulement si "Km A/R stats" est vide
+  // (les convocations 5x5 fournissent déjà le km ; utile surtout pour le 3x3).
+
+  function geocodeOSM_(address) {
+    if (!address) return null;
+    try {
+      const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(address);
+      const resp = UrlFetchApp.fetch(url, {
+        muteHttpExceptions: true,
+        headers: { "User-Agent": "RefereeTracker/1.0 (contact: arbitrage)" }
+      });
+      if (resp.getResponseCode() !== 200) return null;
+      const data = JSON.parse(resp.getContentText());
+      if (!data || !data.length) return null;
+      return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
+    } catch (e) {
+      log_("GEOCODE_ERROR", e.message);
+      return null;
+    }
+  }
+
+  function osrmRoundTripKm_(destAddress) {
+    const dest = geocodeOSM_(destAddress);
+    if (!dest) return "";
+    Utilities.sleep(1100); // Nominatim : max 1 req/s, on respecte
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${START_COORDS.lon},${START_COORDS.lat};${dest.lon},${dest.lat}?overview=false`;
+      const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      if (resp.getResponseCode() !== 200) return "";
+      const data = JSON.parse(resp.getContentText());
+      if (!data.routes || !data.routes.length) return "";
+      const oneWayKm = data.routes[0].distance / 1000;
+      return Math.round(oneWayKm * 2);
+    } catch (e) {
+      log_("OSRM_ERROR", e.message);
+      return "";
+    }
+  }
+
+  /*************** STATS SERVEUR (endpoint action=stats) ***************/
+
+  function buildStatsForApi_(seasonFilter) {
+    const nom = "stats:" + (seasonFilter || "*");
+    const enCache = _cacheLire_(nom);
+    if (enCache) return enCache;
+    return _cacheEcrire_(nom, buildStatsForApiBrut_(seasonFilter));
+  }
+
+  function buildStatsForApiBrut_(seasonFilter) {
+    _syncConfig_();   // MODIFICATION B
+
+    const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+    if (!sheet || sheet.getLastRow() < 2) return emptyStats_();
+
+    const values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getDisplayValues();
+    const headers = values[0];
+    const idx = {};
+    headers.forEach((h, i) => idx[h] = i);
+
+    const rows = values.slice(1).filter(r => String(r[idx["UID"]] || "").trim());
+
+    // Enrichissement : coût réel, net réel, véhicule, indicateurs 3x3/BASKET CENTER
+    const enriched = rows.map(r => {
+      const format = r[idx["Format"]] || "";
+      const statut = String(r[idx["Statut"]] || "").toLowerCase();
+      const dateStr = r[idx["Date match"]] || "";
+      const season = normSeason_(r[idx["Saison"]] || "", dateStr);
+      const kmAR = num_(r[idx["Km A/R stats"]]);
+      const statutPaiement = r[idx["Statut paiement"]] || "";
+
+      /* Bénévolat : le match a bien eu lieu, les kilomètres et le carburant
+         sont réels, mais aucune indemnité n'a été perçue. On compte donc 0 €
+         de recette — le net devient logiquement négatif, ce qui est la vérité
+         de l'opération. L'indemnité théorique reste dans le Sheet. */
+      const estBenevole = normUpper_(statutPaiement) === "BENEVOLE";
+      const indemniteTheorique = num_(r[idx["Indemnité totale"]]);
+      const indemnite = estBenevole ? 0 : indemniteTheorique;
+      const recevant = r[idx["Recevant"]] || "";
+      const salle = r[idx["Salle"]] || "";
+      const ville = r[idx["Ville"]] || "";
+      const niveau = r[idx["Niveau administratif"]] || "";
+      // Genre/catégorie : lus de la colonne si présente, sinon recalculés à la volée
+      // (permet d'avoir les stats même sur les lignes historiques non enrichies)
+      const codeComp = r[idx["Code compétition"]] || "";
+      const libComp = r[idx["Libellé compétition"]] || "";
+      const genre = (idx["Genre"] !== undefined && r[idx["Genre"]]) ? r[idx["Genre"]] : detecterGenre_(codeComp, libComp);
+      const categorie = (idx["Catégorie d'âge"] !== undefined && r[idx["Catégorie d'âge"]]) ? r[idx["Catégorie d'âge"]] : detecterCategorie_(codeComp, libComp);
+      const collegue = r[idx["Collègue nom"]] || "";
+      const paiementType = r[idx["Paiement Type"]] || "";
+      const datePaiementPrevu = r[idx["Date paiement"]] || "";
+      const dateReception = r[idx["Date réception"]] || "";
+
+      const coutReel = realFuelCost_(kmAR, dateStr);
+      const bareme = baremeFiscalCost_(kmAR, dateStr);
+      const remboursementKm = Number((kmAR * RATE_PER_KM_FFBB).toFixed(2));
+      const netReel = Number((indemnite - coutReel).toFixed(2));
+      const veh = vehicleForDate_(dateStr).name;
+
+      // Usure/entretien (hors carburant) et empreinte carbone
+      const coutUsure = round2_(kmAR * COUT_USURE_PAR_KM);
+      const netReelToutCompris = round2_(indemnite - coutReel - coutUsure);
+      const litres = round2_(kmAR * vehicleForDate_(dateStr).consoL100 / 100);
+      const co2Kg = round2_(litres * CO2_KG_PAR_LITRE_E10);
+
+      const dureeH = (DUREE_MATCH_H[format] || DUREE_MATCH_H.default) + (kmAR ? kmAR / 70 : 0); // trajet ~70km/h
+      const eurParHeure = dureeH > 0 ? Number((netReel / dureeH).toFixed(2)) : 0;
+      const eurParKm = kmAR > 0 ? Number((indemnite / kmAR).toFixed(2)) : 0;
+
+      // Délai réel de paiement, si le match est encaissé et les deux dates connues
+      const dPrevu = parseDate_(datePaiementPrevu);
+      const dRecu = parseDate_(dateReception);
+      const delaiJours = (dPrevu && dRecu) ? Math.round((dRecu - dPrevu) / 86400000) : null;
+
+      const dMatch = parseDate_(dateStr);
+      const jourSemaine = dMatch ? dMatch.getDay() : null; // 0 = dimanche ... 6 = samedi
+
+      const is3x3 = format === "3x3";
+      const isBasketCenter = LIEUX_3X3.some(l => normUpper_(recevant).includes(l) || normUpper_(salle).includes(l));
+
+      return {
+        format, statut, dateStr, season, kmAR, indemnite, indemniteTheorique, estBenevole,
+        statutPaiement, recevant, salle, ville, niveau, collegue,
+        genre, categorie, paiementType,
+        coutReel, bareme, remboursementKm, netReel, veh, dureeH, eurParHeure, eurParKm, is3x3, isBasketCenter,
+        coutUsure, netReelToutCompris, litres, co2Kg, delaiJours, jourSemaine, dateReception,
+        isActive: !statut.includes("annul") && format !== "Alerte",
+        date: parseDate_(dateStr)
+      };
+    }).filter(e => e.isActive);
+
+    const filtered = (seasonFilter && seasonFilter !== "Toutes les saisons")
+      ? enriched.filter(e => e.season === seasonFilter)
+      : enriched;
+
+    const five = filtered.filter(e => e.format === "5x5");
+    const three = filtered.filter(e => e.format === "3x3");
+
+    const sum = (arr, k) => arr.reduce((t, e) => t + (Number(e[k]) || 0), 0);
+    const avg = (arr, k) => { const v = arr.filter(e => Number(e[k]) > 0); return v.length ? sum(v, k) / v.length : 0; };
+
+    const totalIndemnite = sum(filtered, "indemnite");
+    const totalCoutReel = sum(filtered, "coutReel");
+    const totalNetReel = sum(filtered, "netReel");
+    const totalKm = sum(filtered, "kmAR");
+    const totalRemboursementKm = sum(filtered, "remboursementKm");
+    const totalBareme = sum(filtered, "bareme");
+
+    // Reçu vs à recevoir
+    const estBenevole_ = e => normUpper_(e.statutPaiement) === "BENEVOLE";
+    const recu = filtered.filter(e => normUpper_(e.statutPaiement) === "RECU");
+    // Un match bénévole ne figure ni dans le reçu ni dans le restant dû :
+    // il n'y a simplement pas d'argent en jeu.
+    const aRecevoir = filtered.filter(e => normUpper_(e.statutPaiement) !== "RECU" && !estBenevole_(e));
+    const benevoles = filtered.filter(estBenevole_);
+
+    // Agrégations
+    const parSaison = aggregate_(filtered, e => e.season);
+    const parMois = aggregate_(filtered, e => monthKey_(e.date));
+    const parNiveau = aggregate_(filtered, e => e.niveau || "Inconnu");
+    const parClub = aggregate_(five, e => e.recevant);
+    const parSalle = aggregate_(five, e => e.salle); // 5x5 seulement (salles réelles)
+    const parVille = aggregate_(filtered, e => e.ville);
+    const parCollegue = aggregate_(five, e => e.collegue);
+    const parEvenement3x3 = aggregate_(three, e => e.recevant); // 3x3 par événement
+    const parGenre = aggregate_(filtered, e => e.genre || "Non déterminé");
+    const parCategorie = aggregate_(filtered, e => e.categorie || "Non déterminé");
+
+    // ===== Usure & empreinte carbone =====
+    const totalUsure = sum(filtered, "coutUsure");
+    const totalNetToutCompris = sum(filtered, "netReelToutCompris");
+    const totalLitres = sum(filtered, "litres");
+    const totalCo2 = sum(filtered, "co2Kg");
+
+    // ===== Délais réels de paiement (par type de paiement) =====
+    // Détecte les dates de réception suspectes : si une même date revient sur
+    // une part anormalement élevée des paiements reçus, c'est probablement
+    // une correction en lot passée (comme marquerPaiementsRecus()), pas de
+    // vraies dates individuelles — on l'exclut du calcul de délai pour ne
+    // pas produire un chiffre absurde, sans pour autant remettre en cause
+    // le statut "Reçu" lui-même.
+    const dateReceptionSuspecte_ = detecterDateSuspecte_(filtered);
+    const avecDelai = filtered.filter(e =>
+      e.delaiJours !== null && e.dateReception !== dateReceptionSuspecte_
+    );
+    const parDelaiType = aggregerDelais_(avecDelai);
+    const delaiMoyenGlobal = avecDelai.length ? avecDelai.reduce((t, e) => t + e.delaiJours, 0) / avecDelai.length : null;
+
+    // ===== Régularité =====
+    const moisRegularite = aggregate_(filtered, e => monthKey_(e.date));
+    const regularite = calculerRegularite_(moisRegularite, filtered);
+
+    // ===== Fidélité géographique =====
+    const fidelite = calculerFidelite_(five);
+
+    // ===== Seuil de rentabilité kilométrique =====
+    const coutParKmMoyen = totalKm > 0 ? (totalCoutReel + totalUsure) / totalKm : 0;
+    const indemniteMoyenneParMission = filtered.length ? totalIndemnite / filtered.length : 0;
+    const kmEquilibre = coutParKmMoyen > 0 ? Math.round(indemniteMoyenneParMission / coutParKmMoyen) : null;
+
+    // ===== Projection fin de saison (uniquement si la saison sélectionnée est en cours) =====
+    const projection = calculerProjection_(seasonFilter, filtered, totalNetReel);
+
+    // ===== Score de rentabilité par mission (0-100, relatif aux missions affichées) =====
+    const classementRentabilite = classerRentabilite_(filtered);
+
+    // Records
+    const maxKm = maxByKey_(filtered, "kmAR");
+    const maxIndemnite = maxByKey_(filtered, "indemnite");
+    const maxNet = maxByKey_(filtered, "netReel");
+    const minEurHeure = minByKey_(filtered.filter(e => e.eurParHeure > 0), "eurParHeure");
+
+    return {
+      season: seasonFilter || "Toutes les saisons",
+      totaux: {
+        missions: filtered.length,
+        matchs5x5: five.length,
+        tournois3x3: three.length,
+        indemnite_brute: round2_(totalIndemnite),
+        remboursement_km: round2_(totalRemboursementKm),
+        cout_reel_carburant: round2_(totalCoutReel),
+        net_reel: round2_(totalNetReel),
+        equivalent_bareme_fiscal: round2_(totalBareme),
+        km_total_AR: round2_(totalKm),
+        recu_total: round2_(sum(recu, "indemnite")),
+        a_recevoir_total: round2_(sum(aRecevoir, "indemnite")),
+        nb_recu: recu.length,
+        nb_a_recevoir: aRecevoir.length,
+        nb_benevole: benevoles.length,
+        benevolat_total: round2_(sum(benevoles, "indemnite"))
+      },
+      moyennes: {
+        indemnite_par_5x5: round2_(avg(five, "indemnite")),
+        indemnite_par_3x3: round2_(avg(three, "indemnite")),
+        net_reel_par_mission: round2_(avg(filtered, "netReel")),
+        km_par_5x5: round2_(avg(five, "kmAR")),
+        km_par_3x3: round2_(avg(three, "kmAR")),
+        eur_par_km: round2_(totalKm > 0 ? totalIndemnite / totalKm : 0),
+        eur_par_heure_moyen: round2_(avg(filtered, "eurParHeure")),
+        cout_reel_par_100km: round2_(totalKm > 0 ? (totalCoutReel / totalKm) * 100 : 0)
+      },
+      cout_complet: {
+        cout_usure_total: round2_(totalUsure),
+        net_reel_tout_compris: round2_(totalNetToutCompris),
+        cout_usure_par_km: COUT_USURE_PAR_KM,
+        km_equilibre: kmEquilibre,
+        note: "Le carburant est le seul coût réellement décaissé au fil de l'eau. L'usure (pneus, entretien, décote) est une estimation à " + COUT_USURE_PAR_KM.toFixed(2) + " €/km, non versée par personne — elle sert à donner un net réel plus complet."
+      },
+      empreinte: {
+        litres_consommes: round2_(totalLitres),
+        co2_kg: round2_(totalCo2),
+        equivalent_pleins_50l: round2_(totalLitres / 50),
+        facteur_co2_par_litre: CO2_KG_PAR_LITRE_E10
+      },
+      delais_paiement: {
+        delai_moyen_jours: delaiMoyenGlobal !== null ? Math.round(delaiMoyenGlobal) : null,
+        par_type: parDelaiType,
+        nb_avec_delai_connu: avecDelai.length,
+        date_exclue_car_suspecte: dateReceptionSuspecte_ || null,
+        note: dateReceptionSuspecte_
+          ? "La date " + dateReceptionSuspecte_ + " revient sur un grand nombre de paiements — probablement une correction en lot passée plutôt que de vraies dates de réception. Exclue du calcul de délai."
+          : ""
+      },
+      regularite: regularite,
+      fidelite_geographique: fidelite,
+      projection_saison: projection,
+      classement_rentabilite: classementRentabilite,
+      records: {
+        plus_gros_deplacement: maxKm ? { km: maxKm.kmAR, lieu: maxKm.recevant || maxKm.salle, date: maxKm.dateStr } : null,
+        plus_grosse_indemnite: maxIndemnite ? { montant: maxIndemnite.indemnite, lieu: maxIndemnite.recevant, date: maxIndemnite.dateStr } : null,
+        meilleur_net_reel: maxNet ? { net: maxNet.netReel, lieu: maxNet.recevant, date: maxNet.dateStr } : null,
+        pire_rentabilite_horaire: minEurHeure ? { eur_heure: minEurHeure.eurParHeure, lieu: minEurHeure.recevant || minEurHeure.salle, date: minEurHeure.dateStr } : null
+      },
+      par_saison: parSaison,
+      par_mois: parMois,
+      par_niveau: parNiveau,
+      top_clubs: parClub.slice(0, 8),
+      top_salles: parSalle.slice(0, 8),
+      top_villes: parVille.slice(0, 8),
+      top_collegues: parCollegue.slice(0, 8),
+      evenements_3x3: parEvenement3x3,
+      par_genre: parGenre,
+      par_categorie: parCategorie,
+      vehicules: VEHICLES.map(v => ({ nom: v.name, conso: v.consoL100, cv: v.cv })),
+      prix_carburant: FUEL_PRICE_PER_L,
+      note_3x3: "Les lieux " + LIEUX_3X3.join(", ") + " sont exclusivement 3x3 — comptés uniquement dans les stats 3x3."
+    };
+  }
+
+  function aggregate_(arr, keyFn) {
+    const map = {};
+    arr.forEach(e => {
+      const key = String(keyFn(e) || "").trim();
+      if (!key || key === "Sans date") return;
+      if (!map[key]) map[key] = { label: key, count: 0, indemnite: 0, cout_reel: 0, net_reel: 0, km: 0 };
+      map[key].count++;
+      map[key].indemnite += e.indemnite || 0;
+      map[key].cout_reel += e.coutReel || 0;
+      map[key].net_reel += e.netReel || 0;
+      map[key].km += e.kmAR || 0;
     });
-    return;
+    return Object.values(map)
+      .map(m => ({ label: m.label, count: m.count, indemnite: round2_(m.indemnite), cout_reel: round2_(m.cout_reel), net_reel: round2_(m.net_reel), km: round2_(m.km) }))
+      .sort((a, b) => b.count - a.count || b.indemnite - a.indemnite);
   }
 
-  AN.charts.mois = new Chart(c, {
-    data: {
-      labels: months.map(m => labelMois(m.key)),
-      datasets: [
-        { type: "bar", label: "Net conservé", data: months.map(m => round2(m.net)), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, stack: "s", yAxisID: "y" },
-        { type: "bar", label: "Carburant", data: months.map(m => round2(m.carburant)), backgroundColor: AN.COLORS.red, borderRadius: 5, stack: "s", yAxisID: "y" },
-        { type: "line", label: "Missions", data: months.map(m => m.count), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
-      ]
-    },
-    options: {
-      ...chartBase,
-      scales: {
-        x: { ...chartBase.scales.x, stacked: true },
-        y: { ...chartBase.scales.y, stacked: true, title: { display: true, text: "€", font: { size: 11 }, color: AN.COLORS.muted } },
-        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold, precision: 0 }, title: { display: true, text: "missions", font: { size: 11 }, color: AN.COLORS.gold } }
-      },
-      plugins: {
-        ...chartBase.plugins,
-        tooltip: {
-          ...chartBase.plugins.tooltip,
-          callbacks: {
-            label: (i) => i.dataset.label === "Missions"
-              ? `${i.parsed.y} mission(s)`
-              : `${i.dataset.label} : ${money(i.parsed.y)}`
-          }
-        }
-      }
+  function maxByKey_(arr, k) { let best = null, bv = -Infinity; arr.forEach(e => { const v = Number(e[k]) || 0; if (v > bv) { bv = v; best = e; } }); return bv > 0 ? best : null; }
+  function minByKey_(arr, k) { let best = null, bv = Infinity; arr.forEach(e => { const v = Number(e[k]) || 0; if (v < bv) { bv = v; best = e; } }); return best; }
+
+  function monthKey_(date) {
+    if (!date) return "Sans date";
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+  }
+
+  function normSeason_(value, dateStr) {
+    if (value && value.includes("/")) return value;
+    const d = parseDate_(dateStr);
+    if (d) { const sy = getSeasonStartYear_(d); return sy + "/" + (sy + 1); }
+    return "";
+  }
+
+  function num_(v) {
+    if (v === "" || v === null || v === undefined) return 0;
+    const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  }
+  function round2_(n) { return Number((Number(n) || 0).toFixed(2)); }
+  function normUpper_(v) { return normalize_(v); }
+
+  /* Détecte une date de réception "en lot" : si une seule date représente
+     30% ou plus des paiements reçus avec délai calculable, elle est très
+     probablement issue d'une correction en masse plutôt que de vraies
+     dates individuelles. Renvoie cette date (ou "" si rien de suspect). */
+  function detecterDateSuspecte_(filtered) {
+    const avecDate = filtered.filter(e => e.delaiJours !== null);
+    if (avecDate.length < 5) return "";
+
+    const freq = {};
+    avecDate.forEach(e => { freq[e.dateReception] = (freq[e.dateReception] || 0) + 1; });
+
+    let dateTop = "", maxCount = 0;
+    Object.entries(freq).forEach(([d, c]) => { if (c > maxCount) { maxCount = c; dateTop = d; } });
+
+    return (maxCount / avecDate.length >= 0.30) ? dateTop : "";
+  }
+
+  /* Délai réel de paiement (jours entre date prévue et date de réception),
+     regroupé par type de paiement (comité / ligue / club). */
+  function aggregerDelais_(avecDelai) {
+    const map = {};
+    avecDelai.forEach(e => {
+      const key = e.paiementType || "Non précisé";
+      if (!map[key]) map[key] = { label: key, delais: [], enRetard: 0 };
+      map[key].delais.push(e.delaiJours);
+      if (e.delaiJours > 0) map[key].enRetard++;
+    });
+    return Object.values(map).map(m => ({
+      label: m.label,
+      delai_moyen_jours: Math.round(m.delais.reduce((t, d) => t + d, 0) / m.delais.length),
+      nb_paiements: m.delais.length,
+      nb_en_retard: m.enRetard
+    })).sort((a, b) => b.nb_paiements - a.nb_paiements);
+  }
+
+  /* Régularité des revenus : coefficient de variation mensuel, jour de la
+     semaine dominant, écart-type. Un coefficient de variation élevé
+     signifie une activité "en dents de scie", faible = régulière. */
+  function calculerRegularite_(moisAgg, filtered) {
+    const nets = moisAgg.map(m => m.net_reel);
+    const n = nets.length;
+
+    if (n < 2) {
+      return { coefficient_variation: null, ecart_type_mensuel: null, mois_analyses: n, jour_dominant: "", repartition_jours: [] };
     }
-  });
-}
 
-function buildChartFormat(five, three) {
-  const c = ctx("chartFormat"); if (!c || typeof Chart === "undefined") return;
-  const netFive = five.reduce((t, r) => t + r._net, 0);
-  const netThree = three.reduce((t, r) => t + r._net, 0);
+    const moyenne = nets.reduce((t, v) => t + v, 0) / n;
+    const variance = nets.reduce((t, v) => t + Math.pow(v - moyenne, 2), 0) / n;
+    const ecartType = Math.sqrt(variance);
+    const coefVariation = moyenne > 0 ? round2_((ecartType / moyenne) * 100) : null;
 
-  AN.charts.format = new Chart(c, {
-    type: "doughnut",
-    data: {
-      labels: [`5×5 (${five.length})`, `3×3 (${three.length})`],
-      datasets: [{ data: [round2(netFive), round2(netThree)], backgroundColor: [AN.COLORS.navyMid, AN.COLORS.red], borderWidth: 0, hoverOffset: 6 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: "62%",
-      plugins: {
-        legend: { position: "bottom", labels: { font: { size: 12 }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
-        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${i.label} : ${money(i.parsed)}` } }
-      }
-    }
-  });
-}
+    // Répartition par jour de semaine (0=dimanche...6=samedi)
+    const joursNoms = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+    const parJour = {};
+    filtered.forEach(e => {
+      if (e.jourSemaine === null) return;
+      const nom = joursNoms[e.jourSemaine];
+      if (!parJour[nom]) parJour[nom] = { label: nom, count: 0, net: 0 };
+      parJour[nom].count++;
+      parJour[nom].net += e.netReel;
+    });
+    const repartitionJours = Object.values(parJour)
+      .map(j => ({ label: j.label, count: j.count, net_reel: round2_(j.net) }))
+      .sort((a, b) => b.count - a.count);
 
-function buildChartNiveau(rows) {
-  const c = ctx("chartNiveau"); if (!c || typeof Chart === "undefined") return;
-  const g = groupBySimple(rows, r => get(r, "Niveau administratif") || "Non renseigné")
-    .sort((a, b) => b.net - a.net);
+    return {
+      coefficient_variation: coefVariation,
+      ecart_type_mensuel: round2_(ecartType),
+      mois_analyses: n,
+      jour_dominant: repartitionJours.length ? repartitionJours[0].label : "",
+      repartition_jours: repartitionJours
+    };
+  }
 
-  AN.charts.niveau = new Chart(c, {
-    type: "bar",
-    data: {
-      labels: g.map(x => x.label),
-      datasets: [{
-        label: "Net réel",
-        data: g.map(x => round2(x.net)),
-        backgroundColor: g.map(x => x.label === "3x3" ? AN.COLORS.red : x.label === "Régional" ? AN.COLORS.navy : AN.COLORS.navyMid),
-        borderRadius: 5
-      }]
-    },
-    options: {
-      ...chartBase,
-      indexAxis: "y",
-      plugins: {
-        legend: { display: false },
-        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${money(i.parsed.x)} — ${g[i.dataIndex].count} mission(s)` } }
-      },
-      scales: {
-        x: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
-        y: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
-      }
-    }
-  });
-}
-
-function buildChartGenre(rows) {
-  const c = ctx("chartGenre"); if (!c || typeof Chart === "undefined") return;
-
-  const ordre = ["Masculin", "Féminin", "Mixte", "Non déterminé"];
-  const g = groupBySimple(rows, r => r._genre || "Non déterminé")
-    .sort((a, b) => ordre.indexOf(a.label) - ordre.indexOf(b.label));
-
-  const couleurs = {
-    "Masculin": AN.COLORS.navyMid,
-    "Féminin": AN.COLORS.red,
-    "Mixte": AN.COLORS.gold,
-    "Non déterminé": "#B8C4D8"
-  };
-
-  AN.charts.genre = new Chart(c, {
-    type: "doughnut",
-    data: {
-      labels: g.map(x => `${x.label} (${x.count})`),
-      datasets: [{
-        data: g.map(x => round2(x.net)),
-        backgroundColor: g.map(x => couleurs[x.label] || AN.COLORS.navyLight),
-        borderWidth: 0, hoverOffset: 6
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: "62%",
-      plugins: {
-        legend: { position: "bottom", labels: { font: { size: 12 }, color: AN.COLORS.muted, boxWidth: 12, padding: 12 } },
-        tooltip: {
-          ...chartBase.plugins.tooltip,
-          callbacks: {
-            label: (i) => {
-              const item = g[i.dataIndex];
-              return [`${item.label} : ${money(item.net)} nets`, `${item.count} mission(s) · ${formatNumber(item.km, " km")}`];
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
-function buildChartCategorie(rows) {
-  const c = ctx("chartCategorie"); if (!c || typeof Chart === "undefined") return;
-
-  // Ordre logique : des plus jeunes aux séniors
-  const ordre = ["U11", "U13", "U15", "U17", "U18", "U20", "U21", "Séniors", "Non déterminé"];
-  const g = groupBySimple(rows, r => r._categorie || "Non déterminé")
-    .sort((a, b) => {
-      const ia = ordre.indexOf(a.label), ib = ordre.indexOf(b.label);
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  /* Fidélité géographique : nombre de lieux distincts, et indice de
+     concentration (proche de 100 = toujours les mêmes salles, proche de 0
+     = très dispersé). Basé sur un indice de Herfindahl simplifié. */
+  function calculerFidelite_(five) {
+    const parSalle = {};
+    five.forEach(e => {
+      const key = e.salle || "Non renseigné";
+      parSalle[key] = (parSalle[key] || 0) + 1;
     });
 
-  AN.charts.categorie = new Chart(c, {
-    type: "bar",
-    data: {
-      labels: g.map(x => x.label),
-      datasets: [{
-        label: "Net réel",
-        data: g.map(x => round2(x.net)),
-        backgroundColor: g.map(x => x.label === "Séniors" ? AN.COLORS.navy : AN.COLORS.navyMid),
-        borderRadius: 5
-      }]
-    },
-    options: {
-      ...chartBase,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          ...chartBase.plugins.tooltip,
-          callbacks: { label: (i) => `${money(i.parsed.y)} — ${g[i.dataIndex].count} mission(s)` }
-        }
-      }
+    const total = five.length;
+    const salles = Object.keys(parSalle).filter(k => k !== "Non renseigné");
+    const villesUniques = new Set(five.map(e => e.ville).filter(Boolean));
+
+    if (!total) {
+      return { salles_distinctes: 0, villes_distinctes: 0, indice_concentration: null, salle_principale: null, part_salle_principale: null };
     }
-  });
-}
 
-function buildChartNuage(rows) {
-  const c = ctx("chartNuage"); if (!c || typeof Chart === "undefined") return;
-  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
+    const parts = Object.values(parSalle).map(c => c / total);
+    const indiceConcentration = round2_(parts.reduce((t, p) => t + p * p, 0) * 100);
 
-  AN.charts.nuage = new Chart(c, {
-    type: "scatter",
-    data: {
-      datasets: [
-        {
-          label: "5×5",
-          data: pts.filter(r => r._format === "5x5").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Recevant", "Visiteur / événement"]), date: get(r, "Date match") })),
-          backgroundColor: AN.COLORS.navyMid, pointRadius: 5, pointHoverRadius: 7
-        },
-        {
-          label: "3×3",
-          data: pts.filter(r => r._format === "3x3").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Visiteur / événement", "Recevant"]), date: get(r, "Date match") })),
-          backgroundColor: AN.COLORS.red, pointRadius: 5, pointHoverRadius: 7
+    let salleTop = "", maxCount = 0;
+    Object.entries(parSalle).forEach(([s, c]) => { if (c > maxCount) { maxCount = c; salleTop = s; } });
+
+    return {
+      salles_distinctes: salles.length,
+      villes_distinctes: villesUniques.size,
+      indice_concentration: indiceConcentration,
+      salle_principale: salleTop || null,
+      part_salle_principale: salleTop ? round2_((maxCount / total) * 100) : null
+    };
+  }
+
+  /* Projection de fin de saison : extrapole le net réel probable en fin de
+     saison sportive, à partir du rythme actuel. Ne s'applique que si la
+     saison choisie est la saison EN COURS (sinon la saison est déjà connue
+     dans son intégralité, une projection n'aurait pas de sens). */
+  function calculerProjection_(seasonFilter, filtered, totalNetReel) {
+    const saisonActuelle = computeSeason_(formatDate_(new Date()));
+    if (seasonFilter && seasonFilter !== saisonActuelle && seasonFilter !== "Toutes les saisons") {
+      return null; // saison passée ou différente : pas de projection pertinente
+    }
+    if (seasonFilter === "Toutes les saisons") return null;
+
+    const [anneeDebut] = saisonActuelle.split("/").map(Number);
+    const debut = new Date(anneeDebut, SAISON_DEBUT_MOIS - 1, 1);
+    const fin = new Date(anneeDebut + 1, SAISON_FIN_MOIS - 1, 30);
+    const aujourdhui = new Date();
+
+    if (aujourdhui < debut || aujourdhui > fin) return null;
+
+    const joursEcoules = Math.max(1, Math.round((aujourdhui - debut) / 86400000));
+    const joursTotal = Math.round((fin - debut) / 86400000);
+    const fractionEcoulee = joursEcoules / joursTotal;
+
+    if (fractionEcoulee < 0.05) return null; // trop tôt dans la saison pour extrapoler
+
+    const projectionNet = round2_(totalNetReel / fractionEcoulee);
+    const projectionMissions = Math.round(filtered.length / fractionEcoulee);
+
+    return {
+      saison: saisonActuelle,
+      pourcentage_saison_ecoule: round2_(fractionEcoulee * 100),
+      net_reel_actuel: round2_(totalNetReel),
+      net_reel_projete_fin_saison: projectionNet,
+      missions_actuelles: filtered.length,
+      missions_projetees_fin_saison: projectionMissions
+    };
+  }
+
+  /* Score de rentabilité par mission (0-100), basé sur le rang percentile
+     du €/heure au sein des missions analysées. 100 = la plus rentable de
+     la période, 0 = la moins rentable. Renvoie le top 5 et le bottom 5. */
+  function classerRentabilite_(filtered) {
+    const avecTaux = filtered.filter(e => e.eurParHeure !== 0 && e.kmAR > 0);
+    if (avecTaux.length < 3) return { top: [], bottom: [] };
+
+    const tries = [...avecTaux].sort((a, b) => a.eurParHeure - b.eurParHeure);
+    const n = tries.length;
+
+    const versLigne = (e, rangPercentile) => ({
+      lieu: e.recevant || e.salle || "Mission",
+      date: e.dateStr,
+      format: e.format,
+      km: e.kmAR,
+      eur_heure: e.eurParHeure,
+      net_reel: e.netReel,
+      score: Math.round(rangPercentile)
+    });
+
+    const withScore = tries.map((e, i) => versLigne(e, (i / (n - 1)) * 100));
+
+    return {
+      top: withScore.slice(-5).reverse(),
+      bottom: withScore.slice(0, 5)
+    };
+  }
+
+  function emptyStats_() {
+    return { season: "", totaux: {}, moyennes: {}, records: {}, par_saison: [], par_mois: [], par_niveau: [], top_clubs: [], top_salles: [], top_villes: [], top_collegues: [], evenements_3x3: [] };
+  }
+
+  /*************** PAIEMENTS EN LOT (ancien 2e script, fusionné + verrou) ***************/
+  // Marque comme "Reçu" tous les paiements prévus jusqu'à une date donnée.
+  // Protégé par le même verrou que le scan mail (jamais d'écriture concurrente).
+  // À exécuter manuellement quand tu reçois un lot de paiements.
+
+  function marquerPaiementsRecusJusquA_(dateLimiteStr, dateReceptionStr) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) { log_("LOCK", "Paiements : traitement déjà en cours"); return; }
+
+    try {
+      const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+      if (!sheet) throw new Error("Onglet MATCHS introuvable.");
+
+      const dateLimite = parseDate_(dateLimiteStr) || new Date();
+      const dateReception = dateReceptionStr || formatDate_(new Date());
+
+      const values = sheet.getDataRange().getValues();
+      if (values.length < 2) { log_("PAIEMENTS", "Aucune donnée."); return; }
+
+      const headers = values[0].map(h => String(h).trim());
+      const cDatePaiement = headers.indexOf("Date paiement");
+      const cStatutPaiement = headers.indexOf("Statut paiement");
+      const cDateReception = headers.indexOf("Date réception");
+      const cMontantRecu = headers.indexOf("Montant reçu");
+      const cIndemnite = headers.indexOf("Indemnité totale");
+      const cStatut = headers.indexOf("Statut");
+
+      [["Date paiement", cDatePaiement], ["Statut paiement", cStatutPaiement], ["Date réception", cDateReception], ["Montant reçu", cMontantRecu], ["Indemnité totale", cIndemnite]]
+        .forEach(([n, i]) => { if (i === -1) throw new Error("Colonne manquante : " + n); });
+
+      let updated = 0, skipped = 0;
+
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        const statut = cStatut !== -1 ? String(row[cStatut] || "").toLowerCase() : "";
+        if (statut.includes("annul")) { skipped++; continue; }
+
+        const dp = parseDate_(row[cDatePaiement]);
+        if (!dp || dp > dateLimite) { skipped++; continue; }
+
+        // Ne pas rétrograder / ne pas réécrire ce qui est déjà reçu
+        if (normUpper_(row[cStatutPaiement]) === "RECU") { skipped++; continue; }
+
+        const rowNumber = i + 1;
+        sheet.getRange(rowNumber, cStatutPaiement + 1).setValue("Reçu");
+        sheet.getRange(rowNumber, cDateReception + 1).setValue(dateReception);
+        if (row[cMontantRecu] === "" || row[cMontantRecu] === null) {
+          sheet.getRange(rowNumber, cMontantRecu + 1).setValue(row[cIndemnite]);
         }
-      ]
-    },
-    options: {
-      ...chartBase,
-      interaction: { mode: "nearest", intersect: true },
-      plugins: {
-        ...chartBase.plugins,
-        tooltip: {
-          ...chartBase.plugins.tooltip,
-          callbacks: {
-            label: (i) => {
-              const d = i.raw;
-              return [`${d.lieu || "Mission"} — ${d.date || ""}`, `${formatNumber(d.x, " km")} · ${money(d.y)}/h`];
-            }
+        updated++;
+      }
+
+      _cacheInvalider_();
+      log_("PAIEMENTS", updated + " passé(s) en Reçu, " + skipped + " ignoré(s).");
+    } catch (e) {
+      log_("PAIEMENTS_ERROR", e.stack || e.message);
+      throw e;
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /*************** BACKFILL GENRE / CATÉGORIE ***************/
+  // Remplit les colonnes Genre et Catégorie d'âge sur toutes les lignes
+  // existantes, à partir du code et du libellé de compétition.
+  // Rapide (aucun appel réseau) : traite toute la base en une exécution.
+
+  function backfillGenreCategorie_() {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) { log_("LOCK", "Backfill genre déjà en cours"); return; }
+
+    try {
+      ensureSheets_();
+      const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+      const headerMap = getHeaderMap_(sheet);
+
+      const genreCol = headerMap[normalizeHeader_("Genre")];
+      const catCol = headerMap[normalizeHeader_("Catégorie d'âge")];
+      const codeCol = headerMap[normalizeHeader_("Code compétition")];
+      const libCol = headerMap[normalizeHeader_("Libellé compétition")];
+
+      if (!genreCol || !catCol || !codeCol || !libCol) {
+        log_("BACKFILL_GENRE", "Colonnes manquantes — exécute setup() d'abord");
+        return;
+      }
+
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return;
+
+      const nb = lastRow - 1;
+      const codes = sheet.getRange(2, codeCol, nb, 1).getDisplayValues();
+      const libs = sheet.getRange(2, libCol, nb, 1).getDisplayValues();
+      const genres = sheet.getRange(2, genreCol, nb, 1).getValues();
+      const cats = sheet.getRange(2, catCol, nb, 1).getValues();
+
+      let done = 0;
+      for (let i = 0; i < nb; i++) {
+        const g = detecterGenre_(codes[i][0], libs[i][0]);
+        const c = detecterCategorie_(codes[i][0], libs[i][0]);
+        if (g && genres[i][0] !== g) { genres[i][0] = g; done++; }
+        if (c && cats[i][0] !== c) { cats[i][0] = c; }
+      }
+
+      // Écriture en un seul bloc : bien plus rapide que cellule par cellule
+      sheet.getRange(2, genreCol, nb, 1).setValues(genres);
+      sheet.getRange(2, catCol, nb, 1).setValues(cats);
+
+      _cacheInvalider_();
+      log_("BACKFILL_GENRE", done + " ligne(s) enrichie(s) en genre/catégorie.");
+    } catch (e) {
+      log_("BACKFILL_GENRE_ERROR", e.stack || e.message);
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /*************** BACKFILL NOMS DE CLUBS ***************/
+  // Répare les lignes enregistrées avant le FIX #7 : « ASA WEYERSHEIM Maillot :
+  // GRENAT KAISER ESTELLE » redevient « ASA WEYERSHEIM ».
+  // Purement textuel — aucun OCR, aucun appel réseau : toute la base en une
+  // exécution. Idempotent : une ligne déjà propre n'est pas retouchée.
+
+  function nettoyerNomClub_(valeur) {
+    var v = clean_(valeur);
+    if (!v) return v;
+
+    // Tout ce qui suit « Maillot : » appartient au maillot puis au correspondant
+    v = v.replace(/\s*Maillot\s*:.*$/i, "");
+    // Résidus éventuels selon les mises en page
+    v = v.replace(/\s*\(Mail\s*:.*$/i, "");
+    v = v.replace(/\s*Correspondant\s*:.*$/i, "");
+    v = v.replace(/\s*T[ée]l[ée]phone\s*:.*$/i, "");
+    // FIX #8 : un code officiel resté collé au nom n'a rien à faire ici
+    if (typeof sansCodeClub_ === "function") v = sansCodeClub_(v);
+
+    return clean_(v).replace(/[\s:;,-]+$/, "").trim();
+  }
+
+  function backfillNomsClubs_() {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) { log_("LOCK", "Nettoyage noms déjà en cours"); return; }
+
+    try {
+      const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+      const headerMap = getHeaderMap_(sheet);
+
+      const colRecevant = headerMap[normalizeHeader_("Recevant")];
+      const colVisiteur = headerMap[normalizeHeader_("Visiteur / événement")];
+      if (!colRecevant || !colVisiteur) { log_("BACKFILL_NOMS", "Colonnes introuvables"); return; }
+
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return;
+      const nb = lastRow - 1;
+
+      const recevants = sheet.getRange(2, colRecevant, nb, 1).getValues();
+      const visiteurs = sheet.getRange(2, colVisiteur, nb, 1).getValues();
+
+      let corriges = 0;
+      const exemples = [];
+
+      for (let i = 0; i < nb; i++) {
+        [recevants, visiteurs].forEach(function (col) {
+          const avant = String(col[i][0] || "");
+          const apres = nettoyerNomClub_(avant);
+          if (apres && apres !== avant) {
+            if (exemples.length < 5) exemples.push(avant + "  ->  " + apres);
+            col[i][0] = apres;
+            corriges++;
           }
-        }
-      },
-      scales: {
-        x: { ...chartBase.scales.x, grid: { color: AN.COLORS.grid }, title: { display: true, text: "distance aller-retour (km)", font: { size: 11 }, color: AN.COLORS.muted } },
-        y: { ...chartBase.scales.y, title: { display: true, text: "net par heure (€)", font: { size: 11 }, color: AN.COLORS.muted } }
+        });
       }
-    }
-  });
-}
 
-function trancheDe(km) {
-  if (km < 20) return "0–20 km";
-  if (km < 40) return "20–40 km";
-  if (km < 60) return "40–60 km";
-  if (km < 100) return "60–100 km";
-  return "100 km et +";
-}
-const ORDRE_TRANCHES = ["0–20 km", "20–40 km", "40–60 km", "60–100 km", "100 km et +"];
+      // Écriture en un seul bloc par colonne : bien plus rapide
+      sheet.getRange(2, colRecevant, nb, 1).setValues(recevants);
+      sheet.getRange(2, colVisiteur, nb, 1).setValues(visiteurs);
 
-function buildChartTranches(rows) {
-  const c = ctx("chartTranches"); if (!c || typeof Chart === "undefined") return;
-  const withKm = rows.filter(r => r._km > 0);
-  const g = groupBySimple(withKm, r => trancheDe(r._km))
-    .sort((a, b) => ORDRE_TRANCHES.indexOf(a.label) - ORDRE_TRANCHES.indexOf(b.label));
-
-  AN.charts.tranches = new Chart(c, {
-    data: {
-      labels: g.map(x => x.label),
-      datasets: [
-        { type: "bar", label: "Net par heure", data: g.map(x => x.heures > 0 ? round2(x.net / x.heures) : 0), backgroundColor: AN.COLORS.navyMid, borderRadius: 5, yAxisID: "y" },
-        { type: "line", label: "Missions", data: g.map(x => x.count), borderColor: AN.COLORS.gold, backgroundColor: AN.COLORS.gold, borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: "y1" }
-      ]
-    },
-    options: {
-      ...chartBase,
-      scales: {
-        x: chartBase.scales.x,
-        y: { ...chartBase.scales.y, title: { display: true, text: "€ / heure", font: { size: 11 }, color: AN.COLORS.muted } },
-        y1: { position: "right", grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.gold, precision: 0 } }
-      },
-      plugins: {
-        ...chartBase.plugins,
-        tooltip: {
-          ...chartBase.plugins.tooltip,
-          callbacks: { label: (i) => i.dataset.label === "Missions" ? `${i.parsed.y} mission(s)` : `${money(i.parsed.y)} / heure` }
-        }
-      }
-    }
-  });
-}
-
-function buildChartPaiements(rows) {
-  const c = ctx("chartPaiements"); if (!c || typeof Chart === "undefined") return;
-  const months = groupMonths(rows);
-
-  AN.charts.paiements = new Chart(c, {
-    type: "bar",
-    data: {
-      labels: months.map(m => labelMois(m.key)),
-      datasets: [
-        { label: "Perçu", data: months.map(m => round2(m.recu)), backgroundColor: AN.COLORS.green, borderRadius: 5, stack: "p" },
-        { label: "En attente", data: months.map(m => round2(m.du)), backgroundColor: AN.COLORS.gold, borderRadius: 5, stack: "p" }
-      ]
-    },
-    options: {
-      ...chartBase,
-      scales: {
-        x: { ...chartBase.scales.x, stacked: true },
-        y: { ...chartBase.scales.y, stacked: true }
-      },
-      plugins: {
-        ...chartBase.plugins,
-        tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${i.dataset.label} : ${money(i.parsed.y)}` } }
-      }
-    }
-  });
-}
-
-/* ---------------- Classement rentabilité ---------------- */
-
-function renderClassementRentabilite(rows) {
-  const five = rows.filter(r => r._format === "5x5");
-  const parClub = groupBySimple(five, r => get(r, "Recevant"))
-    .filter(g => g.count > 0)
-    .sort((a, b) => b.net - a.net)
-    .slice(0, 10);
-
-  if (!parClub.length) return "";
-
-  const maxNet = Math.max(...parClub.map(g => g.net));
-
-  return `
-    <div class="chart-card">
-      <h3>Clubs les plus rentables (5×5)</h3>
-      <p class="hint">Net réel cumulé par club recevant, nombre de missions et gain net par heure.</p>
-      ${parClub.map(g => `
-        <div class="rank-row">
-          <div class="rank-name">
-            <div class="label">${escapeHtml(g.label)}</div>
-            <div class="meter"><i style="width:${maxNet > 0 ? (g.net / maxNet) * 100 : 0}%"></i></div>
-          </div>
-          <div class="rank-count">${g.count}×</div>
-          <div class="rank-value ${g.net < 0 ? "neg" : ""}">${formatMoney(g.net)}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-/* ---------------- Lectures écrites sous les graphiques ---------------- */
-
-function insightMois(rows) {
-  const months = groupMonths(rows);
-  if (months.length < 2) return "";
-  const best = months.reduce((a, b) => b.net > a.net ? b : a);
-  const worst = months.reduce((a, b) => b.net < a.net ? b : a);
-  return `<div class="insight">
-    Mois le plus rentable : <b>${labelMois(best.key)}</b> avec ${formatMoney(best.net)} nets sur ${best.count} mission(s).
-    Le plus faible : <b>${labelMois(worst.key)}</b> à ${formatMoney(worst.net)}.
-  </div>`;
-}
-
-function insightFormat(five, three) {
-  if (!five.length || !three.length) return "";
-  const hFive = five.reduce((t, r) => t + r._heuresTotal, 0);
-  const hThree = three.reduce((t, r) => t + r._heuresTotal, 0);
-  const eurHFive = hFive > 0 ? five.reduce((t, r) => t + r._net, 0) / hFive : 0;
-  const eurHThree = hThree > 0 ? three.reduce((t, r) => t + r._net, 0) / hThree : 0;
-  const mieux = eurHFive >= eurHThree ? "Le 5×5" : "Le 3×3";
-  const ecart = Math.abs(eurHFive - eurHThree);
-  return `<div class="insight">
-    <b>${mieux}</b> rapporte davantage à l'heure : ${money(eurHFive)}/h en 5×5 contre ${money(eurHThree)}/h en 3×3,
-    soit ${money(ecart)} d'écart horaire.
-  </div>`;
-}
-
-function insightGenre(rows) {
-  const g = groupBySimple(rows, r => r._genre || "Non déterminé")
-    .filter(x => x.label !== "Non déterminé");
-  if (g.length < 2) return "";
-
-  const total = g.reduce((t, x) => t + x.count, 0);
-  const dominant = g.reduce((a, b) => b.count > a.count ? b : a);
-  const part = total > 0 ? (dominant.count / total) * 100 : 0;
-
-  // Comparaison du rendement horaire entre genres
-  const avecHeures = g.filter(x => x.heures > 0).map(x => ({ ...x, eurH: x.net / x.heures }));
-  let comparaison = "";
-  if (avecHeures.length >= 2) {
-    const best = avecHeures.reduce((a, b) => b.eurH > a.eurH ? b : a);
-    const worst = avecHeures.reduce((a, b) => b.eurH < a.eurH ? b : a);
-    if (best.label !== worst.label) {
-      comparaison = ` Le <b>${escapeHtml(best.label.toLowerCase())}</b> rapporte le plus à l'heure (${money(best.eurH)}/h contre ${money(worst.eurH)}/h).`;
+      exemples.forEach(function (e) { Logger.log(e); });
+      Logger.log("%s nom(s) de club corrigé(s) sur %s ligne(s).", corriges, nb);
+      _cacheInvalider_();
+      log_("BACKFILL_NOMS", corriges + " nom(s) de club corrigé(s).");
+    } catch (e) {
+      log_("BACKFILL_NOMS_ERROR", e.stack || e.message);
+      throw e;
+    } finally {
+      lock.releaseLock();
     }
   }
 
-  return `<div class="insight">
-    <b>${escapeHtml(dominant.label)}</b> domine avec ${dominant.count} mission(s), soit ${part.toFixed(0)} % du total.${comparaison}
-  </div>`;
-}
+  /*************** BACKFILL KM MANQUANTS (OSM) ***************/
+  // Passe sur les lignes sans "Km A/R stats" et les remplit via OSM.
+  // À exécuter manuellement de temps en temps (lent : ~1 req/s pour respecter Nominatim).
 
-function insightRentabilite(rows) {
-  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
-  if (pts.length < 3) return "";
-  const pire = pts.reduce((a, b) => b._eurHeure < a._eurHeure ? b : a);
-  const meilleure = pts.reduce((a, b) => b._eurHeure > a._eurHeure ? b : a);
-  return `<div class="insight warn">
-    Mission la moins rentable : <b>${escapeHtml(firstValue(pire, ["Recevant", "Visiteur / événement"]) || "—")}</b>
-    le ${escapeHtml(get(pire, "Date match"))} — ${formatNumber(pire._km, " km")} pour ${money(pire._eurHeure)}/h.
-    À l'inverse, ${escapeHtml(firstValue(meilleure, ["Recevant", "Visiteur / événement"]) || "—")} monte à ${money(meilleure._eurHeure)}/h.
-  </div>`;
-}
+  function backfillKmManquants_(maxLignes) {
+    _syncConfig_();   // MODIFICATION B : part de l'adresse à jour
 
-function insightTranches(rows) {
-  const withKm = rows.filter(r => r._km > 0);
-  if (withKm.length < 4) return "";
-  const g = groupBySimple(withKm, r => trancheDe(r._km))
-    .map(x => ({ ...x, eurH: x.heures > 0 ? x.net / x.heures : 0 }))
-    .sort((a, b) => b.eurH - a.eurH);
-  if (!g.length) return "";
-  const best = g[0], worst = g[g.length - 1];
-  return `<div class="insight good">
-    Les missions <b>${escapeHtml(best.label)}</b> sont les plus rentables : ${money(best.eurH)}/h.
-    Les <b>${escapeHtml(worst.label)}</b> tombent à ${money(worst.eurH)}/h.
-  </div>`;
-}
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) { log_("LOCK", "Backfill KM déjà en cours"); return; }
 
-function insightPaiements(rows) {
-  const nonPayes = rows.filter(r => !r._paye && !r._benevole);
-  if (!nonPayes.length) return `<div class="insight good">Tout est encaissé pour cette saison.</div>`;
+    try {
+      const sheet = getSS_().getSheetByName(SHEET_MATCHS);
+      const headerMap = getHeaderMap_(sheet);
+      const kmCol = headerMap[normalizeHeader_("Km A/R stats")];
+      const adrCol = headerMap[normalizeHeader_("Adresse")];
+      const villeCol = headerMap[normalizeHeader_("Ville")];
+      if (!kmCol || !adrCol) { log_("BACKFILL", "Colonnes manquantes"); return; }
 
-  const today = new Date();
-  const retard = nonPayes.filter(r => {
-    const d = parseFrDate(get(r, "Date paiement"));
-    return d && d < today;
-  });
+      const lastRow = sheet.getLastRow();
+      const limit = maxLignes || 20;
+      let done = 0;
 
-  const montantRetard = retard.reduce((t, r) => t + r._brut, 0);
-  const montantTotal = nonPayes.reduce((t, r) => t + r._brut, 0);
+      for (let r = 2; r <= lastRow && done < limit; r++) {
+        const km = sheet.getRange(r, kmCol).getValue();
+        if (km) continue;
+        const adr = sheet.getRange(r, adrCol).getDisplayValue();
+        const ville = villeCol ? sheet.getRange(r, villeCol).getDisplayValue() : "";
+        const query = [adr, ville].filter(Boolean).join(" ");
+        if (!query) continue;
 
-  if (!retard.length) {
-    return `<div class="insight">${formatMoney(montantTotal)} restent à percevoir sur ${nonPayes.length} mission(s), aucune échéance dépassée.</div>`;
+        const kmAR = osrmRoundTripKm_(query);
+        if (kmAR) { sheet.getRange(r, kmCol).setValue(kmAR); done++; }
+      }
+
+      _cacheInvalider_();
+      log_("BACKFILL", done + " ligne(s) KM complétée(s) via OSM.");
+    } catch (e) {
+      log_("BACKFILL_ERROR", e.stack || e.message);
+    } finally {
+      lock.releaseLock();
+    }
   }
 
-  return `<div class="insight warn">
-    <b>${retard.length} paiement(s) en retard</b> pour ${formatMoney(montantRetard)} :
-    la date prévue est passée sans réception enregistrée. Total restant dû : ${formatMoney(montantTotal)}.
-  </div>`;
-}
+  return { setup, auto, testMailInstant, doGet, marquerPaiementsRecusJusquA_,
+         backfillKmManquants_, backfillGenreCategorie_, backfillNomsClubs_,
+         nettoyerNomClub_, majPrixCarburantActuel_,
+         buildStatsForApi_, realFuelCost_ };
+})();
