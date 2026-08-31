@@ -208,14 +208,39 @@ function renderMatchPanel(rootId, format, label) {
   const upcoming = rows.filter(r => !r._isPast);
   const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
 
+  const ouvert = PASSES_OUVERTS[rootId] === true;
+
   root.innerHTML = `
     <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
     ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
-    <h2 class="section-title">${label} passés <span class="count">${past.length}</span></h2>
-    ${past.length ? renderWeekendGroups(past, true) : empty(`Aucun match ${label} passé pour cette saison.`)}
+    ${past.length ? `
+      <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
+        <summary class="past-summary">
+          <span class="past-chevron" aria-hidden="true"></span>
+          <span class="past-title">${label} passés</span>
+          <span class="count">${past.length}</span>
+        </summary>
+        <div class="past-body">${renderWeekendGroups(past, true)}</div>
+      </details>`
+      : `<h2 class="section-title">${label} passés <span class="count">0</span></h2>
+         ${empty(`Aucun match ${label} passé pour cette saison.`)}`}
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
+  attachPastToggle(root);
+}
+
+/* Les matchs passés sont repliés par défaut : la page s'ouvre sur ce qui
+   arrive, pas sur ce qui est fait. L'état choisi survit aux rafraîchissements
+   de la liste (changement de saison, mise à jour d'un paiement). */
+const PASSES_OUVERTS = {};
+
+function attachPastToggle(root) {
+  root.querySelectorAll("details.past-block").forEach(function (bloc) {
+    bloc.addEventListener("toggle", function () {
+      PASSES_OUVERTS[bloc.dataset.panel] = bloc.open;
+    });
+  });
 }
 
 /* ---------------- regroupement par week-end ----------------
