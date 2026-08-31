@@ -5,7 +5,10 @@
    Stats : calculées côté serveur (endpoint action=stats).
    ===================================================== */
 
-const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Écart à vérifier", "À vérifier"];
+/* "Bénévole" : match arbitré gratuitement, en accord avec le club recevant.
+   Rien n'est dû : ces missions sortent du restant à encaisser et des retards. */
+const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
+const BENEVOLE = "Bénévole";
 
 let state = {
   allRows: [],
@@ -216,9 +219,11 @@ function renderMatchPanel(rootId, format, label) {
     ${past.length ? `
       <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
         <summary class="past-summary">
-          <span class="past-chevron" aria-hidden="true"></span>
-          <span class="past-title">${label} passés</span>
-          <span class="count">${past.length}</span>
+          <span class="past-summary-inner">
+            <span class="past-chevron" aria-hidden="true"></span>
+            <span class="past-title">${label} passés</span>
+            <span class="count">${past.length}</span>
+          </span>
         </summary>
         <div class="past-body">${renderWeekendGroups(past, true)}</div>
       </details>`
@@ -449,6 +454,7 @@ function renderMatchCard(row) {
   const warning = hasWarning(row);
   const paiement = get(row, "Statut paiement") || "À recevoir";
   const isPaid = paiement === "Reçu";
+  const isBenevole = paiement === BENEVOLE;
 
   const cost = realFuelCostClient(row._km, row._date);
   const net = round2(row._amount - cost);
@@ -466,7 +472,9 @@ function renderMatchCard(row) {
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
             ${warning ? badge("À vérifier", "orange") : ""}
-            ${isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
+            ${isBenevole ? badge("Bénévole", "gray")
+              : isPaid ? badge("Payé", "green")
+              : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
           </div>
           <div class="title-row">
             ${logoCompetition(row)}
@@ -634,15 +642,19 @@ function renderPaiements() {
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
 
   const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
-  const order = ["À recevoir", "Écart à vérifier", "À vérifier", "Reçu"];
+  const order = ["À recevoir", "Écart à vérifier", "À vérifier", "Reçu", BENEVOLE];
 
-  const totalDu = rows.filter(r => (get(r, "Statut paiement") || "À recevoir") !== "Reçu").reduce((t, r) => t + r._amount, 0);
-  const totalRecu = rows.filter(r => get(r, "Statut paiement") === "Reçu").reduce((t, r) => t + r._amount, 0);
+  const statutDe = r => get(r, "Statut paiement") || "À recevoir";
+  // Le bénévolat ne compte ni comme encaissé, ni comme dû.
+  const totalDu = rows.filter(r => statutDe(r) !== "Reçu" && statutDe(r) !== BENEVOLE).reduce((t, r) => t + r._amount, 0);
+  const totalRecu = rows.filter(r => statutDe(r) === "Reçu").reduce((t, r) => t + r._amount, 0);
+  const benevoles = rows.filter(r => statutDe(r) === BENEVOLE);
 
   root.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi"><label>En attente de paiement</label><strong>${formatMoney(totalDu)}</strong></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
+      ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
     </div>
     ${order.filter(k => grouped[k]).map(status => `
       <h2 class="section-title">${escapeHtml(status)} <span class="count">${grouped[status].length}</span></h2>
@@ -669,6 +681,7 @@ function attachPaymentListeners(root) {
             if (!get(row, "Montant reçu")) row["Montant reçu"] = get(row, "Indemnité totale");
           }
           if (status === "À recevoir") { row["Date réception"] = ""; row["Montant reçu"] = ""; }
+          if (status === BENEVOLE) { row["Date réception"] = ""; row["Montant reçu"] = 0; }
         }
         setStatus("Paiement mis à jour", "ok");
         AN.statsCache = {}; // les délais/KPI avancés doivent être recalculés
@@ -1642,6 +1655,7 @@ function enrichirPourAnalyse_(r) {
     _eurKm: km > 0 ? round2(brut / km) : 0,
     _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
     _paye: get(r, "Statut paiement") === "Reçu",
+    _benevole: get(r, "Statut paiement") === BENEVOLE,
     // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
     _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition")),
     _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
@@ -2263,7 +2277,7 @@ function insightTranches(rows) {
 }
 
 function insightPaiements(rows) {
-  const nonPayes = rows.filter(r => !r._paye);
+  const nonPayes = rows.filter(r => !r._paye && !r._benevole);
   if (!nonPayes.length) return `<div class="insight good">Tout est encaissé pour cette saison.</div>`;
 
   const today = new Date();
