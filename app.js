@@ -210,12 +210,180 @@ function renderMatchPanel(rootId, format, label) {
 
   root.innerHTML = `
     <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
-    ${upcoming.length ? `<div class="cards">${upcoming.map(renderMatchCard).join("")}</div>` : empty(`Aucun match ${label} à venir pour cette saison.`)}
+    ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
     <h2 class="section-title">${label} passés <span class="count">${past.length}</span></h2>
-    ${past.length ? `<div class="cards">${past.map(renderMatchCard).join("")}</div>` : empty(`Aucun match ${label} passé pour cette saison.`)}
+    ${past.length ? renderWeekendGroups(past, true) : empty(`Aucun match ${label} passé pour cette saison.`)}
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
+}
+
+/* ---------------- regroupement par week-end ----------------
+   Les désignations tombent par week-end : c'est l'unité de temps qui
+   compte pour un arbitre, pas le match isolé. On regroupe donc par
+   semaine calendaire et on nomme le groupe d'après ce qu'il contient. */
+
+const JOURS_SEMAINE = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+
+/* Lundi de la semaine contenant cette date — clé de regroupement. */
+function lundiDeLaSemaine(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const jour = d.getDay();               // 0 = dimanche
+  d.setDate(d.getDate() - (jour === 0 ? 6 : jour - 1));
+  return d;
+}
+
+function cleSemaine(date) {
+  const l = lundiDeLaSemaine(date);
+  return l.getFullYear() + "-" + String(l.getMonth() + 1).padStart(2, "0") + "-" + String(l.getDate()).padStart(2, "0");
+}
+
+function jourEtMois(date) {
+  const mois = date.toLocaleDateString("fr-FR", { month: "long" });
+  const jour = date.getDate();
+  return (jour === 1 ? "1er" : String(jour)) + " " + mois;
+}
+
+/* Intitulé du groupe : « Week-end du 6 & 7 septembre », « Samedi 6 septembre »
+   ou « Semaine du 2 au 8 septembre » si des matchs tombent en semaine. */
+function libelleGroupe(dates) {
+  const uniques = [];
+  dates.forEach(d => {
+    const c = d.toDateString();
+    if (!uniques.some(u => u.toDateString() === c)) uniques.push(d);
+  });
+  uniques.sort((a, b) => a - b);
+
+  const tousWeekEnd = uniques.every(d => d.getDay() === 0 || d.getDay() === 6);
+
+  if (tousWeekEnd && uniques.length === 1) {
+    const d = uniques[0];
+    return JOURS_SEMAINE[d.getDay()].charAt(0).toUpperCase() + JOURS_SEMAINE[d.getDay()].slice(1) + " " + jourEtMois(d);
+  }
+  if (tousWeekEnd && uniques.length === 2) {
+    const a = uniques[0], b = uniques[1];
+    const memeMois = a.getMonth() === b.getMonth();
+    return "Week-end du " + (memeMois ? a.getDate() : jourEtMois(a)) + " & " + jourEtMois(b);
+  }
+  if (tousWeekEnd) return "Week-end du " + jourEtMois(uniques[0]);
+
+  const lundi = lundiDeLaSemaine(uniques[0]);
+  const dimanche = new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + 6);
+  return "Semaine du " + (lundi.getMonth() === dimanche.getMonth() ? lundi.getDate() : jourEtMois(lundi)) +
+         " au " + jourEtMois(dimanche);
+}
+
+function renderWeekendGroups(rows, decroissant) {
+  const groupes = [];
+  const index = {};
+
+  rows.forEach(r => {
+    const cle = r._date ? cleSemaine(r._date) : "sans-date";
+    if (!index[cle]) { index[cle] = { cle, rows: [], dates: [] }; groupes.push(index[cle]); }
+    index[cle].rows.push(r);
+    if (r._date) index[cle].dates.push(r._date);
+  });
+
+  return groupes.map(g => {
+    const titre = g.dates.length ? libelleGroupe(g.dates) : "Date à confirmer";
+    const nb = g.rows.length;
+    const rowsTriees = g.rows.slice().sort(decroissant ? sortByDateDesc : sortByDateAsc);
+    return `
+      <section class="we-group">
+        <div class="we-head">
+          <span class="we-label">${escapeHtml(titre)}</span>
+          <span class="we-count">${nb} match${nb > 1 ? "s" : ""}</span>
+        </div>
+        <div class="cards">${rowsTriees.map(renderMatchCard).join("")}</div>
+      </section>`;
+  }).join("");
+}
+
+/* ---------------- niveaux à distinguer ----------------
+   Championnat de France et Pré-national ne se noient pas dans le lot :
+   ils portent un liseré et un badge propres. */
+
+/* ---------------- logo de compétition ----------------
+   Le code compétition FFBB encode déjà tout ce que porte l'arborescence
+   des logos : championnat, jeune/senior, genre, catégorie ou niveau.
+   « DFU18-P2 » = Départemental Féminin U18, phase 2 → logo DFU18.
+   Les suffixes de phase (-P1, -P2, -5, -7, -FF, -QR, -T1…) ne changent
+   pas le logo : on les retire.
+
+   Les fichiers vivent à plat dans img/competitions/, sous le nom qu'ils
+   portent déjà dans le Drive — aucun renommage nécessaire. */
+
+const LOGOS_DISPONIBLES = {
+  /* 3x3 */
+  "3X3":   "3x3.png",
+
+  /* Coupes et phases finales */
+  "CPE":   "Coupe de France de Basket FFBB.png",
+  "FD":    "FFBB LOGO FINALES.png",
+
+  /* National — séniors */
+  "NM1": "NM1.png", "NM2": "NM2.png", "NM3": "NM3.png",
+  "NF1": "NF1.png", "NF2": "NF2.png", "NF3": "NF3.png",
+
+  /* National — jeunes */
+  "NMU15": "NMU15.png", "NMU18": "NMU18.png",
+  "NFU15": "NFU15.png", "NFU18": "NFU18.png",
+
+  /* Région — séniors */
+  "PNM": "PNM.png", "PNF": "PNF.png",
+  "RM2": "RM2.png", "RM3": "RM3.png",
+  "RF2": "RF2.png", "RF3": "RF3.png",
+
+  /* Région — jeunes */
+  "RMU13": "RMU13.png", "RMU15": "RMU15.png", "RMU18": "RMU18.png", "RMU21": "RMU21.png",
+  "RFU13": "RFU13.png", "RFU15": "RFU15.png", "RFU18": "RFU18.png",
+
+  /* Département — séniors */
+  "DM2": "DM2.png", "DM3": "DM3.png",
+  "DF1": "DF1.png", "DF2": "DF2.png", "DF3": "DF3.png",
+
+  /* Département — jeunes */
+  "DMU11": "DMU11.png", "DMU13": "DMU13.png", "DMU21": "DMU21.png",
+  "DFU11": "DFU11.png", "DFU13": "DFU13.png", "DFU15": "DFU15.png", "DFU18": "DFU18.png"
+};
+
+function slugCompetition(row) {
+  if (cleanText(get(row, "Format")) === "3x3") return "3X3";
+
+  let code = cleanText(get(row, "Code compétition")).toUpperCase();
+  if (!code) return "";
+
+  code = code.split("-")[0];                   // retire la phase
+  code = code.replace(/[^A-Z0-9]/g, "");       // sécurise le nom de fichier
+  if (!code || /^\d+$/.test(code)) return "";  // code numérique parasite
+
+  return code;
+}
+
+function logoCompetition(row) {
+  const slug = slugCompetition(row);
+  const fichier = LOGOS_DISPONIBLES[slug];
+  if (!fichier) return "";                     // pas de logo connu : rien, la carte reste intacte
+
+  const alt = cleanText(get(row, "Libellé compétition")) || slug;
+  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(fichier)}"
+               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}"
+               loading="lazy" decoding="async" onerror="this.remove()">`;
+}
+
+function niveauElite(row) {
+  const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
+  const code = cleanText(get(row, "Code compétition")).toUpperCase();
+  const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
+
+  if (niveau.indexOf("championnat de france") >= 0 || /^(NM|NF)\d/.test(code)) {
+    return { classe: "is-france", badge: "Championnat de France", court: "France" };
+  }
+  if (/^PN[MF]\b/.test(code) || /\bPR[ÉE]?-?NATIONAL/.test(libelle) || /^PN[MF]/.test(code)) {
+    const feminin = code.charAt(2) === "F";
+    return { classe: "is-pn", badge: feminin ? "Pré-national F" : "Pré-national M", court: "PN" };
+  }
+  return null;
 }
 
 function renderMatchCard(row) {
@@ -235,19 +403,25 @@ function renderMatchCard(row) {
   const cost = realFuelCostClient(row._km, row._date);
   const net = round2(row._amount - cost);
 
+  const elite = niveauElite(row);
+
   return `
-    <article class="match-card" data-uid="${uid}">
+    <article class="match-card${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
       <div class="card-head" role="button" tabindex="0">
         <div>
           <div class="badges">
+            ${elite ? `<span class="badge badge-elite">${escapeHtml(elite.badge)}</span>` : ""}
             ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
-            ${badge(level, "gray")}
+            ${elite ? "" : badge(level, "gray")}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
             ${warning ? badge("À vérifier", "orange") : ""}
             ${isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
           </div>
-          <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
+          <div class="title-row">
+            ${logoCompetition(row)}
+            <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
+          </div>
           <p class="card-sub">${escapeHtml(get(row, "Visiteur / événement") || get(row, "Libellé compétition") || "")}</p>
         </div>
         <div class="date-pill"><strong>${escapeHtml(date)}</strong><span>${escapeHtml(time)}</span></div>
