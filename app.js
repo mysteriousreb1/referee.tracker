@@ -347,17 +347,30 @@ const LOGOS_DISPONIBLES = {
   "DFU11": "DFU11.png", "DFU13": "DFU13.png", "DFU15": "DFU15.png", "DFU18": "DFU18.png"
 };
 
-function slugCompetition(row) {
+/* Le parsing des convocations range parfois le NUMÉRO de rencontre dans la
+   colonne « Code compétition » (« 6 », « 4 »…) : le vrai code ne subsiste
+   alors que dans le libellé (« PNM », « 4 - AMI NM3 + ESP.PB »).
+   On récupère donc le code où qu'il soit. */
+
+const RE_CODE_FFBB = /\b(?:3X3|CPE|CMUT|ENCOU|FD|OPEN|(?:PN|PR)[MF]|[NRD][MF](?:U\d{2}|\d))\b/;
+
+function codeCompetition(row) {
   if (cleanText(get(row, "Format")) === "3x3") return "3X3";
 
-  let code = cleanText(get(row, "Code compétition")).toUpperCase();
-  if (!code) return "";
+  const brut = cleanText(get(row, "Code compétition")).toUpperCase();
+  const codeNu = brut.split("-")[0].replace(/[^A-Z0-9]/g, "");
 
-  code = code.split("-")[0];                   // retire la phase
-  code = code.replace(/[^A-Z0-9]/g, "");       // sécurise le nom de fichier
-  if (!code || /^\d+$/.test(code)) return "";  // code numérique parasite
+  // Un code exploitable commence toujours par une lettre.
+  if (codeNu && !/^\d+$/.test(codeNu)) return codeNu;
 
-  return code;
+  // Sinon on va le chercher dans le libellé.
+  const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
+  const trouve = libelle.match(RE_CODE_FFBB);
+  return trouve ? trouve[0].replace(/[^A-Z0-9]/g, "") : "";
+}
+
+function slugCompetition(row) {
+  return codeCompetition(row);
 }
 
 function logoCompetition(row) {
@@ -373,20 +386,26 @@ function logoCompetition(row) {
 
 function niveauElite(row) {
   const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
-  const code = cleanText(get(row, "Code compétition")).toUpperCase();
+  const code = codeCompetition(row);
   const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
+  const amical = /\bAMI(CAL)?\b/.test(libelle);
 
   // Championnat de France : NM1-3, NF1-3, NMU15/18, NFU15/18 — tout code
   // commençant par NM ou NF. Aucune autre compétition FFBB ne commence par N.
   if (niveau.indexOf("championnat de france") >= 0 || /^N[MF]/.test(code) ||
       /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) {
-    return { classe: "is-france", badge: "Championnat de France", court: "France" };
+    return {
+      classe: "is-france",
+      badge: amical ? "National · amical" : "Championnat de France",
+      court: "France"
+    };
   }
 
   // Pré-national : PNM / PNF. À ne pas confondre avec PRM / PRF (pré-région).
-  if (/^PN[MF]/.test(code) || /\bPR[ÉE]-?NATIONAL/.test(libelle)) {
+  if (/^PN[MF]/.test(code)) {
     const feminin = code.charAt(2) === "F";
-    return { classe: "is-pn", badge: feminin ? "Pré-national F" : "Pré-national M", court: "PN" };
+    const libelleBadge = feminin ? "Pré-national F" : "Pré-national M";
+    return { classe: "is-pn", badge: amical ? libelleBadge + " · amical" : libelleBadge, court: "PN" };
   }
 
   return null;
