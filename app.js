@@ -18,6 +18,7 @@ let state = {
   activeTab: "matchs",
   selectedSeason: "",
   search: "",
+  searchTokens: [],
   maps: {},
   exportSeason: "",   // filtres propres à l'onglet Export
   exportMonth: ""
@@ -53,7 +54,8 @@ function bindUi() {
   });
 
   document.getElementById("searchInput").addEventListener("input", e => {
-    state.search = e.target.value.trim().toLowerCase();
+    state.search = normaliserRecherche(e.target.value);
+    state.searchTokens = state.search ? state.search.split(" ") : [];
     renderAll();
   });
 }
@@ -197,6 +199,81 @@ function loadStats(force) {
     });
 }
 
+/* ---------------- Recherche ----------------
+   Une recherche doit trouver quoi qu'on tape : avec ou sans accents,
+   avec ou sans ponctuation, dans le désordre. On normalise donc des deux
+   côtés — la requête et les données — puis on exige que TOUS les mots
+   tapés soient présents, peu importe leur ordre.
+--------------------------------------------- */
+
+function normaliserRecherche(v) {
+  return String(v || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // é → e, ï → i
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")                        // S.I. → s i
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/* Champs balayés par la recherche. Bien plus large qu'avant : on peut
+   chercher un n° de rencontre, un statut de paiement, une catégorie,
+   un numéro de téléphone ou une date en toutes lettres. */
+const CHAMPS_RECHERCHE = [
+  "Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville",
+  "Collègue nom", "Collègue rôle", "Collègue téléphone",
+  "Libellé compétition", "Niveau administratif", "Code compétition",
+  "N° rencontre", "Mon rôle", "Statut paiement", "Format", "Genre",
+  "Catégorie d'âge", "Observateur", "Code e-Marque", "Référent 3x3"
+];
+
+function indexRecherche_(row) {
+  const morceaux = CHAMPS_RECHERCHE.map(k => get(row, k));
+
+  // Le code de compétition tel qu'affiché sur la carte (NM3, U18 France…),
+  // qui n'est pas toujours celui écrit en base.
+  try { morceaux.push(niveauCarte(row).badge); } catch (e) { /* rien */ }
+
+  // Le téléphone du collègue remis au format national : chercher
+  // « 0771567486 » doit marcher même si la base stocke « 771567486 ».
+  morceaux.push(normalizePhoneFr(get(row, "Collègue téléphone")));
+
+  // La date sous toutes ses formes lisibles : 12/09/2026, 12 09 2026,
+  // « samedi 12 septembre 2026 ». Chercher « septembre » doit marcher.
+  if (row._date) {
+    morceaux.push(row._date.toLocaleDateString("fr-FR"));
+    morceaux.push(row._date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+  }
+  morceaux.push(row._season);
+
+  const texte = normaliserRecherche(morceaux.filter(Boolean).join(" "));
+  // Version sans espaces : « si graffenstaden » trouve « S.I. GRAFFENSTADEN ».
+  return { texte: texte, compact: texte.replace(/ /g, "") };
+}
+
+/* Un mot est trouvé s'il apparaît tel quel, ou collé (à partir de 3
+   caractères, pour éviter que « as » ne matche la moitié de la base). */
+function motTrouve_(hay, mot) {
+  if (!hay) return false;
+  if (hay.texte.indexOf(mot) >= 0) return true;
+  return mot.length >= 3 && hay.compact.indexOf(mot) >= 0;
+}
+
+function correspondRecherche_(row, mots) {
+  if (!mots || !mots.length) return true;
+  const hay = row._hay || indexRecherche_(row);
+
+  let tousTrouves = true;
+  for (let i = 0; i < mots.length; i++) {
+    if (!motTrouve_(hay, mots[i])) { tousTrouves = false; break; }
+  }
+  if (tousTrouves) return true;
+
+  /* Repli : la requête entière, collée. Rattrape les sigles que la
+     ponctuation a éclatés — « si graffenstaden » vs « S.I. GRAFFENSTADEN ». */
+  const colle = mots.join("");
+  return colle.length >= 3 && hay.compact.indexOf(colle) >= 0;
+}
+
 /* ---------------- Normalisation ---------------- */
 
 function normalizeRows(rows) {
@@ -215,6 +292,7 @@ function normalizeRows(rows) {
     r._season = normalizeSeason(get(r, "Saison"), r._date);
     r._isActive = !["annulé", "annule", "alerte"].includes(cleanText(get(r, "Statut")).toLowerCase()) && r._format !== "Alerte";
     r._isPast = isPastMission(r);
+    r._hay = indexRecherche_(r);
     return r;
   });
 }
@@ -246,14 +324,11 @@ function renderAll() {
 }
 
 function filterRows(rows) {
-  const s = state.selectedSeason, q = state.search;
+  const s = state.selectedSeason;
   return rows.filter(row => {
     const seasonOk = s === "Toutes les saisons" || row._season === s;
     if (!seasonOk) return false;
-    if (!q) return true;
-    const hay = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville", "Collègue nom", "Libellé compétition", "Niveau administratif", "Code compétition"]
-      .map(k => get(row, k)).join(" ").toLowerCase();
-    return hay.includes(q);
+    return correspondRecherche_(row, state.searchTokens);
   });
 }
 
@@ -476,31 +551,53 @@ function logoCompetition(row) {
                loading="lazy" decoding="async" onerror="this.remove()">`;
 }
 
-function niveauElite(row) {
+/* Niveau de la rencontre : toujours renvoyé, jamais null.
+   La pastille affiche le CODE de compétition (NM3, PNM, RM2, DM1…),
+   pas le niveau générique : c'est ce qui se lit le plus vite.
+   La couleur, elle, porte la hiérarchie France > PN > Région > Dép. */
+
+/* NMU18 / NFU18 → « U18 France » : le code brut ne parle pas, alors que
+   la catégorie jeune en Championnat de France, si. */
+function libelleCodeNiveau(code, famille) {
+  const jeune = code.match(/^N[MF](U\d{2})$/);
+  if (jeune) return jeune[1] + " France";
+  if (code) return code;
+  return famille === "autre" ? "" : "";
+}
+
+function niveauCarte(row) {
   const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
   const code = codeCompetition(row);
   const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
   const amical = /\bAMI(CAL)?\b/.test(libelle);
 
+  const carte = (classe, court) => {
+    const texte = libelleCodeNiveau(code, classe) ||
+                  cleanText(get(row, "Niveau administratif")) || "À vérifier";
+    return { classe: classe, badge: amical ? texte + " · amical" : texte, court: court };
+  };
+
+  if (cleanText(get(row, "Format")) === "3x3" || code === "3X3") {
+    return { classe: "niv-3x3", badge: "3x3", court: "3x3" };
+  }
+
   // Championnat de France : NM1-3, NF1-3, NMU15/18, NFU15/18 — tout code
   // commençant par NM ou NF. Aucune autre compétition FFBB ne commence par N.
   if (niveau.indexOf("championnat de france") >= 0 || /^N[MF]/.test(code) ||
-      /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) {
-    return {
-      classe: "is-france",
-      badge: amical ? "National · amical" : "Championnat de France",
-      court: "France"
-    };
-  }
+      /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) return carte("niv-france", "France");
 
   // Pré-national : PNM / PNF. À ne pas confondre avec PRM / PRF (pré-région).
-  if (/^PN[MF]/.test(code)) {
-    const feminin = code.charAt(2) === "F";
-    const libelleBadge = feminin ? "Pré-national F" : "Pré-national M";
-    return { classe: "is-pn", badge: amical ? libelleBadge + " · amical" : libelleBadge, court: "PN" };
+  if (/^PN[MF]/.test(code)) return carte("niv-pn", "PN");
+
+  if (niveau.indexOf("départ") >= 0 || niveau.indexOf("depart") >= 0 || /^D[MF]/.test(code)) {
+    return carte("niv-departement", "Dép.");
   }
 
-  return null;
+  if (niveau.indexOf("région") >= 0 || niveau.indexOf("region") >= 0 || /^(PR|R)[MF]/.test(code)) {
+    return carte("niv-region", "Région");
+  }
+
+  return carte("niv-autre", "—");
 }
 
 function renderMatchCard(row) {
@@ -512,8 +609,6 @@ function renderMatchCard(row) {
 
   const date = formatDateShort(row._date);
   const time = get(row, "Heure/RDV");
-  const level = get(row, "Niveau administratif") || format;
-  const warning = hasWarning(row);
   const paiement = get(row, "Statut paiement") || "À recevoir";
   const isPaid = paiement === "Reçu";
   const isBenevole = paiement === BENEVOLE;
@@ -521,20 +616,18 @@ function renderMatchCard(row) {
   const cost = realFuelCostClient(row._km, row._date);
   const net = round2(row._amount - cost);
 
-  const elite = niveauElite(row);
+  const niv = niveauCarte(row);
 
 
   return `
-    <article class="match-card${elite ? " match-card--elite " + elite.classe : ""}" data-uid="${uid}">
+    <article class="match-card match-card--niveau ${niv.classe}" data-uid="${uid}">
       <div class="card-head" role="button" tabindex="0">
         <div>
           <div class="badges">
-            ${elite ? `<span class="badge badge-elite">${escapeHtml(elite.badge)}</span>` : ""}
-            ${badge(format || "Mission", format === "3x3" ? "red" : "gray")}
-            ${elite ? "" : badge(level, "gray")}
+            <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
+            ${format && format !== "3x3" ? badge(format, "gray") : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
-            ${row._isPast ? badge("Passé", "gray") : badge("À venir", "green")}
-            ${warning ? badge("À vérifier", "orange") : ""}
+            ${row._isPast ? badge("Passé", "gray") : ""}
             ${isBenevole ? badge("Bénévole", "gray")
               : isPaid ? badge("Payé", "green")
               : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
@@ -583,7 +676,9 @@ function renderDetails(row) {
     ["Adresse", get(row, "Adresse")],
     ["Ville", get(row, "Ville")],
     ["Code e-Marque", get(row, "Code e-Marque")],
-    ["Collègue", formatColleague(row)],
+    ["Collègue", get(row, "Collègue nom")],
+    ["Tél. collègue", formatPhoneFr(get(row, "Collègue téléphone"))],
+    ["Rôle collègue", get(row, "Collègue rôle")],
     ["Référent 3x3", get(row, "Référent 3x3")],
     ["Observateur", get(row, "Observateur")],
     ["KM A/R", row._km ? formatNumber(row._km, " km") : ""],
@@ -591,8 +686,12 @@ function renderDetails(row) {
     ["Warnings", [get(row, "Warning général"), get(row, "Warning finance"), get(row, "Warning FBI")].filter(Boolean).join(" | ")]
   ].filter(([, v]) => v !== "" && v !== null && v !== undefined);
 
+  /* Champs dont la valeur est longue : ils gardent toute la largeur de la
+     grille, sinon une adresse se casse en quatre lignes dans une colonne. */
+  const pleineLargeur = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Warnings", "Observateur"];
+
   return `<div class="detail-grid">${details.map(([l, v]) => `
-    <div class="detail"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div>`;
+    <div class="detail${pleineLargeur.indexOf(l) >= 0 ? " detail--wide" : ""}"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div>`;
 }
 
 /* ---------------- Carte OSM ---------------- */
@@ -648,17 +747,109 @@ function route(from, to) {
     .catch(() => null);
 }
 
+/* ---------------- SMS collègue (message pré-rempli) ---------------- */
+
+/* Délai de RDV devant la salle selon le niveau de la rencontre :
+   Championnat de France 1h00 · Région (dont pré-national / pré-région) 45 min ·
+   Départemental 35 min. Tout niveau 5x5 non identifié retombe sur le régime Région. */
+const RDV_MINUTES = { france: 60, region: 45, departement: 35 };
+
+/* Pas de message type en 3x3 : le bouton SMS n'est pas proposé sur ces missions. */
+function smsDisponible(row) {
+  return cleanText(get(row, "Format")) !== "3x3" && codeCompetition(row) !== "3X3";
+}
+
+function niveauRencontre(row) {
+  const code = codeCompetition(row);
+  const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
+  const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
+
+  if (niveau.indexOf("championnat de france") >= 0 || niveau.indexOf("national") === 0 ||
+      /^N[MF]/.test(code) || /\bCHAMPIONNAT DE FRANCE\b/.test(libelle)) return "france";
+  if (niveau.indexOf("départ") >= 0 || niveau.indexOf("depart") >= 0 || /^D[MF]/.test(code)) return "departement";
+  return "region";   // régional, pré-national, pré-région, non renseigné
+}
+
+function libelleNiveauSms(row) {
+  return cleanText(get(row, "Libellé compétition")) ||
+         codeCompetition(row) ||
+         cleanText(get(row, "Niveau administratif")) ||
+         "notre rencontre";
+}
+
+/* "20:30", "20h30", "20 h 30" → { h, m } ; null si illisible. */
+function parseHeure(value) {
+  const m = String(value || "").match(/(\d{1,2})\s*[:hH.]\s*(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return { h: h, m: min };
+}
+
+function formatHeureFr(t) {
+  return t ? String(t.h).padStart(2, "0") + "h" + String(t.m).padStart(2, "0") : "";
+}
+
+function reculerHeure(t, minutes) {
+  if (!t) return null;
+  let total = t.h * 60 + t.m - minutes;
+  while (total < 0) total += 1440;
+  return { h: Math.floor(total / 60), m: total % 60 };
+}
+
+function formatDelai(minutes) {
+  if (minutes % 60 === 0) return (minutes / 60) + "h00";
+  return minutes < 60 ? minutes + " min" : Math.floor(minutes / 60) + "h" + String(minutes % 60).padStart(2, "0");
+}
+
+function formatDateLongue(date) {
+  if (!date) return "";
+  return date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function buildSmsCollegue(row) {
+  const minutes = RDV_MINUTES[niveauRencontre(row)];
+  const heure = parseHeure(get(row, "Heure/RDV"));
+  const rdv = reculerHeure(heure, minutes);
+
+  const date = formatDateLongue(row._date) || cleanText(get(row, "Date match"));
+  const lieu = cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
+
+  const ligneQuand = [
+    date ? "Le " + date : "",
+    heure ? " à " + formatHeureFr(heure) : "",
+    lieu ? " sur " + lieu : ""
+  ].join("") + ".";
+
+  const ligneRdv = rdv
+    ? "On se donne RDV devant la salle à " + formatHeureFr(rdv) + " (" + formatDelai(minutes) + " avant)."
+    : "On se donne RDV devant la salle " + formatDelai(minutes) + " avant l'heure de début de rencontre.";
+
+  return [
+    "Hello,",
+    "",
+    "On arbitre ensemble en " + libelleNiveauSms(row),
+    ligneQuand,
+    ligneRdv,
+    "",
+    "A plus Clément !"
+  ].join("\n");
+}
+
 /* ---------------- Actions ---------------- */
 
 function renderActions(row) {
   const address = get(row, "Adresse");
-  const phone = onlyDigits(get(row, "Collègue téléphone"));
+  const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [];
   if (address) {
     links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
     links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   }
-  if (phone) links.push(`<a class="action-link secondary" href="sms:${phone}">SMS collègue</a>`);
+  if (phone && smsDisponible(row)) {
+    const corps = encodeURIComponent(buildSmsCollegue(row));
+    links.push(`<a class="action-link secondary" href="sms:${phone}?&body=${corps}">SMS collègue</a>`);
+  }
   if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
     links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
   }
@@ -1335,7 +1526,20 @@ function realFuelCostClient(km, date) {
 function get(row, key) { return row && row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : ""; }
 function firstValue(row, keys) { for (const k of keys) { const v = get(row, k); if (v) return v; } return ""; }
 function hasWarning(row) { return Boolean(get(row, "Warning général") || get(row, "Warning finance") || get(row, "Warning FBI")); }
-function formatColleague(row) { const n = get(row, "Collègue nom"), r = get(row, "Collègue rôle"), p = get(row, "Collègue téléphone"); return n ? [n, r, p].filter(Boolean).join(" — ") : ""; }
+function normalizePhoneFr(v) {
+  let d = String(v || "").replace(/[^\d+]/g, "");
+  if (d.startsWith("+33")) d = "0" + d.slice(3);
+  else if (d.startsWith("0033")) d = "0" + d.slice(4);
+  else if (d.startsWith("33") && d.length === 11) d = "0" + d.slice(2);
+  d = d.replace(/\D/g, "");
+  if (d.length === 9 && d[0] !== "0") d = "0" + d;
+  return d;
+}
+function formatPhoneFr(v) {
+  const d = normalizePhoneFr(v);
+  if (d.length !== 10) return d;
+  return d.match(/.{2}/g).join(".");
+}
 function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
 function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
 
@@ -1363,7 +1567,6 @@ function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("
 function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }
 function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
 function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
-function onlyDigits(v) { return String(v || "").replace(/[^\d+]/g, ""); }
 function escapeHtml(v) { return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
 
 function sortByDateAsc(a, b) { return (a._date ? a._date.getTime() : 0) - (b._date ? b._date.getTime() : 0); }
@@ -1749,15 +1952,10 @@ function buildChartJourSemaine(stats) {
 /* Toutes les missions actives, indépendamment du filtre de saison global :
    l'onglet Analyse a son propre sélecteur. La recherche texte reste appliquée. */
 function analyseRowsToutesSaisons() {
-  const q = state.search;
+  const mots = state.searchTokens;
   return state.allRows
     .filter(r => r._isActive && r._format !== "Alerte")
-    .filter(r => {
-      if (!q) return true;
-      const hay = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville", "Collègue nom", "Libellé compétition", "Niveau administratif", "Code compétition"]
-        .map(k => get(r, k)).join(" ").toLowerCase();
-      return hay.includes(q);
-    })
+    .filter(r => correspondRecherche_(r, mots))
     .map(enrichirPourAnalyse_);
 }
 
