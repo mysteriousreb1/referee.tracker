@@ -328,7 +328,10 @@ select:focus, input:focus, textarea:focus {
 }
 .match-card.open .card-body { display: block; }
 
-.detail-grid { display: grid; grid-template-columns: 1fr; gap: 9px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+/* Les champs longs (adresse, noms de clubs) gardent toute la largeur :
+   coupés en deux colonnes ils deviennent illisibles. */
+.detail--wide { grid-column: 1 / -1; }
 .detail {
   min-width: 0;
   padding: 11px 12px;
@@ -489,15 +492,65 @@ tr:last-child td { border-bottom: 0; }
   .brand-logo { width: 48px; height: 48px; font-size: 20px; }
   .content { padding: 0 10px 20px; margin-top: -18px; }
   .toolbar { grid-template-columns: 1fr; border-radius: 20px; }
-  .tabs { grid-template-columns: repeat(7, minmax(52px, 1fr)); gap: 3px; padding: 5px; overflow-x: auto; }
-  .tab { padding: 9px 3px; font-size: 12px; min-width: 58px; }
-  .tab span { display: block; margin: 0 0 2px; }
-  .card-head { padding: 15px; }
-  .card-title { font-size: 18px; }
-  .money-strip { grid-template-columns: repeat(3, 1fr); }
+
+  /* Sept onglets sur une seule ligne, c'était 52 px chacun et un scroll
+     horizontal invisible. Deux rangées de quatre : tout est atteignable
+     du pouce, plus rien n'est tronqué. */
+  /* Deux rangées collées en haut mangeraient 95 px d'écran en permanence :
+     sur téléphone les onglets défilent avec la page. */
+  .tabs { position: static; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; overflow: visible; margin: 14px 0 16px; }
+  .tab { padding: 8px 2px; font-size: 12px; line-height: 1.15; min-width: 0; }
+  .tab span { display: block; margin: 0 0 3px; font-size: 15px; }
+
+  .card-head { padding: 15px; gap: 10px; }
+  .card-title { font-size: 17px; }
+  .date-pill { min-width: 74px; }
+  .date-pill strong { font-size: 13.5px; }
+
+  .money-strip { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .money-cell { padding: 9px 7px; }
+  .money-cell label { font-size: 9px; letter-spacing: 0; }
+  .money-cell strong { font-size: 14px; }
+
   .payment-row { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   .kpi.hero { grid-column: span 2; }
+
+  .detail { padding: 8px 10px; }
+  .detail label { font-size: 9.5px; }
+  .detail span { font-size: 13px; }
+
+  .section-title { font-size: 19px; }
+  .card-map { height: 150px; }
+}
+
+/* =====================================================
+   Spécificités iOS
+   ===================================================== */
+
+/* Safari iOS zoome automatiquement sur un champ dont le texte fait moins
+   de 16 px, et ne dézoome jamais ensuite. Recherche, sélecteur de saison,
+   statut de paiement, écran de connexion : tous étaient à 14,5-15 px. */
+@media (max-width: 720px) {
+  select, input, textarea,
+  .rt-login-card input, .rt-field input,
+  .payment-row select, .chart-filter select { font-size: 16px; }
+}
+
+/* viewport-fit=cover fait passer la page sous l'encoche et sous la barre
+   d'accueil. On rend ces marges à l'interface. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .app-footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .content {
+    padding-left: calc(18px + env(safe-area-inset-left));
+    padding-right: calc(18px + env(safe-area-inset-right));
+  }
+  @media (max-width: 720px) {
+    .content {
+      padding-left: calc(10px + env(safe-area-inset-left));
+      padding-right: calc(10px + env(safe-area-inset-right));
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1095,45 +1148,52 @@ tr:last-child td { border-bottom: 0; }
 }
 
 /* =====================================================
-   Niveaux à distinguer : Championnat de France, Pré-national
+   Niveau de la rencontre — lecture immédiate
+   Une pastille pleine + un bandeau latéral de la même
+   couleur : le niveau se lit avant même le nom du club.
+   Échelle : France (or) > Pré-national > Régional >
+   Départemental, et 3x3 en rouge signal.
    ===================================================== */
 
-.match-card--elite {
-  border-left-width: 4px;
+.match-card--niveau {
+  border-left-width: 6px;
   border-left-style: solid;
+  border-left-color: var(--niveau, #C8D2E4);
 }
 
-.match-card--elite .card-head {
-  background: linear-gradient(90deg, rgba(245, 180, 0, 0.09), rgba(245, 180, 0, 0) 55%);
+.match-card--niveau .card-head {
+  background: linear-gradient(90deg, var(--niveau-wash, transparent), transparent 58%);
 }
 
-.match-card.is-france { border-left-color: var(--gold, #F5B400); }
-.match-card.is-pn     { border-left-color: var(--navy-600, #1E4E9C); }
+.match-card.niv-france      { --niveau: #F5B400; --niveau-wash: rgba(245, 180, 0, 0.13); }
+.match-card.niv-pn          { --niveau: #12386F; --niveau-wash: rgba(18, 56, 111, 0.10); }
+.match-card.niv-region      { --niveau: #3B76CE; --niveau-wash: rgba(59, 118, 206, 0.10); }
+.match-card.niv-departement { --niveau: #64748B; --niveau-wash: rgba(100, 116, 139, 0.09); }
+.match-card.niv-3x3         { --niveau: var(--red); --niveau-wash: rgba(228, 0, 43, 0.09); }
+.match-card.niv-autre       { --niveau: #C8D2E4; --niveau-wash: transparent; }
 
-.match-card.is-pn .card-head {
-  background: linear-gradient(90deg, rgba(30, 78, 156, 0.08), rgba(30, 78, 156, 0) 55%);
-}
-
-.badge-elite {
+/* La pastille de niveau : volontairement plus grosse et plus
+   contrastée que les autres badges, c'est elle qu'on cherche. */
+.badge-niveau {
   display: inline-flex;
   align-items: center;
-  padding: 2px 9px;
+  min-height: 27px;
+  padding: 3px 14px;
   border-radius: 999px;
-  font-family: var(--mono);
-  font-size: 10.5px;
+  font-family: var(--display);
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  line-height: 1.1;
+  letter-spacing: 0.055em;
   text-transform: uppercase;
-  color: #6B4E00;
-  background: var(--gold-soft, #FFF3D1);
-  border: 1px solid rgba(245, 180, 0, 0.45);
+  color: #FFFFFF;
+  background: var(--niveau, #64748B);
+  box-shadow: 0 2px 6px rgba(10, 31, 68, 0.18);
 }
 
-.match-card.is-pn .badge-elite {
-  color: #12386F;
-  background: #E7EEFA;
-  border-color: rgba(30, 78, 156, 0.35);
-}
+/* L'or est trop clair pour du texte blanc : contraste inversé. */
+.match-card.niv-france .badge-niveau { color: #3E2D00; }
+.match-card.niv-autre .badge-niveau  { color: #445069; background: #EAEEF5; box-shadow: none; }
 
 /* Logo de compétition dans la liste des matchs.
    L'image se supprime d'elle-même si le fichier n'existe pas :
@@ -1148,8 +1208,8 @@ tr:last-child td { border-bottom: 0; }
 
 .comp-logo {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   border-radius: 7px;
   background: var(--surface-2, #F6F8FC);
@@ -1159,7 +1219,15 @@ tr:last-child td { border-bottom: 0; }
 .title-row .card-title { min-width: 0; margin: 0; }
 
 @media (max-width: 480px) {
-  .comp-logo { width: 28px; height: 28px; }
+  .comp-logo { width: 38px; height: 38px; }
+  .badge-niveau { font-size: 15px; min-height: 25px; padding: 2px 12px; }
+}
+
+/* Sous 360 px (iPhone SE, petits Android), deux colonnes de détails
+   deviennent trop étroites : on repasse à une seule. */
+@media (max-width: 359px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* =====================================================
