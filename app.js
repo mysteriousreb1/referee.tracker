@@ -369,6 +369,7 @@ function renderMatchPanel(rootId, format, label) {
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
+  attachContactListeners(root);
   attachPastToggle(root);
 }
 
@@ -617,14 +618,16 @@ function renderMatchCard(row) {
   const net = round2(row._amount - cost);
 
   const niv = niveauCarte(row);
+  const reglement = reglementSpecial(row);   // MODIFICATION 10
 
 
   return `
-    <article class="match-card match-card--niveau ${niv.classe}" data-uid="${uid}">
+    <article class="match-card match-card--niveau ${niv.classe}${reglement ? " match-card--reglement" : ""}" data-uid="${uid}">
       <div class="card-head" role="button" tabindex="0">
         <div>
           <div class="badges">
             <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
+            ${reglement ? `<span class="badge badge-reglement" title="${escapeHtml(reglement)}">⚠ ${escapeHtml(reglement)}</span>` : ""}
             ${format && format !== "3x3" ? badge(format, "gray") : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${row._isPast ? badge("Passé", "gray") : ""}
@@ -683,12 +686,14 @@ function renderDetails(row) {
     ["Observateur", get(row, "Observateur")],
     ["KM A/R", row._km ? formatNumber(row._km, " km") : ""],
     ["Paiement prévu", get(row, "Date paiement")],
-    ["Warnings", [get(row, "Warning général"), get(row, "Warning finance"), get(row, "Warning FBI")].filter(Boolean).join(" | ")]
+    ["Mode de règlement", reglementSpecial(row)],
+    ["Contact collègue", get(row, "Contact collègue")],
+    ["Warnings", warningsReels(row).join(" | ")]
   ].filter(([, v]) => v !== "" && v !== null && v !== undefined);
 
   /* Champs dont la valeur est longue : ils gardent toute la largeur de la
      grille, sinon une adresse se casse en quatre lignes dans une colonne. */
-  const pleineLargeur = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Warnings", "Observateur"];
+  const pleineLargeur = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Warnings", "Observateur", "Mode de règlement"];
 
   return `<div class="detail-grid">${details.map(([l, v]) => `
     <div class="detail${pleineLargeur.indexOf(l) >= 0 ? " detail--wide" : ""}"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div>`;
@@ -745,6 +750,25 @@ function route(from, to) {
   return fetch(url).then(r => r.json())
     .then(d => (d.routes && d.routes.length) ? { geometry: d.routes[0].geometry, distanceKm: d.routes[0].distance / 1000 } : null)
     .catch(() => null);
+}
+
+/* ---------------- Mode de règlement ----------------
+   La plupart des rencontres sont payées par le comité ou par la ligue :
+   c'est réglé, il n'y a rien à surveiller. Quand c'est le club recevant
+   qui paie, il faut penser à réclamer sur place — d'où le signalement
+   visuel sur la carte plutôt qu'une alerte noyée dans un onglet.
+---------------------------------------------------- */
+
+function reglementSpecial(row) {
+  const type = normaliserRecherche(get(row, "Paiement Type"));
+  const par = normaliserRecherche(get(row, "Indemnisé par"));
+
+  const estClub = type.indexOf("club") >= 0 ||
+                  par.indexOf("association recevante") >= 0 ||
+                  par.indexOf("club") >= 0;
+
+  if (!estClub) return "";
+  return cleanText(get(row, "Indemnisé par")) || "Paiement par le club recevant";
 }
 
 /* ---------------- SMS collègue (message pré-rempli) ---------------- */
@@ -848,7 +872,19 @@ function renderActions(row) {
   }
   if (phone && smsDisponible(row)) {
     const corps = encodeURIComponent(buildSmsCollegue(row));
-    links.push(`<a class="action-link secondary" href="sms:${phone}?&body=${corps}">SMS collègue</a>`);
+    const uid = escapeHtml(get(row, "UID"));
+    // MODIFICATION 11 — envoyer le SMS marque la mission comme contactée :
+    // dans le cas normal tu n'as rien de plus à faire, les relances s'arrêtent.
+    links.push(`<a class="action-link secondary contact-sms" data-uid="${uid}" href="sms:${phone}?&body=${corps}">SMS collègue</a>`);
+  }
+
+  /* MODIFICATION 11 — cas où c'est le collègue qui a écrit en premier, ou
+     un simple appel : un tap et les relances s'arrêtent. Aucun système ne
+     peut le deviner à ta place. */
+  if (get(row, "Collègue nom") && smsDisponible(row)) {
+    const uid = escapeHtml(get(row, "UID"));
+    const fait = Boolean(get(row, "Contact collègue"));
+    links.push(`<button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Contact fait" : "Contact fait"}</button>`);
   }
   if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
     links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
@@ -916,6 +952,46 @@ function renderPaiements() {
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
+  attachContactListeners(root);
+}
+
+/* MODIFICATION 11 — marquage du contact collègue.
+   L'appel réseau ne bloque rien : l'affichage est mis à jour tout de suite,
+   et une erreur repasse le bouton dans son état précédent. */
+async function marquerContact(uid, valeur) {
+  const res = await jsonp("setContact", { uid, value: valeur ? "1" : "" });
+  if (!res || res.success === false) throw new Error((res && res.error) || "Erreur contact");
+  const row = state.allRows.find(r => get(r, "UID") === uid);
+  if (row) row["Contact collègue"] = valeur ? new Date().toLocaleDateString("fr-FR") : "";
+  return res;
+}
+
+function attachContactListeners(root) {
+  // Le lien SMS s'ouvre normalement ; le marquage part en parallèle.
+  root.querySelectorAll(".contact-sms").forEach(lien => {
+    lien.addEventListener("click", () => {
+      const uid = lien.dataset.uid;
+      const row = state.allRows.find(r => get(r, "UID") === uid);
+      if (row && get(row, "Contact collègue")) return;   // déjà marqué
+      marquerContact(uid, true).catch(() => { /* silencieux : le SMS prime */ });
+    });
+  });
+
+  root.querySelectorAll(".contact-toggle").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const uid = btn.dataset.uid;
+      const etaitFait = btn.dataset.fait === "1";
+      btn.disabled = true;
+      try {
+        await marquerContact(uid, !etaitFait);
+        setStatus(etaitFait ? "Contact effacé" : "Contact enregistré", "ok");
+        renderAll();
+      } catch (err) {
+        setStatus("Erreur contact : " + err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 function attachPaymentListeners(root) {
@@ -1100,13 +1176,20 @@ function renderStatsClient(periodeRecue) {
 
 function renderAlertes() {
   const root = document.getElementById("alertes");
+  /* Une alerte doit être actionnable. On ne retient donc que ce sur quoi
+     tu peux agir : un import raté, un statut à trancher, un club qui n'a
+     pas payé. Le mode de règlement, lui, se lit sur la carte. */
   const rows = state.filteredRows.filter(r =>
-    r._format === "Alerte" || hasWarning(r) || cleanText(get(r, "Statut paiement")) === "À vérifier"
+    r._format === "Alerte" ||
+    hasWarningReel(r) ||
+    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
+    paiementEnRetard(r)
   ).sort(sortByDateAsc);
-  if (!rows.length) { root.innerHTML = empty("Aucune alerte pour cette saison."); return; }
+  if (!rows.length) { root.innerHTML = empty("Aucune alerte pour cette saison. Rien à corriger, rien à relancer."); return; }
   root.innerHTML = `<h2 class="section-title">Alertes <span class="count">${rows.length}</span></h2><div class="cards">${rows.map(renderMatchCard).join("")}</div>`;
   attachCardListeners(root);
   attachPaymentListeners(root);
+  attachContactListeners(root);
 }
 
 /* ---------------- Export ----------------
@@ -1526,6 +1609,38 @@ function realFuelCostClient(km, date) {
 function get(row, key) { return row && row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : ""; }
 function firstValue(row, keys) { for (const k of keys) { const v = get(row, k); if (v) return v; } return ""; }
 function hasWarning(row) { return Boolean(get(row, "Warning général") || get(row, "Warning finance") || get(row, "Warning FBI")); }
+
+/* « Paiement club à vérifier » n'est pas une anomalie : c'est un mode de
+   règlement, vrai dès l'import et pour toujours. Posé en warning, il
+   remplissait l'onglet Alertes en permanence. Il est signalé sur la carte
+   (voir reglementSpecial) et retiré d'ici. */
+const WARNINGS_IGNORES = ["Paiement club à vérifier"];
+
+function warningsReels(row) {
+  return ["Warning général", "Warning finance", "Warning FBI"]
+    .map(k => get(row, k))
+    .filter(Boolean)
+    .join(" | ")
+    .split("|")
+    .map(w => w.trim())
+    .filter(w => w && WARNINGS_IGNORES.indexOf(w) === -1);
+}
+
+function hasWarningReel(row) { return warningsReels(row).length > 0; }
+
+/* Un paiement est en retard passé 30 jours après la date prévue : en deçà,
+   les virements de comité et de ligue arrivent régulièrement en décalé. */
+const RETARD_JOURS = 30;
+
+function paiementEnRetard(row) {
+  const statut = cleanText(get(row, "Statut paiement"));
+  if (statut === "Reçu" || statut === BENEVOLE) return false;
+
+  const prevu = parseFrDate(get(row, "Date paiement"));
+  if (!prevu) return false;
+
+  return (Date.now() - prevu.getTime()) / 86400000 > RETARD_JOURS;
+}
 function normalizePhoneFr(v) {
   let d = String(v || "").replace(/[^\d+]/g, "");
   if (d.startsWith("+33")) d = "0" + d.slice(3);
