@@ -154,6 +154,7 @@ const LECTURES = { matchs: 1, stats: 1, config: 1 };
    avant même qu'il ne serve. */
 const ECRITURES = {
   updatePaymentStatus: 1,
+  setContact: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1
 };
