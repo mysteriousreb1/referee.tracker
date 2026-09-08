@@ -396,6 +396,10 @@ select:focus, input:focus, textarea:focus {
 .action-link:active, .small-btn:active { transform: scale(0.97); }
 .action-link.secondary, .small-btn.secondary { background: #EAF0FB; color: var(--navy-900); box-shadow: none; }
 .action-link.gold { background: var(--gold); color: #3A2C00; }
+/* MODIFICATION 11 — contact collègue déjà marqué. */
+.action-link.contact-toggle { border: 0; cursor: pointer; font: inherit; }
+.action-link.contact-toggle.is-done { color: var(--green); background: var(--green-soft); }
+.action-link.contact-toggle:disabled { opacity: 0.55; cursor: default; }
 
 .payment-row {
   margin-top: 14px; padding-top: 14px;
@@ -1171,6 +1175,25 @@ tr:last-child td { border-bottom: 0; }
 .match-card.niv-departement { --niveau: #64748B; --niveau-wash: rgba(100, 116, 139, 0.09); }
 .match-card.niv-3x3         { --niveau: var(--red); --niveau-wash: rgba(228, 0, 43, 0.09); }
 .match-card.niv-autre       { --niveau: #C8D2E4; --niveau-wash: transparent; }
+
+/* MODIFICATION 10 — mode de règlement inhabituel.
+   Quand c'est le club recevant qui paie, il faut penser à réclamer sur
+   place : la carte passe au rouge et porte un panneau d'avertissement.
+   La pastille de niveau garde sa couleur — on doit pouvoir lire les deux
+   informations d'un seul coup d'œil. */
+.match-card--reglement {
+  border-left-color: var(--red) !important;
+}
+
+.match-card--reglement .card-head {
+  background: linear-gradient(90deg, rgba(228, 0, 43, 0.11), rgba(228, 0, 43, 0) 60%);
+}
+
+.badge-reglement {
+  color: #fff;
+  background: var(--red);
+  box-shadow: 0 2px 6px rgba(228, 0, 43, 0.28);
+}
 
 /* La pastille de niveau : volontairement plus grosse et plus
    contrastée que les autres badges, c'est elle qu'on cherche. */
