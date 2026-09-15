@@ -901,7 +901,7 @@ function renderPaymentControl(row) {
   // MODIFICATION 15/09/2026 — Bloc B : les matchs de Championnat de
   // France Jeunes sont payés par les 2 clubs (chèque ou virement, choix
   // à faire) — rappel de faire signer la convocation sur place.
-  const estPartsEgales = typePaiement === "Parts égales (2 clubs)";
+  const estPartsEgales = typePaiement === "Parts égales (2 clubs)" && current !== "Bénévole";
   const modePaiement = get(row, "Mode paiement") || "";
 
   // Échéancier CD67 : au-delà de 10 jours après la date de paiement
