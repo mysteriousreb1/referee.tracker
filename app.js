@@ -896,6 +896,26 @@ function renderPaymentControl(row) {
   const uid = escapeHtml(get(row, "UID"));
   const current = get(row, "Statut paiement") || "À recevoir";
   const prevu = get(row, "Date paiement");
+  const typePaiement = get(row, "Paiement Type") || "";
+
+  // MODIFICATION 15/09/2026 — Bloc B : les matchs de Championnat de
+  // France Jeunes sont payés par les 2 clubs (chèque ou virement, choix
+  // à faire) — rappel de faire signer la convocation sur place.
+  const estPartsEgales = typePaiement === "Parts égales (2 clubs)";
+  const modePaiement = get(row, "Mode paiement") || "";
+
+  // Échéancier CD67 : au-delà de 10 jours après la date de paiement
+  // attendue (donc à partir du 20 du mois), on signale le retard.
+  const estAssociationRecevante = typePaiement === "Association recevante";
+  let retardCD67 = false;
+  if (estAssociationRecevante && current === "À recevoir" && prevu) {
+    const m = String(prevu).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const limite = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]) + 10);
+      retardCD67 = new Date() > limite;
+    }
+  }
+
   return `
     <div class="payment-row">
       <div>
@@ -905,7 +925,20 @@ function renderPaymentControl(row) {
       <select class="payment-select" data-uid="${uid}">
         ${PAYMENT_STATUSES.map(s => `<option value="${escapeHtml(s)}" ${s === current ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
       </select>
-    </div>`;
+    </div>
+    ${estPartsEgales ? `
+    <div class="payment-row-alert">
+      <div class="badge-parts-egales" title="Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place.">⚠ Parts égales — imprime ta convocation</div>
+      <select class="payment-mode-select" data-uid="${uid}">
+        <option value="" ${modePaiement === "" ? "selected" : ""}>Mode de paiement à choisir…</option>
+        <option value="Chèque" ${modePaiement === "Chèque" ? "selected" : ""}>Chèque</option>
+        <option value="Virement" ${modePaiement === "Virement" ? "selected" : ""}>Virement</option>
+      </select>
+    </div>` : ""}
+    ${retardCD67 ? `
+    <div class="payment-row-alert">
+      <div class="badge-retard">⚠ Paiement CD67 en retard — relance à faire</div>
+    </div>` : ""}`;
 }
 
 function attachCardListeners(root) {
@@ -940,19 +973,46 @@ function renderPaiements() {
   const totalRecu = rows.filter(r => statutDe(r) === "Reçu").reduce((t, r) => t + r._amount, 0);
   const benevoles = rows.filter(r => statutDe(r) === BENEVOLE);
 
+  /* Un statut (surtout « Reçu ») accumule vite des dizaines de missions
+     passées. On garde à l'écran ce qui reste actionnable (à venir, ou
+     traité récemment) et on replie le reste sous un même principe que
+     les onglets 5×5 / 3×3. Seuil : 8 lignes récentes visibles, le reste
+     replié — au-delà la liste devient illisible. */
+  const RECENTS_VISIBLES = 8;
+
   root.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi"><label>En attente de paiement</label><strong>${formatMoney(totalDu)}</strong></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
       ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
     </div>
-    ${order.filter(k => grouped[k]).map(status => `
-      <h2 class="section-title">${escapeHtml(status)} <span class="count">${grouped[status].length}</span></h2>
-      <div class="cards">${grouped[status].map(renderMatchCard).join("")}</div>`).join("")}
+    ${order.filter(k => grouped[k]).map(status => {
+      const liste = grouped[status].slice().sort(sortByDateDesc);
+      const visibles = liste.slice(0, RECENTS_VISIBLES);
+      const repliees = liste.slice(RECENTS_VISIBLES);
+      const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+      const ouvert = PASSES_OUVERTS[panelId] === true;
+      return `
+      <h2 class="section-title">${escapeHtml(status)} <span class="count">${liste.length}</span></h2>
+      <div class="cards">${visibles.map(renderMatchCard).join("")}</div>
+      ${repliees.length ? `
+        <details class="past-block" data-panel="${panelId}"${ouvert ? " open" : ""}>
+          <summary class="past-summary">
+            <span class="past-summary-inner">
+              <span class="past-chevron" aria-hidden="true"></span>
+              <span class="past-title">Voir les ${repliees.length} de plus — ${escapeHtml(status)}</span>
+              <span class="count">${repliees.length}</span>
+            </span>
+          </summary>
+          <div class="past-body"><div class="cards">${repliees.map(renderMatchCard).join("")}</div></div>
+        </details>` : ""}
+    `;
+    }).join("")}
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
   attachContactListeners(root);
+  attachPastToggle(root);
 }
 
 /* MODIFICATION 11 — marquage du contact collègue.
@@ -995,6 +1055,27 @@ function attachContactListeners(root) {
 }
 
 function attachPaymentListeners(root) {
+  // MODIFICATION 15/09/2026 — Bloc B : choix du mode de paiement
+  // (chèque/virement) sur les missions « Parts égales » (CF Jeunes).
+  root.querySelectorAll(".payment-mode-select").forEach(select => {
+    select.addEventListener("change", async e => {
+      const uid = e.target.dataset.uid, mode = e.target.value;
+      e.target.disabled = true;
+      setStatus("Mise à jour du mode de paiement…", "");
+      try {
+        const res = await jsonp("updatePaymentMode", { uid, mode });
+        if (!res.success) throw new Error(res.error || "Erreur update");
+        const row = state.allRows.find(r => get(r, "UID") === uid);
+        if (row) row["Mode paiement"] = mode;
+        setStatus("Mode de paiement mis à jour", "ok");
+      } catch (err) {
+        setStatus("Erreur mode paiement : " + err.message, "error");
+      } finally {
+        e.target.disabled = false;
+      }
+    });
+  });
+
   root.querySelectorAll(".payment-select").forEach(select => {
     select.addEventListener("change", async e => {
       const uid = e.target.dataset.uid, status = e.target.value;
@@ -1029,7 +1110,8 @@ function attachPaymentListeners(root) {
 /* ---------------- Stats ---------------- */
 
 function renderStats() {
-  const root = document.getElementById("stats");
+  const root = document.getElementById("statsFinancier");
+  if (!root) return;
   const s = state.serverStats;
 
   // La période demandée. Le serveur renvoie « Toutes les saisons » quand
@@ -1085,10 +1167,10 @@ function renderStats() {
     ${renderAggTable("Par saison", s.par_saison, "Saison")}
     ${renderAggTable("Par mois", s.par_mois, "Mois")}
     ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}
-    ${renderTop("Top clubs (5×5)", s.top_clubs)}
-    ${renderTop("Top salles (5×5)", s.top_salles)}
-    ${renderTop("Top villes", s.top_villes)}
-    ${renderTop("Top collègues (5×5)", s.top_collegues)}
+    ${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
+    ${renderTop("Top 3 salles (5×5)", s.top_salles)}
+    ${renderTop("Top 3 villes", s.top_villes)}
+    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
   `;
 }
@@ -1122,13 +1204,17 @@ function renderAggTable(title, rows, keyLabel) {
     </table></div></div>`;
 }
 
+/* Top 3 uniquement : au-delà, la table encombre plus qu'elle n'informe.
+   Le serveur peut renvoyer davantage de lignes (rétrocompatibilité), on
+   tronque toujours côté client. */
 function renderTop(title, rows) {
   if (!rows || !rows.length) return "";
+  const top3 = rows.slice(0, 3);
   return `
     <h2 class="section-title">${escapeHtml(title)}</h2>
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Nom</th><th class="num">Nombre</th><th class="num">Indemnités</th><th class="num">Net réel</th></tr></thead>
-      <tbody>${rows.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
+      <tbody>${top3.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
     </table></div></div>`;
 }
 
@@ -1714,7 +1800,7 @@ const AN = {
 
 
 function renderAnalyse() {
-  const root = document.getElementById("analyse");
+  const root = document.getElementById("statsAnalyse");
   if (!root) return;
 
   destroyCharts();
@@ -1923,7 +2009,6 @@ function renderStatsAvancees(stats) {
   const reg = stats.regularite || {};
   const fid = stats.fidelite_geographique || {};
   const proj = stats.projection_saison || null;
-  const classement = stats.classement_rentabilite || { top: [], bottom: [] };
 
   return `
     <h2 class="section-title">Coût réel complet</h2>
@@ -1983,21 +2068,6 @@ function renderStatsAvancees(stats) {
         ${kpi("Salle principale", fid.salle_principale || "—", fid.part_salle_principale ? fid.part_salle_principale + " % des missions" : "")}
       </div>
     ` : `<div class="insight">Pas de match 5×5 sur cette saison.</div>`}
-
-    <h2 class="section-title">Score de rentabilité des convocations</h2>
-    <p class="hint" style="margin:-4px 4px 10px">Score sur 100 basé sur le gain net par heure (trajet inclus), relatif aux autres missions de la période. 100 = la plus rentable, 0 = la moins rentable.</p>
-    ${classement.top.length ? `
-      <div class="chart-grid two">
-        <div class="chart-card">
-          <h3>Top 5 des convocations</h3>
-          ${renderClassementScore(classement.top, true)}
-        </div>
-        <div class="chart-card">
-          <h3>Les 5 moins rentables</h3>
-          ${renderClassementScore(classement.bottom, false)}
-        </div>
-      </div>
-    ` : `<div class="insight">Pas assez de missions avec distance connue pour établir un classement.</div>`}
   `;
 }
 
@@ -2015,18 +2085,6 @@ function renderProjection(proj) {
   `;
 }
 
-function renderClassementScore(items, positif) {
-  return items.map(it => `
-    <div class="rank-row">
-      <div class="rank-name">
-        <div class="label">${escapeHtml(it.lieu)} · ${escapeHtml(it.date)}</div>
-        <div class="meter"><i style="width:${it.score}%; background:${positif ? "var(--green)" : "var(--red)"}"></i></div>
-      </div>
-      <div class="rank-count">${formatNumber(it.km, " km")}</div>
-      <div class="rank-value ${it.net_reel < 0 ? "neg" : ""}">${money(it.eur_heure)}/h</div>
-    </div>
-  `).join("");
-}
 
 function buildChartJourSemaine(stats) {
   const c = ctx("chartJourSemaine"); if (!c || typeof Chart === "undefined") return;
