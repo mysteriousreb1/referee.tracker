@@ -203,7 +203,7 @@ select:focus, input:focus, textarea:focus {
   top: 8px;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
   margin: 16px 0 20px;
   padding: 7px;
@@ -410,6 +410,17 @@ select:focus, input:focus, textarea:focus {
 .payment-row .card-sub { margin-top: 2px; }
 .payment-row select { padding: 10px 12px; }
 
+/* MODIFICATION 15/09/2026 — Bloc B : dénomination des paiements (parts
+   égales CF Jeunes) + retard échéancier CD67. */
+.payment-row-alert { grid-template-columns: 1fr; margin-top: 10px; padding-top: 10px; }
+.badge-parts-egales, .badge-retard {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px; border-radius: 8px; font-size: 13px; font-weight: 600;
+}
+.badge-parts-egales { background: var(--orange-soft); color: var(--orange); }
+.badge-retard { background: var(--red-soft); color: var(--red); margin-top: 8px; }
+.payment-mode-select { margin-top: 8px; width: 100%; padding: 10px 12px; }
+
 /* ---------- KPI ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
 .kpi {
@@ -497,12 +508,11 @@ tr:last-child td { border-bottom: 0; }
   .content { padding: 0 10px 20px; margin-top: -18px; }
   .toolbar { grid-template-columns: 1fr; border-radius: 20px; }
 
-  /* Sept onglets sur une seule ligne, c'était 52 px chacun et un scroll
-     horizontal invisible. Deux rangées de quatre : tout est atteignable
-     du pouce, plus rien n'est tronqué. */
+  /* Six onglets (Analyse fusionné dans Stats) : deux rangées de trois,
+     bien plus lisibles au pouce qu'une rangée de quatre + une de deux. */
   /* Deux rangées collées en haut mangeraient 95 px d'écran en permanence :
      sur téléphone les onglets défilent avec la page. */
-  .tabs { position: static; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; overflow: visible; margin: 14px 0 16px; }
+  .tabs { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 6px; overflow: visible; margin: 14px 0 16px; }
   .tab { padding: 8px 2px; font-size: 12px; line-height: 1.15; min-width: 0; }
   .tab span { display: block; margin: 0 0 3px; font-size: 15px; }
 
@@ -1114,6 +1124,31 @@ tr:last-child td { border-bottom: 0; }
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+}
+
+/* Sur iPhone, 3 boutons de 46 px + le bloc marque débordaient du bandeau
+   (clippé par overflow:hidden du header) : les trois actions se
+   retrouvaient tronquées ou écrasées les unes sur les autres. On réduit
+   boutons + logo + typo, et on laisse le bloc marque se comprimer plutôt
+   que pousser les actions hors cadre. */
+@media (max-width: 720px) {
+  .header-inner { gap: 8px; }
+  .brand { min-width: 0; gap: 10px; }
+  .brand-logo { flex: 0 0 auto; }
+  .brand-text { min-width: 0; }
+  .brand-text h1 {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: clamp(20px, 6.5vw, 28px);
+  }
+  .header-actions { gap: 6px; flex-shrink: 0; }
+  .refresh-btn { width: 38px; height: 38px; border-radius: 11px; font-size: 18px; }
+  .refresh-btn svg { width: 15px; height: 15px; }
+}
+@media (max-width: 380px) {
+  .brand-logo { width: 40px; height: 40px; font-size: 17px; border-radius: 12px; }
+  .brand-text h1 { font-size: 18px; }
+  .header-actions { gap: 4px; }
+  .refresh-btn { width: 34px; height: 34px; }
 }
 
 /* =====================================================
