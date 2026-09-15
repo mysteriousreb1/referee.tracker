@@ -508,13 +508,46 @@ tr:last-child td { border-bottom: 0; }
   .content { padding: 0 10px 20px; margin-top: -18px; }
   .toolbar { grid-template-columns: 1fr; border-radius: 20px; }
 
-  /* Six onglets (Analyse fusionné dans Stats) : deux rangées de trois,
-     bien plus lisibles au pouce qu'une rangée de quatre + une de deux. */
-  /* Deux rangées collées en haut mangeraient 95 px d'écran en permanence :
-     sur téléphone les onglets défilent avec la page. */
-  .tabs { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 6px; overflow: visible; margin: 14px 0 16px; }
-  .tab { padding: 8px 2px; font-size: 12px; line-height: 1.15; min-width: 0; }
-  .tab span { display: block; margin: 0 0 3px; font-size: 15px; }
+  /* MODIFICATION 15/09/2026 — sur iPhone, la grille 3 colonnes laissait
+     le 7e onglet (Export) tout seul sur une rangée à moitié vide, et
+     mangeait beaucoup de hauteur d'écran. Remplacé par une bande
+     horizontale défilante (un seul rang, on swipe pour voir la suite) :
+     plus compact, plus proche des barres d'onglets natives iOS, jamais
+     de case vide. Le rendu desktop (grille) n'est pas touché. */
+  .tabs {
+    position: static;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    gap: 8px;
+    padding: 4px 6px 10px;
+    margin: 14px -10px 16px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    min-width: 0;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-soft);
+  }
+  .tab span { display: inline-block; margin: 0; font-size: 16px; }
+  .tab.active { border-color: transparent; }
 
   .card-head { padding: 15px; gap: 10px; }
   .card-title { font-size: 17px; }
@@ -554,12 +587,19 @@ tr:last-child td { border-bottom: 0; }
 /* viewport-fit=cover fait passer la page sous l'encoche et sous la barre
    d'accueil. On rend ces marges à l'interface. */
 @supports (padding: env(safe-area-inset-bottom)) {
+  /* MODIFICATION 15/09/2026 — en PWA plein écran (ajouté à l'écran
+     d'accueil), rien ne réservait la place de l'encoche/Dynamic Island
+     en haut : la barre du haut (profil/refresh/déconnexion) passait
+     sous l'heure/le capteur. On lui applique la même logique qu'au bas
+     et aux côtés, déjà gérés ici. */
+  .app-header { padding-top: calc(18px + env(safe-area-inset-top)); }
   .app-footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .content {
     padding-left: calc(18px + env(safe-area-inset-left));
     padding-right: calc(18px + env(safe-area-inset-right));
   }
   @media (max-width: 720px) {
+    .app-header { padding-top: calc(10px + env(safe-area-inset-top)); }
     .content {
       padding-left: calc(10px + env(safe-area-inset-left));
       padding-right: calc(10px + env(safe-area-inset-right));
