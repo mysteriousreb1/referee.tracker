@@ -514,39 +514,38 @@ tr:last-child td { border-bottom: 0; }
      horizontale défilante (un seul rang, on swipe pour voir la suite) :
      plus compact, plus proche des barres d'onglets natives iOS, jamais
      de case vide. Le rendu desktop (grille) n'est pas touché. */
+  /* MODIFICATION 19/09/2026 — la bande horizontale défilante cachait des
+     onglets (Stats, Analyse, Alertes, Export) sans indice visuel qu'il
+     fallait swiper : remplacée par une grille 4 colonnes / 2 rangs, tous
+     les onglets visibles d'un coup, rien à découvrir. */
   .tabs {
     position: static;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    margin: 14px 0 16px;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-soft);
+  }
+  .tab {
     display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
-    gap: 8px;
-    padding: 4px 6px 10px;
-    margin: 14px -10px 16px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 9px 4px;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: nowrap;
+    border-radius: 12px;
     background: transparent;
     border: 0;
     box-shadow: none;
-    backdrop-filter: none;
   }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tab {
-    flex: 0 0 auto;
-    scroll-snap-align: start;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 16px;
-    font-size: 13px;
-    line-height: 1;
-    white-space: nowrap;
-    min-width: 0;
-    border-radius: 999px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-soft);
-  }
-  .tab span { display: inline-block; margin: 0; font-size: 16px; }
+  .tab span { display: block; margin: 0; font-size: 17px; }
   .tab.active { border-color: transparent; }
 
   .card-head { padding: 15px; gap: 10px; }
@@ -1401,3 +1400,51 @@ tr:last-child td { border-bottom: 0; }
 .match-card.is-annule { opacity: .62; }
 .match-card.is-annule .card-title { text-decoration: line-through; text-decoration-thickness: 1px; }
 .match-card.is-annule:hover { opacity: 1; }
+
+
+/* =====================================================
+   MODIFICATION 19/09/2026 — menu latéral fixe, PC uniquement.
+   Le rendu téléphone/tablette (<1024px) n'est pas touché : c'est
+   toujours la barre d'onglets en haut, en grille sur mobile.
+   ===================================================== */
+@media (min-width: 1024px) {
+  .page { width: min(1180px, calc(100% - 236px)); margin: 0 0 0 236px; }
+
+  .tabs {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 236px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    grid-template-columns: none;
+    gap: 4px;
+    margin: 0;
+    padding: 88px 14px 20px;
+    border-radius: 0;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    box-shadow: 4px 0 16px rgba(10, 31, 68, 0.05);
+    backdrop-filter: none;
+    overflow-y: auto;
+  }
+  .tab {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 13.5px;
+    border-radius: 12px;
+  }
+  .tab span { margin-right: 0; font-size: 18px; }
+  .tab.active { box-shadow: none; }
+
+  /* Le header garde toute la largeur disponible dans la zone de contenu,
+     qui commence maintenant après le menu latéral. */
+  .app-header { padding-left: 0; padding-right: 0; }
+}
