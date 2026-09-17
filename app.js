@@ -1556,9 +1556,9 @@ function renderQcmSession_(root) {
       </div>
       <div class="actions" style="margin:14px 0"><button class="small-btn" id="btnRejouerQcm">Nouvelle série</button></div>
       <h2 class="section-title">Corrigé</h2>
-      <div class="cards">${r.details.map((d, i) => `
-        <article class="match-card ${d.ok ? "qcm-ok" : "qcm-ko"}">
-          <div class="card-body" style="padding-top:14px">
+      <div>${r.details.map((d, i) => `
+        <article class="table-card ${d.ok ? "qcm-ok" : "qcm-ko"}">
+          <div style="padding:14px 16px">
             <p style="font-weight:700;margin:0 0 6px">${i + 1}. ${escapeHtml(d.q.question)}</p>
             <p style="margin:0 0 4px" class="card-sub">Ta réponse : ${d.choisi.length ? d.choisi.map(idx => escapeHtml(d.q.answers[idx])).join(", ") : "(aucune)"} ${d.ok ? "✓" : "✗ — bonne réponse : " + d.q.correct.map(idx => escapeHtml(d.q.answers[idx])).join(", ")}</p>
             ${d.q.explanation ? `<p class="card-sub" style="margin:0">${escapeHtml(d.q.explanation)}</p>` : ""}
@@ -1576,10 +1576,10 @@ function renderQcmSession_(root) {
       <div><strong id="qcmChrono" style="font-family:var(--display); font-size:20px">${formatChronoQcm_(s.fin - Date.now())}</strong><span class="card-sub"> — ${repondues}/${s.questions.length} répondues</span></div>
       <button class="small-btn" id="btnValiderQcm">Valider la série</button>
     </div>
-    <div class="cards" style="margin-top:14px">
+    <div style="margin-top:14px">
       ${s.questions.map((q, i) => `
-        <article class="match-card">
-          <div class="card-body" style="padding-top:14px">
+        <article class="table-card">
+          <div style="padding:14px 16px">
             <p style="font-weight:700;margin:0 0 10px">${i + 1}. ${escapeHtml(q.question)}</p>
             ${q.answers.map((a, idx) => `
               <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer">
