@@ -21,7 +21,8 @@ let state = {
   searchTokens: [],
   maps: {},
   exportSeason: "",   // filtres propres à l'onglet Export
-  exportMonth: ""
+  exportMonth: "",
+  qcmStats: null       // MODIFICATION 19/09/2026 — suivi progression QCM
 };
 
 
@@ -99,6 +100,7 @@ function setActiveTab(tab) {
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   renderAll();
+  if (tab === "qcm" && !state.qcmStats) loadQcmStats();
 }
 
 /* ---------------- Chargement données ---------------- */
@@ -321,6 +323,7 @@ function renderAll() {
   renderAnalyse();
   renderAlertes();
   renderExport();
+  renderQcm();
 }
 
 function filterRows(rows) {
@@ -1323,6 +1326,93 @@ function renderStatsClient(periodeRecue) {
     <div style="margin:12px 4px">
       <button class="small-btn secondary" id="btnRechargerStats">Recharger les statistiques</button>
     </div>`;
+}
+
+/* ---------------- QCM arbitrage (19/09/2026) ----------------
+   Suivi de progression sur le format officiel : 20 questions en 10 min.
+   Les stats viennent du serveur (onglet QCM du Sheet, créé au premier
+   enregistrement) ; le formulaire enregistre une série qui vient d'être
+   passée dans l'app qcm-arbitrage. */
+
+function loadQcmStats() {
+  jsonp("qcmStats")
+    .then(res => {
+      if (res && res.success) {
+        state.qcmStats = res.stats;
+        if (state.activeTab === "qcm") renderQcm();
+      }
+    })
+    .catch(err => console.warn("Stats QCM indisponibles :", err && err.message));
+}
+
+function renderQcm() {
+  const root = document.getElementById("qcm");
+  if (!root) return;
+  const s = state.qcmStats;
+
+  root.innerHTML = `
+    <h2 class="section-title">Enregistrer une série</h2>
+    <div class="table-card" style="padding:14px">
+      <form id="qcmForm" class="toolbar" style="grid-template-columns: 1fr 1fr 1fr auto; align-items:end">
+        <div class="field">
+          <label for="qcmScore">Score (bonnes réponses)</label>
+          <input id="qcmScore" type="number" min="0" max="20" required />
+        </div>
+        <div class="field">
+          <label for="qcmTotal">Sur (nb de questions)</label>
+          <input id="qcmTotal" type="number" min="1" value="20" required />
+        </div>
+        <div class="field">
+          <label for="qcmDuree">Temps mis (min)</label>
+          <input id="qcmDuree" type="number" min="0" max="10" step="0.5" value="10" />
+        </div>
+        <button class="small-btn" type="submit">Enregistrer</button>
+      </form>
+    </div>
+
+    ${s && s.nb ? `
+    <h2 class="section-title">Progression</h2>
+    <div class="kpi-grid">
+      <div class="kpi hero"><label>Moyenne</label><strong>${s.moyenne_pct}%</strong><span class="sub">${s.nb} série(s) enregistrée(s)</span></div>
+      ${s.meilleur_score ? `<div class="kpi"><label>Meilleur score</label><strong>${s.meilleur_score.score}/${s.meilleur_score.total}</strong><span class="sub">${escapeHtml(s.meilleur_score.date)}</span></div>` : ""}
+      ${s.tendance ? `<div class="kpi"><label>Tendance récente</label><strong style="font-size:15px">${escapeHtml(s.tendance)}</strong></div>` : ""}
+    </div>
+    <h2 class="section-title">Historique</h2>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th class="num">Score</th><th class="num">%</th><th class="num">Durée</th></tr></thead>
+      <tbody>${s.sessions.map(r => `<tr>
+        <td>${escapeHtml(r.date)}</td>
+        <td class="num">${r.score}/${r.total}</td>
+        <td class="num">${r.pourcentage}%</td>
+        <td class="num">${r.duree ? r.duree + " min" : "—"}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>`
+    : (s ? empty("Aucune série enregistrée pour l'instant.") : "")}
+  `;
+
+  const form = document.getElementById("qcmForm");
+  if (form) {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const score = document.getElementById("qcmScore").value;
+      const total = document.getElementById("qcmTotal").value;
+      const duree = document.getElementById("qcmDuree").value;
+      const btn = form.querySelector("button[type=submit]");
+      btn.disabled = true;
+      setStatus("Enregistrement de la série…", "");
+      try {
+        const res = await jsonp("addQcmSession", { score, total, duree });
+        if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+        setStatus("Série enregistrée", "ok");
+        state.qcmStats = null;
+        loadQcmStats();
+      } catch (err) {
+        setStatus("Erreur QCM : " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
 }
 
 /* ---------------- Alertes ---------------- */
