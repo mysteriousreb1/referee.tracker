@@ -1324,11 +1324,7 @@ tr:last-child td { border-bottom: 0; }
    deviennent trop étroites : on repasse à une seule. */
 @media (max-width: 359px) {
   .detail-grid { grid-template-columns: 1fr; }
-  /* MODIFICATION 19/09/2026 — cette règle forçait 3 colonnes et écrasait
-     la grille 4x2 définie plus haut, tassant/coupant les libellés des
-     8 onglets sur petit écran. La grille 4x2 reste adaptée même ici. */
-  .tab { font-size: 10px; padding: 8px 2px; }
-  .tab span { font-size: 15px; }
+  .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* =====================================================
@@ -1449,14 +1445,95 @@ tr:last-child td { border-bottom: 0; }
   .tab.active { box-shadow: none; }
 
   /* Le header garde toute la largeur disponible dans la zone de contenu,
-     qui commence maintenant après le menu latéral. Sur PC, l'identité de
-     l'appli est déjà portée par le menu latéral : le bandeau du haut peut
-     être plus compact, il n'a plus besoin de jouer les hero banners. */
+     qui commence maintenant après le menu latéral. */
   .app-header { padding-left: 0; padding-right: 0; }
-  .header-inner { min-height: 88px; padding: 18px 26px; }
-  .header-inner::after { width: 160px; height: 160px; }
 }
 
-/* Corrigé de série QCM (19/09/2026) */
-.qcm-ok { border-left: 4px solid var(--green); }
-.qcm-ko { border-left: 4px solid var(--danger); }
+/* ---------- QCM : questions, options, corrigé (19/09/2026) ----------
+   Avant : radios natifs nus dans .match-card/.card-body (masqué par
+   défaut => questions invisibles, et rendu non stylé quand visible).
+   Maintenant : .table-card (toujours visible) + options en cartes
+   cliquables, cohérentes avec le reste de la DA (mêmes tokens navy/gold). */
+.qcm-topbar {
+  position: sticky; top: 8px; z-index: 15;
+  padding: 12px 16px;
+}
+.qcm-topbar-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.qcm-chrono { font-family: var(--display); font-size: 22px; color: var(--navy-900); letter-spacing: 0.02em; }
+.qcm-topbar-count { margin-left: 10px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.qcm-progress { margin-top: 10px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.qcm-progress-bar { height: 100%; background: linear-gradient(90deg, var(--navy-600), var(--gold)); border-radius: 999px; transition: width 0.2s ease; }
+
+.qcm-card-pad { padding: 18px 20px; }
+.qcm-q-num {
+  margin: 0 0 8px; display: flex; align-items: center; gap: 8px;
+  font-family: var(--display); font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--navy-600);
+}
+.qcm-q-total { color: var(--muted); font-weight: 600; }
+.qcm-q-text { margin: 0 0 15px; font-size: 16px; font-weight: 700; color: var(--navy-900); line-height: 1.35; }
+
+.qcm-opts { display: grid; gap: 9px; }
+.qcm-opt {
+  position: relative;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.qcm-opt:hover { border-color: #C2D0E8; background: #fff; }
+.qcm-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.qcm-opt-mark {
+  flex: 0 0 auto; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; border: 1.5px solid var(--line); background: #fff;
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted);
+  transition: all 0.15s ease;
+}
+.qcm-opt-text { font-size: 14.5px; font-weight: 600; color: var(--navy-900); line-height: 1.3; }
+.qcm-opt.is-selected { border-color: var(--navy-600); background: #EAF0FB; box-shadow: 0 0 0 3px rgba(30, 78, 156, 0.12); }
+.qcm-opt.is-selected .qcm-opt-mark { background: var(--navy-600); border-color: var(--navy-600); color: #fff; }
+.qcm-opt:focus-within { border-color: var(--navy-600); box-shadow: 0 0 0 3px rgba(30, 78, 156, 0.12); }
+
+/* Corrigé : options non cliquables, couleur = verdict */
+.qcm-opts--result .qcm-opt,
+.qcm-opts--result > div { cursor: default; }
+.qcm-result-tag {
+  display: inline-flex; align-items: center; margin-left: 4px;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
+}
+.qcm-result-tag.ok { color: var(--green); background: var(--green-soft); }
+.qcm-result-tag.ko { color: var(--red); background: var(--red-soft); }
+.qcm-opts--result > div {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.qcm-opts--result .qcm-opt--correct { border-color: var(--green); background: var(--green-soft); }
+.qcm-opts--result .qcm-opt--correct .qcm-opt-mark { background: var(--green); border-color: var(--green); color: #fff; }
+.qcm-opts--result .qcm-opt--wrong { border-color: var(--red); background: var(--red-soft); }
+.qcm-opts--result .qcm-opt--wrong .qcm-opt-mark { background: var(--red); border-color: var(--red); color: #fff; }
+.qcm-explanation {
+  margin: 13px 0 0; padding: 11px 13px; border-radius: 10px;
+  background: var(--surface-2); font-size: 13px; color: var(--muted); line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .qcm-card-pad { padding: 15px 16px; }
+  .qcm-q-text { font-size: 15px; }
+  .qcm-chrono { font-size: 19px; }
+}
+
+/* Petit sélecteur de mode (Export : saison/mois vs plage de dates) */
+.tabs-mini { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--surface-2); border-radius: 999px; border: 1px solid var(--line); }
+.tabs-mini-btn {
+  border: 0; background: transparent; padding: 8px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tabs-mini-btn.active { background: var(--navy-900); color: #fff; }
+.tabs-mini-btn:not(.active):hover { color: var(--navy-900); }
