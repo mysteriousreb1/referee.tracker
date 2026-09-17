@@ -1574,10 +1574,16 @@ function renderQcmSession_(root) {
       <div class="actions" style="margin:14px 0"><button class="small-btn" id="btnRejouerQcm">Nouvelle série</button></div>
       <h2 class="section-title">Corrigé</h2>
       <div class="cards">${r.details.map((d, i) => `
-        <article class="table-card qcm-card">
-          <div class="qcm-card-pad">
-            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-result-tag ${d.ok ? "ok" : "ko"}">${d.ok ? "✓ Correct" : "✗ Faux"}</span></p>
-            <p class="qcm-q-text">${escapeHtml(d.q.question)}</p>
+        <article class="table-card qcm-card qcm-card--${d.ok ? "ok" : "ko"}">
+          <div class="qcm-q-head">
+            <span class="qcm-q-badge">${i + 1}</span>
+            <div class="qcm-q-head-text">
+              <p class="qcm-q-text">${escapeHtml(d.q.question)}</p>
+              <span class="qcm-result-tag ${d.ok ? "ok" : "ko"}">${d.ok ? "✓ Bonne réponse" : "✗ Réponse fausse"}</span>
+            </div>
+          </div>
+          <div class="qcm-opts-wrap">
+            <p class="qcm-opts-label">Réponses</p>
             <div class="qcm-opts qcm-opts--result">
               ${d.q.answers.map((a, idx) => {
                 const isCorrect = d.q.correct.includes(idx);
@@ -1609,9 +1615,15 @@ function renderQcmSession_(root) {
     <div class="cards" style="margin-top:14px">
       ${s.questions.map((q, i) => `
         <article class="table-card qcm-card">
-          <div class="qcm-card-pad">
-            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-q-total">/${s.questions.length}</span></p>
-            <p class="qcm-q-text">${escapeHtml(q.question)}</p>
+          <div class="qcm-q-head">
+            <span class="qcm-q-badge">${i + 1}</span>
+            <div class="qcm-q-head-text">
+              <p class="qcm-q-text">${escapeHtml(q.question)}</p>
+              <span class="qcm-q-total">Question ${i + 1} sur ${s.questions.length}</span>
+            </div>
+          </div>
+          <div class="qcm-opts-wrap">
+            <p class="qcm-opts-label">Choisis ta réponse</p>
             <div class="qcm-opts">${renderQcmOptions_(q, s.reponses[q.id])}</div>
           </div>
         </article>`).join("")}
