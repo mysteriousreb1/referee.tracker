@@ -1448,3 +1448,7 @@ tr:last-child td { border-bottom: 0; }
      qui commence maintenant après le menu latéral. */
   .app-header { padding-left: 0; padding-right: 0; }
 }
+
+/* Corrigé de série QCM (19/09/2026) */
+.qcm-ok { border-left: 4px solid var(--green); }
+.qcm-ko { border-left: 4px solid var(--danger); }
