@@ -1324,7 +1324,11 @@ tr:last-child td { border-bottom: 0; }
    deviennent trop étroites : on repasse à une seule. */
 @media (max-width: 359px) {
   .detail-grid { grid-template-columns: 1fr; }
-  .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* MODIFICATION 19/09/2026 — cette règle forçait 3 colonnes et écrasait
+     la grille 4x2 définie plus haut, tassant/coupant les libellés des
+     8 onglets sur petit écran. La grille 4x2 reste adaptée même ici. */
+  .tab { font-size: 10px; padding: 8px 2px; }
+  .tab span { font-size: 15px; }
 }
 
 /* =====================================================
@@ -1445,8 +1449,12 @@ tr:last-child td { border-bottom: 0; }
   .tab.active { box-shadow: none; }
 
   /* Le header garde toute la largeur disponible dans la zone de contenu,
-     qui commence maintenant après le menu latéral. */
+     qui commence maintenant après le menu latéral. Sur PC, l'identité de
+     l'appli est déjà portée par le menu latéral : le bandeau du haut peut
+     être plus compact, il n'a plus besoin de jouer les hero banners. */
   .app-header { padding-left: 0; padding-right: 0; }
+  .header-inner { min-height: 88px; padding: 18px 26px; }
+  .header-inner::after { width: 160px; height: 160px; }
 }
 
 /* Corrigé de série QCM (19/09/2026) */
