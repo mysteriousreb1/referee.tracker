@@ -979,6 +979,11 @@ function renderPaiements() {
      les onglets 5×5 / 3×3. Seuil : 8 lignes récentes visibles, le reste
      replié — au-delà la liste devient illisible. */
   const RECENTS_VISIBLES = 8;
+  // MODIFICATION 19/09/2026 — ce qui est déjà soldé (Reçu, Bénévole) ne
+  // doit plus encombrer l'écran : replié par défaut dans un menu déroulant,
+  // même en dessous du seuil de 8. Ce qui reste à pointer (À recevoir,
+  // Écart/À vérifier) reste affiché en clair comme avant.
+  const TOUJOURS_REPLIES = ["Reçu", BENEVOLE];
 
   root.innerHTML = `
     <div class="kpi-grid">
@@ -988,10 +993,27 @@ function renderPaiements() {
     </div>
     ${order.filter(k => grouped[k]).map(status => {
       const liste = grouped[status].slice().sort(sortByDateDesc);
-      const visibles = liste.slice(0, RECENTS_VISIBLES);
-      const repliees = liste.slice(RECENTS_VISIBLES);
       const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       const ouvert = PASSES_OUVERTS[panelId] === true;
+
+      if (TOUJOURS_REPLIES.includes(status)) {
+        return `
+      <h2 class="section-title">${escapeHtml(status)} <span class="count">${liste.length}</span></h2>
+      <details class="past-block" data-panel="${panelId}"${ouvert ? " open" : ""}>
+        <summary class="past-summary">
+          <span class="past-summary-inner">
+            <span class="past-chevron" aria-hidden="true"></span>
+            <span class="past-title">Afficher — ${escapeHtml(status)}</span>
+            <span class="count">${liste.length}</span>
+          </span>
+        </summary>
+        <div class="past-body"><div class="cards">${liste.map(renderMatchCard).join("")}</div></div>
+      </details>
+    `;
+      }
+
+      const visibles = liste.slice(0, RECENTS_VISIBLES);
+      const repliees = liste.slice(RECENTS_VISIBLES);
       return `
       <h2 class="section-title">${escapeHtml(status)} <span class="count">${liste.length}</span></h2>
       <div class="cards">${visibles.map(renderMatchCard).join("")}</div>
@@ -1163,6 +1185,7 @@ function renderStats() {
     </div>
     <div class="stat-note">* Le barème fiscal (chevaux fiscaux) est indicatif : la FFBB rembourse toujours 0,40 €/km, jamais au barème. ${s.note_3x3 ? escapeHtml(s.note_3x3) : ""}</div>
 
+    ${renderRepartitionRoles()}
     ${renderRecords(rec)}
     ${renderAggTable("Par saison", s.par_saison, "Saison")}
     ${renderAggTable("Par mois", s.par_mois, "Mois")}
@@ -1172,7 +1195,51 @@ function renderStats() {
     ${renderTop("Top 3 villes", s.top_villes)}
     ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
+    ${renderMatchsAnnules()}
   `;
+}
+
+/* Suivi des matchs annulés — rubrique STATS séparée (19/09/2026).
+   Les rencontres annulées restent en base (statut « Annulé ») pour garder
+   la trace de la désignation, mais disparaissent de tous les autres écrans
+   (Matchs, 3x3, Paiements, calcul des stats) : ce bloc les rend visibles,
+   sur la saison filtrée en cours, sans les compter dans aucun total. */
+function renderMatchsAnnules() {
+  const rows = state.filteredRows
+    .filter(r => r._format !== "Alerte" && !r._isActive)
+    .sort(sortByDateDesc);
+  if (!rows.length) return "";
+  return `
+    <h2 class="section-title">Matchs annulés <span class="count">${rows.length}</span></h2>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th><th>Annulation</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${escapeHtml(get(r, "Date match"))}</td>
+        <td>${escapeHtml(r._format)}</td>
+        <td>${escapeHtml(rencontreLabel(r))}</td>
+        <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
+        <td>${escapeHtml(get(r, "Warning général") || "—")}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>`;
+}
+
+/* Répartition Arbitre n°1 (Crew Chief) / Arbitre n°2 sur les missions 5×5
+   de la saison filtrée — le rôle est déjà lu depuis la convocation dans la
+   colonne « Mon rôle », rien à ajouter côté Code.gs. (19/09/2026) */
+function renderRepartitionRoles() {
+  const rows = state.filteredRows.filter(r => r._isActive && r._format === "5x5");
+  if (!rows.length) return "";
+  const n1 = rows.filter(r => get(r, "Mon rôle") === "Crew Chief").length;
+  const n2 = rows.filter(r => get(r, "Mon rôle") === "Arbitre n°2").length;
+  const autre = rows.length - n1 - n2;
+  const pct = n => rows.length ? Math.round((n / rows.length) * 100) : 0;
+  return `
+    <h2 class="section-title">Répartition des rôles (5×5)</h2>
+    <div class="kpi-grid">
+      <div class="kpi"><label>1er arbitre (Crew Chief)</label><strong>${n1}</strong><span class="sub">${pct(n1)} % des missions</span></div>
+      <div class="kpi"><label>2ème arbitre</label><strong>${n2}</strong><span class="sub">${pct(n2)} % des missions</span></div>
+      ${autre ? `<div class="kpi"><label>Rôle non renseigné</label><strong>${autre}</strong></div>` : ""}
+    </div>`;
 }
 
 function renderRecords(rec) {
