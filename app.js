@@ -22,7 +22,9 @@ let state = {
   maps: {},
   exportSeason: "",   // filtres propres à l'onglet Export
   exportMonth: "",
-  qcmStats: null       // MODIFICATION 19/09/2026 — suivi progression QCM
+  qcmStats: null,      // MODIFICATION 19/09/2026 — suivi progression QCM
+  qcmBank: null,        // banque de questions (data/questions.json)
+  qcmSession: null       // série QCM en cours (20 questions, 10 min)
 };
 
 
@@ -834,33 +836,54 @@ function formatDateLongue(date) {
   return date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 }
 
+/* Prénom du collègue à partir de « Collègue nom » (format FFBB : NOM en
+   MAJUSCULES suivi du prénom, ex. "WEBER-URBAN Emma", "BAH Mamadou Dian").
+   On retire le bloc de mots en majuscules du début. */
+function prenomCollegue(row) {
+  const nom = cleanText(get(row, "Collègue nom"));
+  if (!nom) return "";
+  const mots = nom.split(/\s+/);
+  let i = 0;
+  while (i < mots.length && mots[i] === mots[i].toUpperCase() && /[A-ZÀ-Ÿ]/.test(mots[i])) i++;
+  const prenom = mots.slice(i).join(" ");
+  return prenom || nom;
+}
+
+/* MODIFICATION 19/09/2026 — messages types repris mot pour mot (3 gabarits
+   selon le niveau : France / Région / Départemental), avec les emplacements
+   variables remplis automatiquement. La clause covoiturage (France, Région)
+   est du texte fixe, comme dans le gabarit fourni : le système ne connaît
+   pas l'adresse du collègue, donc la condition "trajet > 1h15 et collègue
+   à 25-30 km de mon domicile" reste à juger par toi avant d'envoyer. */
 function buildSmsCollegue(row) {
-  const minutes = RDV_MINUTES[niveauRencontre(row)];
-  const heure = parseHeure(get(row, "Heure/RDV"));
-  const rdv = reculerHeure(heure, minutes);
+  const niveau = niveauRencontre(row);           // "france" | "region" | "departement"
+  const minutes = RDV_MINUTES[niveau];
+  const prenom = prenomCollegue(row) || "";
 
   const date = formatDateLongue(row._date) || cleanText(get(row, "Date match"));
-  const lieu = cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
+  const heure = cleanText(get(row, "Heure/RDV"));
+  const club = cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
 
-  const ligneQuand = [
-    date ? "Le " + date : "",
-    heure ? " à " + formatHeureFr(heure) : "",
-    lieu ? " sur " + lieu : ""
-  ].join("") + ".";
-
-  const ligneRdv = rdv
-    ? "On se donne RDV devant la salle à " + formatHeureFr(rdv) + " (" + formatDelai(minutes) + " avant)."
-    : "On se donne RDV devant la salle " + formatDelai(minutes) + " avant l'heure de début de rencontre.";
-
-  return [
-    "Hello,",
+  const lignes = [
+    "Hello" + (prenom ? " " + prenom : "") + ",",
+    "",
+    "J'espère que tu vas bien ?",
     "",
     "On arbitre ensemble en " + libelleNiveauSms(row),
-    ligneQuand,
-    ligneRdv,
-    "",
-    "A plus Clément !"
-  ].join("\n");
+    "Le " + date + (heure ? " à " + heure : "") + " ",
+    "À " + club + ".",
+    "On se donne RDV devant la salle " + formatDelai(minutes) + " avant l'heure de début de rencontre"
+  ];
+
+  if (niveau === "france") {
+    lignes.push("", "Tu souhaites prendre la tenue rouge ou noir ?");
+  }
+  if (niveau === "france" || niveau === "region") {
+    lignes.push("", "Si tu souhaite faire du covoiturage, pas de soucis dis moi juste comment tu veux qu'on s'organise");
+  }
+  lignes.push("", "A plus Clément !");
+
+  return lignes.join("\n");
 }
 
 /* ---------------- Actions ---------------- */
@@ -1329,45 +1352,135 @@ function renderStatsClient(periodeRecue) {
 }
 
 /* ---------------- QCM arbitrage (19/09/2026) ----------------
-   Suivi de progression sur le format officiel : 20 questions en 10 min.
-   Les stats viennent du serveur (onglet QCM du Sheet, créé au premier
-   enregistrement) ; le formulaire enregistre une série qui vient d'être
-   passée dans l'app qcm-arbitrage. */
+   Série jouable directement dans l'app, sur le format officiel : 20
+   questions tirées au hasard dans la banque (459 questions, reprises de
+   ton app qcm-arbitrage), 10 minutes chrono. Le résultat s'enregistre
+   automatiquement à la fin — plus de saisie manuelle du score. */
+
+const QCM_DUREE_SEC = 600; // 10 minutes
 
 function loadQcmStats() {
   jsonp("qcmStats")
     .then(res => {
       if (res && res.success) {
         state.qcmStats = res.stats;
-        if (state.activeTab === "qcm") renderQcm();
+        if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
       }
     })
     .catch(err => console.warn("Stats QCM indisponibles :", err && err.message));
 }
 
+function loadQcmBank() {
+  if (state.qcmBank || state._qcmBankEnCours) return;
+  state._qcmBankEnCours = true;
+  fetch("./data/questions.json")
+    .then(r => r.json())
+    .then(d => {
+      state.qcmBank = (d && d.questions) || [];
+      state._qcmBankEnCours = false;
+      if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
+    })
+    .catch(err => {
+      state._qcmBankEnCours = false;
+      console.warn("Banque QCM indisponible :", err && err.message);
+    });
+}
+
+function melanger_(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function demarrerSerieQcm() {
+  if (!state.qcmBank || !state.qcmBank.length) { setStatus("Banque de questions non chargée, réessaie dans un instant", "error"); return; }
+  const questions = melanger_(state.qcmBank).slice(0, 20);
+  state.qcmSession = {
+    questions,
+    reponses: {},           // { questionId: [indices choisis] }
+    debut: Date.now(),
+    fin: Date.now() + QCM_DUREE_SEC * 1000,
+    resultat: null
+  };
+  demarrerTimerQcm_();
+  renderQcm();
+}
+
+function demarrerTimerQcm_() {
+  arreterTimerQcm_();
+  state._qcmTimerId = setInterval(() => {
+    const s = state.qcmSession;
+    if (!s || s.resultat) { arreterTimerQcm_(); return; }
+    const restant = s.fin - Date.now();
+    const el = document.getElementById("qcmChrono");
+    if (el) el.textContent = formatChronoQcm_(restant);
+    if (restant <= 0) { arreterTimerQcm_(); soumettreSerieQcm(true); }
+  }, 1000);
+}
+
+function arreterTimerQcm_() {
+  if (state._qcmTimerId) { clearInterval(state._qcmTimerId); state._qcmTimerId = null; }
+}
+
+function formatChronoQcm_(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60), s = total % 60;
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+async function soumettreSerieQcm(auto) {
+  const s = state.qcmSession;
+  if (!s || s.resultat) return;
+  arreterTimerQcm_();
+
+  let bonnes = 0;
+  const details = s.questions.map(q => {
+    const choisi = (s.reponses[q.id] || []).slice().sort();
+    const correct = (q.correct || []).slice().sort();
+    const ok = choisi.length === correct.length && choisi.every((v, i) => v === correct[i]);
+    if (ok) bonnes++;
+    return { q, choisi, ok };
+  });
+
+  const dureeMin = Math.round(((Date.now() - s.debut) / 60000) * 10) / 10;
+  s.resultat = { bonnes, total: s.questions.length, details, auto: Boolean(auto), duree: dureeMin };
+  renderQcm();
+
+  try {
+    const res = await jsonp("addQcmSession", { score: bonnes, total: s.questions.length, duree: dureeMin });
+    if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+    setStatus("Série enregistrée (" + bonnes + "/" + s.questions.length + ")", "ok");
+    state.qcmStats = null;
+    loadQcmStats();
+  } catch (err) {
+    setStatus("Série jouée mais non enregistrée : " + err.message, "error");
+  }
+}
+
+function quitterSerieQcm() {
+  arreterTimerQcm_();
+  state.qcmSession = null;
+  renderQcm();
+}
+
 function renderQcm() {
   const root = document.getElementById("qcm");
   if (!root) return;
+
+  if (!state.qcmBank && !state._qcmBankEnCours) loadQcmBank();
+
+  if (state.qcmSession) { renderQcmSession_(root); return; }
+
   const s = state.qcmStats;
 
   root.innerHTML = `
-    <h2 class="section-title">Enregistrer une série</h2>
-    <div class="table-card" style="padding:14px">
-      <form id="qcmForm" class="toolbar" style="grid-template-columns: 1fr 1fr 1fr auto; align-items:end">
-        <div class="field">
-          <label for="qcmScore">Score (bonnes réponses)</label>
-          <input id="qcmScore" type="number" min="0" max="20" required />
-        </div>
-        <div class="field">
-          <label for="qcmTotal">Sur (nb de questions)</label>
-          <input id="qcmTotal" type="number" min="1" value="20" required />
-        </div>
-        <div class="field">
-          <label for="qcmDuree">Temps mis (min)</label>
-          <input id="qcmDuree" type="number" min="0" max="10" step="0.5" value="10" />
-        </div>
-        <button class="small-btn" type="submit">Enregistrer</button>
-      </form>
+    <h2 class="section-title">Série QCM</h2>
+    <div class="table-card" style="padding:16px; text-align:center">
+      <p class="card-sub" style="margin:0 0 12px">20 questions tirées au hasard · 10 minutes chrono · résultat enregistré automatiquement</p>
+      <button class="small-btn" id="btnDemarrerQcm"${state.qcmBank ? "" : " disabled"}>${state.qcmBank ? "Lancer une série" : "Chargement de la banque de questions…"}</button>
     </div>
 
     ${s && s.nb ? `
@@ -1388,7 +1501,22 @@ function renderQcm() {
       </tr>`).join("")}</tbody>
     </table></div></div>`
     : (s ? empty("Aucune série enregistrée pour l'instant.") : "")}
+
+    <details class="past-block" style="margin-top:16px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Enregistrer une série jouée ailleurs</span></span></summary>
+      <div class="past-body">
+        <form id="qcmForm" class="toolbar" style="grid-template-columns: 1fr 1fr 1fr auto; align-items:end; margin-top:10px">
+          <div class="field"><label for="qcmScore">Score</label><input id="qcmScore" type="number" min="0" max="20" required /></div>
+          <div class="field"><label for="qcmTotal">Sur</label><input id="qcmTotal" type="number" min="1" value="20" required /></div>
+          <div class="field"><label for="qcmDuree">Temps (min)</label><input id="qcmDuree" type="number" min="0" max="10" step="0.5" value="10" /></div>
+          <button class="small-btn secondary" type="submit">Enregistrer</button>
+        </form>
+      </div>
+    </details>
   `;
+
+  const btnStart = document.getElementById("btnDemarrerQcm");
+  if (btnStart) btnStart.addEventListener("click", demarrerSerieQcm);
 
   const form = document.getElementById("qcmForm");
   if (form) {
@@ -1413,6 +1541,78 @@ function renderQcm() {
       }
     });
   }
+}
+
+function renderQcmSession_(root) {
+  const s = state.qcmSession;
+
+  if (s.resultat) {
+    const r = s.resultat;
+    const pct = Math.round((r.bonnes / r.total) * 100);
+    root.innerHTML = `
+      <h2 class="section-title">Résultat${r.auto ? " (temps écoulé)" : ""}</h2>
+      <div class="kpi-grid">
+        <div class="kpi hero"><label>Score</label><strong>${r.bonnes}/${r.total}</strong><span class="sub">${pct}% · ${r.duree} min</span></div>
+      </div>
+      <div class="actions" style="margin:14px 0"><button class="small-btn" id="btnRejouerQcm">Nouvelle série</button></div>
+      <h2 class="section-title">Corrigé</h2>
+      <div class="cards">${r.details.map((d, i) => `
+        <article class="match-card ${d.ok ? "qcm-ok" : "qcm-ko"}">
+          <div class="card-body" style="padding-top:14px">
+            <p style="font-weight:700;margin:0 0 6px">${i + 1}. ${escapeHtml(d.q.question)}</p>
+            <p style="margin:0 0 4px" class="card-sub">Ta réponse : ${d.choisi.length ? d.choisi.map(idx => escapeHtml(d.q.answers[idx])).join(", ") : "(aucune)"} ${d.ok ? "✓" : "✗ — bonne réponse : " + d.q.correct.map(idx => escapeHtml(d.q.answers[idx])).join(", ")}</p>
+            ${d.q.explanation ? `<p class="card-sub" style="margin:0">${escapeHtml(d.q.explanation)}</p>` : ""}
+          </div>
+        </article>`).join("")}</div>
+    `;
+    const btn = document.getElementById("btnRejouerQcm");
+    if (btn) btn.addEventListener("click", quitterSerieQcm);
+    return;
+  }
+
+  const repondues = Object.keys(s.reponses).length;
+  root.innerHTML = `
+    <div class="table-card" style="position:sticky; top:8px; z-index:15; padding:12px 16px; display:flex; justify-content:space-between; align-items:center">
+      <div><strong id="qcmChrono" style="font-family:var(--display); font-size:20px">${formatChronoQcm_(s.fin - Date.now())}</strong><span class="card-sub"> — ${repondues}/${s.questions.length} répondues</span></div>
+      <button class="small-btn" id="btnValiderQcm">Valider la série</button>
+    </div>
+    <div class="cards" style="margin-top:14px">
+      ${s.questions.map((q, i) => `
+        <article class="match-card">
+          <div class="card-body" style="padding-top:14px">
+            <p style="font-weight:700;margin:0 0 10px">${i + 1}. ${escapeHtml(q.question)}</p>
+            ${q.answers.map((a, idx) => `
+              <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer">
+                <input type="${q.multiple ? "checkbox" : "radio"}" name="qcm-${q.id}" data-qid="${q.id}" data-idx="${idx}" />
+                <span>${escapeHtml(a)}</span>
+              </label>`).join("")}
+          </div>
+        </article>`).join("")}
+    </div>
+    <div class="actions" style="margin:16px 0"><button class="small-btn" id="btnValiderQcm2">Valider la série</button></div>
+  `;
+
+  root.querySelectorAll('input[data-qid]').forEach(input => {
+    input.addEventListener("change", e => {
+      const qid = Number(e.target.dataset.qid), idx = Number(e.target.dataset.idx);
+      const q = s.questions.find(q => q.id === qid);
+      if (!s.reponses[qid]) s.reponses[qid] = [];
+      if (q.multiple) {
+        const pos = s.reponses[qid].indexOf(idx);
+        if (e.target.checked && pos === -1) s.reponses[qid].push(idx);
+        if (!e.target.checked && pos !== -1) s.reponses[qid].splice(pos, 1);
+      } else {
+        s.reponses[qid] = [idx];
+      }
+      const compteur = root.querySelector(".card-sub");
+      if (compteur) compteur.textContent = " — " + Object.keys(s.reponses).length + "/" + s.questions.length + " répondues";
+    });
+  });
+
+  ["btnValiderQcm", "btnValiderQcm2"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener("click", () => soumettreSerieQcm(false));
+  });
 }
 
 /* ---------------- Alertes ---------------- */
