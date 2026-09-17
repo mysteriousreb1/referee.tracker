@@ -1464,20 +1464,35 @@ tr:last-child td { border-bottom: 0; }
 .qcm-progress { margin-top: 10px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .qcm-progress-bar { height: 100%; background: linear-gradient(90deg, var(--navy-600), var(--gold)); border-radius: 999px; transition: width 0.2s ease; }
 
-.qcm-card-pad { padding: 18px 20px; }
-.qcm-q-num {
-  margin: 0 0 8px; display: flex; align-items: center; gap: 8px;
-  font-family: var(--display); font-size: 13px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.06em; color: var(--navy-600);
+/* Deux zones nettement séparées par carte : un bandeau "question"
+   (fond teinté + pastille numéro) puis une zone "réponses" blanche.
+   La bordure + le changement de fond entre les deux, c'est ce qui
+   manquait pour distinguer question et réponses au premier coup d'œil. */
+.qcm-card { overflow: hidden; }
+.qcm-q-head {
+  display: flex; align-items: flex-start; gap: 13px;
+  padding: 17px 18px;
+  background: linear-gradient(180deg, #EEF3FC, #E4ECFA);
+  border-bottom: 2px solid #D4DFF3;
 }
-.qcm-q-total { color: var(--muted); font-weight: 600; }
-.qcm-q-text { margin: 0 0 15px; font-size: 16px; font-weight: 700; color: var(--navy-900); line-height: 1.35; }
+.qcm-q-badge {
+  flex: 0 0 auto; width: 32px; height: 32px; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: var(--navy-900); color: #fff;
+  font-family: var(--display); font-size: 16px; font-weight: 700;
+}
+.qcm-q-head-text { min-width: 0; flex: 1; }
+.qcm-q-text { margin: 0; font-size: 16px; font-weight: 700; color: var(--navy-900); line-height: 1.35; }
+.qcm-q-total { display: inline-block; margin-top: 6px; color: var(--navy-600); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.qcm-opts-wrap { padding: 16px 18px 18px; background: #fff; }
+.qcm-opts-label { margin: 0 0 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 
 .qcm-opts { display: grid; gap: 9px; }
 .qcm-opt {
   position: relative;
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px;
+  padding: 13px 15px;
   border: 1.5px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -1487,30 +1502,33 @@ tr:last-child td { border-bottom: 0; }
 .qcm-opt:hover { border-color: #C2D0E8; background: #fff; }
 .qcm-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
 .qcm-opt-mark {
-  flex: 0 0 auto; width: 26px; height: 26px;
+  flex: 0 0 auto; width: 27px; height: 27px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 8px; border: 1.5px solid var(--line); background: #fff;
   font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted);
   transition: all 0.15s ease;
 }
-.qcm-opt-text { font-size: 14.5px; font-weight: 600; color: var(--navy-900); line-height: 1.3; }
+.qcm-opt-text { font-size: 14.5px; font-weight: 600; color: var(--navy-900); line-height: 1.35; }
 .qcm-opt.is-selected { border-color: var(--navy-600); background: #EAF0FB; box-shadow: 0 0 0 3px rgba(30, 78, 156, 0.12); }
 .qcm-opt.is-selected .qcm-opt-mark { background: var(--navy-600); border-color: var(--navy-600); color: #fff; }
 .qcm-opt:focus-within { border-color: var(--navy-600); box-shadow: 0 0 0 3px rgba(30, 78, 156, 0.12); }
 
-/* Corrigé : options non cliquables, couleur = verdict */
+/* Corrigé : bordure de couleur sur toute la carte = verdict lisible
+   même en scrollant vite, sans avoir à relire le texte. */
+.qcm-card--ok { border-left: 4px solid var(--green); }
+.qcm-card--ko { border-left: 4px solid var(--red); }
 .qcm-opts--result .qcm-opt,
 .qcm-opts--result > div { cursor: default; }
 .qcm-result-tag {
-  display: inline-flex; align-items: center; margin-left: 4px;
-  padding: 2px 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; margin-top: 6px;
+  padding: 3px 10px; border-radius: 999px;
   font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
 }
-.qcm-result-tag.ok { color: var(--green); background: var(--green-soft); }
-.qcm-result-tag.ko { color: var(--red); background: var(--red-soft); }
+.qcm-result-tag.ok { color: var(--green); background: #fff; }
+.qcm-result-tag.ko { color: var(--red); background: #fff; }
 .qcm-opts--result > div {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-md);
+  padding: 13px 15px; border: 1.5px solid var(--line); border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 .qcm-opts--result .qcm-opt--correct { border-color: var(--green); background: var(--green-soft); }
@@ -1523,7 +1541,8 @@ tr:last-child td { border-bottom: 0; }
 }
 
 @media (max-width: 480px) {
-  .qcm-card-pad { padding: 15px 16px; }
+  .qcm-q-head { padding: 14px 15px; }
+  .qcm-opts-wrap { padding: 14px 15px 15px; }
   .qcm-q-text { font-size: 15px; }
   .qcm-chrono { font-size: 19px; }
 }
