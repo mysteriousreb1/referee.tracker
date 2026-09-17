@@ -24,7 +24,8 @@ let state = {
   exportMonth: "",
   qcmStats: null,      // MODIFICATION 19/09/2026 — suivi progression QCM
   qcmBank: null,        // banque de questions (data/questions.json)
-  qcmSession: null       // série QCM en cours (20 questions, 10 min)
+  qcmSession: null,      // série QCM en cours (20 questions, 10 min)
+  formations: null        // MODIFICATION 19/09/2026 — déplacements formation non rémunérés
 };
 
 
@@ -1222,7 +1223,9 @@ function renderStats() {
     ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
     ${renderMatchsAnnules()}
+    ${renderFormations()}
   `;
+  attachFormationsListeners_(root);
 }
 
 /* Suivi des matchs annulés — rubrique STATS séparée (19/09/2026).
@@ -1266,6 +1269,104 @@ function renderRepartitionRoles() {
       <div class="kpi"><label>2ème arbitre</label><strong>${n2}</strong><span class="sub">${pct(n2)} % des missions</span></div>
       ${autre ? `<div class="kpi"><label>Rôle non renseigné</label><strong>${autre}</strong></div>` : ""}
     </div>`;
+}
+
+/* Déplacements de formation non rémunérés (19/09/2026) — stages et
+   recyclages : aucune indemnité FFBB dessus, saisie manuelle (rien à
+   parser dans un mail), mais le coût carburant réel est suivi comme
+   pour une mission, avec la même logique de prix historique/temps réel. */
+function loadFormations() {
+  if (state._formationsEnCours) return;
+  state._formationsEnCours = true;
+  jsonp("formations")
+    .then(res => {
+      state.formations = (res && res.success) ? res.data : [];
+      state._formationsEnCours = false;
+      if (state.activeTab === "stats") renderStats();
+    })
+    .catch(() => { state._formationsEnCours = false; });
+}
+
+function renderFormations() {
+  if (state.formations === null) { loadFormations(); return ""; }
+
+  const rows = state.formations;
+  const kmTotal = rows.reduce((t, f) => t + f.km, 0);
+  const coutTotal = rows.reduce((t, f) => t + realFuelCostClient(f.km, parseFrDate(f.date)), 0);
+
+  return `
+    <h2 class="section-title">Déplacements formation <span class="count">${rows.length}</span></h2>
+    ${rows.length ? `
+    <div class="kpi-grid">
+      <div class="kpi"><label>Déplacements</label><strong>${rows.length}</strong><span class="sub">non rémunérés</span></div>
+      <div class="kpi"><label>Km total A/R</label><strong>${formatNumber(kmTotal, " km")}</strong></div>
+      <div class="kpi"><label>Coût carburant réel</label><strong>${formatMoney(coutTotal)}</strong><span class="sub">non remboursé</span></div>
+    </div>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Intitulé</th><th>Lieu</th><th class="num">Km A/R</th><th class="num">Carburant</th><th>Notes</th><th></th></tr></thead>
+      <tbody>${rows.map(f => `<tr>
+        <td>${escapeHtml(f.date)}</td>
+        <td>${escapeHtml(f.intitule)}</td>
+        <td>${escapeHtml(f.lieu)}</td>
+        <td class="num">${formatNumber(f.km, "")}</td>
+        <td class="num">${formatMoney(realFuelCostClient(f.km, parseFrDate(f.date)))}</td>
+        <td>${escapeHtml(f.notes || "—")}</td>
+        <td><button type="button" class="action-link" data-del-formation-date="${escapeHtml(f.date)}" data-del-formation-intitule="${escapeHtml(f.intitule)}">Supprimer</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : empty("Aucun déplacement de formation enregistré.")}
+
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un déplacement</span></span></summary>
+      <div class="past-body">
+        <form id="formationForm" class="toolbar" style="grid-template-columns: 1fr 2fr 2fr 1fr; align-items:end; margin-top:10px">
+          <div class="field"><label for="formationDate">Date</label><input id="formationDate" type="date" required /></div>
+          <div class="field"><label for="formationIntitule">Intitulé</label><input id="formationIntitule" type="text" placeholder="Stage recyclage CD67…" required /></div>
+          <div class="field"><label for="formationLieu">Lieu</label><input id="formationLieu" type="text" placeholder="Ville / salle" /></div>
+          <div class="field"><label for="formationKm">Km A/R</label><input id="formationKm" type="number" min="0" step="1" required /></div>
+        </form>
+        <div class="field" style="margin-top:10px"><label for="formationNotes">Notes</label><input id="formationNotes" type="text" placeholder="Optionnel" /></div>
+        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="formationForm">Enregistrer</button></div>
+      </div>
+    </details>
+  `;
+}
+
+function attachFormationsListeners_(root) {
+  const form = root.querySelector("#formationForm");
+  if (form) {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const date = document.getElementById("formationDate").value;
+      const intitule = document.getElementById("formationIntitule").value;
+      const lieu = document.getElementById("formationLieu").value;
+      const km = document.getElementById("formationKm").value;
+      const notes = document.getElementById("formationNotes") ? document.getElementById("formationNotes").value : "";
+      setStatus("Enregistrement du déplacement…", "");
+      try {
+        const res = await jsonp("addFormation", { date, intitule, lieu, km, notes });
+        if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+        setStatus("Déplacement enregistré", "ok");
+        state.formations = null;
+        loadFormations();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  }
+
+  root.querySelectorAll("[data-del-formation-date]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Supprimer ce déplacement ?")) return;
+      try {
+        const res = await jsonp("deleteFormation", { date: btn.dataset.delFormationDate, intitule: btn.dataset.delFormationIntitule });
+        if (!res.success) throw new Error(res.error || "Erreur suppression");
+        state.formations = null;
+        loadFormations();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  });
 }
 
 function renderRecords(rec) {
@@ -1574,16 +1675,10 @@ function renderQcmSession_(root) {
       <div class="actions" style="margin:14px 0"><button class="small-btn" id="btnRejouerQcm">Nouvelle série</button></div>
       <h2 class="section-title">Corrigé</h2>
       <div class="cards">${r.details.map((d, i) => `
-        <article class="table-card qcm-card qcm-card--${d.ok ? "ok" : "ko"}">
-          <div class="qcm-q-head">
-            <span class="qcm-q-badge">${i + 1}</span>
-            <div class="qcm-q-head-text">
-              <p class="qcm-q-text">${escapeHtml(d.q.question)}</p>
-              <span class="qcm-result-tag ${d.ok ? "ok" : "ko"}">${d.ok ? "✓ Bonne réponse" : "✗ Réponse fausse"}</span>
-            </div>
-          </div>
-          <div class="qcm-opts-wrap">
-            <p class="qcm-opts-label">Réponses</p>
+        <article class="table-card qcm-card">
+          <div class="qcm-card-pad">
+            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-result-tag ${d.ok ? "ok" : "ko"}">${d.ok ? "✓ Correct" : "✗ Faux"}</span></p>
+            <p class="qcm-q-text">${escapeHtml(d.q.question)}</p>
             <div class="qcm-opts qcm-opts--result">
               ${d.q.answers.map((a, idx) => {
                 const isCorrect = d.q.correct.includes(idx);
@@ -1615,15 +1710,9 @@ function renderQcmSession_(root) {
     <div class="cards" style="margin-top:14px">
       ${s.questions.map((q, i) => `
         <article class="table-card qcm-card">
-          <div class="qcm-q-head">
-            <span class="qcm-q-badge">${i + 1}</span>
-            <div class="qcm-q-head-text">
-              <p class="qcm-q-text">${escapeHtml(q.question)}</p>
-              <span class="qcm-q-total">Question ${i + 1} sur ${s.questions.length}</span>
-            </div>
-          </div>
-          <div class="qcm-opts-wrap">
-            <p class="qcm-opts-label">Choisis ta réponse</p>
+          <div class="qcm-card-pad">
+            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-q-total">/${s.questions.length}</span></p>
+            <p class="qcm-q-text">${escapeHtml(q.question)}</p>
             <div class="qcm-opts">${renderQcmOptions_(q, s.reponses[q.id])}</div>
           </div>
         </article>`).join("")}
