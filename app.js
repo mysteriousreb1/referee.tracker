@@ -1543,6 +1543,23 @@ function renderQcm() {
   }
 }
 
+const QCM_LETTRES = ["A", "B", "C", "D", "E", "F"];
+
+/* Options rendues comme des cartes cliquables (pas des radios natifs nus) :
+   pastille lettre + texte, état survolé/sélectionné géré en CSS via
+   .is-selected (posée par JS au change, pas de dépendance à :has()). */
+function renderQcmOptions_(q, reponsesChoisies) {
+  return q.answers.map((a, idx) => {
+    const checked = (reponsesChoisies || []).includes(idx);
+    return `
+      <label class="qcm-opt${checked ? " is-selected" : ""}" data-qid="${q.id}">
+        <input type="${q.multiple ? "checkbox" : "radio"}" name="qcm-${q.id}" data-qid="${q.id}" data-idx="${idx}"${checked ? " checked" : ""} />
+        <span class="qcm-opt-mark">${QCM_LETTRES[idx] || idx + 1}</span>
+        <span class="qcm-opt-text">${escapeHtml(a)}</span>
+      </label>`;
+  }).join("");
+}
+
 function renderQcmSession_(root) {
   const s = state.qcmSession;
 
@@ -1556,12 +1573,22 @@ function renderQcmSession_(root) {
       </div>
       <div class="actions" style="margin:14px 0"><button class="small-btn" id="btnRejouerQcm">Nouvelle série</button></div>
       <h2 class="section-title">Corrigé</h2>
-      <div>${r.details.map((d, i) => `
-        <article class="table-card ${d.ok ? "qcm-ok" : "qcm-ko"}">
-          <div style="padding:14px 16px">
-            <p style="font-weight:700;margin:0 0 6px">${i + 1}. ${escapeHtml(d.q.question)}</p>
-            <p style="margin:0 0 4px" class="card-sub">Ta réponse : ${d.choisi.length ? d.choisi.map(idx => escapeHtml(d.q.answers[idx])).join(", ") : "(aucune)"} ${d.ok ? "✓" : "✗ — bonne réponse : " + d.q.correct.map(idx => escapeHtml(d.q.answers[idx])).join(", ")}</p>
-            ${d.q.explanation ? `<p class="card-sub" style="margin:0">${escapeHtml(d.q.explanation)}</p>` : ""}
+      <div class="cards">${r.details.map((d, i) => `
+        <article class="table-card qcm-card">
+          <div class="qcm-card-pad">
+            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-result-tag ${d.ok ? "ok" : "ko"}">${d.ok ? "✓ Correct" : "✗ Faux"}</span></p>
+            <p class="qcm-q-text">${escapeHtml(d.q.question)}</p>
+            <div class="qcm-opts qcm-opts--result">
+              ${d.q.answers.map((a, idx) => {
+                const isCorrect = d.q.correct.includes(idx);
+                const isChosen = d.choisi.includes(idx);
+                let cls = "qcm-opt";
+                if (isCorrect) cls += " qcm-opt--correct";
+                else if (isChosen) cls += " qcm-opt--wrong";
+                return `<div class="${cls}"><span class="qcm-opt-mark">${QCM_LETTRES[idx] || idx + 1}</span><span class="qcm-opt-text">${escapeHtml(a)}</span></div>`;
+              }).join("")}
+            </div>
+            ${d.q.explanation ? `<p class="qcm-explanation">${escapeHtml(d.q.explanation)}</p>` : ""}
           </div>
         </article>`).join("")}</div>
     `;
@@ -1572,20 +1599,20 @@ function renderQcmSession_(root) {
 
   const repondues = Object.keys(s.reponses).length;
   root.innerHTML = `
-    <div class="table-card" style="position:sticky; top:8px; z-index:15; padding:12px 16px; display:flex; justify-content:space-between; align-items:center">
-      <div><strong id="qcmChrono" style="font-family:var(--display); font-size:20px">${formatChronoQcm_(s.fin - Date.now())}</strong><span class="card-sub"> — ${repondues}/${s.questions.length} répondues</span></div>
-      <button class="small-btn" id="btnValiderQcm">Valider la série</button>
+    <div class="table-card qcm-topbar">
+      <div class="qcm-topbar-row">
+        <div><strong id="qcmChrono" class="qcm-chrono">${formatChronoQcm_(s.fin - Date.now())}</strong><span class="qcm-topbar-count" id="qcmCompteur">${repondues}/${s.questions.length} répondues</span></div>
+        <button class="small-btn" id="btnValiderQcm">Valider la série</button>
+      </div>
+      <div class="qcm-progress"><div class="qcm-progress-bar" id="qcmProgressBar" style="width:${Math.round((repondues / s.questions.length) * 100)}%"></div></div>
     </div>
-    <div style="margin-top:14px">
+    <div class="cards" style="margin-top:14px">
       ${s.questions.map((q, i) => `
-        <article class="table-card">
-          <div style="padding:14px 16px">
-            <p style="font-weight:700;margin:0 0 10px">${i + 1}. ${escapeHtml(q.question)}</p>
-            ${q.answers.map((a, idx) => `
-              <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer">
-                <input type="${q.multiple ? "checkbox" : "radio"}" name="qcm-${q.id}" data-qid="${q.id}" data-idx="${idx}" />
-                <span>${escapeHtml(a)}</span>
-              </label>`).join("")}
+        <article class="table-card qcm-card">
+          <div class="qcm-card-pad">
+            <p class="qcm-q-num">Question ${i + 1}<span class="qcm-q-total">/${s.questions.length}</span></p>
+            <p class="qcm-q-text">${escapeHtml(q.question)}</p>
+            <div class="qcm-opts">${renderQcmOptions_(q, s.reponses[q.id])}</div>
           </div>
         </article>`).join("")}
     </div>
@@ -1604,8 +1631,17 @@ function renderQcmSession_(root) {
       } else {
         s.reponses[qid] = [idx];
       }
-      const compteur = root.querySelector(".card-sub");
-      if (compteur) compteur.textContent = " — " + Object.keys(s.reponses).length + "/" + s.questions.length + " répondues";
+      // Reflet visuel immédiat : la carte cochée passe en surbrillance,
+      // et pour un choix unique les autres cartes du groupe se désélectionnent.
+      root.querySelectorAll(`label.qcm-opt[data-qid="${qid}"]`).forEach(lbl => {
+        const box = lbl.querySelector("input");
+        lbl.classList.toggle("is-selected", box.checked);
+      });
+      const total = Object.keys(s.reponses).filter(k => s.reponses[k].length).length;
+      const compteur = document.getElementById("qcmCompteur");
+      if (compteur) compteur.textContent = total + "/" + s.questions.length + " répondues";
+      const bar = document.getElementById("qcmProgressBar");
+      if (bar) bar.style.width = Math.round((total / s.questions.length) * 100) + "%";
     });
   });
 
@@ -1663,7 +1699,19 @@ function monthsOfSeason(season) {
   return keys.sort().map(k => ({ value: k, label: monthLabelOf(k) }));
 }
 
+/* Refonte export (19/09/2026) : deux modes, saison/mois (existant) ou
+   plage de dates libre — pratique pour un export "sur les 3 derniers
+   mois" ou à cheval sur deux saisons, ce que le mode saison ne permet pas. */
 function exportRows() {
+  if (state.exportMode === "range") {
+    const from = state.exportFrom ? new Date(state.exportFrom + "T00:00:00") : null;
+    const to = state.exportTo ? new Date(state.exportTo + "T23:59:59") : null;
+    return state.allRows
+      .filter(r => r._isActive && r._format !== "Alerte" && r._date)
+      .filter(r => (!from || r._date >= from) && (!to || r._date <= to))
+      .slice()
+      .sort(sortByDateAsc);
+  }
   return state.allRows
     .filter(r => r._isActive && r._format !== "Alerte")
     .filter(r => r._season === state.exportSeason)
@@ -1694,26 +1742,43 @@ function rencontreLabel(row) {
 }
 
 function exportPeriodLabel() {
+  if (state.exportMode === "range") {
+    if (state.exportFrom && state.exportTo) return `Du ${escapeHtml(state.exportFrom)} au ${escapeHtml(state.exportTo)}`;
+    if (state.exportFrom) return `Depuis le ${escapeHtml(state.exportFrom)}`;
+    if (state.exportTo) return `Jusqu'au ${escapeHtml(state.exportTo)}`;
+    return "Toutes dates";
+  }
   return state.exportMonth ? monthLabelOf(state.exportMonth) : `Saison complète ${state.exportSeason}`;
 }
 
 function renderExport() {
   const root = document.getElementById("export");
 
-  // Valeurs par défaut : la saison courante, tous les mois.
+  // Valeurs par défaut : la saison courante, tous les mois, mode saison.
   const seasons = getSeasonsFrom2022ToCurrent();
   if (!state.exportSeason || seasons.indexOf(state.exportSeason) === -1) {
     state.exportSeason = seasons.indexOf(state.selectedSeason) !== -1 ? state.selectedSeason : getCurrentSeason();
   }
   const months = monthsOfSeason(state.exportSeason);
   if (state.exportMonth && !months.some(m => m.value === state.exportMonth)) state.exportMonth = "";
+  if (!state.exportMode) state.exportMode = "season";
 
   const rows = exportRows();
   const t = exportTotals(rows);
 
   root.innerHTML = `
-    <h2 class="section-title">Export PDF</h2>
+    <h2 class="section-title">Export</h2>
 
+    <div class="tabs-mini">
+      <button type="button" class="tabs-mini-btn${state.exportMode === "season" ? " active" : ""}" id="exportModeSeasonBtn">Saison / mois</button>
+      <button type="button" class="tabs-mini-btn${state.exportMode === "range" ? " active" : ""}" id="exportModeRangeBtn">Plage de dates</button>
+    </div>
+
+    ${state.exportMode === "range" ? `
+    <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+      <div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
+      <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>
+    </section>` : `
     <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
@@ -1728,7 +1793,7 @@ function renderExport() {
           ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
         </select>
       </div>
-    </section>
+    </section>`}
 
     <div class="kpi-grid" style="margin-top:14px">
       <div class="kpi hero">
@@ -1744,6 +1809,7 @@ function renderExport() {
 
     <div class="actions" style="margin-top:14px">
       <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>Générer le PDF</button>
+      <button class="small-btn secondary" type="button" id="exportCsvBtn"${rows.length ? "" : " disabled"}>Exporter en CSV</button>
       <button class="small-btn secondary" type="button" id="copyExportBtn"${rows.length ? "" : " disabled"}>Copier en texte</button>
     </div>
 
@@ -1776,24 +1842,63 @@ function renderExport() {
     </div>` : empty("Aucune mission pour cette période.")}
   `;
 
-  document.getElementById("exportSeasonSelect").addEventListener("change", e => {
-    state.exportSeason = e.target.value;
-    state.exportMonth = ""; // les mois changent avec la saison
-    renderExport();
-  });
-  document.getElementById("exportMonthSelect").addEventListener("change", e => {
-    state.exportMonth = e.target.value;
-    renderExport();
-  });
+  document.getElementById("exportModeSeasonBtn").addEventListener("click", () => { state.exportMode = "season"; renderExport(); });
+  document.getElementById("exportModeRangeBtn").addEventListener("click", () => { state.exportMode = "range"; renderExport(); });
+
+  if (state.exportMode === "range") {
+    document.getElementById("exportFromInput").addEventListener("change", e => { state.exportFrom = e.target.value; renderExport(); });
+    document.getElementById("exportToInput").addEventListener("change", e => { state.exportTo = e.target.value; renderExport(); });
+  } else {
+    document.getElementById("exportSeasonSelect").addEventListener("change", e => {
+      state.exportSeason = e.target.value;
+      state.exportMonth = ""; // les mois changent avec la saison
+      renderExport();
+    });
+    document.getElementById("exportMonthSelect").addEventListener("change", e => {
+      state.exportMonth = e.target.value;
+      renderExport();
+    });
+  }
 
   const pdfBtn = document.getElementById("genPdfBtn");
   if (pdfBtn) pdfBtn.addEventListener("click", generateExportPdf);
+
+  const csvBtn = document.getElementById("exportCsvBtn");
+  if (csvBtn) csvBtn.addEventListener("click", downloadExportCsv);
 
   const copyBtn = document.getElementById("copyExportBtn");
   if (copyBtn) copyBtn.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(buildExportText()); setStatus("Export copié", "ok"); }
     catch { setStatus("Copie impossible — utilise le PDF", "error"); }
   });
+}
+
+/* Export CSV — un fichier tiers (Excel, Sheets, compta) préfère des
+   colonnes brutes à un texte ou un PDF. Séparateur ; pour Excel FR,
+   virgule décimale évitée (nombres en point, Excel FR sait le lire). */
+function downloadExportCsv() {
+  const rows = exportRows();
+  if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
+  const header = ["Date", "Format", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net (€)", "Paiement"];
+  const csvEscape = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const lines = [header.map(csvEscape).join(";")];
+  rows.forEach(r => {
+    const c = realFuelCostClient(r._km, r._date);
+    lines.push([
+      get(r, "Date match"), r._format, rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
+      r._km, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), get(r, "Statut paiement")
+    ].map(csvEscape).join(";"));
+  });
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `referee-tracker-export-${state.exportMode === "range" ? (state.exportFrom || "debut") + "_" + (state.exportTo || "fin") : state.exportSeason}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setStatus("CSV téléchargé", "ok");
 }
 
 function buildExportText() {
