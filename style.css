@@ -444,6 +444,20 @@ select:focus, input:focus, textarea:focus {
 .detail.cost span { font-family: var(--mono); color: var(--orange); }
 
 /* Money summary strip inside a card */
+/* MODIFICATION 19/09/2026 — bandeau classement / enjeu du match */
+.enjeu-classement {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127,127,127,.08));
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.enjeu-ligne strong { margin-right: 4px; }
+
 .money-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
