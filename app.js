@@ -1386,10 +1386,16 @@ function loadNiveaux() {
   jsonp("niveaux")
     .then(res => {
       state.niveaux = (res && res.success) ? res.data : [];
+      state._niveauxErreur = false;
+    })
+    .catch(err => {
+      state.niveaux = null;
+      state._niveauxErreur = (err && err.message) || "Erreur de chargement";
+    })
+    .finally(() => {
       state._niveauxEnCours = false;
       if (state.activeTab === "progression") renderProgression();
-    })
-    .catch(() => { state._niveauxEnCours = false; });
+    });
 }
 
 function loadEvaluations() {
@@ -1398,10 +1404,16 @@ function loadEvaluations() {
   jsonp("evaluations")
     .then(res => {
       state.evaluations = (res && res.success) ? res.data : [];
+      state._evaluationsErreur = false;
+    })
+    .catch(err => {
+      state.evaluations = null;
+      state._evaluationsErreur = (err && err.message) || "Erreur de chargement";
+    })
+    .finally(() => {
       state._evaluationsEnCours = false;
       if (state.activeTab === "progression") renderProgression();
-    })
-    .catch(() => { state._evaluationsEnCours = false; });
+    });
 }
 
 function fileToBase64_(file) {
@@ -1462,8 +1474,24 @@ function renderDesignationsParNiveau_() {
 function renderProgression() {
   const root = document.getElementById("progression");
   if (!root) return;
-  if (state.niveaux === null) { loadNiveaux(); root.innerHTML = empty("Chargement…"); return; }
-  if (state.evaluations === null) loadEvaluations();
+
+  if (state.niveaux === null) {
+    if (state._niveauxErreur) {
+      root.innerHTML = `
+        <h2 class="section-title">Progression</h2>
+        <div class="table-card" style="padding:16px; text-align:center">
+          <p class="card-sub" style="margin:0 0 10px">Impossible de charger cette partie (${escapeHtml(state._niveauxErreur)}).</p>
+          <button type="button" class="small-btn secondary" id="retryNiveaux">Réessayer</button>
+        </div>`;
+      const btn = root.querySelector("#retryNiveaux");
+      if (btn) btn.addEventListener("click", () => { state._niveauxErreur = false; loadNiveaux(); });
+    } else {
+      loadNiveaux();
+      root.innerHTML = empty("Chargement…");
+    }
+    return;
+  }
+  if (state.evaluations === null && !state._evaluationsErreur) loadEvaluations();
 
   const niveaux = state.niveaux;
   // Niveau actuel = la ligne encore active (pas de date de fin) la plus récente,
