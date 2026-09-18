@@ -37,7 +37,8 @@ let state = {
   contactsSearch: "",
   filterNiveau: "",   // MODIFICATION 19/09/2026 — filtres rapides toolbar
   filterStatut: "",
-  filterFormat: ""
+  filterFormat: "",
+  classements: null   // MODIFICATION 19/09/2026 — classement équipes / enjeu du match
 };
 
 /* ---------------- Thème clair / sombre (19/09/2026) ----------------
@@ -219,6 +220,7 @@ function loadData() {
 
       try { loadStats(); } catch (e) { console.warn("Stats serveur indisponibles :", e); }
       try { loadPrixCarburant(); } catch (e) { console.warn("Prix carburant indisponible :", e); }
+      try { loadClassements(); } catch (e) { console.warn("Classements FFBB indisponibles :", e); }
     })
     .catch(showApiError);
 }
@@ -275,6 +277,28 @@ function loadPrixCarburant() {
       }
     })
     .catch(() => { /* on garde la table mensuelle en repli */ });
+}
+
+/* Classement équipes / enjeu du match (19/09/2026) — mis à jour côté
+   serveur une fois par semaine, sans IA (voir ClassementFFBB.gs). Un échec
+   ici ne doit jamais bloquer l'affichage des matchs : la carte s'affiche
+   simplement sans le bandeau enjeu. */
+function loadClassements() {
+  jsonp("classements")
+    .then(res => {
+      state.classements = (res && res.success) ? (res.data || []) : [];
+      renderAll();
+    })
+    .catch(() => { state.classements = state.classements || []; });
+}
+
+function classementPour_(codeClub, codeCompetition) {
+  if (!state.classements || !codeClub || !codeCompetition) return null;
+  const cc = String(codeCompetition).toUpperCase();
+  return state.classements.find(r =>
+    String(r["Code club"]) === String(codeClub) &&
+    String(r["Code compétition"]).toUpperCase() === cc
+  ) || null;
 }
 
 /* @param {boolean} force  ignore le cache et interroge le serveur.
@@ -778,6 +802,7 @@ function renderMatchCard(row) {
 
   const niv = niveauCarte(row);
   const reglement = reglementSpecial(row);   // MODIFICATION 10
+  const enjeu = renderEnjeuClassement_(row);   // MODIFICATION 19/09/2026
 
 
   return `
@@ -804,6 +829,7 @@ function renderMatchCard(row) {
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
+        ${enjeu}
         ${renderDetails(row)}
         ${renderMapContainer(row, uid)}
         ${renderActions(row)}
@@ -811,6 +837,25 @@ function renderMatchCard(row) {
       </div>
     </article>
   `;
+}
+
+/* Bandeau "classement / enjeu" : uniquement s'il y a une donnée serveur
+   pour au moins une des 2 équipes (silencieux sinon — le module classement
+   est neuf, les anciens matchs n'ont pas de code club enregistré). */
+function renderEnjeuClassement_(row) {
+  if (row._isPast) return "";
+  const codeComp = get(row, "Code compétition");
+  const cR = classementPour_(get(row, "Code club recevant"), codeComp);
+  const cV = classementPour_(get(row, "Code club visiteur"), codeComp);
+  if (!cR && !cV) return "";
+
+  const ligne = (nom, c) => {
+    if (!c) return "";
+    const pos = c["Position"], taille = c["Taille poule"], enjeu = c["Enjeu"];
+    return `<div class="enjeu-ligne"><strong>${escapeHtml(nom)}</strong> — ${pos}${taille ? "e/" + taille : ""}${enjeu ? " · " + escapeHtml(String(enjeu)) : ""}</div>`;
+  };
+
+  return `<div class="enjeu-classement">${ligne(get(row, "Recevant") || "Recevant", cR)}${ligne(get(row, "Visiteur / événement") || "Visiteur", cV)}</div>`;
 }
 
 function renderMoneyStrip(gross, cost, net) {
