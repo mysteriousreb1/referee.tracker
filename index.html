@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./style.css?v=2026-09-19l" />
+  <link rel="stylesheet" href="./style.css?v=2026-09-19n" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./favicon-32.png?v=2026-09-15" sizes="32x32" type="image/png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-09-15" />
@@ -61,7 +61,7 @@
     </header>
 
     <main class="content">
-      <section class="toolbar">
+      <section class="toolbar toolbar-search">
         <div class="field">
           <label for="seasonSelect">Saison</label>
           <select id="seasonSelect"></select>
@@ -70,6 +70,18 @@
           <label for="searchInput">Recherche</label>
           <input id="searchInput" type="search" placeholder="Club, salle, ville, collègue…" />
         </div>
+        <div class="field">
+          <label for="filterNiveauSelect">Niveau</label>
+          <select id="filterNiveauSelect"><option value="">Tous</option></select>
+        </div>
+        <div class="field">
+          <label for="filterStatutSelect">Paiement</label>
+          <select id="filterStatutSelect"><option value="">Tous</option></select>
+        </div>
+        <div class="field">
+          <label for="filterFormatSelect">Format</label>
+          <select id="filterFormatSelect"><option value="">Tous</option></select>
+        </div>
       </section>
 
       <section id="statusBar" class="status-bar">Chargement…</section>
@@ -77,13 +89,14 @@
       <nav class="tabs" aria-label="Navigation principale">
         <button class="tab active" data-tab="matchs" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M3 12h18"/><path d="M5.6 5.6c3 3 3 9.8 0 12.8"/><path d="M18.4 5.6c-3 3-3 9.8 0 12.8"/></svg></span><span class="tab-label">5×5</span></button>
         <button class="tab" data-tab="troisx3" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="tab-label">3×3</span></button>
-        <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span></button>
+        <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span><span class="tab-badge" id="badgePaiements" hidden>0</span></button>
         <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Stats</span></button>
         <button class="tab" data-tab="agenda" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><span class="tab-label">Agenda</span></button>
-        <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span></button>
+        <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span><span class="tab-badge" id="badgeAlertes" hidden>0</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
         <button class="tab" data-tab="qcm" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tab-label">QCM</span></button>
         <button class="tab" data-tab="progression" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span><span class="tab-label">Progression</span></button>
+        <button class="tab" data-tab="contacts" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="tab-label">Contacts</span></button>
         <div class="tabs-foot"><span class="tabs-foot-dot"></span><span>Connecté</span></div>
       </nav>
 
@@ -103,6 +116,7 @@
       <section id="export" class="panel"></section>
       <section id="qcm" class="panel"></section>
       <section id="progression" class="panel"></section>
+      <section id="contacts" class="panel"></section>
     </main>
 
     <footer class="app-footer">
@@ -116,6 +130,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="./rt-auth.js?v=2026-09-07-b"></script>
-  <script src="./app.js?v=2026-09-19r"></script>
+  <script src="./app.js?v=2026-09-19t"></script>
 </body>
 </html>
