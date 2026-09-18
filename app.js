@@ -30,7 +30,14 @@ let state = {
   evaluations: null,        // MODIFICATION 19/09/2026 — dépôt PDF d'évaluations (onglet Progression)
   statsSubView: "overview",  // MODIFICATION 19/09/2026 — Stats/Analyse fusionnés : "overview" ou "avancee"
   agendaCursor: null,         // MODIFICATION 19/09/2026 — onglet Agenda : 1er jour du mois affiché
-  agendaSelectedDate: null    // jour sélectionné dans le calendrier ("YYYY-MM-DD")
+  agendaSelectedDate: null,   // jour sélectionné dans le calendrier ("YYYY-MM-DD")
+  contacts: null,             // MODIFICATION 19/09/2026 — onglet Contacts & Procédures
+  procedures: null,
+  contactsSubView: "contacts", // "contacts" ou "procedures"
+  contactsSearch: "",
+  filterNiveau: "",   // MODIFICATION 19/09/2026 — filtres rapides toolbar
+  filterStatut: "",
+  filterFormat: ""
 };
 
 /* ---------------- Thème clair / sombre (19/09/2026) ----------------
@@ -96,6 +103,7 @@ function bindUi() {
   document.getElementById("seasonSelect").addEventListener("change", e => {
     state.selectedSeason = e.target.value;
     state.serverStats = null;   // les stats en mémoire portent sur l'ancienne saison
+    buildQuickFilterSelects_();
     loadStats();
     renderAll();
   });
@@ -105,6 +113,49 @@ function bindUi() {
     state.searchTokens = state.search ? state.search.split(" ") : [];
     renderAll();
   });
+
+  // Filtres rapides Niveau / Paiement / Format (19/09/2026) — les <select>
+  // existaient déjà dans index.html mais n'étaient reliés à rien.
+  document.getElementById("filterNiveauSelect").addEventListener("change", e => {
+    state.filterNiveau = e.target.value;
+    renderAll();
+  });
+  document.getElementById("filterStatutSelect").addEventListener("change", e => {
+    state.filterStatut = e.target.value;
+    renderAll();
+  });
+  document.getElementById("filterFormatSelect").addEventListener("change", e => {
+    state.filterFormat = e.target.value;
+    renderAll();
+  });
+}
+
+/* Remplit les 3 <select> de filtre rapide à partir des valeurs réellement
+   présentes dans les données de la saison sélectionnée — pas de liste en
+   dur qui se désynchroniserait du barème/des libellés FFBB. */
+function buildQuickFilterSelects_() {
+  const rows = state.allRows.filter(r =>
+    state.selectedSeason === "Toutes les saisons" || r._season === state.selectedSeason
+  );
+
+  const fillSelect = (id, values, current) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const opts = ["Tous", ...values];
+    sel.innerHTML = opts.map(v =>
+      `<option value="${v === "Tous" ? "" : escapeHtml(v)}">${escapeHtml(v)}</option>`
+    ).join("");
+    sel.value = current || "";
+  };
+
+  const niveaux = [...new Set(rows.map(r => cleanText(get(r, "Niveau administratif"))).filter(Boolean))].sort();
+  fillSelect("filterNiveauSelect", niveaux, state.filterNiveau);
+
+  const statuts = [...new Set(rows.map(r => cleanText(get(r, "Statut paiement"))).filter(Boolean))].sort();
+  fillSelect("filterStatutSelect", statuts, state.filterStatut);
+
+  const formats = [...new Set(rows.map(r => r._format).filter(Boolean))].sort();
+  fillSelect("filterFormatSelect", formats, state.filterFormat);
 }
 
 /* ---------------- Saisons ---------------- */
@@ -158,6 +209,7 @@ function loadData() {
       if (!res.success) throw new Error(res.error || "Erreur API");
       state.allRows = normalizeRows(res.data || []);
       setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
+      buildQuickFilterSelects_();
 
       // L'affichage d'abord, et rien entre les deux. Les statistiques serveur
       // sont un supplément : si leur appel échoue, la liste doit rester à
@@ -380,6 +432,35 @@ function renderAll() {
   renderExport();
   renderQcm();
   renderProgression();
+  renderContacts();
+  renderTabBadges_();
+}
+
+/* Badges de notification sur les onglets Alertes / Paiements (19/09/2026).
+   Même logique de filtre que renderAlertes()/paiementEnRetard() pour rester
+   cohérent avec le contenu réel des onglets ; masqué (hidden) si le
+   compteur est à 0 pour ne pas alourdir la barre de navigation inutile. */
+function renderTabBadges_() {
+  const rows = state.filteredRows || [];
+
+  const nbAlertes = rows.filter(r =>
+    r._format === "Alerte" ||
+    hasWarningReel(r) ||
+    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
+    paiementEnRetard(r)
+  ).length;
+  const badgeAlertes = document.getElementById("badgeAlertes");
+  if (badgeAlertes) {
+    badgeAlertes.textContent = nbAlertes > 99 ? "99+" : String(nbAlertes);
+    badgeAlertes.hidden = nbAlertes === 0;
+  }
+
+  const nbPaiements = rows.filter(paiementEnRetard).length;
+  const badgePaiements = document.getElementById("badgePaiements");
+  if (badgePaiements) {
+    badgePaiements.textContent = nbPaiements > 99 ? "99+" : String(nbPaiements);
+    badgePaiements.hidden = nbPaiements === 0;
+  }
 }
 
 /* Bascule entre les deux vues fusionnées de l'onglet Stats (19/09/2026) :
@@ -403,6 +484,9 @@ function filterRows(rows) {
   return rows.filter(row => {
     const seasonOk = s === "Toutes les saisons" || row._season === s;
     if (!seasonOk) return false;
+    if (state.filterNiveau && cleanText(get(row, "Niveau administratif")) !== state.filterNiveau) return false;
+    if (state.filterStatut && cleanText(get(row, "Statut paiement")) !== state.filterStatut) return false;
+    if (state.filterFormat && row._format !== state.filterFormat) return false;
     return correspondRecherche_(row, state.searchTokens);
   });
 }
@@ -1712,6 +1796,275 @@ function renderProgression() {
       if (file) uploaderEvaluation_(file);
     });
   }
+}
+
+/* Onglet Contacts & Procédures (19/09/2026) — carnet de contacts (clubs,
+   collègues, responsables ligue) et pense-bêtes de procédures, saisis à la
+   main. Même pattern robuste que Niveaux/Évaluations : sur échec réseau on
+   affiche une erreur avec bouton "Réessayer" plutôt que de rester bloqué
+   sur "Chargement…" indéfiniment. */
+function loadContacts() {
+  if (state._contactsEnCours) return;
+  state._contactsEnCours = true;
+  jsonp("contacts")
+    .then(res => {
+      state.contacts = (res && res.success) ? res.data : [];
+      state._contactsErreur = false;
+    })
+    .catch(err => {
+      state.contacts = null;
+      state._contactsErreur = (err && err.message) || "Erreur de chargement";
+    })
+    .finally(() => {
+      state._contactsEnCours = false;
+      if (state.activeTab === "contacts") renderContacts();
+    });
+}
+
+function loadProcedures() {
+  if (state._proceduresEnCours) return;
+  state._proceduresEnCours = true;
+  jsonp("procedures")
+    .then(res => {
+      state.procedures = (res && res.success) ? res.data : [];
+      state._proceduresErreur = false;
+    })
+    .catch(err => {
+      state.procedures = null;
+      state._proceduresErreur = (err && err.message) || "Erreur de chargement";
+    })
+    .finally(() => {
+      state._proceduresEnCours = false;
+      if (state.activeTab === "contacts") renderContacts();
+    });
+}
+
+function setContactsSubView_(view) {
+  state.contactsSubView = view;
+  renderContacts();
+}
+
+function renderContacts() {
+  const root = document.getElementById("contacts");
+  if (!root) return;
+
+  if (state.contactsSubView === "contacts" && state.contacts === null) {
+    if (state._contactsErreur) {
+      root.innerHTML = renderChargementErreur_(state._contactsErreur, "retryContacts");
+      const btn = root.querySelector("#retryContacts");
+      if (btn) btn.addEventListener("click", () => { state._contactsErreur = false; loadContacts(); });
+      return;
+    }
+    loadContacts();
+    root.innerHTML = empty("Chargement…");
+    return;
+  }
+  if (state.contactsSubView === "procedures" && state.procedures === null) {
+    if (state._proceduresErreur) {
+      root.innerHTML = renderChargementErreur_(state._proceduresErreur, "retryProcedures");
+      const btn = root.querySelector("#retryProcedures");
+      if (btn) btn.addEventListener("click", () => { state._proceduresErreur = false; loadProcedures(); });
+      return;
+    }
+    loadProcedures();
+    root.innerHTML = empty("Chargement…");
+    return;
+  }
+  // Précharge l'autre sous-vue en arrière-plan pour un basculement instantané.
+  if (state.contacts === null && !state._contactsErreur) loadContacts();
+  if (state.procedures === null && !state._proceduresErreur) loadProcedures();
+
+  root.innerHTML = `
+    <h2 class="section-title">Contacts &amp; Procédures</h2>
+    <div class="tabs-mini">
+      <button type="button" class="tabs-mini-btn${state.contactsSubView === "contacts" ? " active" : ""}" id="contactsSubContactsBtn">Contacts</button>
+      <button type="button" class="tabs-mini-btn${state.contactsSubView === "procedures" ? " active" : ""}" id="contactsSubProceduresBtn">Procédures</button>
+    </div>
+    <div id="contactsSubPanel">${state.contactsSubView === "contacts" ? renderContactsPanel_() : renderProceduresPanel_()}</div>
+  `;
+
+  root.querySelector("#contactsSubContactsBtn").addEventListener("click", () => setContactsSubView_("contacts"));
+  root.querySelector("#contactsSubProceduresBtn").addEventListener("click", () => setContactsSubView_("procedures"));
+
+  attachContactsPanelListeners_(root);
+}
+
+function renderChargementErreur_(message, retryId) {
+  return `
+    <h2 class="section-title">Contacts &amp; Procédures</h2>
+    <div class="table-card" style="padding:16px; text-align:center">
+      <p class="card-sub" style="margin:0 0 10px">Impossible de charger cette partie (${escapeHtml(message)}).</p>
+      <button type="button" class="small-btn secondary" id="${retryId}">Réessayer</button>
+    </div>`;
+}
+
+function renderContactsPanel_() {
+  const contacts = state.contacts || [];
+  const q = normaliserRecherche(state.contactsSearch || "");
+  const filtres = q
+    ? contacts.filter(c => normaliserRecherche([c.nom, c.role, c.organisation, c.telephone, c.email, c.notes].filter(Boolean).join(" ")).indexOf(q) >= 0)
+    : contacts;
+
+  return `
+    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px); margin-top:12px">
+      <div class="field"><label for="contactsSearchInput">Recherche</label><input id="contactsSearchInput" type="text" placeholder="Nom, club, téléphone…" value="${escapeHtml(state.contactsSearch || "")}" /></div>
+    </div>
+
+    ${filtres.length ? `
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Nom</th><th>Rôle</th><th>Organisation / Club</th><th>Téléphone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
+      <tbody>${filtres.map(c => `<tr>
+        <td>${escapeHtml(c.nom || "—")}</td>
+        <td>${escapeHtml(c.role || "—")}</td>
+        <td>${escapeHtml(c.organisation || "—")}</td>
+        <td>${c.telephone ? `<a href="tel:${escapeHtml(c.telephone)}">${escapeHtml(c.telephone)}</a>` : "—"}</td>
+        <td>${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : "—"}</td>
+        <td>${escapeHtml(c.notes || "—")}</td>
+        <td><button type="button" class="action-link" data-del-contact-id="${c.id}">Supprimer</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.")}
+
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un contact</span></span></summary>
+      <div class="past-body">
+        <form id="contactForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field"><label for="contactNom">Nom</label><input id="contactNom" type="text" required /></div>
+          <div class="field"><label for="contactRole">Rôle</label><input id="contactRole" type="text" placeholder="Ex. Responsable ligue, Collègue arbitre…" /></div>
+          <div class="field"><label for="contactOrganisation">Organisation / Club</label><input id="contactOrganisation" type="text" /></div>
+          <div class="field"><label for="contactTelephone">Téléphone</label><input id="contactTelephone" type="tel" /></div>
+          <div class="field"><label for="contactEmail">Email</label><input id="contactEmail" type="email" /></div>
+          <div class="field"><label for="contactNotes">Notes</label><input id="contactNotes" type="text" /></div>
+        </form>
+        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="contactForm">Enregistrer</button></div>
+      </div>
+    </details>
+  `;
+}
+
+function renderProceduresPanel_() {
+  const procedures = state.procedures || [];
+  return `
+    ${procedures.length ? `
+    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Titre</th><th>Catégorie</th><th>Contenu</th><th>Lien</th><th></th></tr></thead>
+      <tbody>${procedures.map(p => `<tr>
+        <td>${escapeHtml(p.titre || "—")}</td>
+        <td>${escapeHtml(p.categorie || "—")}</td>
+        <td style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</td>
+        <td>${p.lien ? `<a href="${escapeHtml(p.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : "—"}</td>
+        <td><button type="button" class="action-link" data-del-procedure-id="${p.id}">Supprimer</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : empty("Aucune procédure enregistrée pour l'instant.")}
+
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter une procédure</span></span></summary>
+      <div class="past-body">
+        <form id="procedureForm" class="toolbar" style="grid-template-columns: 1fr 1fr; align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field"><label for="procedureTitre">Titre</label><input id="procedureTitre" type="text" required /></div>
+          <div class="field">
+            <label for="procedureCategorie">Catégorie</label>
+            <select id="procedureCategorie">
+              <option value="Règlement">Règlement</option>
+              <option value="Logistique">Logistique</option>
+              <option value="Administratif">Administratif</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+          <div class="field" style="grid-column: 1 / -1"><label for="procedureContenu">Contenu</label><textarea id="procedureContenu" rows="4" style="width:100%; font-family:inherit; padding:10px; border-radius:var(--radius-md); border:1px solid var(--line); background:var(--surface); color:var(--text)"></textarea></div>
+          <div class="field"><label for="procedureLien">Lien (optionnel)</label><input id="procedureLien" type="url" placeholder="https://…" /></div>
+        </form>
+        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="procedureForm">Enregistrer</button></div>
+      </div>
+    </details>
+  `;
+}
+
+function attachContactsPanelListeners_(root) {
+  const searchInput = root.querySelector("#contactsSearchInput");
+  if (searchInput) {
+    searchInput.addEventListener("input", e => {
+      state.contactsSearch = e.target.value;
+      const panel = root.querySelector("#contactsSubPanel");
+      if (panel) panel.innerHTML = renderContactsPanel_();
+      attachContactsPanelListeners_(root);
+    });
+  }
+
+  const contactForm = root.querySelector("#contactForm");
+  if (contactForm) {
+    contactForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const payload = {
+        nom: document.getElementById("contactNom").value,
+        role: document.getElementById("contactRole").value,
+        organisation: document.getElementById("contactOrganisation").value,
+        telephone: document.getElementById("contactTelephone").value,
+        email: document.getElementById("contactEmail").value,
+        notes: document.getElementById("contactNotes").value
+      };
+      setStatus("Enregistrement du contact…", "");
+      try {
+        const res = await jsonp("addContact", payload);
+        if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+        setStatus("Contact enregistré", "ok");
+        state.contacts = null;
+        loadContacts();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  }
+
+  root.querySelectorAll("[data-del-contact-id]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Supprimer ce contact ?")) return;
+      try {
+        const res = await jsonp("deleteContact", { id: btn.dataset.delContactId });
+        if (!res.success) throw new Error(res.error || "Erreur suppression");
+        state.contacts = null;
+        loadContacts();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  });
+
+  const procedureForm = root.querySelector("#procedureForm");
+  if (procedureForm) {
+    procedureForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const payload = {
+        titre: document.getElementById("procedureTitre").value,
+        categorie: document.getElementById("procedureCategorie").value,
+        contenu: document.getElementById("procedureContenu").value,
+        lien: document.getElementById("procedureLien").value
+      };
+      setStatus("Enregistrement de la procédure…", "");
+      try {
+        const res = await jsonp("addProcedure", payload);
+        if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+        setStatus("Procédure enregistrée", "ok");
+        state.procedures = null;
+        loadProcedures();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  }
+
+  root.querySelectorAll("[data-del-procedure-id]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Supprimer cette procédure ?")) return;
+      try {
+        const res = await jsonp("deleteProcedure", { id: btn.dataset.delProcedureId });
+        if (!res.success) throw new Error(res.error || "Erreur suppression");
+        state.procedures = null;
+        loadProcedures();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  });
 }
 
 function renderRecords(rec) {
