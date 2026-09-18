@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./style.css?v=2026-09-19j" />
+  <link rel="stylesheet" href="./style.css?v=2026-09-19k" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./favicon-32.png?v=2026-09-15" sizes="32x32" type="image/png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-09-15" />
@@ -29,6 +29,18 @@
           </div>
         </div>
         <div class="header-actions">
+          <button id="themeToggleBtn" class="refresh-btn" type="button" aria-label="Basculer le theme clair/sombre" title="Theme clair/sombre">
+            <svg id="themeIconSun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/>
+              <path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/>
+            </svg>
+            <svg id="themeIconMoon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+            </svg>
+          </button>
           <button id="rtProfileBtn" class="refresh-btn" type="button" aria-label="Mon profil" title="Mon profil">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -67,7 +79,7 @@
         <button class="tab" data-tab="troisx3" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="tab-label">3×3</span></button>
         <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span></button>
         <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Stats</span></button>
-        <button class="tab" data-tab="analyse" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></span><span class="tab-label">Analyse</span></button>
+        <button class="tab" data-tab="agenda" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><span class="tab-label">Agenda</span></button>
         <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
         <button class="tab" data-tab="qcm" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tab-label">QCM</span></button>
@@ -79,11 +91,14 @@
       <section id="troisx3" class="panel"></section>
       <section id="paiements" class="panel"></section>
       <section id="stats" class="panel">
+        <div class="tabs-mini" id="statsSubTabs">
+          <button type="button" class="tabs-mini-btn active" id="statsSubOverviewBtn">Vue d'ensemble</button>
+          <button type="button" class="tabs-mini-btn" id="statsSubAvanceeBtn">Analyse avancee</button>
+        </div>
         <div id="statsFinancier"></div>
+        <div id="statsAnalyse" style="display:none"></div>
       </section>
-      <section id="analyse" class="panel">
-        <div id="statsAnalyse"></div>
-      </section>
+      <section id="agenda" class="panel"></section>
       <section id="alertes" class="panel"></section>
       <section id="export" class="panel"></section>
       <section id="qcm" class="panel"></section>
@@ -101,6 +116,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="./rt-auth.js?v=2026-09-07-b"></script>
-  <script src="./app.js?v=2026-09-19p"></script>
+  <script src="./app.js?v=2026-09-19q"></script>
 </body>
 </html>
