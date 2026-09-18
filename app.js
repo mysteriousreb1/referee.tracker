@@ -25,7 +25,8 @@ let state = {
   qcmStats: null,      // MODIFICATION 19/09/2026 — suivi progression QCM
   qcmBank: null,        // banque de questions (data/questions.json)
   qcmSession: null,      // série QCM en cours (20 questions, 10 min)
-  formations: null        // MODIFICATION 19/09/2026 — déplacements formation non rémunérés
+  formations: null,       // MODIFICATION 19/09/2026 — déplacements formation non rémunérés
+  niveaux: null            // MODIFICATION 18/09/2026 — historique niveau d'arbitrage (onglet Progression)
 };
 
 
@@ -327,6 +328,7 @@ function renderAll() {
   renderAlertes();
   renderExport();
   renderQcm();
+  renderProgression();
 }
 
 function filterRows(rows) {
@@ -1362,6 +1364,145 @@ function attachFormationsListeners_(root) {
         if (!res.success) throw new Error(res.error || "Erreur suppression");
         state.formations = null;
         loadFormations();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  });
+}
+
+/* Onglet Progression (18/09/2026) — trois blocs :
+   1) historique daté du niveau d'arbitrage personnel (saisie manuelle,
+      onglet NIVEAUX_ARBITRAGE) ;
+   2) désignations reçues par niveau et par saison — recalculé en local
+      à partir des matchs déjà chargés, rien à demander au serveur ;
+   3) évaluations d'observation : l'IA (Gemini) et le dépôt glisser-déposer
+      ne sont pas encore branchés (voir note dans le bloc) — le formulaire
+      manuel sert de repli en attendant. */
+function loadNiveaux() {
+  if (state._niveauxEnCours) return;
+  state._niveauxEnCours = true;
+  jsonp("niveaux")
+    .then(res => {
+      state.niveaux = (res && res.success) ? res.data : [];
+      state._niveauxEnCours = false;
+      if (state.activeTab === "progression") renderProgression();
+    })
+    .catch(() => { state._niveauxEnCours = false; });
+}
+
+function renderDesignationsParNiveau_() {
+  const rows = state.allRows.filter(r => r._isActive && r._format === "5x5");
+  if (!rows.length) return "";
+  const parSaison = {};
+  rows.forEach(r => {
+    const saison = r._season || "?";
+    const niveau = get(r, "Niveau administratif") || "Non renseigné";
+    parSaison[saison] = parSaison[saison] || {};
+    parSaison[saison][niveau] = (parSaison[saison][niveau] || 0) + 1;
+  });
+  const saisons = Object.keys(parSaison).sort();
+  const niveaux = ["Départemental", "Régional", "Championnat de France", "Amical", "Non renseigné"];
+  return `
+    <h2 class="section-title">Désignations reçues par niveau</h2>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Saison</th>${niveaux.map(n => `<th class="num">${escapeHtml(n)}</th>`).join("")}</tr></thead>
+      <tbody>${saisons.map(s => `<tr>
+        <td>${escapeHtml(s)}</td>
+        ${niveaux.map(n => `<td class="num">${parSaison[s][n] || 0}</td>`).join("")}
+      </tr>`).join("")}</tbody>
+    </table></div></div>`;
+}
+
+function renderProgression() {
+  const root = document.getElementById("progression");
+  if (!root) return;
+  if (state.niveaux === null) { loadNiveaux(); root.innerHTML = empty("Chargement…"); return; }
+
+  const niveaux = state.niveaux;
+  const actuel = niveaux[0] || null; // trié plus récent d'abord
+
+  root.innerHTML = `
+    <h2 class="section-title">Progression</h2>
+    <div class="kpi-grid">
+      <div class="kpi hero">
+        <label>Niveau actuel</label>
+        <strong>${actuel ? escapeHtml(actuel.niveau) : "Non renseigné"}</strong>
+        <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.date) : "Ajoute ta première entrée ci-dessous"}</span>
+      </div>
+    </div>
+
+    <h2 class="section-title">Historique du niveau</h2>
+    ${niveaux.length ? `
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Niveau</th><th>Notes</th><th></th></tr></thead>
+      <tbody>${niveaux.map(n => `<tr>
+        <td>${escapeHtml(n.date)}</td>
+        <td>${escapeHtml(n.niveau)}</td>
+        <td>${escapeHtml(n.notes || "—")}</td>
+        <td><button type="button" class="action-link" data-del-niveau-date="${escapeHtml(n.date)}" data-del-niveau-niveau="${escapeHtml(n.niveau)}">Supprimer</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : empty("Aucun niveau enregistré pour l'instant.")}
+
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un niveau</span></span></summary>
+      <div class="past-body">
+        <form id="niveauForm" class="toolbar" style="grid-template-columns: 1fr 1fr 2fr; align-items:end; margin-top:10px">
+          <div class="field"><label for="niveauDate">Date d'effet</label><input id="niveauDate" type="date" required /></div>
+          <div class="field">
+            <label for="niveauSelect">Niveau</label>
+            <select id="niveauSelect">
+              <option value="Départemental">Départemental</option>
+              <option value="Régional">Régional</option>
+              <option value="Championnat de France">Championnat de France</option>
+            </select>
+          </div>
+          <div class="field"><label for="niveauNotes">Notes</label><input id="niveauNotes" type="text" placeholder="Optionnel — ex. suite à l'évaluation du…" /></div>
+        </form>
+        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="niveauForm">Enregistrer</button></div>
+      </div>
+    </details>
+
+    ${renderDesignationsParNiveau_()}
+
+    <h2 class="section-title">Évaluations</h2>
+    <div class="table-card" style="padding:16px">
+      <p class="card-sub" style="margin:0">
+        Le dépôt glisser-déposer des PDF d'évaluation et l'analyse automatique (Gemini) arrivent dans une prochaine
+        mise à jour — le dépôt direct dans l'app plutôt que sur Drive demande un nouveau point d'entrée sécurisé
+        côté script, en cours de câblage. En attendant, garde tes PDF de côté, rien n'est perdu.
+      </p>
+    </div>
+  `;
+
+  const form = root.querySelector("#niveauForm");
+  if (form) {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const date = document.getElementById("niveauDate").value;
+      const niveau = document.getElementById("niveauSelect").value;
+      const notes = document.getElementById("niveauNotes").value;
+      setStatus("Enregistrement du niveau…", "");
+      try {
+        const res = await jsonp("addNiveau", { date, niveau, notes });
+        if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+        setStatus("Niveau enregistré", "ok");
+        state.niveaux = null;
+        loadNiveaux();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  }
+
+  root.querySelectorAll("[data-del-niveau-date]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Supprimer cette entrée ?")) return;
+      try {
+        const res = await jsonp("deleteNiveau", { date: btn.dataset.delNiveauDate, niveau: btn.dataset.delNiveauNiveau });
+        if (!res.success) throw new Error(res.error || "Erreur suppression");
+        state.niveaux = null;
+        loadNiveaux();
       } catch (err) {
         setStatus("Erreur : " + err.message, "error");
       }
