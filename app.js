@@ -26,7 +26,8 @@ let state = {
   qcmBank: null,        // banque de questions (data/questions.json)
   qcmSession: null,      // série QCM en cours (20 questions, 10 min)
   formations: null,       // MODIFICATION 19/09/2026 — déplacements formation non rémunérés
-  niveaux: null            // MODIFICATION 18/09/2026 — historique niveau d'arbitrage (onglet Progression)
+  niveaux: null,           // MODIFICATION 18/09/2026 — historique niveau d'arbitrage (onglet Progression)
+  evaluations: null        // MODIFICATION 19/09/2026 — dépôt PDF d'évaluations (onglet Progression)
 };
 
 
@@ -1391,6 +1392,50 @@ function loadNiveaux() {
     .catch(() => { state._niveauxEnCours = false; });
 }
 
+function loadEvaluations() {
+  if (state._evaluationsEnCours) return;
+  state._evaluationsEnCours = true;
+  jsonp("evaluations")
+    .then(res => {
+      state.evaluations = (res && res.success) ? res.data : [];
+      state._evaluationsEnCours = false;
+      if (state.activeTab === "progression") renderProgression();
+    })
+    .catch(() => { state._evaluationsEnCours = false; });
+}
+
+function fileToBase64_(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const idx = result.indexOf(",");
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploaderEvaluation_(file) {
+  if (!file) return;
+  if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+    setStatus("Seuls les PDF sont acceptés", "error");
+    return;
+  }
+  setStatus("Envoi de " + file.name + "…", "");
+  try {
+    const base64 = await fileToBase64_(file);
+    const res = await jsonp("evaluation.upload", { filename: file.name, mimeType: file.type || "application/pdf", base64 });
+    if (!res.success) throw new Error(res.error || "Erreur d'envoi");
+    setStatus(res.matched ? "Évaluation classée : " + res.matchLabel : "Évaluation déposée (match non identifié)", "ok");
+    state.evaluations = null;
+    loadEvaluations();
+  } catch (err) {
+    setStatus("Erreur : " + err.message, "error");
+  }
+}
+
 function renderDesignationsParNiveau_() {
   const rows = state.allRows.filter(r => r._isActive && r._format === "5x5");
   if (!rows.length) return "";
@@ -1418,9 +1463,15 @@ function renderProgression() {
   const root = document.getElementById("progression");
   if (!root) return;
   if (state.niveaux === null) { loadNiveaux(); root.innerHTML = empty("Chargement…"); return; }
+  if (state.evaluations === null) loadEvaluations();
 
   const niveaux = state.niveaux;
-  const actuel = niveaux[0] || null; // trié plus récent d'abord
+  // Niveau actuel = la ligne encore active (pas de date de fin) la plus récente,
+  // sinon la ligne la plus récente tout court (même logique que l'extranet FFBB).
+  const actuel = niveaux.find(n => !n.dateFin) || niveaux[0] || null;
+
+  const evaluations = state.evaluations || [];
+  const planTravail = evaluations.filter(ev => ev.axe1 || ev.axe2);
 
   root.innerHTML = `
     <h2 class="section-title">Progression</h2>
@@ -1428,63 +1479,103 @@ function renderProgression() {
       <div class="kpi hero">
         <label>Niveau actuel</label>
         <strong>${actuel ? escapeHtml(actuel.niveau) : "Non renseigné"}</strong>
-        <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.date) : "Ajoute ta première entrée ci-dessous"}</span>
+        <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.dateDebut) + (actuel.groupement ? " — " + escapeHtml(actuel.groupement) : "") : "Ajoute ta première entrée plus bas"}</span>
       </div>
     </div>
+
+    <h2 class="section-title">Plan de travail (IA)</h2>
+    ${planTravail.length ? `
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Match</th><th>Date</th><th>Point à travailler 1</th><th>Point à travailler 2</th></tr></thead>
+      <tbody>${planTravail.map(ev => `<tr>
+        <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
+        <td>${escapeHtml(ev.dateMatch || ev.dateDepot)}</td>
+        <td>${escapeHtml(ev.axe1 || "—")}</td>
+        <td>${escapeHtml(ev.axe2 || "—")}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : empty("Dépose une évaluation ci-dessous pour générer ton plan de travail IA, match par match.")}
+
+    <h2 class="section-title">Évaluations</h2>
+    <div class="table-card" style="padding:16px">
+      <div id="evalDropzone" class="eval-dropzone">
+        <span class="eval-dropzone-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14a2 2 0 0 0 2-2v-5"/><path d="M3 14v5a2 2 0 0 0 2 2h1"/></svg>
+        </span>
+        <p class="eval-dropzone-text">Glisse un PDF d'évaluation ici, ou <label for="evalFileInput" class="eval-dropzone-link">choisis un fichier</label></p>
+        <p class="eval-dropzone-sub">Le match correspondant est identifié automatiquement (date + club), le fichier est classé dans le Drive dédié, et l'IA en tire 2 points de travail prioritaires.</p>
+        <input id="evalFileInput" type="file" accept="application/pdf" hidden />
+      </div>
+    </div>
+
+    ${evaluations.length ? `
+    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Déposé le</th><th>Match lié</th><th>Fichier</th><th>Statut IA</th></tr></thead>
+      <tbody>${evaluations.map(ev => `<tr>
+        <td>${escapeHtml(ev.dateDepot)}</td>
+        <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
+        <td><a href="${escapeHtml(ev.lien)}" target="_blank" rel="noopener">${escapeHtml(ev.fichier)}</a></td>
+        <td>${escapeHtml(ev.statut || "—")}</td>
+      </tr>${ev.synthese ? `<tr><td colspan="4" style="padding-top:0">
+        <details class="past-block"><summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Voir la synthèse IA</span></span></summary>
+        <div class="past-body" style="white-space:pre-wrap; font-size:13px; line-height:1.5">${escapeHtml(ev.synthese)}</div></details>
+      </td></tr>` : ""}`).join("")}</tbody>
+    </table></div></div>` : ""}
 
     <h2 class="section-title">Historique du niveau</h2>
     ${niveaux.length ? `
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Niveau</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th>Type d'officiel</th><th>Niveau</th><th>Couleur</th><th>Recyclage</th><th>Début</th><th>Fin</th><th>Groupement</th><th>Saisi par</th><th></th></tr></thead>
       <tbody>${niveaux.map(n => `<tr>
-        <td>${escapeHtml(n.date)}</td>
-        <td>${escapeHtml(n.niveau)}</td>
-        <td>${escapeHtml(n.notes || "—")}</td>
-        <td><button type="button" class="action-link" data-del-niveau-date="${escapeHtml(n.date)}" data-del-niveau-niveau="${escapeHtml(n.niveau)}">Supprimer</button></td>
+        <td>${escapeHtml(n.typeOfficiel || "—")}</td>
+        <td>${escapeHtml(n.niveau || "—")}</td>
+        <td>${escapeHtml(n.couleur || "—")}</td>
+        <td>${escapeHtml(n.recyclage || "—")}</td>
+        <td>${escapeHtml(n.dateDebut || "—")}</td>
+        <td>${escapeHtml(n.dateFin || "—")}</td>
+        <td>${escapeHtml(n.groupement || "—")}</td>
+        <td>${escapeHtml(n.saisiPar || "—")}</td>
+        <td><button type="button" class="action-link" data-del-niveau-id="${n.id}">Supprimer</button></td>
       </tr>`).join("")}</tbody>
     </table></div></div>` : empty("Aucun niveau enregistré pour l'instant.")}
 
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un niveau</span></span></summary>
       <div class="past-body">
-        <form id="niveauForm" class="toolbar" style="grid-template-columns: 1fr 1fr 2fr; align-items:end; margin-top:10px">
-          <div class="field"><label for="niveauDate">Date d'effet</label><input id="niveauDate" type="date" required /></div>
-          <div class="field">
-            <label for="niveauSelect">Niveau</label>
-            <select id="niveauSelect">
-              <option value="Départemental">Départemental</option>
-              <option value="Régional">Régional</option>
-              <option value="Championnat de France">Championnat de France</option>
-            </select>
-          </div>
-          <div class="field"><label for="niveauNotes">Notes</label><input id="niveauNotes" type="text" placeholder="Optionnel — ex. suite à l'évaluation du…" /></div>
+        <p class="card-sub" style="margin:0 0 10px">Copie les valeurs depuis le tableau "Niveaux" de ton extranet officiels FFBB.</p>
+        <form id="niveauForm" class="toolbar" style="grid-template-columns: repeat(4, 1fr); align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field"><label for="niveauType">Type d'officiel</label><input id="niveauType" type="text" value="Arbitre" /></div>
+          <div class="field"><label for="niveauNiveau">Niveau</label><input id="niveauNiveau" type="text" placeholder="Ex. Championnats de France Jeunes" required /></div>
+          <div class="field"><label for="niveauCouleur">Couleur</label><input id="niveauCouleur" type="text" placeholder="Ex. Rouge" /></div>
+          <div class="field"><label for="niveauRecyclage">Recyclage</label><input id="niveauRecyclage" type="date" /></div>
+          <div class="field"><label for="niveauDateDebut">Date de début</label><input id="niveauDateDebut" type="date" required /></div>
+          <div class="field"><label for="niveauDateFin">Date de fin</label><input id="niveauDateFin" type="date" /></div>
+          <div class="field"><label for="niveauGroupement">Groupement</label><input id="niveauGroupement" type="text" placeholder="Ex. GES0067070 - WEITBRUCH A.S.C.G" /></div>
+          <div class="field"><label for="niveauSaisiPar">Saisi par</label><input id="niveauSaisiPar" type="text" placeholder="Ex. GES - LIGUE REGIONALE GRAND EST" /></div>
         </form>
         <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="niveauForm">Enregistrer</button></div>
       </div>
     </details>
 
     ${renderDesignationsParNiveau_()}
-
-    <h2 class="section-title">Évaluations</h2>
-    <div class="table-card" style="padding:16px">
-      <p class="card-sub" style="margin:0">
-        Le dépôt glisser-déposer des PDF d'évaluation et l'analyse automatique (Gemini) arrivent dans une prochaine
-        mise à jour — le dépôt direct dans l'app plutôt que sur Drive demande un nouveau point d'entrée sécurisé
-        côté script, en cours de câblage. En attendant, garde tes PDF de côté, rien n'est perdu.
-      </p>
-    </div>
   `;
 
   const form = root.querySelector("#niveauForm");
   if (form) {
     form.addEventListener("submit", async e => {
       e.preventDefault();
-      const date = document.getElementById("niveauDate").value;
-      const niveau = document.getElementById("niveauSelect").value;
-      const notes = document.getElementById("niveauNotes").value;
+      const payload = {
+        typeOfficiel: document.getElementById("niveauType").value,
+        niveau: document.getElementById("niveauNiveau").value,
+        couleur: document.getElementById("niveauCouleur").value,
+        recyclage: document.getElementById("niveauRecyclage").value,
+        dateDebut: document.getElementById("niveauDateDebut").value,
+        dateFin: document.getElementById("niveauDateFin").value,
+        groupement: document.getElementById("niveauGroupement").value,
+        saisiPar: document.getElementById("niveauSaisiPar").value
+      };
       setStatus("Enregistrement du niveau…", "");
       try {
-        const res = await jsonp("addNiveau", { date, niveau, notes });
+        const res = await jsonp("addNiveau", payload);
         if (!res.success) throw new Error(res.error || "Erreur enregistrement");
         setStatus("Niveau enregistré", "ok");
         state.niveaux = null;
@@ -1495,11 +1586,11 @@ function renderProgression() {
     });
   }
 
-  root.querySelectorAll("[data-del-niveau-date]").forEach(btn => {
+  root.querySelectorAll("[data-del-niveau-id]").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm("Supprimer cette entrée ?")) return;
       try {
-        const res = await jsonp("deleteNiveau", { date: btn.dataset.delNiveauDate, niveau: btn.dataset.delNiveauNiveau });
+        const res = await jsonp("deleteNiveau", { id: btn.dataset.delNiveauId });
         if (!res.success) throw new Error(res.error || "Erreur suppression");
         state.niveaux = null;
         loadNiveaux();
@@ -1508,6 +1599,25 @@ function renderProgression() {
       }
     });
   });
+
+  const dz = root.querySelector("#evalDropzone");
+  const fileInput = root.querySelector("#evalFileInput");
+  if (dz && fileInput) {
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files && fileInput.files[0]) uploaderEvaluation_(fileInput.files[0]);
+      fileInput.value = "";
+    });
+    ["dragenter", "dragover"].forEach(evt => {
+      dz.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dz.classList.add("is-dragover"); });
+    });
+    ["dragleave", "drop"].forEach(evt => {
+      dz.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dz.classList.remove("is-dragover"); });
+    });
+    dz.addEventListener("drop", e => {
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) uploaderEvaluation_(file);
+    });
+  }
 }
 
 function renderRecords(rec) {
