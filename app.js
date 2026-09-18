@@ -27,11 +27,44 @@ let state = {
   qcmSession: null,      // série QCM en cours (20 questions, 10 min)
   formations: null,       // MODIFICATION 19/09/2026 — déplacements formation non rémunérés
   niveaux: null,           // MODIFICATION 18/09/2026 — historique niveau d'arbitrage (onglet Progression)
-  evaluations: null        // MODIFICATION 19/09/2026 — dépôt PDF d'évaluations (onglet Progression)
+  evaluations: null,        // MODIFICATION 19/09/2026 — dépôt PDF d'évaluations (onglet Progression)
+  statsSubView: "overview",  // MODIFICATION 19/09/2026 — Stats/Analyse fusionnés : "overview" ou "avancee"
+  agendaCursor: null,         // MODIFICATION 19/09/2026 — onglet Agenda : 1er jour du mois affiché
+  agendaSelectedDate: null    // jour sélectionné dans le calendrier ("YYYY-MM-DD")
 };
+
+/* ---------------- Thème clair / sombre (19/09/2026) ----------------
+   Choix mémorisé en localStorage (site déployé, origine propre — sans
+   risque, contrairement à un artifact Claude). Par défaut : on respecte
+   prefers-color-scheme du système si rien n'est enregistré, sinon clair. */
+
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem("rt-theme"); } catch (e) { /* stockage indisponible : on ignore */ }
+  const theme = saved === "dark" || saved === "light"
+    ? saved
+    : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const sun = document.getElementById("themeIconSun");
+  const moon = document.getElementById("themeIconMoon");
+  if (sun) sun.style.display = theme === "dark" ? "none" : "";
+  if (moon) moon.style.display = theme === "dark" ? "" : "none";
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const next = current === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("rt-theme", next); } catch (e) { /* stockage indisponible : on ignore, le choix ne persiste pas */ }
+}
 
 
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   bindUi();
   buildSeasonSelect();
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
@@ -43,6 +76,14 @@ function bindUi() {
   document.querySelectorAll(".tab").forEach(btn => {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   });
+
+  const themeBtn = document.getElementById("themeToggleBtn");
+  if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
+
+  const statsSubOverviewBtn = document.getElementById("statsSubOverviewBtn");
+  const statsSubAvanceeBtn = document.getElementById("statsSubAvanceeBtn");
+  if (statsSubOverviewBtn) statsSubOverviewBtn.addEventListener("click", () => setStatsSubView_("overview"));
+  if (statsSubAvanceeBtn) statsSubAvanceeBtn.addEventListener("click", () => setStatsSubView_("avancee"));
 
   const refresh = document.getElementById("refreshBtn");
   refresh.addEventListener("click", () => {
@@ -325,11 +366,28 @@ function renderAll() {
   renderTroisx3();
   renderPaiements();
   renderStats();
-  renderAnalyse();
+  if (state.statsSubView === "avancee") renderAnalyse();
+  renderAgenda();
   renderAlertes();
   renderExport();
   renderQcm();
   renderProgression();
+}
+
+/* Bascule entre les deux vues fusionnées de l'onglet Stats (19/09/2026) :
+   « Vue d'ensemble » (ex-onglet Stats) et « Analyse avancée » (ex-onglet
+   Analyse), toutes deux dans le même panel via le pattern .tabs-mini. */
+function setStatsSubView_(view) {
+  state.statsSubView = view;
+  const overviewBtn = document.getElementById("statsSubOverviewBtn");
+  const avanceeBtn = document.getElementById("statsSubAvanceeBtn");
+  if (overviewBtn) overviewBtn.classList.toggle("active", view === "overview");
+  if (avanceeBtn) avanceeBtn.classList.toggle("active", view === "avancee");
+  const financier = document.getElementById("statsFinancier");
+  const analyse = document.getElementById("statsAnalyse");
+  if (financier) financier.style.display = view === "overview" ? "" : "none";
+  if (analyse) analyse.style.display = view === "avancee" ? "" : "none";
+  if (view === "avancee") renderAnalyse(); else renderStats();
 }
 
 function filterRows(rows) {
@@ -2032,6 +2090,140 @@ function renderQcmSession_(root) {
 }
 
 /* ---------------- Alertes ---------------- */
+
+/* ---------------- Agenda (19/09/2026) ----------------
+   Vue calendrier mensuelle des désignations (5×5 + 3×3), façon Google
+   Agenda. Lecture seule : on visualise, on ne modifie rien depuis ici.
+   Réutilise state.filteredRows (déjà filtré saison + recherche) et les
+   mêmes conventions de date/niveau que les autres onglets. */
+
+function renderAgenda() {
+  const root = document.getElementById("agenda");
+  if (!root) return;
+
+  if (!state.agendaCursor) {
+    const now = new Date();
+    state.agendaCursor = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+
+  const rows = state.filteredRows.filter(r => r._isActive && r._date);
+  const cursor = state.agendaCursor;
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+
+  const parJour = {};
+  rows.forEach(r => {
+    const k = agendaDayKey_(r._date);
+    (parJour[k] = parJour[k] || []).push(r);
+  });
+
+  const todayKey = agendaDayKey_(new Date());
+  // Lundi = 0 … dimanche = 6, convention FR (Date.getDay() renvoie 0 pour dimanche).
+  const decalage = (new Date(year, month, 1).getDay() + 6) % 7;
+  const debutGrille = new Date(year, month, 1 - decalage);
+
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(debutGrille.getFullYear(), debutGrille.getMonth(), debutGrille.getDate() + i);
+    const k = agendaDayKey_(d);
+    const matches = parJour[k] || [];
+    const horsMois = d.getMonth() !== month;
+    const estAuj = k === todayKey;
+    const estSelect = state.agendaSelectedDate === k;
+    const classes = ["agenda-day"];
+    if (horsMois) classes.push("is-outside");
+    if (estAuj) classes.push("is-today");
+    if (estSelect) classes.push("is-selected");
+    if (matches.length) classes.push("has-matches");
+    cells.push(`
+      <button type="button" class="${classes.join(" ")}" data-day="${k}"${matches.length ? "" : " disabled"}>
+        <span class="agenda-day-num">${d.getDate()}</span>
+        ${matches.length ? `<span class="agenda-day-dots">${matches.slice(0, 4).map(m => `<span class="agenda-dot ${niveauCarte(m).classe}"></span>`).join("")}${matches.length > 4 ? `<span class="agenda-dot-more">+${matches.length - 4}</span>` : ""}</span>` : ""}
+      </button>`);
+  }
+
+  const moisLabel = capitalize_(cursor.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }));
+  const jourAffiche = state.agendaSelectedDate && parJour[state.agendaSelectedDate] ? state.agendaSelectedDate : null;
+
+  root.innerHTML = `
+    <h2 class="section-title">Agenda</h2>
+    <div class="agenda-toolbar">
+      <div class="agenda-nav">
+        <button type="button" class="small-btn secondary" id="agendaPrevBtn" aria-label="Mois précédent">‹</button>
+        <strong class="agenda-month-label">${escapeHtml(moisLabel)}</strong>
+        <button type="button" class="small-btn secondary" id="agendaNextBtn" aria-label="Mois suivant">›</button>
+      </div>
+      <button type="button" class="small-btn" id="agendaTodayBtn">Aujourd'hui</button>
+    </div>
+    <div class="agenda-grid">
+      <div class="agenda-weekday">Lun</div><div class="agenda-weekday">Mar</div><div class="agenda-weekday">Mer</div>
+      <div class="agenda-weekday">Jeu</div><div class="agenda-weekday">Ven</div><div class="agenda-weekday">Sam</div>
+      <div class="agenda-weekday">Dim</div>
+      ${cells.join("")}
+    </div>
+    <div id="agendaDayMatches">${jourAffiche ? renderAgendaDayList_(jourAffiche, parJour[jourAffiche]) : empty("Sélectionne un jour marqué d'un point pour voir les missions.")}</div>
+  `;
+
+  document.getElementById("agendaPrevBtn").addEventListener("click", () => {
+    state.agendaCursor = new Date(year, month - 1, 1);
+    renderAgenda();
+  });
+  document.getElementById("agendaNextBtn").addEventListener("click", () => {
+    state.agendaCursor = new Date(year, month + 1, 1);
+    renderAgenda();
+  });
+  document.getElementById("agendaTodayBtn").addEventListener("click", () => {
+    const now = new Date();
+    state.agendaCursor = new Date(now.getFullYear(), now.getMonth(), 1);
+    state.agendaSelectedDate = agendaDayKey_(now);
+    renderAgenda();
+  });
+  root.querySelectorAll(".agenda-day.has-matches").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.agendaSelectedDate = btn.dataset.day;
+      renderAgenda();
+    });
+  });
+}
+
+function agendaDayKey_(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function capitalize_(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function renderAgendaDayList_(dayKey, matches) {
+  const sorted = matches.slice().sort(sortByDateAsc);
+  const dateLabel = sorted[0] && sorted[0]._date ? formatDateLongue(sorted[0]._date) : dayKey;
+  return `
+    <h3 class="agenda-day-title">${escapeHtml(dateLabel)} <span class="count">${sorted.length}</span></h3>
+    <div class="agenda-day-cards">
+      ${sorted.map(renderAgendaMatchMini_).join("")}
+    </div>`;
+}
+
+function renderAgendaMatchMini_(row) {
+  const format = get(row, "Format");
+  const title = format === "3x3"
+    ? firstValue(row, ["Visiteur / événement", "Recevant", "Libellé compétition"])
+    : firstValue(row, ["Recevant", "Visiteur / événement", "Libellé compétition"]);
+  const time = get(row, "Heure/RDV");
+  const niv = niveauCarte(row);
+  const lieu = firstValue(row, ["Salle", "Ville"]);
+  const paiement = get(row, "Statut paiement") || "À recevoir";
+  const isPaid = paiement === "Reçu";
+  const isBenevole = paiement === BENEVOLE;
+  return `
+    <div class="agenda-match-card ${niv.classe}">
+      <div class="badges">
+        <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
+        ${format && format !== "3x3" ? badge(format, "gray") : ""}
+        ${isBenevole ? badge("Bénévole", "gray") : isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
+      </div>
+      <div class="agenda-match-title">${escapeHtml(title || "Mission")}</div>
+      <div class="agenda-match-meta">${time ? escapeHtml(time) + " · " : ""}${escapeHtml(lieu || "")}</div>
+    </div>`;
+}
 
 function renderAlertes() {
   const root = document.getElementById("alertes");
