@@ -16,8 +16,10 @@
   --gold-soft: #FFF3D1;
 
   --bg: #EEF1F7;
+  --bg-top: #FFFFFF;
   --surface: #FFFFFF;
   --surface-2: #F6F8FC;
+  --surface-a: rgba(255,255,255,0.94);
   --text: #0C1730;
   --muted: #5B6884;
   --line: #DCE3EF;
@@ -39,6 +41,62 @@
   --mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+/* ---------- Thème sombre (19/09/2026) ----------
+   Activé via [data-theme="dark"] sur <html> (toggle JS + localStorage).
+   Même hiérarchie de tokens que le clair : navy/rouge/or conservés pour
+   l'identité FFBB, seuls fond/surfaces/texte basculent en ardoise foncée. */
+:root[data-theme="dark"] {
+  --navy-900: #0A1F44;
+  --navy-800: #0E2A5C;
+  --navy-700: #1E4E9C;
+  --navy-600: #2E63BE;
+  --red: #FF5470;
+  --red-soft: rgba(255, 84, 112, 0.16);
+  --gold: #F5B400;
+  --gold-soft: rgba(245, 180, 0, 0.16);
+
+  --bg: #0B1220;
+  --bg-top: #101A2E;
+  --surface: #141E33;
+  --surface-2: #1B2740;
+  --surface-a: rgba(20, 30, 51, 0.92);
+  --text: #E8ECF6;
+  --muted: #93A0BE;
+  --line: #2A3653;
+
+  --green: #3FCE86;
+  --green-soft: rgba(63, 206, 134, 0.16);
+  --orange: #F6A54A;
+  --orange-soft: rgba(246, 165, 74, 0.16);
+  --danger: #FF6B62;
+
+  --shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+/* Quelques textes foncés codés en dur pour contraster sur un fond clair
+   (gold-soft/orange-soft/green-soft) : en sombre ces fonds deviennent
+   translucides sur ardoise, donc on éclaircit le texte pour rester lisible. */
+:root[data-theme="dark"] .stat-note,
+:root[data-theme="dark"] .badge.gold,
+:root[data-theme="dark"] .insight.warn { color: #FFD9A8; }
+:root[data-theme="dark"] .insight.good { color: #8FF0C2; }
+:root[data-theme="dark"] .status-bar.error { background: var(--red-soft); border-color: rgba(255, 107, 98, 0.4); }
+@media (prefers-color-scheme: dark) {
+  /* Respecté seulement si l'utilisateur n'a rien choisi explicitement (voir
+     initTheme() dans app.js, qui pose data-theme="light" ou "dark" dès le
+     chargement — ce bloc ne sert donc que pendant le tout premier flash,
+     avant l'exécution du JS, sur un système déjà en sombre). */
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --navy-900: #0A1F44; --navy-800: #0E2A5C; --navy-700: #1E4E9C; --navy-600: #2E63BE;
+    --red: #FF5470; --red-soft: rgba(255, 84, 112, 0.16); --gold: #F5B400; --gold-soft: rgba(245, 180, 0, 0.16);
+    --bg: #0B1220; --bg-top: #101A2E; --surface: #141E33; --surface-2: #1B2740; --surface-a: rgba(20, 30, 51, 0.92);
+    --text: #E8ECF6; --muted: #93A0BE; --line: #2A3653;
+    --green: #3FCE86; --green-soft: rgba(63, 206, 134, 0.16); --orange: #F6A54A; --orange-soft: rgba(246, 165, 74, 0.16); --danger: #FF6B62;
+    --shadow: 0 20px 48px rgba(0, 0, 0, 0.45); --shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.35);
+  }
+}
+
 * { box-sizing: border-box; }
 html { background: var(--bg); }
 
@@ -49,8 +107,9 @@ body {
   background:
     radial-gradient(circle at 8% 0%, rgba(228, 0, 43, 0.08), transparent 340px),
     radial-gradient(circle at 98% 4%, rgba(245, 180, 0, 0.10), transparent 300px),
-    linear-gradient(180deg, #FFFFFF 0%, var(--bg) 260px, var(--bg) 100%);
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 260px, var(--bg) 100%);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button, input, select, textarea { font-family: inherit; }
@@ -148,7 +207,7 @@ button, input, select, textarea { font-family: inherit; }
   grid-template-columns: 220px 1fr;
   gap: 14px;
   align-items: end;
-  background: rgba(255,255,255,0.94);
+  background: var(--surface-a);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: 16px;
@@ -171,7 +230,7 @@ select, input, textarea {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px 14px;
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
   font-size: 15px;
   outline: none;
@@ -208,7 +267,7 @@ select:focus, input:focus, textarea:focus {
   margin: 16px 0 20px;
   padding: 7px;
   border-radius: 18px;
-  background: rgba(255,255,255,0.95);
+  background: var(--surface-a);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(12px);
@@ -266,7 +325,7 @@ select:focus, input:focus, textarea:focus {
 .section-title .count { color: var(--muted); font-size: 15px; font-weight: 600; font-family: var(--body); }
 
 .empty {
-  background: #fff;
+  background: var(--surface);
   border: 1px dashed #C3D0E5;
   border-radius: var(--radius-xl);
   padding: 30px 18px;
@@ -279,7 +338,7 @@ select:focus, input:focus, textarea:focus {
 .cards { display: grid; gap: 13px; }
 
 .match-card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);
@@ -371,7 +430,7 @@ select:focus, input:focus, textarea:focus {
   text-align: center;
   padding: 10px 6px;
   border-radius: 13px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
 }
 .money-cell label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; }
@@ -436,7 +495,7 @@ select:focus, input:focus, textarea:focus {
 .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
 .kpi {
   position: relative; overflow: hidden;
-  background: #fff; border: 1px solid var(--line);
+  background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-lg); padding: 15px;
   box-shadow: var(--shadow-soft);
 }
@@ -474,7 +533,7 @@ select:focus, input:focus, textarea:focus {
 
 /* ---------- Tables ---------- */
 .table-card {
-  margin-top: 12px; background: #fff; border: 1px solid var(--line);
+  margin-top: 12px; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); overflow: hidden;
 }
 .table-wrap { overflow-x: auto; }
@@ -491,7 +550,7 @@ tr:last-child td { border-bottom: 0; }
 
 .export-box {
   width: 100%; min-height: 320px;
-  border-radius: var(--radius-lg); background: #fff; border: 1px solid var(--line);
+  border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--line);
   padding: 16px; resize: vertical;
   font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
   box-shadow: var(--shadow-soft);
@@ -536,7 +595,7 @@ tr:last-child td { border-bottom: 0; }
     gap: 6px;
     padding: 6px;
     margin: 14px 0 16px;
-    background: rgba(255,255,255,0.95);
+    background: var(--surface-a);
     border: 1px solid var(--line);
     border-radius: 16px;
     box-shadow: var(--shadow-soft);
@@ -677,7 +736,7 @@ tr:last-child td { border-bottom: 0; }
 
 .chart-card {
   margin-top: 12px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 16px 16px 12px;
@@ -750,7 +809,7 @@ tr:last-child td { border-bottom: 0; }
   justify-content: space-between;
   margin-bottom: 14px;
   padding: 14px 16px;
-  background: rgba(255,255,255,0.94);
+  background: var(--surface-a);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
@@ -762,7 +821,7 @@ tr:last-child td { border-bottom: 0; }
 }
 .chart-filter select {
   padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
-  background: #fff; font-size: 14.5px; font-weight: 600; color: var(--navy-900);
+  background: var(--surface); font-size: 14.5px; font-weight: 600; color: var(--navy-900);
   cursor: pointer;
 }
 .toolbar-summary {
@@ -1262,6 +1321,15 @@ tr:last-child td { border-bottom: 0; }
 .match-card.niv-3x3         { --niveau: var(--red); --niveau-wash: rgba(228, 0, 43, 0.09); }
 .match-card.niv-autre       { --niveau: #C8D2E4; --niveau-wash: transparent; }
 
+/* Même palette --niveau, hors contexte .match-card : réutilisée par les
+   pastilles et mini-cartes de l'onglet Agenda (19/09/2026). */
+.niv-france      { --niveau: #F5B400; }
+.niv-pn          { --niveau: #12386F; }
+.niv-region      { --niveau: #3B76CE; }
+.niv-departement { --niveau: #64748B; }
+.niv-3x3         { --niveau: var(--red); }
+.niv-autre       { --niveau: #C8D2E4; }
+
 /* MODIFICATION 10 — mode de règlement inhabituel.
    Quand c'est le club recevant qui paie, il faut penser à réclamer sur
    place : la carte passe au rouge et porte un panneau d'avertissement.
@@ -1437,7 +1505,7 @@ tr:last-child td { border-bottom: 0; }
     border-radius: 0;
     border: 0;
     border-right: 1px solid var(--line);
-    background: #fff;
+    background: var(--surface);
     box-shadow: 4px 0 16px rgba(10, 31, 68, 0.05);
     backdrop-filter: none;
     overflow-y: auto;
@@ -1521,7 +1589,7 @@ tr:last-child td { border-bottom: 0; }
 .qcm-q-text { margin: 0; font-size: 16px; font-weight: 700; color: var(--navy-900); line-height: 1.35; }
 .qcm-q-total { display: inline-block; margin-top: 6px; color: var(--navy-600); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
-.qcm-opts-wrap { padding: 16px 18px 18px; background: #fff; }
+.qcm-opts-wrap { padding: 16px 18px 18px; background: var(--surface); }
 .qcm-opts-label { margin: 0 0 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 
 .qcm-opts { display: grid; gap: 9px; }
@@ -1535,12 +1603,12 @@ tr:last-child td { border-bottom: 0; }
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
-.qcm-opt:hover { border-color: #C2D0E8; background: #fff; }
+.qcm-opt:hover { border-color: #C2D0E8; background: var(--surface); }
 .qcm-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
 .qcm-opt-mark {
   flex: 0 0 auto; width: 27px; height: 27px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; border: 1.5px solid var(--line); background: #fff;
+  border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface);
   font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted);
   transition: all 0.15s ease;
 }
@@ -1560,8 +1628,8 @@ tr:last-child td { border-bottom: 0; }
   padding: 3px 10px; border-radius: 999px;
   font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
 }
-.qcm-result-tag.ok { color: var(--green); background: #fff; }
-.qcm-result-tag.ko { color: var(--red); background: #fff; }
+.qcm-result-tag.ok { color: var(--green); background: var(--surface-2); }
+.qcm-result-tag.ko { color: var(--red); background: var(--surface-2); }
 .qcm-opts--result > div {
   display: flex; align-items: center; gap: 12px;
   padding: 13px 15px; border: 1.5px solid var(--line); border-radius: var(--radius-md);
@@ -1607,3 +1675,108 @@ tr:last-child td { border-bottom: 0; }
 .eval-dropzone-text { margin: 0; font-weight: 600; color: var(--navy-900); }
 .eval-dropzone-link { color: var(--navy-700); text-decoration: underline; cursor: pointer; }
 .eval-dropzone-sub { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+
+/* =====================================================
+   Agenda (19/09/2026) — vue calendrier mensuelle, lecture seule.
+   Grille 7 colonnes (Lundi -> Dimanche), pastilles colorées par niveau
+   (mêmes couleurs --niveau que les cartes match), clic jour -> liste.
+   ===================================================== */
+
+.agenda-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.agenda-nav { display: flex; align-items: center; gap: 10px; }
+.agenda-month-label {
+  min-width: 160px;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--navy-900);
+}
+.agenda-nav .small-btn { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+
+.agenda-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  box-shadow: var(--shadow-soft);
+}
+.agenda-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 4px 0 8px;
+}
+.agenda-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--body);
+  cursor: default;
+}
+.agenda-day:disabled { opacity: 0.55; cursor: default; }
+.agenda-day.is-outside { opacity: 0.4; }
+.agenda-day.has-matches { cursor: pointer; background: var(--surface); border-color: var(--line); }
+.agenda-day.has-matches:hover { border-color: var(--navy-600); }
+.agenda-day.is-today .agenda-day-num {
+  background: var(--navy-900); color: #fff; border-radius: 999px;
+  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+}
+.agenda-day.is-selected { border-color: var(--red); box-shadow: 0 0 0 2px rgba(228, 0, 43, 0.18); }
+.agenda-day-num { font-size: 13px; font-weight: 600; }
+.agenda-day-dots { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 44px; }
+.agenda-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--niveau, var(--navy-600)); }
+.agenda-dot-more { font-size: 9px; font-weight: 700; color: var(--muted); line-height: 7px; }
+
+#agendaDayMatches { margin-top: 16px; }
+.agenda-day-title {
+  margin: 0 0 10px 4px;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--navy-900);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.agenda-day-cards { display: grid; gap: 9px; }
+.agenda-match-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--niveau, var(--navy-600));
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  box-shadow: var(--shadow-soft);
+}
+.agenda-match-title { margin-top: 6px; font-weight: 700; color: var(--navy-900); font-size: 14.5px; }
+.agenda-match-meta { margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+
+@media (max-width: 520px) {
+  .agenda-month-label { min-width: 0; font-size: 15px; }
+  .agenda-day { min-height: 44px; }
+}
