@@ -366,7 +366,15 @@ function renderAll() {
   renderTroisx3();
   renderPaiements();
   renderStats();
-  if (state.statsSubView === "avancee") renderAnalyse();
+  // Ne (re)construire les graphiques Chart.js que si le panneau Stats est
+  // réellement visible : sinon le canvas a une taille 0 (display:none via
+  // .panel), Chart.js dimensionne les graphiques à 0px et ils restent
+  // vides même après un retour sur l'onglet — c'est ce qui donnait
+  // l'impression que « les graphiques ont disparu » lors de la fusion
+  // Stats/Analyse (19/09/2026). setActiveTab() met déjà state.activeTab
+  // et la classe .panel.active AVANT d'appeler renderAll(), donc ce test
+  // capture bien le retour sur l'onglet Stats en mode "avancee".
+  if (state.statsSubView === "avancee" && state.activeTab === "stats") renderAnalyse();
   renderAgenda();
   renderAlertes();
   renderExport();
