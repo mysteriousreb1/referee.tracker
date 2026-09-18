@@ -274,6 +274,7 @@ select:focus, input:focus, textarea:focus {
   backdrop-filter: blur(12px);
 }
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -290,6 +291,28 @@ select:focus, input:focus, textarea:focus {
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+/* Badge de notification sur un onglet (nb d'alertes actives / paiements
+   en retard) — masqué (attribut [hidden]) tant que le compteur est à 0,
+   ajouté le 19/09/2026 en même temps que Contacts/Procédures. */
+.tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--surface-a);
 }
 /* Icônes SVG (trait fin, currentColor) à la place des emojis natifs :
    les emojis rendent différemment selon l'OS et détonnent avec le
