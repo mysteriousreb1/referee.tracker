@@ -115,20 +115,71 @@ function bindUi() {
     renderAll();
   });
 
-  // Filtres rapides Niveau / Paiement / Format (19/09/2026) — les <select>
-  // existaient déjà dans index.html mais n'étaient reliés à rien.
+  // Filtres rapides Niveau / Paiement / Format (19/09/2026), repliés dans un
+  // menu déroulant "Filtre" (20/09/2026) pour alléger la barre de recherche.
   document.getElementById("filterNiveauSelect").addEventListener("change", e => {
     state.filterNiveau = e.target.value;
+    updateFilterBadge_();
     renderAll();
   });
   document.getElementById("filterStatutSelect").addEventListener("change", e => {
     state.filterStatut = e.target.value;
+    updateFilterBadge_();
     renderAll();
   });
   document.getElementById("filterFormatSelect").addEventListener("change", e => {
     state.filterFormat = e.target.value;
+    updateFilterBadge_();
     renderAll();
   });
+
+  const filterBtn = document.getElementById("filterDropdownBtn");
+  const filterPanel = document.getElementById("filterDropdownPanel");
+  if (filterBtn && filterPanel) {
+    filterBtn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      const open = filterPanel.hasAttribute("hidden");
+      if (open) filterPanel.removeAttribute("hidden"); else filterPanel.setAttribute("hidden", "");
+      filterBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    filterPanel.addEventListener("click", ev => ev.stopPropagation());
+    document.addEventListener("click", () => {
+      if (!filterPanel.hasAttribute("hidden")) {
+        filterPanel.setAttribute("hidden", "");
+        filterBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", ev => {
+      if (ev.key === "Escape" && !filterPanel.hasAttribute("hidden")) {
+        filterPanel.setAttribute("hidden", "");
+        filterBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  const filterResetBtn = document.getElementById("filterResetBtn");
+  if (filterResetBtn) {
+    filterResetBtn.addEventListener("click", () => {
+      state.filterNiveau = "";
+      state.filterStatut = "";
+      state.filterFormat = "";
+      ["filterNiveauSelect", "filterStatutSelect", "filterFormatSelect"].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) sel.value = "";
+      });
+      updateFilterBadge_();
+      renderAll();
+    });
+  }
+}
+
+/* Nombre de filtres actifs affiché en pastille sur le bouton "Filtre". */
+function updateFilterBadge_() {
+  const badge = document.getElementById("filterActiveCount");
+  if (!badge) return;
+  const n = [state.filterNiveau, state.filterStatut, state.filterFormat].filter(Boolean).length;
+  badge.textContent = String(n);
+  badge.hidden = n === 0;
 }
 
 /* Remplit les 3 <select> de filtre rapide à partir des valeurs réellement
@@ -157,6 +208,8 @@ function buildQuickFilterSelects_() {
 
   const formats = [...new Set(rows.map(r => r._format).filter(Boolean))].sort();
   fillSelect("filterFormatSelect", formats, state.filterFormat);
+
+  updateFilterBadge_();
 }
 
 /* ---------------- Saisons ---------------- */
@@ -1077,7 +1130,16 @@ function buildSmsCollegue(row) {
   if (niveau === "france") {
     lignes.push("", "Tu souhaites prendre la tenue rouge ou noir ?");
   }
-  if (niveau === "france" || niveau === "region") {
+  // MODIFICATION 19/09/2026 — clause covoiturage conditionnée : avant, elle
+  // sortait dans TOUS les messages France/Région, même pour un trajet à côté.
+  // Le système ne connaît pas l'adresse du collègue (condition réelle :
+  // trajet > 1h15 ET collègue à 25-30 km de chez toi, donc pas exploitable
+  // telle quelle) — on se rabat sur un indicateur qu'on a vraiment : TON
+  // propre trajet aller (estimé à 70 km/h) dépasse 1h15. Si ton trajet est
+  // court, pas de covoiturage à proposer même en France/Région.
+  const kmAR = toNumber(get(row, "Km A/R stats"));
+  const trajetAllerMin = kmAR > 0 ? (kmAR / 2) / 70 * 60 : 0;
+  if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
     lignes.push("", "Si tu souhaite faire du covoiturage, pas de soucis dis moi juste comment tu veux qu'on s'organise");
   }
   lignes.push("", "A plus Clément !");
@@ -1117,23 +1179,54 @@ function renderActions(row) {
   return links.length ? `<div class="actions">${links.join("")}</div>` : "";
 }
 
+/* Mercredi de la semaine qui suit une date donnée (JJ/MM/AAAA) — sert au
+   pointage des virements CF Jeunes (vérif à J+1 semaine, le mercredi). */
+function mercrediSemaineSuivante_(dateStr) {
+  const d = parseFrDate(dateStr);
+  if (!d) return "";
+  const jour = d.getDay(); // 0=dim ... 3=mer ... 6=sam
+  const decalageVersMercrediCourant = (3 - jour + 7) % 7;
+  const cible = new Date(d);
+  cible.setDate(d.getDate() + decalageVersMercrediCourant + 7);
+  return formatDateShort(cible);
+}
+
 function renderPaymentControl(row) {
   const uid = escapeHtml(get(row, "UID"));
   const current = get(row, "Statut paiement") || "À recevoir";
   const prevu = get(row, "Date paiement");
   const typePaiement = get(row, "Paiement Type") || "";
+  const niveauAdmin = get(row, "Niveau administratif") || "";
+  const categorie = get(row, "Catégorie d'âge") || "";
 
   // MODIFICATION 15/09/2026 — Bloc B : les matchs de Championnat de
-  // France Jeunes sont payés par les 2 clubs (chèque ou virement, choix
-  // à faire) — rappel de faire signer la convocation sur place.
+  // France Jeunes payés à parts égales entre 2 clubs (chèque ou virement,
+  // choix à faire) — rappel de faire signer la convocation sur place.
   const estPartsEgales = typePaiement === "Parts égales (2 clubs)" && current !== "Bénévole";
+
+  // MODIFICATION 19/09/2026 — CF Jeunes (U15 France, U18 France M/F) payés
+  // par le club recevant : le choix chèque/virement doit aussi être
+  // proposé ici (jusque-là réservé aux « parts égales »), Région/CD67
+  // restant virement par défaut sans choix.
+  const estCfJeunesClubRecevant = typePaiement === "Association recevante"
+    && niveauAdmin === "Championnat de France"
+    && (categorie === "U15" || categorie === "U18")
+    && current !== "Bénévole";
+
+  const proposerChoixModePaiement = estPartsEgales || estCfJeunesClubRecevant;
   const modePaiement = get(row, "Mode paiement") || "";
+
+  // Virement CF Jeunes : à vérifier le mercredi de la semaine suivant le match
+  // (chèques : encaissés à la banque tous les 15 jours le mardi — hors appli).
+  const dateVerifVirement = (estCfJeunesClubRecevant && modePaiement === "Virement" && current === "À recevoir")
+    ? mercrediSemaineSuivante_(get(row, "Date match"))
+    : "";
 
   // Échéancier CD67 : au-delà de 10 jours après la date de paiement
   // attendue (donc à partir du 20 du mois), on signale le retard.
   const estAssociationRecevante = typePaiement === "Association recevante";
   let retardCD67 = false;
-  if (estAssociationRecevante && current === "À recevoir" && prevu) {
+  if (estAssociationRecevante && !estCfJeunesClubRecevant && current === "À recevoir" && prevu) {
     const m = String(prevu).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) {
       const limite = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]) + 10);
@@ -1151,14 +1244,15 @@ function renderPaymentControl(row) {
         ${PAYMENT_STATUSES.map(s => `<option value="${escapeHtml(s)}" ${s === current ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
       </select>
     </div>
-    ${estPartsEgales ? `
+    ${proposerChoixModePaiement ? `
     <div class="payment-row-alert">
-      <div class="badge-parts-egales" title="Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place.">⚠ Parts égales — imprime ta convocation</div>
+      <div class="badge-parts-egales" title="${estPartsEgales ? "Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place." : "CF Jeunes — le club recevant paie par chèque ou virement."}">⚠ ${estPartsEgales ? "Parts égales — imprime ta convocation" : "CF Jeunes — choisis le mode de paiement"}</div>
       <select class="payment-mode-select" data-uid="${uid}">
         <option value="" ${modePaiement === "" ? "selected" : ""}>Mode de paiement à choisir…</option>
         <option value="Chèque" ${modePaiement === "Chèque" ? "selected" : ""}>Chèque</option>
         <option value="Virement" ${modePaiement === "Virement" ? "selected" : ""}>Virement</option>
       </select>
+      ${dateVerifVirement ? `<div class="card-sub">À vérifier le ${escapeHtml(dateVerifVirement)} (mercredi suivant le match)</div>` : ""}
     </div>` : ""}
     ${retardCD67 ? `
     <div class="payment-row-alert">
@@ -2791,12 +2885,21 @@ function renderExport() {
       <button class="small-btn secondary" type="button" id="copyExportBtn"${rows.length ? "" : " disabled"}>Copier en texte</button>
     </div>
 
+    <div class="table-card" style="padding:14px; margin-top:14px">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
+        <strong>Carte des salles — nombre de fois arbitré</strong>
+        <button class="small-btn secondary" type="button" id="exportMapBtn"${rows.length ? "" : " disabled"}>Afficher la carte</button>
+      </div>
+      <p class="card-sub" style="margin:6px 0 0">Géocodage un peu lent (respect du quota de l'API OSM gratuite, ~1 salle/seconde) — normal.</p>
+      <div id="exportMap" style="height:320px; border-radius:12px; margin-top:10px; display:none"></div>
+    </div>
+
     ${rows.length ? `
     <div class="table-card">
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th>
+            <tr><th>Date</th><th>Format</th><th>Niveau</th><th>Rencontre</th><th>Lieu</th>
                 <th class="num">Km</th><th class="num">Brut</th><th class="num">Carburant</th><th class="num">Net</th><th>Paiement</th></tr>
           </thead>
           <tbody>
@@ -2805,6 +2908,7 @@ function renderExport() {
               return `<tr>
                 <td>${escapeHtml(get(r, "Date match"))}</td>
                 <td>${escapeHtml(r._format)}</td>
+                <td>${escapeHtml(get(r, "Niveau administratif"))}</td>
                 <td>${escapeHtml(rencontreLabel(r))}</td>
                 <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
                 <td class="num">${formatNumber(r._km, "")}</td>
@@ -2849,6 +2953,82 @@ function renderExport() {
     try { await navigator.clipboard.writeText(buildExportText()); setStatus("Export copié", "ok"); }
     catch { setStatus("Copie impossible — utilise le PDF", "error"); }
   });
+
+  const mapBtn = document.getElementById("exportMapBtn");
+  if (mapBtn) mapBtn.addEventListener("click", () => genererCarteSalles_(rows));
+}
+
+/* MODIFICATION 20/09/2026 — carte de France des salles arbitrées, avec un
+   marqueur par salle dont la taille reflète le nombre de fois où tu y as
+   arbitré sur la période sélectionnée. Réutilise geocode() (déjà présent
+   pour les mini-cartes par match) et le cache pour ne jamais re-géocoder
+   deux fois la même adresse — Nominatim limite à ~1 requête/seconde.
+   Volontairement déclenché par bouton (pas au chargement de l'onglet) :
+   géocoder 30-40 salles à chaque ouverture serait lent et inutile tant
+   que tu ne veux pas cette carte précise. */
+if (!state.geocodeCache) state.geocodeCache = {};
+
+async function geocodeAvecCache_(adresse) {
+  if (!adresse) return null;
+  if (state.geocodeCache[adresse]) return state.geocodeCache[adresse];
+  const res = await geocode(adresse);
+  if (res) state.geocodeCache[adresse] = res;
+  return res;
+}
+
+async function genererCarteSalles_(rows) {
+  const conteneur = document.getElementById("exportMap");
+  const bouton = document.getElementById("exportMapBtn");
+  if (!conteneur || typeof L === "undefined") return;
+
+  // Regroupement par salle (adresse si connue, sinon ville+nom de salle).
+  const parSalle = {};
+  rows.forEach(r => {
+    const salle = cleanText(get(r, "Salle")) || cleanText(get(r, "Ville"));
+    if (!salle) return;
+    const adresse = cleanText(get(r, "Adresse")) || salle;
+    const cle = adresse;
+    if (!parSalle[cle]) parSalle[cle] = { salle, adresse, count: 0 };
+    parSalle[cle].count++;
+  });
+  const entrees = Object.values(parSalle);
+  if (!entrees.length) { setStatus("Aucune salle à placer sur cette période", "error"); return; }
+
+  bouton.disabled = true;
+  bouton.textContent = "Géocodage en cours…";
+  conteneur.style.display = "";
+
+  if (state.exportMapInstance) { state.exportMapInstance.remove(); state.exportMapInstance = null; }
+  const carte = L.map(conteneur, { scrollWheelZoom: false }).setView([HOME.lat, HOME.lon], 8);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18, attribution: "© OpenStreetMap"
+  }).addTo(carte);
+  L.marker([HOME.lat, HOME.lon]).addTo(carte).bindPopup("Domicile");
+  state.exportMapInstance = carte;
+
+  const points = [[HOME.lat, HOME.lon]];
+  const maxCount = Math.max(...entrees.map(e => e.count));
+
+  for (const e of entrees) {
+    const dejaEnCache = !!state.geocodeCache[e.adresse];
+    const dest = await geocodeAvecCache_(e.adresse);
+    if (dest) {
+      const rayon = 8 + (e.count / maxCount) * 18; // 8 à 26 px selon la fréquence
+      L.circleMarker([dest.lat, dest.lon], {
+        radius: rayon, color: "#E4002B", weight: 2, fillColor: "#E4002B", fillOpacity: 0.35
+      }).addTo(carte).bindPopup(`<b>${escapeHtml(e.salle)}</b><br>${e.count} fois arbitré`);
+      points.push([dest.lat, dest.lon]);
+    }
+    // Respecte le quota Nominatim (max 1 requête/seconde) — seulement quand
+    // l'appel vient réellement d'interroger le réseau (pas un hit de cache).
+    if (!dejaEnCache) await new Promise(res => setTimeout(res, 1100));
+  }
+
+  if (points.length > 1) carte.fitBounds(points, { padding: [24, 24] });
+  setTimeout(() => carte.invalidateSize(), 80);
+
+  bouton.disabled = false;
+  bouton.textContent = "Actualiser la carte";
 }
 
 /* Export CSV — un fichier tiers (Excel, Sheets, compta) préfère des
@@ -2857,13 +3037,13 @@ function renderExport() {
 function downloadExportCsv() {
   const rows = exportRows();
   if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
-  const header = ["Date", "Format", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net (€)", "Paiement"];
+  const header = ["Date", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net (€)", "Paiement"];
   const csvEscape = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
   const lines = [header.map(csvEscape).join(";")];
   rows.forEach(r => {
     const c = realFuelCostClient(r._km, r._date);
     lines.push([
-      get(r, "Date match"), r._format, rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
+      get(r, "Date match"), r._format, get(r, "Niveau administratif"), rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
       r._km, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), get(r, "Statut paiement")
     ].map(csvEscape).join(";"));
   });
@@ -2896,7 +3076,7 @@ function buildExportText() {
     `Détail :`,
     ...rows.map(r => {
       const c = realFuelCostClient(r._km, r._date);
-      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
+      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${get(r, "Niveau administratif")} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
     })
   ].join("\n");
 }
@@ -2972,6 +3152,7 @@ function generateExportPdf() {
       pdfSafe(get(r, "Date match")),
       pdfSafe(get(r, "Heure/RDV")),
       pdfSafe(r._format),
+      pdfSafe(get(r, "Niveau administratif")),
       pdfSafe(rencontreLabel(r)),
       pdfSafe(get(r, "Ville") || get(r, "Salle")),
       pdfSafe(formatNumber(r._km, "")),
@@ -2984,9 +3165,9 @@ function generateExportPdf() {
 
   doc.autoTable({
     startY: 52,
-    head: [["Date", "Heure", "Format", "Rencontre", "Lieu", "Km", "Brut", "Carburant", "Net", "Paiement"]],
+    head: [["Date", "Heure", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut", "Carburant", "Net", "Paiement"]],
     body: body,
-    foot: [["", "", "", "TOTAL", "", pdfSafe(formatNumber(t.km, "")), pdfSafe(formatMoney(t.gross)),
+    foot: [["", "", "", "", "TOTAL", "", pdfSafe(formatNumber(t.km, "")), pdfSafe(formatMoney(t.gross)),
             pdfSafe(formatMoney(t.cost)), pdfSafe(formatMoney(t.net)), ""]],
     theme: "grid",
     styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: [12, 23, 48], lineColor: [220, 227, 239] },
@@ -2994,10 +3175,10 @@ function generateExportPdf() {
     footStyles: { fillColor: [242, 245, 251], textColor: navy, fontStyle: "bold" },
     alternateRowStyles: { fillColor: [246, 248, 252] },
     columnStyles: {
-      0: { cellWidth: 20 }, 1: { cellWidth: 15 }, 2: { cellWidth: 16 },
-      5: { halign: "right", cellWidth: 16 }, 6: { halign: "right", cellWidth: 22 },
-      7: { halign: "right", cellWidth: 22 }, 8: { halign: "right", cellWidth: 22, textColor: green },
-      9: { cellWidth: 26 }
+      0: { cellWidth: 18 }, 1: { cellWidth: 13 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 },
+      6: { halign: "right", cellWidth: 14 }, 7: { halign: "right", cellWidth: 20 },
+      8: { halign: "right", cellWidth: 20 }, 9: { halign: "right", cellWidth: 20, textColor: green },
+      10: { cellWidth: 22 }
     },
     margin: { left: 12, right: 12 },
     didDrawPage: data => {
