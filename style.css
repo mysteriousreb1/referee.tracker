@@ -294,6 +294,14 @@ button, input, select, textarea { font-family: inherit; }
   .filter-dropdown-panel { left: 0; right: 0; min-width: 0; }
 }
 
+/* Le hidden HTML ne suffit pas ici : notre display:flex ci-dessus a la même
+   priorité CSS que la règle [hidden] du navigateur et gagne (dernière
+   déclarée) — sans cette ligne le panneau reste affiché en permanence,
+   c'était la vraie cause du menu qui "ne se rétracte pas" (20/09/2026). */
+.filter-dropdown-panel[hidden] {
+  display: none;
+}
+
 .filter-reset-btn {
   border: 1px solid var(--line);
   border-radius: 12px;
