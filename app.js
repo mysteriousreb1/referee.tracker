@@ -1154,7 +1154,6 @@ function renderActions(row) {
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [];
   if (address) {
-    links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
     links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   }
   if (phone && smsDisponible(row)) {
@@ -1249,6 +1248,7 @@ function renderPaymentControl(row) {
       <div class="badge-parts-egales" title="${estPartsEgales ? "Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place." : "CF Jeunes — le club recevant paie par chèque ou virement."}">⚠ ${estPartsEgales ? "Parts égales — imprime ta convocation" : "CF Jeunes — choisis le mode de paiement"}</div>
       <select class="payment-mode-select" data-uid="${uid}">
         <option value="" ${modePaiement === "" ? "selected" : ""}>Mode de paiement à choisir…</option>
+        <option value="Espèce" ${modePaiement === "Espèce" ? "selected" : ""}>Espèce</option>
         <option value="Chèque" ${modePaiement === "Chèque" ? "selected" : ""}>Chèque</option>
         <option value="Virement" ${modePaiement === "Virement" ? "selected" : ""}>Virement</option>
       </select>
@@ -1509,10 +1509,10 @@ function renderStats() {
     ${renderAggTable("Par saison", s.par_saison, "Saison")}
     ${renderAggTable("Par mois", s.par_mois, "Mois")}
     ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}
-    ${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
+    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderTop("Top 3 salles (5×5)", s.top_salles)}
     ${renderTop("Top 3 villes", s.top_villes)}
-    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
+    ${renderTop("Top 3 niveaux arbitrés", s.par_niveau)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
     ${renderMatchsAnnules()}
     ${renderFormations()}
