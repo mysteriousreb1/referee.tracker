@@ -2837,17 +2837,37 @@ function renderAgendaMatchMini_(row) {
 
 function renderAlertes() {
   const root = document.getElementById("alertes");
-  /* Une alerte doit être actionnable. On ne retient donc que ce sur quoi
-     tu peux agir : un import raté, un statut à trancher, un club qui n'a
-     pas payé. Le mode de règlement, lui, se lit sur la carte. */
-  const rows = state.filteredRows.filter(r =>
+  /* Une alerte doit être actionnable : import raté / warning, statut à
+     trancher, ou paiement en retard. Refonte 25/09/2026 — regroupées par
+     type d'action (priorité : corriger > trancher > relancer), chaque
+     mission n'apparaissant qu'une seule fois. */
+  const base = state.filteredRows.filter(r =>
     r._format === "Alerte" ||
     hasWarningReel(r) ||
     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
     paiementEnRetard(r)
-  ).sort(sortByDateAsc);
-  if (!rows.length) { root.innerHTML = empty("Aucune alerte pour cette saison. Rien à corriger, rien à relancer."); return; }
-  root.innerHTML = `<h2 class="section-title">Alertes <span class="count">${rows.length}</span></h2><div class="cards">${rows.map(renderMatchCard).join("")}</div>`;
+  );
+  if (!base.length) { root.innerHTML = empty("Aucune alerte pour cette saison. Rien à corriger, rien à relancer."); return; }
+
+  const aCorriger = [], aTrancher = [], enRetard = [];
+  base.forEach(r => {
+    if (r._format === "Alerte" || hasWarningReel(r)) aCorriger.push(r);
+    else if (cleanText(get(r, "Statut paiement")) === "À vérifier") aTrancher.push(r);
+    else if (paiementEnRetard(r)) enRetard.push(r);
+  });
+  const groupes = [
+    ["À corriger", "Imports ratés ou warnings de traitement à lever.", aCorriger],
+    ["Statut à trancher", "Missions dont le paiement reste à qualifier.", aTrancher],
+    ["Retard de paiement", "Échéance prévue dépassée, sans réception enregistrée.", enRetard]
+  ];
+
+  root.innerHTML = `
+    <h2 class="section-title">Alertes <span class="count">${base.length}</span></h2>
+    ${groupes.filter(g => g[2].length).map(g => `
+      <h2 class="section-title alerte-groupe">${escapeHtml(g[0])} <span class="count">${g[2].length}</span></h2>
+      <div class="alerte-groupe-sub">${escapeHtml(g[1])}</div>
+      <div class="cards">${g[2].slice().sort(sortByDateAsc).map(renderMatchCard).join("")}</div>
+    `).join("")}`;
   attachCardListeners(root);
   attachPaymentListeners(root);
   attachContactListeners(root);
