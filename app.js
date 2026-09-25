@@ -493,12 +493,32 @@ function isPastMission(row) {
 
 /* ---------------- Render global ---------------- */
 
+/* Bloc 3/9 (25/09/2026) — Garde anti-écran-blanc : isole le rendu de chaque
+   onglet. Si un rendu jette, on affiche l'erreur DANS son panneau (au lieu
+   d'un écran blanc général) et on la logge en Console pour diagnostic ;
+   les autres onglets continuent de s'afficher normalement. */
+function safeRender_(fn, panelId, label) {
+  try { fn(); }
+  catch (err) {
+    console.error("[RenderError] " + (label || panelId) + " :", err);
+    const el = panelId ? document.getElementById(panelId) : null;
+    if (el) {
+      el.innerHTML = `
+        <div class="table-card" style="padding:16px">
+          <h2 class="section-title" style="margin-top:0">Affichage indisponible</h2>
+          <p class="card-sub" style="margin:0 0 10px">Une erreur est survenue en affichant « ${escapeHtml(label || panelId)} ». Le reste de l'application fonctionne. Détail technique ci-dessous (utile pour corriger) :</p>
+          <pre style="white-space:pre-wrap; font-size:12px; color:var(--danger); background:var(--surface-2); padding:10px; border-radius:8px; overflow:auto; margin:0">${escapeHtml(String((err && err.stack) || err))}</pre>
+        </div>`;
+    }
+  }
+}
+
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
-  renderMatchs();
-  renderTroisx3();
-  renderPaiements();
-  renderStats();
+  safeRender_(renderMatchs, "matchs", "Matchs");
+  safeRender_(renderTroisx3, "troisx3", "3×3");
+  safeRender_(renderPaiements, "paiements", "Paiements");
+  safeRender_(renderStats, "stats", "Statistiques");
   // Ne (re)construire les graphiques Chart.js que si le panneau Stats est
   // réellement visible : sinon le canvas a une taille 0 (display:none via
   // .panel), Chart.js dimensionne les graphiques à 0px et ils restent
@@ -507,14 +527,14 @@ function renderAll() {
   // Stats/Analyse (19/09/2026). setActiveTab() met déjà state.activeTab
   // et la classe .panel.active AVANT d'appeler renderAll(), donc ce test
   // capture bien le retour sur l'onglet Stats en mode "avancee".
-  if (state.statsSubView === "avancee" && state.activeTab === "stats") renderAnalyse();
-  renderAgenda();
-  renderAlertes();
-  renderExport();
-  renderQcm();
-  renderProgression();
-  renderContacts();
-  renderTabBadges_();
+  if (state.statsSubView === "avancee" && state.activeTab === "stats") safeRender_(renderAnalyse, "stats", "Analyse");
+  safeRender_(renderAgenda, "agenda", "Agenda");
+  safeRender_(renderAlertes, "alertes", "Alertes");
+  safeRender_(renderExport, "export", "Export");
+  safeRender_(renderQcm, "qcm", "QCM");
+  safeRender_(renderProgression, "progression", "Progression");
+  safeRender_(renderContacts, "contacts", "Contacts");
+  safeRender_(renderTabBadges_, null, "Badges");
 }
 
 /* Badges de notification sur les onglets Alertes / Paiements (19/09/2026).
