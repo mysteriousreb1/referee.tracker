@@ -7,7 +7,7 @@
 
 /* "Bénévole" : match arbitré gratuitement, en accord avec le club recevant.
    Rien n'est dû : ces missions sortent du restant à encaisser et des retards. */
-const PAYMENT_STATUSES = ["À recevoir", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
+const PAYMENT_STATUSES = ["À recevoir", "Reçu partiel", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
 const BENEVOLE = "Bénévole";
 
 let state = {
@@ -464,6 +464,10 @@ function normalizeRows(rows) {
     r._benevole = cleanText(get(r, "Statut paiement")) === "Bénévole";
     r._amountTheorique = toNumber(get(r, "Indemnité totale"));
     r._amount = r._benevole ? 0 : r._amountTheorique;
+    r._recu = toNumber(get(r, "Montant reçu"));
+    r._statutPaie = cleanText(get(r, "Statut paiement"));
+    r._encaisse = r._statutPaie === "Reçu" ? r._amount : (r._statutPaie === "Reçu partiel" ? Math.max(0, Math.min(r._recu, r._amount)) : 0);
+    r._reste = (r._benevole || r._statutPaie === "Reçu") ? 0 : (r._statutPaie === "Reçu partiel" ? Math.max(0, r._amount - r._recu) : r._amount);
     r._km = toNumber(get(r, "Km A/R stats"));
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
@@ -1285,7 +1289,7 @@ function renderRelance45_(rows) {
     .map(r => ({ r: r, j: Math.floor((Date.now() - parseFrDate(get(r, "Date paiement")).getTime()) / 86400000) }))
     .sort((a, b) => b.j - a.j);
   if (!aRelancer.length) return "";
-  const total = aRelancer.reduce((t, x) => t + x.r._amount, 0);
+  const total = aRelancer.reduce((t, x) => t + (x.r._reste || x.r._amount), 0);
   return `
     <div class="relance-box">
       <h2 class="section-title relance-title">À relancer — plus de ${RELANCE_JOURS} jours <span class="count">${aRelancer.length}</span></h2>
@@ -1300,12 +1304,12 @@ function renderPaiements() {
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
 
   const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
-  const order = ["À recevoir", "Écart à vérifier", "À vérifier", "Reçu", BENEVOLE];
+  const order = ["À recevoir", "Reçu partiel", "Écart à vérifier", "À vérifier", "Reçu", BENEVOLE];
 
   const statutDe = r => get(r, "Statut paiement") || "À recevoir";
   // Le bénévolat ne compte ni comme encaissé, ni comme dû.
-  const totalDu = rows.filter(r => statutDe(r) !== "Reçu" && statutDe(r) !== BENEVOLE).reduce((t, r) => t + r._amount, 0);
-  const totalRecu = rows.filter(r => statutDe(r) === "Reçu").reduce((t, r) => t + r._amount, 0);
+  const totalDu = rows.reduce((t, r) => t + (r._reste || 0), 0);
+  const totalRecu = rows.reduce((t, r) => t + (r._encaisse || 0), 0);
   const benevoles = rows.filter(r => statutDe(r) === BENEVOLE);
 
   /* Un statut (surtout « Reçu ») accumule vite des dizaines de missions
@@ -1437,10 +1441,18 @@ function attachPaymentListeners(root) {
   root.querySelectorAll(".payment-select").forEach(select => {
     select.addEventListener("change", async e => {
       const uid = e.target.dataset.uid, status = e.target.value;
+      let montant = "";
+      if (status === "Reçu partiel") {
+        const row0 = state.allRows.find(r => get(r, "UID") === uid);
+        const attendu = row0 ? toNumber(get(row0, "Indemnité totale")) : 0;
+        const saisi = prompt("Montant déjà reçu (€) — la part d'un des 2 clubs :", attendu ? (attendu / 2).toFixed(2) : "");
+        if (saisi === null) { e.target.value = row0 ? (get(row0, "Statut paiement") || "À recevoir") : "À recevoir"; return; }
+        montant = String(saisi).replace(",", ".").replace(/[^\d.]/g, "");
+      }
       e.target.disabled = true;
       setStatus("Mise à jour du paiement…", "");
       try {
-        const res = await jsonp("updatePaymentStatus", { uid, status });
+        const res = await jsonp("updatePaymentStatus", { uid, status, montant });
         if (!res.success) throw new Error(res.error || "Erreur update");
         const row = state.allRows.find(r => get(r, "UID") === uid);
         if (row) {
@@ -1451,6 +1463,7 @@ function attachPaymentListeners(root) {
           }
           if (status === "À recevoir") { row["Date réception"] = ""; row["Montant reçu"] = ""; }
           if (status === BENEVOLE) { row["Date réception"] = ""; row["Montant reçu"] = 0; }
+          if (status === "Reçu partiel") { row["Date réception"] = new Date().toLocaleDateString("fr-FR"); if (montant) row["Montant reçu"] = montant; }
         }
         setStatus("Paiement mis à jour", "ok");
         AN.statsCache = {}; // les délais/KPI avancés doivent être recalculés
