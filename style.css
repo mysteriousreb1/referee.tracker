@@ -1963,3 +1963,21 @@ tr:last-child td { border-bottom: 0; }
 /* Bloc 3 (25/09/2026) — Alertes regroupées par type d'action */
 .section-title.alerte-groupe { margin-top: 18px; }
 .alerte-groupe-sub { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+
+/* Bloc 4 (25/09/2026) — Durcissement iPhone, identité inchangée.
+   Filet de sécurité petit écran ; ne redéfinit PAS les grilles déjà gérées
+   plus haut (tabs, kpi-grid desktop), pour ne rien casser. */
+@media (max-width: 480px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  img, svg, table, pre { max-width: 100%; }
+  .cards { grid-template-columns: 1fr; }
+  /* Cibles tactiles confortables (>= 44px) sur les contrôles interactifs. */
+  .payment-select, .payment-mode-select, select, .small-btn, .action-link, .tab { min-height: 44px; }
+  /* Un mot long (nom de club/salle) ne doit pas provoquer de scroll. */
+  .agenda-match-title, .card-title, .section-title, td, .kpi label, .relance-sub, .alerte-groupe-sub { overflow-wrap: anywhere; }
+  /* Ajouts Bloc 2/3 lisibles en 375px. */
+  .cf-chart { padding: 8px 8px 4px; }
+  .cf-chart svg { height: 110px; }
+  .cf-chart-axis { font-size: 10px; }
+  .relance-box { padding: 8px 10px 12px; }
+}
