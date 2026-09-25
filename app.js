@@ -1154,6 +1154,7 @@ function renderActions(row) {
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [];
   if (address) {
+    links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
     links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   }
   if (phone && smsDisponible(row)) {
@@ -1248,7 +1249,6 @@ function renderPaymentControl(row) {
       <div class="badge-parts-egales" title="${estPartsEgales ? "Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place." : "CF Jeunes — le club recevant paie par chèque ou virement."}">⚠ ${estPartsEgales ? "Parts égales — imprime ta convocation" : "CF Jeunes — choisis le mode de paiement"}</div>
       <select class="payment-mode-select" data-uid="${uid}">
         <option value="" ${modePaiement === "" ? "selected" : ""}>Mode de paiement à choisir…</option>
-        <option value="Espèce" ${modePaiement === "Espèce" ? "selected" : ""}>Espèce</option>
         <option value="Chèque" ${modePaiement === "Chèque" ? "selected" : ""}>Chèque</option>
         <option value="Virement" ${modePaiement === "Virement" ? "selected" : ""}>Virement</option>
       </select>
@@ -1450,6 +1450,96 @@ function attachPaymentListeners(root) {
 
 /* ---------------- Stats ---------------- */
 
+/* ===================================================================
+   BLOC 2 — Trésorerie prévisionnelle + Comparaison saison N-1 (front)
+   Ajouté le 25/09/2026. Appelés depuis renderStats() (sous-vue overview).
+   Consomment s.cash_flow et s.comparaison_saison_precedente.
+   =================================================================== */
+
+function renderCashFlow_(cf) {
+  if (!cf) return "";
+  const h = cf.horizon || {};
+  const ret = cf.en_retard || { montant: 0, nb: 0 };
+  const proch = cf.prochaine;
+  const spark = cashFlowSparkline_(cf.echeances || []);
+  return `
+    <h2 class="section-title">Trésorerie prévisionnelle</h2>
+    <div class="kpi-grid">
+      <div class="kpi hero">
+        <label>Reste à percevoir</label>
+        <strong>${formatMoney(cf.a_percevoir_total)}</strong>
+        <span class="sub">${proch ? "prochaine échéance : " + escapeHtml(proch.date) + " · " + money(proch.montant) : "aucune échéance à venir"}</span>
+      </div>
+      <div class="kpi"><label>D'ici 30 jours</label><strong>${formatMoney(h.j30)}</strong></div>
+      <div class="kpi"><label>D'ici 60 jours</label><strong>${formatMoney(h.j60)}</strong></div>
+      <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
+      <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
+    </div>
+    ${spark}
+    ${(cf.echeances && cf.echeances.length) ? `
+    <div class="table-card"><div class="table-wrap"><table class="cf-table">
+      <thead><tr><th>Échéance</th><th>Dans</th><th>Missions</th><th>Montant</th><th>Cumulé</th></tr></thead>
+      <tbody>${cf.echeances.map(e => `<tr>
+        <td>${escapeHtml(e.date)}</td>
+        <td>${e.jours <= 0 ? "auj." : "J+" + e.jours}</td>
+        <td>${e.nb}</td>
+        <td>${money(e.montant)}</td>
+        <td class="cf-cumul">${money(e.cumul)}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : ""}
+    <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
+}
+
+/* Courbe cumulée des encaissements à venir — SVG maison, aucun canvas :
+   pas de problème de dimensionnement quand le panneau est masqué. */
+function cashFlowSparkline_(echeances) {
+  if (!echeances || echeances.length < 2) return "";
+  const W = 640, H = 130, PADX = 10, PADY = 16;
+  const last = echeances[echeances.length - 1];
+  const maxCumul = last.cumul || 1;
+  const maxJ = Math.max(1, last.jours);
+  const px = j => PADX + (Math.max(0, j) / maxJ) * (W - 2 * PADX);
+  const py = c => H - PADY - (c / maxCumul) * (H - 2 * PADY);
+  let line = `M ${px(0).toFixed(1)} ${py(0).toFixed(1)}`;
+  const dots = [];
+  echeances.forEach(e => {
+    const X = px(e.jours), Y = py(e.cumul);
+    line += ` L ${X.toFixed(1)} ${Y.toFixed(1)}`;
+    dots.push(`<circle cx="${X.toFixed(1)}" cy="${Y.toFixed(1)}" r="3.5" class="cf-dot"><title>${escapeHtml(e.date)} · ${money(e.cumul)} cumulés</title></circle>`);
+  });
+  const area = line + ` L ${px(maxJ).toFixed(1)} ${(H - PADY).toFixed(1)} L ${px(0).toFixed(1)} ${(H - PADY).toFixed(1)} Z`;
+  return `
+    <div class="cf-chart">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Courbe cumulée des encaissements à venir">
+        <path d="${area}" class="cf-area"/>
+        <path d="${line}" class="cf-line" fill="none"/>
+        ${dots.join("")}
+      </svg>
+      <div class="cf-chart-axis"><span>aujourd'hui</span><span>+${maxJ} j · ${money(maxCumul)}</span></div>
+    </div>`;
+}
+
+function renderComparaisonN1_(c) {
+  if (!c || !c.disponible) return "";
+  const cur = c.courante, prev = c.precedente, d = c.delta;
+  const fleche = v => v > 0 ? "▲" : (v < 0 ? "▼" : "＝");
+  const cls = v => v > 0 ? "delta-up" : (v < 0 ? "delta-down" : "");
+  const pctTxt = p => p === null ? "n/a" : (p > 0 ? "+" : "") + money(p).replace(" €", " %");
+  return `
+    <h2 class="section-title">Comparaison saison N-1 <span class="count">au même jour de saison</span></h2>
+    <div class="kpi-grid">
+      <div class="kpi hero">
+        <label>Net réel — ${escapeHtml(c.saison_courante)}</label>
+        <strong>${formatMoney(cur.net_reel)}</strong>
+        <span class="sub ${cls(d.net_reel)}">${fleche(d.net_reel)} ${pctTxt(d.net_reel_pct)} vs ${escapeHtml(c.saison_precedente)} (${formatMoney(prev.net_reel)})</span>
+      </div>
+      <div class="kpi"><label>Missions à ce jour</label><strong>${cur.missions}</strong><span class="sub ${cls(d.missions)}">${fleche(d.missions)} ${d.missions > 0 ? "+" : ""}${d.missions} vs ${prev.missions}</span></div>
+      <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(cur.indemnite)}</strong><span class="sub">N-1 : ${formatMoney(prev.indemnite)}</span></div>
+      <div class="kpi"><label>KM parcourus</label><strong>${formatNumber(cur.km, " km")}</strong><span class="sub">N-1 : ${formatNumber(prev.km, " km")}</span></div>
+    </div>
+    <div class="stat-note">${escapeHtml(c.note || "")}</div>`;
+}
+
 function renderStats() {
   const root = document.getElementById("statsFinancier");
   if (!root) return;
@@ -1491,6 +1581,9 @@ function renderStats() {
       <div class="kpi"><label>Reste à percevoir</label><strong>${formatMoney(t.a_recevoir_total)}</strong><span class="sub">${t.nb_a_recevoir} en attente</span></div>
     </div>
 
+    ${renderCashFlow_(s.cash_flow)}
+    ${renderComparaisonN1_(s.comparaison_saison_precedente)}
+
     <h2 class="section-title">Efficacité</h2>
     <div class="kpi-grid">
       <div class="kpi"><label>€ / km (indemnité)</label><strong>${money(m.eur_par_km)}</strong><span class="sub">0,40 €/km + match</span></div>
@@ -1509,10 +1602,10 @@ function renderStats() {
     ${renderAggTable("Par saison", s.par_saison, "Saison")}
     ${renderAggTable("Par mois", s.par_mois, "Mois")}
     ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}
-    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
+    ${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
     ${renderTop("Top 3 salles (5×5)", s.top_salles)}
     ${renderTop("Top 3 villes", s.top_villes)}
-    ${renderTop("Top 3 niveaux arbitrés", s.par_niveau)}
+    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
     ${renderMatchsAnnules()}
     ${renderFormations()}
