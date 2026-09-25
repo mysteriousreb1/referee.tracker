@@ -1278,6 +1278,22 @@ function attachCardListeners(root) {
 
 /* ---------------- Paiements ---------------- */
 
+/* Bloc 3 — Section « À relancer » (>45 j), en tête de l'onglet Paiements,
+   triée du plus ancien au plus récent (le plus urgent d'abord). */
+function renderRelance45_(rows) {
+  const aRelancer = rows.filter(paiementARelancer)
+    .map(r => ({ r: r, j: Math.floor((Date.now() - parseFrDate(get(r, "Date paiement")).getTime()) / 86400000) }))
+    .sort((a, b) => b.j - a.j);
+  if (!aRelancer.length) return "";
+  const total = aRelancer.reduce((t, x) => t + x.r._amount, 0);
+  return `
+    <div class="relance-box">
+      <h2 class="section-title relance-title">À relancer — plus de ${RELANCE_JOURS} jours <span class="count">${aRelancer.length}</span></h2>
+      <div class="relance-sub">${formatMoney(total)} en attente au-delà de ${RELANCE_JOURS} jours après l'échéance prévue. Du plus ancien (${aRelancer[0].j} j) au plus récent.</div>
+      <div class="cards">${aRelancer.map(x => renderMatchCard(x.r)).join("")}</div>
+    </div>`;
+}
+
 function renderPaiements() {
   const root = document.getElementById("paiements");
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
@@ -1310,6 +1326,7 @@ function renderPaiements() {
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
       ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
     </div>
+    ${renderRelance45_(rows)}
     ${order.filter(k => grouped[k]).map(status => {
       const liste = grouped[status].slice().sort(sortByDateDesc);
       const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
@@ -3440,6 +3457,18 @@ function paiementEnRetard(row) {
   if (!prevu) return false;
 
   return (Date.now() - prevu.getTime()) / 86400000 > RETARD_JOURS;
+}
+
+/* Bloc 3 (25/09/2026) — Relance active : au-delà de 45 j après l'échéance
+   prévue, une créance doit être relancée (le retard "normal" est déjà
+   signalé dès 30 j via paiementEnRetard / Alertes). */
+const RELANCE_JOURS = 45;
+function paiementARelancer(row) {
+  const statut = cleanText(get(row, "Statut paiement"));
+  if (statut === "Reçu" || statut === BENEVOLE) return false;
+  const prevu = parseFrDate(get(row, "Date paiement"));
+  if (!prevu) return false;
+  return (Date.now() - prevu.getTime()) / 86400000 > RELANCE_JOURS;
 }
 function normalizePhoneFr(v) {
   let d = String(v || "").replace(/[^\d+]/g, "");
