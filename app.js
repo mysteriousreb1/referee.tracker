@@ -308,6 +308,10 @@ function getSeasonsFrom2022ToCurrent() {
 function setActiveTab(tab) {
   state.activeTab = tab;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  // iPhone : la barre d'onglets est scrollable ; on ramène l'onglet actif à
+  // l'écran pour qu'il ne reste jamais caché hors du champ visible.
+  const ongletActif = document.querySelector(".tab.active");
+  if (ongletActif && ongletActif.scrollIntoView) { try { ongletActif.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) {} }
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   renderAll();
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
@@ -605,10 +609,10 @@ function renderTabBadges_() {
   const rows = state.filteredRows || [];
 
   const nbAlertes = rows.filter(r =>
-    r._format === "Alerte" ||
-    hasWarningReel(r) ||
-    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
-    paiementEnRetard(r)
+    (r._format === "Alerte" ||
+     hasWarningReel(r) ||
+     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
+     paiementEnRetard(r)) && !estAlerteParasite_(r)
   ).length;
   const badgeAlertes = document.getElementById("badgeAlertes");
   if (badgeAlertes) {
@@ -2935,10 +2939,10 @@ function renderAlertes() {
      type d'action (priorité : corriger > trancher > relancer), chaque
      mission n'apparaissant qu'une seule fois. */
   const base = state.filteredRows.filter(r =>
-    r._format === "Alerte" ||
-    hasWarningReel(r) ||
-    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
-    paiementEnRetard(r)
+    (r._format === "Alerte" ||
+     hasWarningReel(r) ||
+     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
+     paiementEnRetard(r)) && !estAlerteParasite_(r)
   );
   if (!base.length) { root.innerHTML = empty("Aucune alerte pour cette saison. Rien à corriger, rien à relancer."); return; }
 
@@ -3544,7 +3548,28 @@ function hasWarning(row) { return Boolean(get(row, "Warning général") || get(r
    règlement, vrai dès l'import et pour toujours. Posé en warning, il
    remplissait l'onglet Alertes en permanence. Il est signalé sur la carte
    (voir reglementSpecial) et retiré d'ici. */
-const WARNINGS_IGNORES = ["Paiement club à vérifier"];
+/* Audit 25/09/2026 — Nettoyage des alertes.
+   Les 6 dénominations officielles « INDEMNISÉ PAR » ne sont PAS des anomalies :
+   quand elles atterrissent en warning (amicaux, coupe, parts égales…), c'est
+   juste l'info de payeur, pas un problème → on les ignore côté alertes. */
+const WARNINGS_IGNORES = [
+  "Paiement club à vérifier",
+  "LE COMITE DEPARTEMENTAL",
+  "LA LIGUE REGIONALE",
+  "L'ASSOCIATION RECEVANTE",
+  "LA FEDERATION",
+  "LES ASSOCIATIONS A PARTS EGALES",
+  "L\u2019ASSOCIATION RECEVANTE"
+];
+/* Fausses lignes « Alerte » issues d'e-mails marketing/automatiques parsés à
+   tort (ex. « Your Superagent can now make phone calls »). On ne filtre QUE
+   les lignes _format === "Alerte" : jamais un vrai match. */
+const SPAM_ALERTE_MARQUEURS = ["superagent", "phone call", "make phone", "unsubscribe", "se désinscrire", "se desinscrire", "newsletter", "no-reply", "noreply", "do not reply", "mailjet", "notification email"];
+function estAlerteParasite_(row) {
+  if (row._format !== "Alerte") return false;
+  const txt = (String(rencontreLabel(row) || "") + " " + String(get(row, "Warning général") || "") + " " + String(get(row, "Recevant") || "") + " " + String(get(row, "Salle") || "")).toLowerCase();
+  return SPAM_ALERTE_MARQUEURS.some(m => txt.indexOf(m) !== -1);
+}
 
 function warningsReels(row) {
   return ["Warning général", "Warning finance", "Warning FBI"]
