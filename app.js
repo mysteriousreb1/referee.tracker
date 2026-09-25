@@ -10,6 +10,11 @@
 const PAYMENT_STATUSES = ["À recevoir", "Reçu partiel", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
 const BENEVOLE = "Bénévole";
 
+/* Bloc 9 (25/09/2026) — Perf & fiabilité */
+const APP_VERSION = "2026-09-25-b9";
+const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
+
 let state = {
   allRows: [],
   filteredRows: [],
@@ -71,10 +76,64 @@ function toggleTheme() {
 }
 
 
+/* Bloc 9 — Décoration retry du transport jsonp (défini dans rt-auth.js).
+   Ne réessaie QUE les actions de lecture (jamais une écriture, pour éviter
+   tout double envoi). Transparent : même Promise en retour. Guardé : si
+   jsonp n'est pas décorable, aucun effet. */
+function rtInstallRetry_() {
+  const wrap = name => {
+    const raw = window[name];
+    if (typeof raw !== "function" || raw._rtWrapped) return;
+    const MAX = 3, BASE = 800, sleep = ms => new Promise(r => setTimeout(r, ms));
+    const wrapped = function (action) {
+      const args = arguments, self = this;
+      if (RT_ACTIONS_LECTURE.indexOf(String(action)) === -1) return raw.apply(self, args);
+      let essai = 0;
+      const tenter = () => raw.apply(self, args).then(r => r, err => {
+        essai++; RT_NET.retries++;
+        if (essai >= MAX) { RT_NET.echecs++; throw err; }
+        return sleep(BASE * essai).then(tenter);
+      });
+      return tenter();
+    };
+    wrapped._rtWrapped = true;
+    try { window[name] = wrapped; } catch (e) {}
+  };
+  wrap("jsonp"); wrap("jsonpFrais");
+}
+
+/* Keep-warm : ping léger tant que l'onglet est visible, pour éviter le cold
+   start d'Apps Script (~1 min d'écran blanc au premier appel). */
+function rtStartKeepWarm_() {
+  if (RT_NET._kwId) return;
+  RT_NET._kwId = setInterval(() => {
+    if (document.visibilityState !== "visible" || typeof jsonp !== "function") return;
+    jsonp("ping").then(() => { RT_NET.keepWarm++; RT_NET.dernierPing = new Date().toLocaleTimeString("fr-FR"); }).catch(() => {});
+  }, 4 * 60 * 1000);
+}
+
+/* Diagnostic — tape RTDiag() dans la Console (F12) pour un état de santé. */
+window.RTDiag = function () {
+  const d = {
+    version: APP_VERSION,
+    enLigne: navigator.onLine,
+    onglet_actif: state.activeTab,
+    lignes_chargees: (state.allRows || []).length,
+    dernier_chargement: state._lastLoadTs ? new Date(state._lastLoadTs).toLocaleString("fr-FR") : "—",
+    stats_serveur: state.serverStats ? "chargées" : "absentes",
+    reseau: { retries: RT_NET.retries, echecs: RT_NET.echecs, keepWarm: RT_NET.keepWarm, dernierPing: RT_NET.dernierPing }
+  };
+  console.log("[RT Diagnostic]", d);
+  return d;
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   bindUi();
   buildSeasonSelect();
+  rtInstallRetry_();
+  rtStartKeepWarm_();
+  console.log("%cReferee Tracker " + APP_VERSION, "font-weight:bold");
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
   setTimeout(verifierAffichageInitial, 1500);
   setTimeout(verifierAffichageInitial, 5000);
@@ -262,6 +321,7 @@ function loadData() {
     .then(res => {
       if (!res.success) throw new Error(res.error || "Erreur API");
       state.allRows = normalizeRows(res.data || []);
+      state._lastLoadTs = Date.now();
       setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
       buildQuickFilterSelects_();
 
