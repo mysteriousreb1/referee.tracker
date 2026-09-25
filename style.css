@@ -1959,3 +1959,7 @@ tr:last-child td { border-bottom: 0; }
 .relance-box { border: 1px solid var(--red); background: var(--red-soft); border-radius: var(--radius-md); padding: 10px 14px 14px; margin: 4px 0 18px; }
 .relance-title { margin-top: 6px; color: var(--red); }
 .relance-sub { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+
+/* Bloc 3 (25/09/2026) — Alertes regroupées par type d'action */
+.section-title.alerte-groupe { margin-top: 18px; }
+.alerte-groupe-sub { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
