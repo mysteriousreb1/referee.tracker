@@ -511,24 +511,33 @@ select:focus, input:focus, textarea:focus {
 }
 .match-card.open .card-body { display: block; }
 
-.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.detail-section { margin-top: 10px; }
+.detail-section h4 {
+  margin: 0 0 8px 2px;
+  font-family: var(--display);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
 /* Les champs longs (adresse, noms de clubs) gardent toute la largeur :
    coupés en deux colonnes ils deviennent illisibles. */
 .detail--wide { grid-column: 1 / -1; }
 .detail {
   min-width: 0;
-  padding: 11px 12px;
-  border-radius: 13px;
+  padding: 7px 10px;
+  border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid #E7EDF6;
 }
 .detail label {
-  display: block; margin-bottom: 4px;
+  display: block; margin-bottom: 2px;
   color: var(--muted);
-  font-size: 10px; font-weight: 700;
+  font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.detail span { display: block; color: var(--text); font-size: 14px; font-weight: 600; line-height: 1.25; word-break: break-word; }
+.detail span { display: block; color: var(--text); font-size: 12.5px; font-weight: 600; line-height: 1.2; word-break: break-word; }
 .detail.money span { font-family: var(--mono); color: var(--green); }
 .detail.cost span { font-family: var(--mono); color: var(--orange); }
 
@@ -618,38 +627,52 @@ select:focus, input:focus, textarea:focus {
 .badge-retard { background: var(--red-soft); color: var(--red); margin-top: 8px; }
 .payment-mode-select { margin-top: 8px; width: auto; max-width: 180px; padding: 10px 12px; font-size: 14px; }
 
-/* Ventilation du paiement par club (28/09/2026) */
-.pay-clubs {
-  margin-top: 12px; padding: 12px; border: 1px solid var(--line);
-  border-radius: var(--radius-md); background: var(--surface-2);
-  display: flex; flex-direction: column; gap: 10px;
+/* Suivi des paiements final : statut calculé, ventilation par club et actions
+   manuelles. Aucun de ces contrôles n'envoie une relance. */
+.payment-panel {
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
-.pay-clubs-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.pay-clubs-head strong { font-size: 14px; color: var(--text); }
-.pay-progress { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
-.pay-progress.ok { color: var(--green); }
-.pay-bar { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; }
-.pay-bar i { display: block; height: 100%; background: var(--gold); transition: width .25s ease; }
-.pay-bar i.ok { background: var(--green); }
-.pay-club { display: flex; flex-direction: column; gap: 6px; }
-.pay-club-nom { font-size: 13px; font-weight: 600; color: var(--text); }
-.pay-club-att { font-weight: 500; color: var(--muted); }
-.pay-club-inputs { display: grid; grid-template-columns: 1fr 140px; gap: 8px; }
-.pay-club-inputs .pay-recu,
-.pay-club-inputs .pay-mode-club {
-  min-height: 44px; padding: 10px 12px; font-size: 14px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: var(--surface); color: var(--text); font-family: inherit;
-}
-.pay-tout {
-  align-self: flex-start; min-height: 40px; padding: 8px 14px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
-}
-.pay-tout:hover { border-color: var(--green); color: var(--green); }
-@media (max-width: 480px) {
-  .pay-club-inputs { grid-template-columns: 1fr; }
-}
+.payment-panel.is-paid { border-left-color: var(--green); }
+.payment-panel.is-warning { border-left-color: var(--red); }
+.payment-panel.is-volunteer { border-left-color: var(--muted); }
+.payment-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.payment-panel-head > div { display: flex; flex-direction: column; gap: 3px; }
+.payment-panel-head > div > strong { font-size: 15px; color: var(--text); }
+.payment-panel-head > div > span { font-size: 12px; color: var(--muted); }
+.payment-status { display: inline-flex; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; background: var(--gold-soft); color: #785700; }
+.payment-status.is-paid { background: var(--green-soft); color: var(--green); }
+.payment-status.is-warning { background: var(--red-soft); color: var(--red); }
+.payment-status.is-volunteer { background: var(--surface-2); color: var(--muted); }
+.payment-warning, .payment-decision { margin-top: 10px; padding: 9px 11px; border-radius: 10px; font-size: 12.5px; font-weight: 600; }
+.payment-warning { color: var(--red); background: var(--red-soft); }
+.payment-decision { color: var(--orange); background: var(--orange-soft); }
+.payment-institution { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 12px; }
+.payment-institution > div { padding: 10px; border-radius: 11px; background: var(--surface-2); }
+.payment-institution span, .payment-fields label > span, .payment-note > span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.payment-institution strong { font-family: var(--mono); font-size: 13px; color: var(--text); }
+.payment-party { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); }
+.payment-party-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.payment-party-head strong { font-size: 13px; color: var(--text); }
+.payment-party-head span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.payment-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+.payment-fields input, .payment-fields select, .payment-note input { width: 100%; min-height: 42px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); }
+.payment-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.payment-shortcuts .small-btn { min-height: 34px; padding: 7px 10px; }
+.payment-progress { height: 7px; margin-top: 13px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.payment-progress span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.payment-balance { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.payment-balance strong { color: var(--text); }
+.payment-note { display: block; margin-top: 12px; }
+.payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.payment-regime-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.payment-regime-form select { flex: 1 1 220px; min-height: 42px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); }
+.frequency-marker { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 8px; transform: rotate(-45deg); color: #fff; background: var(--red); border: 2px solid #fff; box-shadow: 0 4px 10px rgba(10,31,68,.28); font-family: var(--mono); font-size: 12px; font-weight: 800; }
+.frequency-marker span { transform: rotate(45deg); }
 
 /* ---------- KPI ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
@@ -786,7 +809,7 @@ tr:last-child td { border-bottom: 0; }
   .tab-icon svg { width: 19px; height: 19px; }
   .tab-label { display: block; }
   .tab.active { border-color: transparent; }
-  .tab[data-tab="agenda"], .tab[data-tab="alertes"], .tab[data-tab="export"] { display: none; }
+  .tab[data-tab="agenda"] { display: none; }
 
   .card-head { padding: 15px; gap: 10px; }
   .card-title { font-size: 17px; }
@@ -799,12 +822,15 @@ tr:last-child td { border-bottom: 0; }
   .money-cell strong { font-size: 14px; }
 
   .payment-row { grid-template-columns: 1fr; }
+  .payment-fields { grid-template-columns: 1fr; }
+  .payment-institution { grid-template-columns: 1fr; }
+  .payment-panel-head { align-items: center; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   .kpi.hero { grid-column: span 2; }
 
-  .detail { padding: 8px 10px; }
-  .detail label { font-size: 9.5px; }
-  .detail span { font-size: 13px; }
+  .detail { padding: 6px 9px; }
+  .detail label { font-size: 8.5px; }
+  .detail span { font-size: 12px; }
 
   .section-title { font-size: 19px; }
   .card-map { height: 150px; }
@@ -1656,13 +1682,13 @@ tr:last-child td { border-bottom: 0; }
    Le rendu téléphone/tablette (<1024px) n'est pas touché : c'est
    toujours la barre d'onglets en haut, en grille sur mobile.
    ===================================================== */
-@media (min-width: 1024px) {
-  .page { width: min(1180px, calc(100% - 236px)); margin: 0 0 0 236px; }
+@media (min-width: 1240px) {
+  .page { width: min(1180px, calc(100% - 228px)); margin: 0 0 0 228px; }
 
   .tabs {
     position: fixed;
     top: 0; left: 0; bottom: 0;
-    width: 236px;
+    width: 228px;
     z-index: 40;
     display: flex;
     flex-direction: column;
@@ -1719,7 +1745,7 @@ tr:last-child td { border-bottom: 0; }
 
   /* Sur grand écran, un champ recherche en 1fr peut dépasser 800px de
      large et vide — plus "trou noir" que champ de saisie. On plafonne. */
-  .toolbar { grid-template-columns: 240px minmax(240px, 460px); }
+  .toolbar-search { grid-template-columns: 190px minmax(280px, 1fr) auto; }
 }
 
 /* ---------- QCM : questions, options, corrigé (19/09/2026) ----------
@@ -2031,3 +2057,24 @@ tr:last-child td { border-bottom: 0; }
 .regl-send { white-space: nowrap; min-height: 44px; }
 .regl-status { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 18px; }
 :root[data-theme="dark"] .regl-user .regl-bulle { background: var(--navy-700); }
+
+/* --- Contrôle manuel du statut de paiement (28/09/2026) --- */
+.payment-manuel { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.payment-manuel > summary {
+  cursor: pointer; list-style: none;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.payment-manuel > summary::-webkit-details-marker { display: none; }
+.payment-manuel > summary::before { content: "▸ "; color: var(--muted); }
+.payment-manuel[open] > summary::before { content: "▾ "; }
+.payment-manuel .manual-lock {
+  display: inline-flex; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  background: var(--orange-soft); color: var(--orange);
+  font-size: 10px; font-weight: 800; letter-spacing: 0; text-transform: none;
+}
+.payment-manuel-body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.payment-manuel-body select {
+  flex: 1 1 200px; min-height: 42px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text);
+}
