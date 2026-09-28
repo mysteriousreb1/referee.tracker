@@ -144,7 +144,7 @@ function apiCall(action, extra = {}, withToken = true) {
    settings.*, password.*) ne passent jamais par le cache, et invalident tout. */
 
 const CACHE_PREFIX  = "rt_c_";
-const CACHE_MAX_AGE = 12 * 3600 * 1000;   // au-delà, on attend le réseau
+const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;   // 7 j : les matchs passés ne changent pas, l'écran reste peuplé même après une longue absence
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
 const LECTURES = { matchs: 1, stats: 1, config: 1 };
 
@@ -154,6 +154,8 @@ const LECTURES = { matchs: 1, stats: 1, config: 1 };
    avant même qu'il ne serve. */
 const ECRITURES = {
   updatePaymentStatus: 1,
+  updatePaiementClub: 1,
+  updatePaymentMode: 1,
   setContact: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1
@@ -238,6 +240,10 @@ function jsonp(action, extra = {}) {
         // Revalidation silencieuse : ni spinner, ni erreur à l'écran
         _jsonpReseau(action, extra)
           .then(frais => {
+            // Garde anti-empoisonnement (28/09/2026) : ne JAMAIS mettre en
+            // cache une réponse d'erreur applicative, sinon le rechargement
+            // suivant relit cette erreur et vide l'écran.
+            if (!frais || frais.success === false) return;
             if (JSON.stringify(frais) !== JSON.stringify(hit.d)) {
               _cacheEcrire(cle, frais);
               _rafraichirEcran();
