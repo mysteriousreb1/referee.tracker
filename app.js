@@ -327,7 +327,16 @@ function loadData() {
   jsonp("matchs")
     .then(res => {
       if (!res.success) throw new Error(res.error || "Erreur API");
-      state.allRows = normalizeRows(res.data || []);
+      const lignes = normalizeRows(res.data || []);
+      // Garde anti-perte : une réponse vide alors qu'on affiche déjà des
+      // lignes = hoquet serveur. On conserve l'affichage courant, on ne
+      // réécrit rien et on ne re-rend pas à vide.
+      if (!lignes.length && state.allRows.length) {
+        console.warn("Réponse matchs vide ignorée — lignes actuelles conservées.");
+        setStatus("Réponse serveur vide ignorée — données conservées.", "");
+        return;
+      }
+      state.allRows = lignes;
       state._lastLoadTs = Date.now();
       const cacheInfo = window.RT_CACHE_INFO && window.RT_CACHE_INFO.matchs;
       if (cacheInfo && cacheInfo.stale) {
@@ -1670,7 +1679,10 @@ function attachPaymentListeners(root) {
       if (!res || res.success === false) throw new Error((res && res.error) || "Mise à jour refusée");
       const frais = await jsonpFrais("matchs");
       if (!frais || frais.success === false) throw new Error((frais && frais.error) || "Rafraîchissement impossible");
-      state.allRows = normalizeRows(frais.data || []);
+      const lignesMaj = normalizeRows(frais.data || []);
+      // Le paiement est déjà enregistré côté serveur. Si le rafraîchissement
+      // revient vide (hoquet), on garde les lignes actuelles au lieu de tout perdre.
+      if (lignesMaj.length || !state.allRows.length) state.allRows = lignesMaj;
       state._lastLoadTs = Date.now();
       AN.statsCache = {};
       setStatus("Paiement enregistré", "ok");
