@@ -1472,7 +1472,7 @@ function renderPaiements() {
     </div>
     ${renderRelance45_(rows)}
     ${order.filter(k => grouped[k]).map(status => {
-      const liste = grouped[status].slice().sort(sortByDateDesc);
+      const liste = grouped[status].slice().sort(sortByDateAsc);
       const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       const ouvert = PASSES_OUVERTS[panelId] === true;
 
