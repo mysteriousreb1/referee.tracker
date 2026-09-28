@@ -852,16 +852,17 @@ function renderAccueil() {
   const impayes = state.allRows.filter(paiementEnRetard).sort(sortByDateAsc);
   const totalDu = impayes.reduce((t, r) => t + (r._reste || 0), 0);
 
-  // À traiter : warnings actionnables + paiements « À vérifier ».
+  // À traiter : uniquement les matchs À VENIR avec un vrai warning ou paiement
+  // à vérifier (on ne pollue pas la home avec l'historique déjà passé).
   const aTraiter = state.allRows.filter(r =>
-    r._isActive && !estAlerteParasite_(r) &&
+    r._isActive && !r._isPast && r._date && !estAlerteParasite_(r) &&
     (hasWarningReel(r) || cleanText(get(r, "Statut paiement")) === "À vérifier")
   ).sort(sortByDateAsc);
 
-  // Collègues à contacter : matchs à venir, collègue joignable, pas encore contacté.
-  const aContacter = actifs.filter(r =>
-    !r._isPast && r._date && get(r, "Collègue nom") && smsDisponible(r) && !get(r, "Contact collègue")
-  ).sort(sortByDateAsc);
+  // Collègues à contacter : uniquement pour les matchs du week-end à venir.
+  const aContacter = weRows.filter(r =>
+    get(r, "Collègue nom") && smsDisponible(r) && !get(r, "Contact collègue")
+  );
 
   // Trésorerie (saison sélectionnée).
   const saison = state.selectedSeason;
@@ -939,17 +940,32 @@ function renderAccueil() {
       </span></div>`;
   };
 
-  const bloc = (titre, count, contenu, vide) =>
-    `<section class="acc-bloc"><h2 class="section-title">${titre}${count != null ? ` <span class="count">${count}</span>` : ""}</h2>${contenu || empty(vide)}</section>`;
+  // Ligne compacte pour un match du week-end (pas de carte pleine).
+  const ligneMatchWE = r => {
+    const uid = escapeHtml(get(r, "UID"));
+    const h = heureDe_(r);
+    const lieu = cleanText(get(r, "Ville") || get(r, "Salle")) || "";
+    return `<button type="button" class="acc-ligne acc-vers-match" data-uid="${uid}">
+      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}${h ? " · " + escapeHtml(h) : ""}</span>
+      <span class="acc-match">${escapeHtml(oppDe(r))}</span>
+      <span class="acc-lieu-mini">${escapeHtml(lieu)}</span>
+      <span class="acc-montant">${formatMoney(r._amount)}</span></button>`;
+  };
 
-  const cartesWE = weRows.map(renderMatchCard).join("");
+  // Un bloc = titre + 3 lignes max + « voir tout → » vers l'onglet dédié.
+  const bloc = (titre, count, items, renderer, versClass, vide) => {
+    if (!items.length) return `<section class="acc-bloc"><h2 class="section-title">${titre}</h2>${empty(vide)}</section>`;
+    const liste = `<div class="acc-liste">${items.slice(0, 3).map(renderer).join("")}</div>`;
+    const plus = (items.length > 3 && versClass) ? `<button type="button" class="acc-voir ${versClass}">Voir les ${items.length} →</button>` : "";
+    return `<section class="acc-bloc"><h2 class="section-title">${titre} <span class="count">${count}</span></h2>${liste}${plus}</section>`;
+  };
 
   root.innerHTML = `
     ${hero}
     ${compteurs}
-    ${bloc("Mes matchs du week-end", nb, cartesWE || null, "Aucun match ce week-end.")}
-    ${bloc("À traiter", aTraiter.length, aTraiter.length ? `<div class="acc-liste">${aTraiter.map(ligneTraiter).join("")}</div>` : null, "Rien à traiter. Tout est propre.")}
-    ${bloc("Collègues à contacter", aContacter.length, aContacter.length ? `<div class="acc-liste">${aContacter.map(ligneContact).join("")}</div>` : null, "Aucun collègue à contacter.")}
+    ${bloc("Mes matchs du week-end", nb, weRows, ligneMatchWE, "", "Aucun match ce week-end.")}
+    ${bloc("À traiter", aTraiter.length, aTraiter, ligneTraiter, "acc-vers-alertes", "Rien à traiter pour les matchs à venir.")}
+    ${bloc("Collègues à contacter", aContacter.length, aContacter, ligneContact, "", "Aucun collègue à contacter ce week-end.")}
     <section class="acc-bloc">
       <h2 class="section-title">Trésorerie <span class="count">${escapeHtml(saison)}</span></h2>
       <div class="acc-kpis acc-kpis--treso">
@@ -958,14 +974,11 @@ function renderAccueil() {
         <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(brutSaison)}</span><span class="acc-kpi-lbl">brut total</span></div>
       </div>
     </section>
-    ${bloc(`Impayés à surveiller <span class="acc-total">${formatMoney(totalDu)} dû</span>`, impayes.length, impayes.length ? `<div class="acc-liste">${impayes.map(ligneImpaye).join("")}</div>` : null, "Aucun impayé en retard.")}
+    ${bloc(`Impayés à surveiller <span class="acc-total">${formatMoney(totalDu)} dû</span>`, impayes.length, impayes, ligneImpaye, "acc-vers-paiements", "Aucun impayé en retard.")}
   `;
 
-  // Cartes du WE : mêmes interactions que les onglets 5x5/3x3.
-  attachCardListeners(root);
-  attachPaymentListeners(root);
+  // Seuls les boutons « Contact fait » ont besoin d'un listener (pas de cartes ici).
   attachContactListeners(root);
-  attachPastToggle(root);
 
   // Raccourcis : ouvrir un match dans son onglet, ou basculer vers un onglet.
   const ouvrirMatch = uid => {
