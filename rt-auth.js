@@ -21,7 +21,7 @@ const CFG_KEY   = "rt_config_cache";
 
 /* HOME est renseigné par le serveur après authentification :
    l'adresse ne figure plus dans le dépôt public. */
-var HOME = { label: "", lat: 48.8241, lon: 7.8069 };   // `var` : global explicite, lu par app.js
+var HOME = { label: "", lat: 0, lon: 0 };   // renseigné uniquement après authentification
 
 /* ---------------- Stockage du jeton ---------------- */
 
@@ -144,9 +144,17 @@ function apiCall(action, extra = {}, withToken = true) {
    settings.*, password.*) ne passent jamais par le cache, et invalident tout. */
 
 const CACHE_PREFIX  = "rt_c_";
-const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;   // 7 j : les matchs passés ne changent pas, l'écran reste peuplé même après une longue absence
+const CACHE_MAX_AGE = 365 * 24 * 3600 * 1000; // dernier état connu conservé durablement
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
-const LECTURES = { matchs: 1, stats: 1, config: 1 };
+const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1 };
+
+/* Une réponse « matchs » vide est presque toujours un hoquet serveur
+   (démarrage à froid, lecture du Sheet ratée), jamais une vraie base vide.
+   On ne la met JAMAIS en cache et on ne laisse jamais un jeu déjà chargé
+   être remplacé par elle — sinon le rechargement suivant relit le vide. */
+function _reponseVide(action, res) {
+  return action === "matchs" && (!res || !Array.isArray(res.data) || res.data.length === 0);
+}
 
 /* Seules ces actions modifient la feuille : elles seules doivent purger le
    cache. Tout le reste (« me », lectures diverses) passe simplement au
@@ -154,8 +162,7 @@ const LECTURES = { matchs: 1, stats: 1, config: 1 };
    avant même qu'il ne serve. */
 const ECRITURES = {
   updatePaymentStatus: 1,
-  updatePaiementClub: 1,
-  updatePaymentMode: 1,
+  "payment.update": 1,
   setContact: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1
@@ -178,11 +185,13 @@ function _cacheEcrire(cle, data) {
   try {
     localStorage.setItem(cle, JSON.stringify({ t: Date.now(), d: data }));
   } catch (e) {
-    // Quota atteint : on purge nos propres entrées et on abandonne sans bruit
+    // Quota atteint : on purge les lectures secondaires, puis on retente afin
+    // que la liste des matchs — indispensable au rechargement — survive.
     try {
       Object.keys(localStorage)
-        .filter(k => k.indexOf(CACHE_PREFIX) === 0)
+        .filter(k => k.indexOf(CACHE_PREFIX) === 0 && k !== cle)
         .forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(cle, JSON.stringify({ t: Date.now(), d: data }));
     } catch (e2) {}
   }
 }
@@ -190,7 +199,9 @@ function _cacheEcrire(cle, data) {
 function cacheVider() {
   try {
     Object.keys(localStorage)
-      .filter(k => k.indexOf(CACHE_PREFIX) === 0)
+      // On garde le dernier instantané des matchs. Une écriture déclenche un
+      // rafraîchissement réseau, mais un échec ne doit jamais vider l'écran.
+      .filter(k => k.indexOf(CACHE_PREFIX) === 0 && k.indexOf(CACHE_PREFIX + "matchs:") !== 0)
       .forEach(k => localStorage.removeItem(k));
   } catch (e) {}
 }
@@ -218,7 +229,7 @@ function _rafraichirEcran() {
    sa clé est correcte, c'est son contenu qui ne l'est pas. */
 function jsonpFrais(action, extra = {}) {
   return _jsonpReseau(action, extra).then(res => {
-    if (LECTURES[action] && res && res.success !== false) {
+    if (LECTURES[action] && res && res.success !== false && !_reponseVide(action, res)) {
       _cacheEcrire(_cacheKey(action, extra), res);
     }
     return res;
@@ -236,14 +247,17 @@ function jsonp(action, extra = {}) {
 
     if (hit) {
       const age = Date.now() - hit.t;
+      window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
+      window.RT_CACHE_INFO[action] = { timestamp: hit.t, age: age, stale: age > CACHE_FRESH };
       if (age > CACHE_FRESH) {
         // Revalidation silencieuse : ni spinner, ni erreur à l'écran
         _jsonpReseau(action, extra)
           .then(frais => {
-            // Garde anti-empoisonnement (28/09/2026) : ne JAMAIS mettre en
-            // cache une réponse d'erreur applicative, sinon le rechargement
-            // suivant relit cette erreur et vide l'écran.
+            // Une erreur applicative ne doit jamais remplacer le dernier jeu
+            // de données valide : sinon le rechargement suivant relirait
+            // l'erreur depuis le cache et viderait l'interface.
             if (!frais || frais.success === false) return;
+            if (_reponseVide(action, frais)) return;   // hoquet serveur : on garde le dernier bon jeu
             if (JSON.stringify(frais) !== JSON.stringify(hit.d)) {
               _cacheEcrire(cle, frais);
               _rafraichirEcran();
@@ -257,7 +271,7 @@ function jsonp(action, extra = {}) {
     }
 
     return _jsonpReseau(action, extra).then(res => {
-      if (res && res.success !== false) _cacheEcrire(cle, res);
+      if (res && res.success !== false && !_reponseVide(action, res)) _cacheEcrire(cle, res);
       return res;
     });
   }
