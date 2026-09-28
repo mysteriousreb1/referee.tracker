@@ -7,11 +7,11 @@
 
 /* "Bénévole" : match arbitré gratuitement, en accord avec le club recevant.
    Rien n'est dû : ces missions sortent du restant à encaisser et des retards. */
-const PAYMENT_STATUSES = ["À recevoir", "Reçu partiel", "Reçu", "Bénévole", "Écart à vérifier", "À vérifier"];
+const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À vérifier", "Reçu", "Bénévole", "Écart à vérifier"];
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-09-25-b9";
+const APP_VERSION = "2026-09-28-final";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -137,6 +137,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
   setTimeout(verifierAffichageInitial, 1500);
   setTimeout(verifierAffichageInitial, 5000);
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("./sw.js").catch(err => console.warn("Mode hors ligne indisponible :", err));
+  }
 });
 
 function bindUi() {
@@ -320,19 +323,19 @@ function setActiveTab(tab) {
 /* ---------------- Chargement données ---------------- */
 
 function loadData() {
-  setStatus("Chargement des données…", "");
+  setStatus(state.allRows.length ? "Actualisation des données…" : "Chargement des données…", "");
   jsonp("matchs")
     .then(res => {
       if (!res.success) throw new Error(res.error || "Erreur API");
       state.allRows = normalizeRows(res.data || []);
       state._lastLoadTs = Date.now();
-      // Sauvegarde de secours (28/09/2026) : dernier jeu de matchs valide,
-      // conservé hors du cache rt_c_ pour survivre à une purge de quota.
-      // Sert de filet si un rechargement ultérieur n'obtient pas de réponse
-      // du serveur (démarrage à froid Apps Script > 60 s, réseau coupé) —
-      // l'écran ne se vide plus jamais dès lors qu'un chargement a réussi.
-      try { localStorage.setItem("rt_last_matchs", JSON.stringify({ t: Date.now(), d: res.data || [] })); } catch (e) {}
-      setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
+      const cacheInfo = window.RT_CACHE_INFO && window.RT_CACHE_INFO.matchs;
+      if (cacheInfo && cacheInfo.stale) {
+        const dateCache = new Date(cacheInfo.timestamp).toLocaleString("fr-FR");
+        setStatus(`${state.allRows.length} ligne(s) affichée(s) depuis la dernière sauvegarde locale (${dateCache}). Actualisation en arrière-plan.`, "");
+      } else {
+        setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
+      }
       buildQuickFilterSelects_();
 
       // L'affichage d'abord, et rien entre les deux. Les statistiques serveur
@@ -345,30 +348,7 @@ function loadData() {
       try { loadPrixCarburant(); } catch (e) { console.warn("Prix carburant indisponible :", e); }
       try { loadClassements(); } catch (e) { console.warn("Classements FFBB indisponibles :", e); }
     })
-    .catch(afficherDepuisSecours_);
-}
-
-/* Filet offline-first (28/09/2026) : quand l'API ne répond pas (démarrage à
-   froid Apps Script, réseau coupé, cache empoisonné), on réaffiche le dernier
-   jeu de matchs valide au lieu de vider l'écran. showApiError n'est montré
-   qu'en tout dernier recours — aucune sauvegarde disponible. */
-function afficherDepuisSecours_(err) {
-  try {
-    const brut = localStorage.getItem("rt_last_matchs");
-    if (brut) {
-      const o = JSON.parse(brut);
-      if (o && Array.isArray(o.d) && o.d.length) {
-        state.allRows = normalizeRows(o.d);
-        state._lastLoadTs = o.t || Date.now();
-        buildQuickFilterSelects_();
-        renderAll();
-        const quand = o.t ? new Date(o.t).toLocaleString("fr-FR") : "récemment";
-        setStatus("Hors ligne — matchs du " + quand + " (le serveur n'a pas répondu, réessai en arrière-plan)", "");
-        return;
-      }
-    }
-  } catch (e) { /* secours illisible : on tombe sur l'erreur classique */ }
-  showApiError(err);
+    .catch(showApiError);
 }
 
 /* Filet de sécurité au démarrage.
@@ -391,6 +371,11 @@ function showApiError(err) {
   const hint = (err && err.hint) || "";
   setStatus("Impossible de contacter l’API Apps Script : " + message, "error");
 
+  if (state.allRows && state.allRows.length) {
+    setStatus("Serveur momentanément indisponible — les dernières données enregistrées restent affichées.", "error");
+    renderAll();
+    return;
+  }
   const panel = document.getElementById("matchs");
   if (!panel) return;
   panel.innerHTML = `
@@ -438,13 +423,22 @@ function loadClassements() {
     .catch(() => { state.classements = state.classements || []; });
 }
 
-function classementPour_(codeClub, codeCompetition) {
+function classementPour_(codeClub, codeCompetition, numeroEquipe) {
   if (!state.classements || !codeClub || !codeCompetition) return null;
   const cc = String(codeCompetition).toUpperCase();
-  return state.classements.find(r =>
+  const candidats = state.classements.filter(r =>
     String(r["Code club"]) === String(codeClub) &&
     String(r["Code compétition"]).toUpperCase() === cc
-  ) || null;
+  );
+  if (!candidats.length) return null;
+  const numero = String(numeroEquipe || "").replace(/\D/g, "");
+  if (numero) return candidats.find(r => String(r["N° équipe"] || "").replace(/\D/g, "") === numero) || null;
+  return candidats.length === 1 ? candidats[0] : null;
+}
+
+function numeroEquipeDepuisNom_(nom) {
+  const m = String(nom || "").trim().match(/\s-\s*(\d+)\s*$/);
+  return m ? m[1] : "";
 }
 
 /* @param {boolean} force  ignore le cache et interroge le serveur.
@@ -557,10 +551,12 @@ function normalizeRows(rows) {
     r._benevole = cleanText(get(r, "Statut paiement")) === "Bénévole";
     r._amountTheorique = toNumber(get(r, "Indemnité totale"));
     r._amount = r._benevole ? 0 : r._amountTheorique;
-    r._recu = toNumber(get(r, "Montant reçu"));
+    const recuVentile = toNumber(get(r, "Reçu recevant")) + toNumber(get(r, "Reçu visiteur"));
+    r._recu = recuVentile || toNumber(get(r, "Montant reçu"));
     r._statutPaie = cleanText(get(r, "Statut paiement"));
-    r._encaisse = r._statutPaie === "Reçu" ? r._amount : (r._statutPaie === "Reçu partiel" ? Math.max(0, Math.min(r._recu, r._amount)) : 0);
-    r._reste = (r._benevole || r._statutPaie === "Reçu") ? 0 : (r._statutPaie === "Reçu partiel" ? Math.max(0, r._amount - r._recu) : r._amount);
+    if (r._statutPaie === "Reçu" && !r._recu) r._recu = r._amount;
+    r._encaisse = r._benevole ? 0 : Math.max(0, Math.min(r._recu, r._amount));
+    r._reste = r._benevole ? 0 : Math.max(0, r._amount - r._encaisse);
     r._km = toNumber(get(r, "Km A/R stats"));
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
@@ -1071,8 +1067,14 @@ function renderMatchCard(row) {
 function renderEnjeuClassement_(row) {
   if (row._isPast) return "";
   const codeComp = get(row, "Code compétition");
-  const cR = classementPour_(get(row, "Code club recevant"), codeComp);
-  const cV = classementPour_(get(row, "Code club visiteur"), codeComp);
+  const cR = classementPour_(
+    get(row, "Code club recevant"), codeComp,
+    get(row, "N° équipe recevant") || numeroEquipeDepuisNom_(get(row, "Recevant"))
+  );
+  const cV = classementPour_(
+    get(row, "Code club visiteur"), codeComp,
+    get(row, "N° équipe visiteur") || numeroEquipeDepuisNom_(get(row, "Visiteur / événement"))
+  );
   if (!cR && !cV) return "";
 
   const ligne = (nom, c) => {
@@ -1095,38 +1097,32 @@ function renderMoneyStrip(gross, cost, net) {
 }
 
 function renderDetails(row) {
-  const details = [
-    ["Format", get(row, "Format")],
-    ["Saison", row._season],
-    ["Mon rôle", get(row, "Mon rôle")],
-    ["Compétition", get(row, "Libellé compétition")],
-    ["Genre", get(row, "Genre")],
-    ["Catégorie", get(row, "Catégorie d'âge")],
-    ["N° rencontre", get(row, "N° rencontre")],
-    ["Recevant", get(row, "Recevant")],
-    ["Visiteur / événement", get(row, "Visiteur / événement")],
-    ["Salle", get(row, "Salle")],
-    ["Adresse", get(row, "Adresse")],
-    ["Ville", get(row, "Ville")],
-    ["Code e-Marque", get(row, "Code e-Marque")],
-    ["Collègue", get(row, "Collègue nom")],
-    ["Tél. collègue", formatPhoneFr(get(row, "Collègue téléphone"))],
-    ["Rôle collègue", get(row, "Collègue rôle")],
-    ["Référent 3x3", get(row, "Référent 3x3")],
-    ["Observateur", get(row, "Observateur")],
-    ["KM A/R", row._km ? formatNumber(row._km, " km") : ""],
-    ["Paiement prévu", get(row, "Date paiement")],
-    ["Mode de règlement", reglementSpecial(row)],
-    ["Contact collègue", get(row, "Contact collègue")],
-    ["Warnings", warningsReels(row).join(" | ")]
-  ].filter(([, v]) => v !== "" && v !== null && v !== undefined);
+  const groupes = [
+    ["Rencontre", [
+      ["Compétition", get(row, "Libellé compétition"), true], ["Format", get(row, "Format")],
+      ["Catégorie", get(row, "Catégorie d'âge")], ["Genre", get(row, "Genre")],
+      ["N° rencontre", get(row, "N° rencontre")], ["Code e-Marque", get(row, "Code e-Marque")],
+      ["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]
+    ]],
+    ["Lieu et trajet", [
+      ["Salle", get(row, "Salle"), true], ["Adresse", get(row, "Adresse"), true],
+      ["Ville", get(row, "Ville")], ["KM A/R", row._km ? formatNumber(row._km, " km") : ""]
+    ]],
+    ["Équipe arbitrale", [
+      ["Mon rôle", get(row, "Mon rôle")], ["Collègue", get(row, "Collègue nom"), true],
+      ["Tél. collègue", formatPhoneFr(get(row, "Collègue téléphone"))], ["Rôle collègue", get(row, "Collègue rôle")],
+      ["Référent 3x3", get(row, "Référent 3x3"), true], ["Observateur", get(row, "Observateur"), true],
+      ["Contact collègue", get(row, "Contact collègue")]
+    ]],
+    ["Points de contrôle", [["Warnings", warningsReels(row).join(" | "), true]]]
+  ];
 
-  /* Champs dont la valeur est longue : ils gardent toute la largeur de la
-     grille, sinon une adresse se casse en quatre lignes dans une colonne. */
-  const pleineLargeur = ["Recevant", "Visiteur / événement", "Salle", "Adresse", "Warnings", "Observateur", "Mode de règlement"];
-
-  return `<div class="detail-grid">${details.map(([l, v]) => `
-    <div class="detail${pleineLargeur.indexOf(l) >= 0 ? " detail--wide" : ""}"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div>`;
+  return groupes.map(([titre, details]) => {
+    const visibles = details.filter(([, v]) => v !== "" && v !== null && v !== undefined);
+    if (!visibles.length) return "";
+    return `<section class="detail-section"><h4>${escapeHtml(titre)}</h4><div class="detail-grid">${visibles.map(([l, v, wide]) => `
+      <div class="detail${wide ? " detail--wide" : ""}"><label>${escapeHtml(l)}</label><span>${escapeHtml(String(v))}</span></div>`).join("")}</div></section>`;
+  }).join("");
 }
 
 /* ---------------- Carte OSM ---------------- */
@@ -1142,16 +1138,18 @@ function initMapFor(uid, addr) {
   const el = document.getElementById(`map-${uid}`);
   if (!el || typeof L === "undefined") return;
 
-  const map = L.map(el, { scrollWheelZoom: false }).setView([HOME.lat, HOME.lon], 9);
+  const homeValide = Number(HOME.lat) && Number(HOME.lon);
+  const map = L.map(el, { scrollWheelZoom: false }).setView(homeValide ? [HOME.lat, HOME.lon] : [46.6, 2.3], homeValide ? 9 : 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18, attribution: "© OpenStreetMap"
   }).addTo(map);
-  L.marker([HOME.lat, HOME.lon]).addTo(map).bindPopup("Domicile");
+  if (homeValide) L.marker([HOME.lat, HOME.lon]).addTo(map).bindPopup("Domicile");
   state.maps[uid] = map;
 
   geocode(addr).then(dest => {
     if (!dest) return;
     L.marker([dest.lat, dest.lon]).addTo(map).bindPopup("Salle");
+    if (!homeValide) { map.setView([dest.lat, dest.lon], 12); return; }
     route(HOME, dest).then(r => {
       if (r && r.geometry) {
         const line = L.geoJSON(r.geometry, { style: { color: "#E4002B", weight: 4, opacity: 0.85 } }).addTo(map);
@@ -1326,10 +1324,10 @@ function renderActions(row) {
   const address = get(row, "Adresse");
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [];
-  if (address) {
+  if (address && Number(HOME.lat) && Number(HOME.lon)) {
     links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
-    links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   }
+  if (address) links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   if (phone && smsDisponible(row)) {
     const corps = encodeURIComponent(buildSmsCollegue(row));
     const uid = escapeHtml(get(row, "UID"));
@@ -1364,127 +1362,149 @@ function mercrediSemaineSuivante_(dateStr) {
   return formatDateShort(cible);
 }
 
-/* Ventilation du paiement par club (28/09/2026).
-   Régimes « clubs » (Parts égales = 50/50 recevant/visiteur ; Association
-   recevante = 100 % recevant). Pointe le montant reçu + le mode par club,
-   barre de progression reçu/total, raccourci « un seul club a tout payé ».
-   Chaque saisie appelle updatePaiementClub — le statut est recalculé côté
-   serveur (À recevoir → Reçu partiel → Reçu / À vérifier). */
-const MODES_PAIEMENT = ["", "Espèces", "Chèque", "Virement"];
+function paiementRegime_(row) {
+  const explicite = cleanText(get(row, "Régime"));
+  if (explicite) return explicite;
+  if (get(row, "Statut paiement") === BENEVOLE) return "benevole";
+  const texte = normaliserRecherche(get(row, "Indemnisé par") + " " + get(row, "Paiement Type"));
+  if (texte.includes("parts egales")) return "parts_egales";
+  if (texte.includes("association recevante") || texte.includes("paiement club")) return "recevante";
+  if (texte.includes("federation")) return "federation";
+  if (texte.includes("ligue") || texte.includes("region")) return "region";
+  if (texte.includes("departement") || texte.includes("cd67")) return "cd67";
+  return "";
+}
 
-function renderVentilationClubs_(row) {
-  const typePaiement = get(row, "Paiement Type") || "";
-  const estPartsEgales = typePaiement === "Parts égales (2 clubs)";
-  const estRecevante = typePaiement === "Association recevante";
-  if (!estPartsEgales && !estRecevante) return "";
-  if ((get(row, "Statut paiement") || "") === BENEVOLE) return "";
+function paiementPayeur_(regime) {
+  return ({ cd67: "CD67", region: "Région", federation: "FFBB" })[regime] || "Organisme payeur";
+}
 
-  const uid = escapeHtml(get(row, "UID"));
-  const total = toNumber(get(row, "Indemnité totale"));
-  const nomRecev = get(row, "Recevant") || "Club recevant";
-  const nomVisit = get(row, "Visiteur / événement") || "Club visiteur";
-  const arAtt = toNumber(get(row, "Attendu recevant")) || (estPartsEgales ? round2(total / 2) : total);
-  const avAtt = toNumber(get(row, "Attendu visiteur")) || (estPartsEgales ? round2(total / 2) : 0);
-  const arRecu = get(row, "Reçu recevant");
-  const avRecu = get(row, "Reçu visiteur");
-  const arMode = get(row, "Mode recevant") || "";
-  const avMode = get(row, "Mode visiteur") || "";
-  const recuTotal = round2(toNumber(arRecu) + toNumber(avRecu));
-  const pct = total > 0 ? Math.min(100, Math.round(recuTotal / total * 100)) : 0;
-  const couvert = total > 0 && recuTotal >= total - 1;
+function dateInputValue_(v) {
+  const d = parseFrDate(v);
+  if (!d) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
-  const bloc = (cote, nom, att, recu, mode) => `
-    <div class="pay-club">
-      <div class="pay-club-nom">${escapeHtml(nom)} <span class="pay-club-att">attendu ${formatMoney(att)}</span></div>
-      <div class="pay-club-inputs">
-        <input class="pay-recu" type="number" step="0.01" inputmode="decimal" data-uid="${uid}" data-cote="${cote}" value="${recu === "" || recu == null ? "" : escapeHtml(String(recu))}" placeholder="reçu €" aria-label="Montant reçu ${escapeHtml(nom)}">
-        <select class="pay-mode-club" data-uid="${uid}" data-cote="${cote}" aria-label="Mode ${escapeHtml(nom)}">
-          ${MODES_PAIEMENT.map(m => `<option value="${m}" ${m === mode ? "selected" : ""}>${m || "Mode…"}</option>`).join("")}
-        </select>
-      </div>
-    </div>`;
+function paymentStatusClass_(status) {
+  if (status === "Reçu") return "is-paid";
+  if (status === "Bénévole") return "is-volunteer";
+  if (status === "En retard" || status === "À vérifier") return "is-warning";
+  return "is-open";
+}
 
+function paymentModeOptions_(current) {
+  return ["", "Espèces", "Chèque", "Virement"].map(mode =>
+    `<option value="${escapeHtml(mode)}"${mode === current ? " selected" : ""}>${escapeHtml(mode || "Mode à choisir…")}</option>`
+  ).join("");
+}
+
+function renderPaymentClub_(row, cote, visible) {
+  if (!visible) return "";
+  const suffix = cote === "recevant" ? "recevant" : "visiteur";
+  const nom = cote === "recevant" ? (get(row, "Recevant") || "Club recevant") : (get(row, "Visiteur / événement") || "Club visiteur");
+  const attendu = toNumber(get(row, `Attendu ${suffix}`));
+  const recu = get(row, `Reçu ${suffix}`);
+  const mode = get(row, `Mode ${suffix}`);
+  const date = get(row, `Date reçu ${suffix}`);
   return `
-    <div class="pay-clubs" data-uid="${uid}">
-      <div class="pay-clubs-head">
-        <strong>Paiement par club</strong>
-        <span class="pay-progress ${couvert ? "ok" : ""}">${formatMoney(recuTotal)} / ${formatMoney(total)}</span>
+    <div class="payment-party">
+      <div class="payment-party-head"><strong>${escapeHtml(nom)}</strong><span>Attendu ${formatMoney(attendu)}</span></div>
+      <div class="payment-fields">
+        <label><span>Montant reçu</span><input name="recu_${suffix}" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(recu)}" placeholder="0,00" /></label>
+        <label><span>Mode</span><select name="mode_${suffix}">${paymentModeOptions_(mode)}</select></label>
+        <label><span>Date reçue</span><input name="date_recu_${suffix}" type="date" value="${escapeHtml(dateInputValue_(date))}" /></label>
       </div>
-      <div class="pay-bar"><i class="${couvert ? "ok" : ""}" style="width:${pct}%"></i></div>
-      ${bloc("ar", nomRecev, arAtt, arRecu, arMode)}
-      ${estPartsEgales ? bloc("av", nomVisit, avAtt, avRecu, avMode) : ""}
-      ${estPartsEgales ? `<button type="button" class="pay-tout small-btn" data-uid="${uid}" data-total="${total}">Un seul club a tout payé (${formatMoney(total)})</button>` : ""}
     </div>`;
 }
 
 function renderPaymentControl(row) {
   const uid = escapeHtml(get(row, "UID"));
-  const current = get(row, "Statut paiement") || "À recevoir";
-  const prevu = get(row, "Date paiement");
-  const typePaiement = get(row, "Paiement Type") || "";
-  const niveauAdmin = get(row, "Niveau administratif") || "";
-  const categorie = get(row, "Catégorie d'âge") || "";
+  const status = get(row, "Statut paiement") || "À recevoir";
+  const regime = paiementRegime_(row);
+  const total = row._amount || toNumber(get(row, "Indemnité totale"));
+  const recuTotal = toNumber(get(row, "Reçu recevant")) + toNumber(get(row, "Reçu visiteur")) || toNumber(get(row, "Montant reçu"));
+  const due = get(row, "Date attendue") || get(row, "Date paiement");
+  const aTrancher = get(row, "À trancher") === "Oui" || Boolean(get(row, "Raison à trancher"));
+  const raison = get(row, "Raison à trancher");
+  const note = get(row, "Note paiement");
+  const institutionnel = ["cd67", "region", "federation"].includes(regime);
+  const club = regime === "parts_egales" || regime === "recevante";
+  const overdue = paiementEnRetard(row);
 
-  // MODIFICATION 15/09/2026 — Bloc B : les matchs de Championnat de
-  // France Jeunes payés à parts égales entre 2 clubs (chèque ou virement,
-  // choix à faire) — rappel de faire signer la convocation sur place.
-  const estPartsEgales = typePaiement === "Parts égales (2 clubs)" && current !== "Bénévole";
-
-  // MODIFICATION 19/09/2026 — CF Jeunes (U15 France, U18 France M/F) payés
-  // par le club recevant : le choix chèque/virement doit aussi être
-  // proposé ici (jusque-là réservé aux « parts égales »), Région/CD67
-  // restant virement par défaut sans choix.
-  const estCfJeunesClubRecevant = typePaiement === "Association recevante"
-    && niveauAdmin === "Championnat de France"
-    && (categorie === "U15" || categorie === "U18")
-    && current !== "Bénévole";
-
-  const proposerChoixModePaiement = estPartsEgales || estCfJeunesClubRecevant;
-  const modePaiement = get(row, "Mode paiement") || "";
-
-  // Virement CF Jeunes : à vérifier le mercredi de la semaine suivant le match
-  // (chèques : encaissés à la banque tous les 15 jours le mardi — hors appli).
-  const dateVerifVirement = (estCfJeunesClubRecevant && modePaiement === "Virement" && current === "À recevoir")
-    ? mercrediSemaineSuivante_(get(row, "Date match"))
-    : "";
-
-  // Échéancier CD67 : au-delà de 10 jours après la date de paiement
-  // attendue (donc à partir du 20 du mois), on signale le retard.
-  const estAssociationRecevante = typePaiement === "Association recevante";
-  let retardCD67 = false;
-  if (estAssociationRecevante && !estCfJeunesClubRecevant && current === "À recevoir" && prevu) {
-    const m = String(prevu).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) {
-      const limite = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]) + 10);
-      retardCD67 = new Date() > limite;
-    }
+  if (status === BENEVOLE || regime === "benevole") {
+    return `
+      <section class="payment-panel is-volunteer">
+        <div class="payment-panel-head"><div><strong>Paiement</strong><span>Mission marquée bénévole manuellement</span></div><span class="payment-status is-volunteer">Bénévole</span></div>
+        <div class="payment-actions"><button type="button" class="small-btn secondary payment-action" data-action="unvolunteer" data-uid="${uid}">Annuler le bénévolat</button></div>
+      </section>`;
   }
 
   return `
-    <div class="payment-row">
-      <div>
-        <strong>Statut paiement</strong>
-        <div class="card-sub">${escapeHtml(prevu ? "Prévu : " + prevu : "Date à vérifier")}</div>
+    <section class="payment-panel ${paymentStatusClass_(status)}">
+      <div class="payment-panel-head">
+        <div><strong>Suivi du paiement</strong><span>${escapeHtml(due ? "Échéance : " + due : "Échéance à déterminer")}</span></div>
+        <span class="payment-status ${paymentStatusClass_(status)}">${escapeHtml(status)}</span>
       </div>
-      <select class="payment-select" data-uid="${uid}">
-        ${PAYMENT_STATUSES.map(s => `<option value="${escapeHtml(s)}" ${s === current ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
-      </select>
-    </div>
-    ${proposerChoixModePaiement ? `
-    <div class="payment-row-alert">
-      <div class="badge-parts-egales" title="${estPartsEgales ? "Le paiement est réparti entre les 2 clubs. Imprime ta convocation : elle doit être signée sur place." : "CF Jeunes — le club recevant paie par chèque ou virement."}">⚠ ${estPartsEgales ? "Parts égales — imprime ta convocation" : "CF Jeunes — choisis le mode de paiement"}</div>
-      <select class="payment-mode-select" data-uid="${uid}">
-        <option value="" ${modePaiement === "" ? "selected" : ""}>Mode de paiement à choisir…</option>
-        <option value="Chèque" ${modePaiement === "Chèque" ? "selected" : ""}>Chèque</option>
-        <option value="Virement" ${modePaiement === "Virement" ? "selected" : ""}>Virement</option>
-      </select>
-      ${dateVerifVirement ? `<div class="card-sub">À vérifier le ${escapeHtml(dateVerifVirement)} (mercredi suivant le match)</div>` : ""}
-    </div>` : ""}
-    ${retardCD67 ? `
-    <div class="payment-row-alert">
-      <div class="badge-retard">⚠ Paiement CD67 en retard — relance à faire</div>
-    </div>` : ""}
-    ${renderVentilationClubs_(row)}`;
+      ${overdue ? `<div class="payment-warning">Warning : paiement non soldé. Vérification et éventuelle relance à gérer manuellement.</div>` : ""}
+      ${aTrancher ? `<div class="payment-decision">À trancher${raison ? " : " + escapeHtml(raison) : ""}</div>` : ""}
+      ${institutionnel ? `
+        <div class="payment-institution">
+          <div><span>Payé par</span><strong>${escapeHtml(paiementPayeur_(regime))}</strong></div>
+          <div><span>Montant dû</span><strong>${formatMoney(total)}</strong></div>
+          <div><span>Déjà reçu</span><strong>${formatMoney(recuTotal)}</strong></div>
+        </div>
+        <div class="payment-actions">
+          ${status !== "Reçu" ? `<button type="button" class="small-btn payment-action" data-action="received" data-uid="${uid}">Marquer reçu</button>` : ""}
+          <button type="button" class="small-btn secondary payment-action" data-action="verify" data-uid="${uid}">Marquer à vérifier</button>
+          <button type="button" class="small-btn secondary payment-action" data-action="volunteer" data-uid="${uid}">Marquer bénévole</button>
+        </div>` : ""}
+      ${club ? `
+        <form class="payment-form" data-uid="${uid}">
+          ${renderPaymentClub_(row, "recevant", true)}
+          ${renderPaymentClub_(row, "visiteur", regime === "parts_egales")}
+          ${regime === "parts_egales" ? `<div class="payment-shortcuts"><span>Un seul club a tout payé :</span><button type="button" class="small-btn secondary payment-all" data-side="recevant">Recevant</button><button type="button" class="small-btn secondary payment-all" data-side="visiteur">Visiteur</button></div>` : ""}
+          <div class="payment-progress"><span style="width:${Math.min(100, total > 0 ? recuTotal / total * 100 : 0)}%"></span></div>
+          <div class="payment-balance"><span>Reçu ${formatMoney(recuTotal)}</span><strong>${recuTotal === total ? "Soldé" : `Reste ${formatMoney(Math.max(0, total - recuTotal))}`}</strong><span>Dû ${formatMoney(total)}</span></div>
+          <label class="payment-note"><span>Note</span><input name="note" type="text" value="${escapeHtml(note)}" placeholder="Information utile sur ce règlement" /></label>
+          <div class="payment-actions">
+            <button type="submit" class="small-btn">Enregistrer le paiement</button>
+            <button type="button" class="small-btn secondary payment-action" data-action="verify" data-uid="${uid}">Marquer à vérifier</button>
+            <button type="button" class="small-btn secondary payment-action" data-action="volunteer" data-uid="${uid}">Marquer bénévole</button>
+          </div>
+        </form>` : ""}
+      ${!institutionnel && !club ? `
+        <div class="payment-decision">Régime de paiement à choisir.</div>
+        <form class="payment-regime-form" data-uid="${uid}">
+          <select name="regime" aria-label="Régime de paiement">
+            <option value="">Choisir le régime…</option>
+            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">FFBB</option>
+            <option value="parts_egales">Deux clubs à parts égales</option><option value="recevante">Club recevant</option>
+          </select>
+          <button type="submit" class="small-btn">Valider</button>
+          <button type="button" class="small-btn secondary payment-action" data-action="volunteer" data-uid="${uid}">Marquer bénévole</button>
+        </form>` : ""}
+      ${renderManualStatus_(uid, get(row, "Statut manuel"))}
+    </section>`;
+}
+
+/* Contrôle manuel du statut (réintroduit 28/09/2026).
+   Auto par défaut ; on peut verrouiller un statut à la main, puis repasser en auto.
+   Le bénévolat garde ses propres boutons et n'apparaît pas ici. */
+function renderManualStatus_(uid, statutManuel) {
+  const opts = ["À recevoir", "Reçu partiel", "Reçu", "En retard", "À vérifier"];
+  const cur = String(statutManuel || "").trim();
+  return `
+    <details class="payment-manuel"${cur ? " open" : ""}>
+      <summary>Contrôle manuel du statut${cur ? ` <span class="manual-lock">verrouillé : ${escapeHtml(cur)}</span>` : ""}</summary>
+      <div class="payment-manuel-body">
+        <select class="manual-status-select" aria-label="Forcer le statut">
+          ${opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+        </select>
+        <button type="button" class="small-btn payment-action" data-action="force-status" data-uid="${uid}">Forcer ce statut</button>
+        ${cur ? `<button type="button" class="small-btn secondary payment-action" data-action="auto-status" data-uid="${uid}">Repasser en auto</button>` : ""}
+      </div>
+    </details>`;
 }
 
 function attachCardListeners(root) {
@@ -1505,18 +1525,21 @@ function attachCardListeners(root) {
 
 /* ---------------- Paiements ---------------- */
 
-/* Bloc 3 — Section « À relancer » (>45 j), en tête de l'onglet Paiements,
-   triée du plus ancien au plus récent (le plus urgent d'abord). */
+/* Warnings de paiement : aucune relance n'est envoyée automatiquement.
+   L'écran signale seulement les dossiers à traiter manuellement. */
 function renderRelance45_(rows) {
-  const aRelancer = rows.filter(paiementARelancer)
-    .map(r => ({ r: r, j: Math.floor((Date.now() - parseFrDate(get(r, "Date paiement")).getTime()) / 86400000) }))
+  const aRelancer = rows.filter(paiementEnRetard)
+    .map(r => {
+      const d = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+      return { r, j: d ? Math.max(1, Math.floor((Date.now() - d.getTime()) / 86400000)) : 0 };
+    })
     .sort((a, b) => b.j - a.j);
   if (!aRelancer.length) return "";
   const total = aRelancer.reduce((t, x) => t + (x.r._reste || x.r._amount), 0);
   return `
     <div class="relance-box">
-      <h2 class="section-title relance-title">À relancer — plus de ${RELANCE_JOURS} jours <span class="count">${aRelancer.length}</span></h2>
-      <div class="relance-sub">${formatMoney(total)} en attente au-delà de ${RELANCE_JOURS} jours après l'échéance prévue. Du plus ancien (${aRelancer[0].j} j) au plus récent.</div>
+      <h2 class="section-title relance-title">Warnings à gérer manuellement <span class="count">${aRelancer.length}</span></h2>
+      <div class="relance-sub">${formatMoney(total)} non soldés après l'échéance. Aucune relance n'a été envoyée automatiquement.</div>
       <div class="cards">${aRelancer.map(x => renderMatchCard(x.r)).join("")}</div>
     </div>`;
 }
@@ -1527,7 +1550,7 @@ function renderPaiements() {
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
 
   const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
-  const order = ["À recevoir", "Reçu partiel", "Écart à vérifier", "À vérifier", "Reçu", BENEVOLE];
+  const order = ["En retard", "À recevoir", "Reçu partiel", "À vérifier", "Écart à vérifier", "Reçu", BENEVOLE];
 
   const statutDe = r => get(r, "Statut paiement") || "À recevoir";
   // Le bénévolat ne compte ni comme encaissé, ni comme dû.
@@ -1640,120 +1663,77 @@ function attachContactListeners(root) {
 }
 
 function attachPaymentListeners(root) {
-  // MODIFICATION 15/09/2026 — Bloc B : choix du mode de paiement
-  // (chèque/virement) sur les missions « Parts égales » (CF Jeunes).
-  root.querySelectorAll(".payment-mode-select").forEach(select => {
-    select.addEventListener("change", async e => {
-      const uid = e.target.dataset.uid, mode = e.target.value;
-      e.target.disabled = true;
-      setStatus("Mise à jour du mode de paiement…", "");
-      try {
-        const res = await jsonp("updatePaymentMode", { uid, mode });
-        if (!res.success) throw new Error(res.error || "Erreur update");
-        const row = state.allRows.find(r => get(r, "UID") === uid);
-        if (row) row["Mode paiement"] = mode;
-        setStatus("Mode de paiement mis à jour", "ok");
-      } catch (err) {
-        setStatus("Erreur mode paiement : " + err.message, "error");
-      } finally {
-        e.target.disabled = false;
-      }
-    });
-  });
-
-  // Ventilation par club (28/09/2026) : montant reçu, mode, « un seul paie tout »
-  root.querySelectorAll(".pay-recu").forEach(inp => {
-    inp.addEventListener("change", e => {
-      const uid = e.target.dataset.uid, cote = e.target.dataset.cote;
-      const val = e.target.value === "" ? "" : String(e.target.value).replace(",", ".");
-      const patch = {}; patch[cote === "ar" ? "arRecu" : "avRecu"] = val;
-      envoyerPaiementClub_(uid, patch, e.target);
-    });
-  });
-  root.querySelectorAll(".pay-mode-club").forEach(sel => {
-    sel.addEventListener("change", e => {
-      const uid = e.target.dataset.uid, cote = e.target.dataset.cote;
-      const patch = {}; patch[cote === "ar" ? "arMode" : "avMode"] = e.target.value;
-      envoyerPaiementClub_(uid, patch, e.target);
-    });
-  });
-  root.querySelectorAll(".pay-tout").forEach(btn => {
-    btn.addEventListener("click", e => {
-      const uid = e.currentTarget.dataset.uid, total = toNumber(e.currentTarget.dataset.total);
-      envoyerPaiementClub_(uid, { arAttendu: total, avAttendu: 0, arRecu: total, avRecu: "" }, e.currentTarget);
-    });
-  });
-
-  root.querySelectorAll(".payment-select").forEach(select => {
-    select.addEventListener("change", async e => {
-      const uid = e.target.dataset.uid, status = e.target.value;
-      let montant = "";
-      if (status === "Reçu partiel") {
-        const row0 = state.allRows.find(r => get(r, "UID") === uid);
-        const attendu = row0 ? toNumber(get(row0, "Indemnité totale")) : 0;
-        const saisi = prompt("Montant déjà reçu (€) — la part d'un des 2 clubs :", attendu ? (attendu / 2).toFixed(2) : "");
-        if (saisi === null) { e.target.value = row0 ? (get(row0, "Statut paiement") || "À recevoir") : "À recevoir"; return; }
-        montant = String(saisi).replace(",", ".").replace(/[^\d.]/g, "");
-      }
-      e.target.disabled = true;
-      setStatus("Mise à jour du paiement…", "");
-      try {
-        const res = await jsonp("updatePaymentStatus", { uid, status, montant });
-        if (!res.success) throw new Error(res.error || "Erreur update");
-        const row = state.allRows.find(r => get(r, "UID") === uid);
-        if (row) {
-          row["Statut paiement"] = status;
-          if (status === "Reçu") {
-            row["Date réception"] = new Date().toLocaleDateString("fr-FR");
-            if (!get(row, "Montant reçu")) row["Montant reçu"] = get(row, "Indemnité totale");
-          }
-          if (status === "À recevoir") { row["Date réception"] = ""; row["Montant reçu"] = ""; }
-          if (status === BENEVOLE) { row["Date réception"] = ""; row["Montant reçu"] = 0; }
-          if (status === "Reçu partiel") { row["Date réception"] = new Date().toLocaleDateString("fr-FR"); if (montant) row["Montant reçu"] = montant; }
-        }
-        setStatus("Paiement mis à jour", "ok");
-        AN.statsCache = {}; // les délais/KPI avancés doivent être recalculés
-        loadStats();
-        renderAll();
-      } catch (err) {
-        setStatus("Erreur paiement : " + err.message, "error");
-      } finally {
-        e.target.disabled = false;
-      }
-    });
-  });
-}
-
-/* Envoi d'une saisie de paiement par club (28/09/2026). Le serveur écrit les
-   champs, recalcule le statut (À recevoir → Reçu partiel → Reçu / À vérifier)
-   et renvoie {statut, recuTotal, attenduTotal}. On répercute localement puis on
-   re-rend. */
-async function envoyerPaiementClub_(uid, patch, target) {
-  if (target) target.disabled = true;
-  setStatus("Mise à jour du paiement…", "");
-  try {
-    const res = await jsonp("updatePaiementClub", Object.assign({ uid }, patch));
-    if (!res.success) throw new Error(res.error || "Erreur update");
-    const r = res.result || {};
-    const row = state.allRows.find(x => get(x, "UID") === uid);
-    if (row) {
-      if (patch.arRecu !== undefined) row["Reçu recevant"] = patch.arRecu;
-      if (patch.avRecu !== undefined) row["Reçu visiteur"] = patch.avRecu;
-      if (patch.arMode !== undefined) row["Mode recevant"] = patch.arMode;
-      if (patch.avMode !== undefined) row["Mode visiteur"] = patch.avMode;
-      if (patch.arAttendu !== undefined) row["Attendu recevant"] = patch.arAttendu;
-      if (patch.avAttendu !== undefined) row["Attendu visiteur"] = patch.avAttendu;
-      if (r.statut) row["Statut paiement"] = r.statut;
-      if (r.recuTotal !== undefined) row["Montant reçu"] = r.recuTotal;
+  const envoyer = async (params, button) => {
+    if (button) button.disabled = true;
+    setStatus("Enregistrement du paiement…", "");
+    try {
+      const res = await jsonp("payment.update", params);
+      if (!res || res.success === false) throw new Error((res && res.error) || "Mise à jour refusée");
+      const frais = await jsonpFrais("matchs");
+      if (!frais || frais.success === false) throw new Error((frais && frais.error) || "Rafraîchissement impossible");
+      state.allRows = normalizeRows(frais.data || []);
+      state._lastLoadTs = Date.now();
+      AN.statsCache = {};
+      setStatus("Paiement enregistré", "ok");
+      buildQuickFilterSelects_();
+      renderAll();
+      loadStats(true);
+    } catch (err) {
+      setStatus("Erreur paiement : " + err.message, "error");
+      if (button) button.disabled = false;
     }
-    setStatus("Paiement mis à jour" + (r.statut ? " → " + r.statut : ""), "ok");
-    AN.statsCache = {};
-    try { loadStats(); } catch (e) {}
-    renderAll();
-  } catch (err) {
-    setStatus("Erreur paiement : " + err.message, "error");
-    if (target) target.disabled = false;
-  }
+  };
+
+  root.querySelectorAll(".payment-action").forEach(button => {
+    button.addEventListener("click", () => {
+      const uid = button.dataset.uid;
+      const action = button.dataset.action;
+      const params = { uid };
+      if (action === "received") params.marquer_recu = "1";
+      if (action === "verify") params.a_verifier = "1";
+      if (action === "volunteer") params.benevole = "1";
+      if (action === "unvolunteer") params.benevole = "0";
+      if (action === "force-status") {
+        const sel = button.closest(".payment-manuel").querySelector(".manual-status-select");
+        if (!sel || !sel.value) { setStatus("Choisis un statut à forcer", "error"); return; }
+        params.forcer_statut = sel.value;
+      }
+      if (action === "auto-status") params.liberer_statut = "1";
+      envoyer(params, button);
+    });
+  });
+
+  root.querySelectorAll(".payment-all").forEach(button => {
+    button.addEventListener("click", () => {
+      const form = button.closest(".payment-form");
+      const row = state.allRows.find(r => get(r, "UID") === form.dataset.uid);
+      if (!row) return;
+      const total = toNumber(get(row, "Indemnité totale"));
+      const cote = button.dataset.side;
+      form.elements.recu_recevant.value = cote === "recevant" ? total.toFixed(2) : "0.00";
+      form.elements.recu_visiteur.value = cote === "visiteur" ? total.toFixed(2) : "0.00";
+    });
+  });
+
+  root.querySelectorAll(".payment-form").forEach(form => {
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const data = new FormData(form);
+      const params = { uid: form.dataset.uid };
+      ["recu_recevant", "mode_recevant", "date_recu_recevant", "recu_visiteur", "mode_visiteur", "date_recu_visiteur", "note"]
+        .forEach(k => { if (data.has(k)) params[k] = data.get(k); });
+      envoyer(params, form.querySelector('button[type="submit"]'));
+    });
+  });
+
+  root.querySelectorAll(".payment-regime-form").forEach(form => {
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const regime = form.elements.regime.value;
+      if (!regime) { setStatus("Choisis un régime de paiement", "error"); return; }
+      envoyer({ uid: form.dataset.uid, regime }, form.querySelector('button[type="submit"]'));
+    });
+  });
 }
 
 /* ---------------- Stats ---------------- */
@@ -3149,7 +3129,7 @@ function renderAlertes() {
   const groupes = [
     ["À corriger", "Imports ratés ou warnings de traitement à lever.", aCorriger],
     ["Statut à trancher", "Missions dont le paiement reste à qualifier.", aTrancher],
-    ["Retard de paiement", "Échéance prévue dépassée, sans réception enregistrée.", enRetard]
+    ["Retard de paiement", "Échéance dépassée : contrôle et éventuelle relance à effectuer manuellement.", enRetard]
   ];
 
   root.innerHTML = `
@@ -3420,24 +3400,26 @@ async function genererCarteSalles_(rows) {
   conteneur.style.display = "";
 
   if (state.exportMapInstance) { state.exportMapInstance.remove(); state.exportMapInstance = null; }
-  const carte = L.map(conteneur, { scrollWheelZoom: false }).setView([HOME.lat, HOME.lon], 8);
+  const homeValide = Number(HOME.lat) && Number(HOME.lon);
+  const carte = L.map(conteneur, { scrollWheelZoom: false }).setView(homeValide ? [HOME.lat, HOME.lon] : [46.6, 2.3], homeValide ? 8 : 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18, attribution: "© OpenStreetMap"
   }).addTo(carte);
-  L.marker([HOME.lat, HOME.lon]).addTo(carte).bindPopup("Domicile");
+  if (homeValide) L.marker([HOME.lat, HOME.lon]).addTo(carte).bindPopup("Domicile");
   state.exportMapInstance = carte;
 
-  const points = [[HOME.lat, HOME.lon]];
-  const maxCount = Math.max(...entrees.map(e => e.count));
+  const points = homeValide ? [[HOME.lat, HOME.lon]] : [];
 
   for (const e of entrees) {
     const dejaEnCache = !!state.geocodeCache[e.adresse];
     const dest = await geocodeAvecCache_(e.adresse);
     if (dest) {
-      const rayon = 8 + (e.count / maxCount) * 18; // 8 à 26 px selon la fréquence
-      L.circleMarker([dest.lat, dest.lon], {
-        radius: rayon, color: "#E4002B", weight: 2, fillColor: "#E4002B", fillOpacity: 0.35
-      }).addTo(carte).bindPopup(`<b>${escapeHtml(e.salle)}</b><br>${e.count} fois arbitré`);
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="frequency-marker"><span>${e.count}</span></div>`,
+        iconSize: [34, 34], iconAnchor: [17, 32], popupAnchor: [0, -30]
+      });
+      L.marker([dest.lat, dest.lon], { icon }).addTo(carte).bindPopup(`<b>${escapeHtml(e.salle)}</b><br>${e.count} fois arbitré`);
       points.push([dest.lat, dest.lon]);
     }
     // Respecte le quota Nominatim (max 1 requête/seconde) — seulement quand
@@ -3777,30 +3759,22 @@ function warningsReels(row) {
 
 function hasWarningReel(row) { return warningsReels(row).length > 0; }
 
-/* Un paiement est en retard passé 30 jours après la date prévue : en deçà,
-   les virements de comité et de ligue arrivent régulièrement en décalé. */
-const RETARD_JOURS = 30;
-
 function paiementEnRetard(row) {
   const statut = cleanText(get(row, "Statut paiement"));
   if (statut === "Reçu" || statut === BENEVOLE) return false;
-
-  const prevu = parseFrDate(get(row, "Date paiement"));
+  if (statut === "En retard") return true;
+  const prevu = parseFrDate(get(row, "Date attendue") || get(row, "Date paiement"));
   if (!prevu) return false;
-
-  return (Date.now() - prevu.getTime()) / 86400000 > RETARD_JOURS;
+  prevu.setHours(23, 59, 59, 999);
+  const du = toNumber(get(row, "Indemnité totale"));
+  const recu = toNumber(get(row, "Reçu recevant")) + toNumber(get(row, "Reçu visiteur")) || toNumber(get(row, "Montant reçu"));
+  return Date.now() > prevu.getTime() && recu < du;
 }
 
-/* Bloc 3 (25/09/2026) — Relance active : au-delà de 45 j après l'échéance
-   prévue, une créance doit être relancée (le retard "normal" est déjà
-   signalé dès 30 j via paiementEnRetard / Alertes). */
-const RELANCE_JOURS = 45;
+/* Compatibilité avec les anciens appels : retourne uniquement un warning,
+   sans déclencher ni envoyer de relance. */
 function paiementARelancer(row) {
-  const statut = cleanText(get(row, "Statut paiement"));
-  if (statut === "Reçu" || statut === BENEVOLE) return false;
-  const prevu = parseFrDate(get(row, "Date paiement"));
-  if (!prevu) return false;
-  return (Date.now() - prevu.getTime()) / 86400000 > RELANCE_JOURS;
+  return paiementEnRetard(row);
 }
 function normalizePhoneFr(v) {
   let d = String(v || "").replace(/[^\d+]/g, "");
@@ -3815,6 +3789,11 @@ function formatPhoneFr(v) {
   const d = normalizePhoneFr(v);
   if (d.length !== 10) return d;
   return d.match(/.{2}/g).join(".");
+}
+function fmtHeure(h) {
+  const s = String(h || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  return m ? m[1].padStart(2, "0") + ":" + m[2] : s;
 }
 function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
 function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
@@ -3836,8 +3815,6 @@ function parseFrDate(value) {
   const d = new Date(s); return isNaN(d.getTime()) ? null : d;
 }
 
-/* Heure d'affichage : "14:40:00" (import Google Sheets) -> "14:40". */
-function fmtHeure(h) { const s = String(h || "").trim(); const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/); return m ? m[1].padStart(2, "0") + ":" + m[2] : s; }
 function formatDateShort(date) { return date ? date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : ""; }
 function formatMoney(v) { return (Number(v) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }); }
 function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
