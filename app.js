@@ -20,7 +20,7 @@ let state = {
   filteredRows: [],
   serverStats: null,
   prixActuel: null,        // prix E10 temps réel, fourni par le serveur
-  activeTab: "matchs",
+  activeTab: "accueil",
   selectedSeason: "",
   search: "",
   searchTokens: [],
@@ -669,6 +669,7 @@ function attachReglementListeners_(root) {
 
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
+  safeRender_(renderAccueil, "accueil", "Accueil");
   safeRender_(renderMatchs, "matchs", "Matchs");
   safeRender_(renderTroisx3, "troisx3", "3×3");
   safeRender_(renderPaiements, "paiements", "Paiements");
@@ -798,6 +799,188 @@ function attachPastToggle(root) {
       PASSES_OUVERTS[bloc.dataset.panel] = bloc.open;
     });
   });
+}
+
+/* ---------------- Accueil : coup d'œil rapide (100 % client) ----------------
+   Page d'ouverture. Ne fait qu'agréger/filtrer state.allRows — aucun appel
+   serveur — donc elle profite directement de la garde anti-perte du cache. */
+
+/* Fenêtre "week-end à venir" : vendredi 00:00 → dimanche 23:59.
+   Samedi/dimanche : on reste sur le week-end en cours. */
+function fenetreWE_() {
+  const now = new Date();
+  const j = now.getDay();                     // 0=dim … 6=sam
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let versVendredi = (5 - j + 7) % 7;         // prochain vendredi
+  if (j === 6) versVendredi = -1;             // samedi → vendredi de ce WE
+  else if (j === 0) versVendredi = -2;        // dimanche → vendredi de ce WE
+  start.setDate(start.getDate() + versVendredi);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 2);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+function heureDe_(r) {
+  return cleanText(get(r, "Heure/RDV") || get(r, "Heure RDV") || get(r, "Heure") || "");
+}
+
+function renderAccueil() {
+  const root = document.getElementById("accueil");
+  if (!root) return;
+
+  const CONSO_L100 = 6.0;   // Audi A3 35 TFSI — à ajuster si le véhicule change
+  const prixL = (state.prixActuel && state.prixActuel > 0.5 && state.prixActuel < 4) ? state.prixActuel : 2.26;
+
+  const actifs = state.allRows.filter(r => r._isActive && r._format !== "Alerte");
+  const { start, end } = fenetreWE_();
+
+  // Matchs du week-end à venir (5x5 + 3x3), triés par date/heure.
+  const weRows = actifs.filter(r => r._date && r._date >= start && r._date <= end).sort(sortByDateAsc);
+
+  // Prochain match : le 1er du WE, sinon le prochain match à venir toutes dates.
+  const prochain = weRows[0] || actifs.filter(r => r._date && !r._isPast).sort(sortByDateAsc)[0] || null;
+
+  // Compteurs WE (prévisionnel).
+  const nb = weRows.length;
+  const km = weRows.reduce((t, r) => t + (r._km || 0), 0);
+  const brut = weRows.reduce((t, r) => t + (r._amount || 0), 0);
+  const carburant = km * CONSO_L100 / 100 * prixL;
+  const netEstime = brut - carburant;
+
+  // Impayés en retard, toutes saisons (indépendant du filtre saison).
+  const impayes = state.allRows.filter(paiementEnRetard).sort(sortByDateAsc);
+  const totalDu = impayes.reduce((t, r) => t + (r._reste || 0), 0);
+
+  // À traiter : warnings actionnables + paiements « À vérifier ».
+  const aTraiter = state.allRows.filter(r =>
+    r._isActive && !estAlerteParasite_(r) &&
+    (hasWarningReel(r) || cleanText(get(r, "Statut paiement")) === "À vérifier")
+  ).sort(sortByDateAsc);
+
+  // Collègues à contacter : matchs à venir, collègue joignable, pas encore contacté.
+  const aContacter = actifs.filter(r =>
+    !r._isPast && r._date && get(r, "Collègue nom") && smsDisponible(r) && !get(r, "Contact collègue")
+  ).sort(sortByDateAsc);
+
+  // Trésorerie (saison sélectionnée).
+  const saison = state.selectedSeason;
+  const rowsSaison = state.allRows.filter(r => r._isActive && (saison === "Toutes les saisons" || r._season === saison));
+  const encaisseSaison = rowsSaison.reduce((t, r) => t + (r._encaisse || 0), 0);
+  const duSaison = rowsSaison.reduce((t, r) => t + (r._reste || 0), 0);
+  const brutSaison = rowsSaison.reduce((t, r) => t + (r._amount || 0), 0);
+
+  const fmtJourCourt = d => d ? d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" }) : "";
+  const oppDe = r => (cleanText(get(r, "Recevant")) + " / " + cleanText(get(r, "Visiteur / événement"))).replace(/^ \/ | \/ $/g, "");
+
+  // --- Hero prochain match (infos brutes, aucun calcul) ---
+  const hero = (() => {
+    if (!prochain) return `<div class="acc-hero acc-hero--vide">Aucun match à venir.</div>`;
+    const r = prochain;
+    const uid = escapeHtml(get(r, "UID"));
+    const dateLong = r._date ? r._date.toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long" }) : "";
+    const heure = heureDe_(r);
+    const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")) || "";
+    const role = cleanText(get(r, "Mon rôle"));
+    const salle = cleanText(get(r, "Salle"));
+    const ville = cleanText(get(r, "Ville"));
+    const addr = cleanText(get(r, "Adresse")) || [salle, ville].filter(Boolean).join(" ");
+    const col = cleanText(get(r, "Collègue nom"));
+    const telBrut = normalizePhoneFr(get(r, "Collègue téléphone"));
+    return `<div class="acc-hero">
+      <div class="acc-hero-top"><span class="acc-hero-tag">Prochain match</span><span class="acc-hero-date">${escapeHtml(dateLong)}${heure ? " · " + escapeHtml(heure) : ""}</span></div>
+      <div class="acc-hero-match">${escapeHtml(oppDe(r))}</div>
+      <div class="acc-hero-sub">${escapeHtml(comp)}${role ? " · " + escapeHtml(role) : ""}</div>
+      <div class="acc-hero-lieu">${escapeHtml(salle || ville || "Lieu à préciser")}${salle && ville ? " · " + escapeHtml(ville) : ""}</div>
+      <div class="acc-hero-actions">
+        ${addr ? `<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes" target="_blank" rel="noopener">Waze</a>` : ""}
+        ${telBrut ? `<a class="action-link secondary" href="tel:${telBrut}">${escapeHtml(col || "Collègue")} · ${escapeHtml(formatPhoneFr(get(r, "Collègue téléphone")))}</a>` : ""}
+        <button type="button" class="action-link secondary acc-vers-match" data-uid="${uid}">Voir le match</button>
+      </div>
+      <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
+    </div>`;
+  })();
+
+  // --- Compteurs WE ---
+  const compteurs = `
+    <div class="acc-kpis">
+      <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce WE</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(Math.round(km), " km")}</span><span class="acc-kpi-lbl">à parcourir</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(brut)}</span><span class="acc-kpi-lbl">brut</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val acc-cost">−${formatMoney(carburant)}</span><span class="acc-kpi-lbl">carburant estimé</span></div>
+      <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé</span></div>
+    </div>`;
+
+  // --- Listes compactes ---
+  const ligneImpaye = r => `<button type="button" class="acc-ligne acc-vers-paiements" data-uid="${escapeHtml(get(r, "UID"))}">
+    <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
+    <span class="acc-match">${escapeHtml(oppDe(r))}</span>
+    <span class="acc-montant acc-cost">${formatMoney(r._reste)}</span></button>`;
+
+  const ligneTraiter = r => {
+    const w = warningsReels(r);
+    const raison = w.length ? w.join(" · ") : (cleanText(get(r, "Statut paiement")) === "À vérifier" ? "Paiement à vérifier" : "À contrôler");
+    return `<button type="button" class="acc-ligne acc-vers-alertes" data-uid="${escapeHtml(get(r, "UID"))}">
+      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
+      <span class="acc-match">${escapeHtml(oppDe(r))}</span>
+      <span class="acc-raison">${escapeHtml(raison)}</span></button>`;
+  };
+
+  const ligneContact = r => {
+    const uid = escapeHtml(get(r, "UID"));
+    const tel = normalizePhoneFr(get(r, "Collègue téléphone"));
+    const fait = Boolean(get(r, "Contact collègue"));
+    return `<div class="acc-ligne acc-contact">
+      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
+      <span class="acc-match">${escapeHtml(cleanText(get(r, "Collègue nom")))}</span>
+      <span class="acc-contact-actions">
+        ${tel ? `<a class="action-link secondary" href="sms:${tel}">SMS</a>` : ""}
+        <button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Fait" : "Contact fait"}</button>
+      </span></div>`;
+  };
+
+  const bloc = (titre, count, contenu, vide) =>
+    `<section class="acc-bloc"><h2 class="section-title">${titre}${count != null ? ` <span class="count">${count}</span>` : ""}</h2>${contenu || empty(vide)}</section>`;
+
+  const cartesWE = weRows.map(renderMatchCard).join("");
+
+  root.innerHTML = `
+    ${hero}
+    ${compteurs}
+    ${bloc("Mes matchs du week-end", nb, cartesWE || null, "Aucun match ce week-end.")}
+    ${bloc("À traiter", aTraiter.length, aTraiter.length ? `<div class="acc-liste">${aTraiter.map(ligneTraiter).join("")}</div>` : null, "Rien à traiter. Tout est propre.")}
+    ${bloc("Collègues à contacter", aContacter.length, aContacter.length ? `<div class="acc-liste">${aContacter.map(ligneContact).join("")}</div>` : null, "Aucun collègue à contacter.")}
+    <section class="acc-bloc">
+      <h2 class="section-title">Trésorerie <span class="count">${escapeHtml(saison)}</span></h2>
+      <div class="acc-kpis acc-kpis--treso">
+        <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(encaisseSaison)}</span><span class="acc-kpi-lbl">encaissé</span></div>
+        <div class="acc-kpi"><span class="acc-kpi-val acc-cost">${formatMoney(duSaison)}</span><span class="acc-kpi-lbl">restant dû</span></div>
+        <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(brutSaison)}</span><span class="acc-kpi-lbl">brut total</span></div>
+      </div>
+    </section>
+    ${bloc(`Impayés à surveiller <span class="acc-total">${formatMoney(totalDu)} dû</span>`, impayes.length, impayes.length ? `<div class="acc-liste">${impayes.map(ligneImpaye).join("")}</div>` : null, "Aucun impayé en retard.")}
+  `;
+
+  // Cartes du WE : mêmes interactions que les onglets 5x5/3x3.
+  attachCardListeners(root);
+  attachPaymentListeners(root);
+  attachContactListeners(root);
+  attachPastToggle(root);
+
+  // Raccourcis : ouvrir un match dans son onglet, ou basculer vers un onglet.
+  const ouvrirMatch = uid => {
+    const r = state.allRows.find(x => get(x, "UID") === uid);
+    const tab = (r && r._format === "3x3") ? "troisx3" : "matchs";
+    setActiveTab(tab);
+    setTimeout(() => {
+      document.querySelectorAll("#" + tab + " .match-card").forEach(c => {
+        if (c.dataset.uid === uid) { c.classList.add("open"); c.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      });
+    }, 0);
+  };
+  root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
+  root.querySelectorAll(".acc-vers-paiements").forEach(b => b.addEventListener("click", () => setActiveTab("paiements")));
+  root.querySelectorAll(".acc-vers-alertes").forEach(b => b.addEventListener("click", () => setActiveTab("alertes")));
 }
 
 /* ---------------- regroupement par week-end ----------------
