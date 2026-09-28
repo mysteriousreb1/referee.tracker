@@ -2079,70 +2079,84 @@ tr:last-child td { border-bottom: 0; }
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text);
 }
 
-/* ==================== Onglet Accueil (coup d'œil rapide) ==================== */
-/* NB : ne jamais forcer #accueil en display:block — il doit obéir à
-   .panel/.panel.active comme les autres onglets, sinon la navigation casse. */
-.acc-bloc { margin-top: 18px; }
-.acc-lieu-mini { flex: 0 0 auto; font-size: 11.5px; color: var(--muted); max-width: 28%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.acc-voir { margin-top: 8px; padding: 7px 12px; border-radius: 9px; border: 1px dashed var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; }
-.acc-voir:hover { color: var(--text); border-color: var(--gold, #c9a24a); }
+/* ==================== Onglet Accueil (coup d'œil rapide) ====================
+   NB : ne jamais forcer #accueil en display:block — il doit obéir à
+   .panel/.panel.active, sinon la navigation casse.
+   Home minimale : hero + 3 chiffres + matchs du week-end. Rien d'autre. */
+.acc-bloc { margin-top: 22px; }
+.acc-bloc .section-title { margin-bottom: 12px; }
 
-/* Hero prochain match */
+/* --- Hero prochain match --- */
 .acc-hero {
   position: relative;
-  padding: 16px 18px;
-  border-radius: 16px;
+  display: flex; flex-direction: column;
+  padding: 20px 22px;
+  border-radius: 18px;
   color: #fff;
-  background: linear-gradient(135deg, #0A1F44, #14346f);
-  box-shadow: 0 6px 20px rgba(10,31,68,.25);
+  background: linear-gradient(135deg, #0A1F44 0%, #16397a 100%);
+  box-shadow: 0 10px 30px rgba(10,31,68,.28);
+  overflow: hidden;
 }
-.acc-hero--vide { color: var(--muted); background: var(--surface-2); box-shadow: none; }
-.acc-hero-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.acc-hero::after {
+  content: ""; position: absolute; right: -40px; top: -40px;
+  width: 180px; height: 180px; border-radius: 50%;
+  background: rgba(255,255,255,.05);
+}
+.acc-hero--vide { color: var(--muted); background: var(--surface-2); box-shadow: none; padding: 22px; text-align: center; }
+.acc-hero-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; position: relative; z-index: 1; }
 .acc-hero-tag {
-  font-family: var(--display); text-transform: uppercase; letter-spacing: .05em;
-  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
-  background: rgba(255,255,255,.16);
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .06em;
+  font-size: 11px; font-weight: 800; padding: 4px 11px; border-radius: 999px;
+  background: var(--gold, #c9a24a); color: #17244a;
 }
-.acc-hero-date { font-size: 12px; opacity: .9; text-transform: capitalize; }
-.acc-hero-match { font-family: var(--display); font-size: 20px; font-weight: 800; margin-top: 8px; line-height: 1.15; }
-.acc-hero-sub { font-size: 13px; opacity: .9; margin-top: 2px; }
-.acc-hero-lieu { font-size: 13px; opacity: .8; margin-top: 2px; }
-.acc-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.acc-hero-indem { position: absolute; top: 16px; right: 18px; font-family: var(--mono); font-weight: 700; font-size: 15px; }
-.acc-hero .acc-hero-indem { top: auto; bottom: 14px; }
+.acc-hero-date { font-size: 12.5px; opacity: .9; text-transform: capitalize; text-align: right; }
+.acc-hero-match { font-family: var(--display); font-size: 24px; font-weight: 800; margin-top: 14px; line-height: 1.12; position: relative; z-index: 1; }
+.acc-hero-sub { font-size: 13.5px; opacity: .92; margin-top: 4px; position: relative; z-index: 1; }
+.acc-hero-lieu { font-size: 13px; opacity: .78; margin-top: 2px; position: relative; z-index: 1; }
+.acc-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; position: relative; z-index: 1; }
+.acc-hero-indem {
+  position: absolute; right: 22px; bottom: 18px; z-index: 1;
+  font-family: var(--mono); font-weight: 800; font-size: 20px;
+  padding: 6px 12px; border-radius: 12px; background: rgba(255,255,255,.14);
+}
 
-/* Bandeaux de compteurs */
-.acc-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 14px; }
-.acc-kpis--treso { grid-template-columns: repeat(3, 1fr); }
+/* --- 3 chiffres clés --- */
+.acc-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
 .acc-kpi {
-  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
-  padding: 11px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center;
+  padding: 18px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line);
+  text-align: center; min-height: 84px;
 }
 .acc-kpi--net { background: var(--green-soft); border-color: transparent; }
-.acc-kpi-val { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--text); }
-.acc-kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.acc-kpi--btn { cursor: pointer; font: inherit; transition: border-color .15s; }
+.acc-kpi--btn:hover { border-color: var(--gold, #c9a24a); }
+.acc-kpi-val { font-family: var(--mono); font-weight: 800; font-size: 22px; color: var(--text); line-height: 1; }
+.acc-kpi--net .acc-kpi-val { color: var(--green); }
+.acc-kpi-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .acc-cost { color: var(--orange); }
 
-/* Listes compactes (à traiter / impayés / contacts) */
-.acc-liste { display: flex; flex-direction: column; gap: 6px; }
+/* --- Matchs du week-end (lignes compactes) --- */
+.acc-liste { display: flex; flex-direction: column; gap: 8px; }
 .acc-ligne {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  padding: 9px 12px; border-radius: 10px; background: var(--surface-2);
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 13px 14px; border-radius: 12px; background: var(--surface-2);
   border: 1px solid var(--line); color: var(--text); cursor: pointer; font: inherit;
+  transition: border-color .15s, transform .05s;
 }
 button.acc-ligne:hover { border-color: var(--gold, #c9a24a); }
-.acc-jour { flex: 0 0 auto; font-size: 11px; color: var(--muted); text-transform: capitalize; min-width: 74px; }
-.acc-match { flex: 1 1 auto; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.acc-raison { flex: 0 0 auto; font-size: 11.5px; color: var(--orange); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.acc-montant { flex: 0 0 auto; font-family: var(--mono); font-weight: 700; font-size: 13px; }
-.acc-contact { cursor: default; }
-.acc-contact-actions { display: flex; gap: 6px; flex: 0 0 auto; }
-.acc-total { font-family: var(--mono); font-size: 12px; color: var(--orange); font-weight: 700; }
+button.acc-ligne:active { transform: scale(.995); }
+.acc-jour { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: capitalize; min-width: 92px; }
+.acc-match { flex: 1 1 auto; font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-lieu-mini { flex: 0 0 auto; font-size: 12px; color: var(--muted); max-width: 26%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-montant { flex: 0 0 auto; font-family: var(--mono); font-weight: 700; font-size: 14px; }
 
-@media (max-width: 720px) {
-  .acc-kpis { grid-template-columns: repeat(2, 1fr); }
-  .acc-kpis--treso { grid-template-columns: repeat(3, 1fr); }
-  .acc-kpi--net { grid-column: 1 / -1; }
-  .acc-raison { display: none; }
-  .acc-hero-indem { position: static; margin-top: 10px; }
+@media (max-width: 640px) {
+  .acc-hero { padding: 16px 16px 44px; }
+  .acc-hero-match { font-size: 20px; }
+  .acc-hero-indem { right: 16px; bottom: 14px; font-size: 17px; }
+  .acc-kpi { padding: 14px 8px; min-height: 74px; }
+  .acc-kpi-val { font-size: 18px; }
+  .acc-kpi-lbl { font-size: 9px; }
+  .acc-lieu-mini { display: none; }
+  .acc-jour { min-width: 78px; }
 }
