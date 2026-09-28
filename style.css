@@ -1974,7 +1974,10 @@ tr:last-child td { border-bottom: 0; }
   /* Cibles tactiles confortables (>= 44px) sur les contrôles interactifs. */
   .payment-select, .payment-mode-select, select, .small-btn, .action-link, .tab { min-height: 44px; }
   /* Un mot long (nom de club/salle) ne doit pas provoquer de scroll. */
-  .agenda-match-title, .card-title, .section-title, td, .kpi label, .relance-sub, .alerte-groupe-sub { overflow-wrap: anywhere; }
+  .agenda-match-title, .card-title, .section-title, .kpi label, .relance-sub, .alerte-groupe-sub { overflow-wrap: anywhere; }
+  /* Fix rendu tables mobile (28/09/2026) : les nombres ne se cassent plus caractere par caractere ; textes wrap par mots ; la table scrolle si trop large */
+  td { overflow-wrap: break-word; }
+  td.num, th.num, td.pos { white-space: nowrap; }
   /* Ajouts Bloc 2/3 lisibles en 375px. */
   .cf-chart { padding: 8px 8px 4px; }
   .cf-chart svg { height: 110px; }
