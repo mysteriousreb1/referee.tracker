@@ -848,28 +848,8 @@ function renderAccueil() {
   const carburant = km * CONSO_L100 / 100 * prixL;
   const netEstime = brut - carburant;
 
-  // Impayés en retard, toutes saisons (indépendant du filtre saison).
-  const impayes = state.allRows.filter(paiementEnRetard).sort(sortByDateAsc);
-  const totalDu = impayes.reduce((t, r) => t + (r._reste || 0), 0);
-
-  // À traiter : uniquement les matchs À VENIR avec un vrai warning ou paiement
-  // à vérifier (on ne pollue pas la home avec l'historique déjà passé).
-  const aTraiter = state.allRows.filter(r =>
-    r._isActive && !r._isPast && r._date && !estAlerteParasite_(r) &&
-    (hasWarningReel(r) || cleanText(get(r, "Statut paiement")) === "À vérifier")
-  ).sort(sortByDateAsc);
-
-  // Collègues à contacter : uniquement pour les matchs du week-end à venir.
-  const aContacter = weRows.filter(r =>
-    get(r, "Collègue nom") && smsDisponible(r) && !get(r, "Contact collègue")
-  );
-
-  // Trésorerie (saison sélectionnée).
-  const saison = state.selectedSeason;
-  const rowsSaison = state.allRows.filter(r => r._isActive && (saison === "Toutes les saisons" || r._season === saison));
-  const encaisseSaison = rowsSaison.reduce((t, r) => t + (r._encaisse || 0), 0);
-  const duSaison = rowsSaison.reduce((t, r) => t + (r._reste || 0), 0);
-  const brutSaison = rowsSaison.reduce((t, r) => t + (r._amount || 0), 0);
+  // Total impayé en retard, toutes saisons (le détail vit dans l'onglet Paiements).
+  const totalDu = state.allRows.filter(paiementEnRetard).reduce((t, r) => t + (r._reste || 0), 0);
 
   const fmtJourCourt = d => d ? d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" }) : "";
   const oppDe = r => (cleanText(get(r, "Recevant")) + " / " + cleanText(get(r, "Visiteur / événement"))).replace(/^ \/ | \/ $/g, "");
@@ -902,45 +882,15 @@ function renderAccueil() {
     </div>`;
   })();
 
-  // --- Compteurs WE ---
+  // --- 3 chiffres clés (rien de plus) ---
   const compteurs = `
     <div class="acc-kpis">
-      <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce WE</span></div>
-      <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(Math.round(km), " km")}</span><span class="acc-kpi-lbl">à parcourir</span></div>
-      <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(brut)}</span><span class="acc-kpi-lbl">brut</span></div>
-      <div class="acc-kpi"><span class="acc-kpi-val acc-cost">−${formatMoney(carburant)}</span><span class="acc-kpi-lbl">carburant estimé</span></div>
-      <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
+      <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
+      <button type="button" class="acc-kpi acc-kpi--btn acc-vers-paiements"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">total impayé →</span></button>
     </div>`;
 
-  // --- Listes compactes ---
-  const ligneImpaye = r => `<button type="button" class="acc-ligne acc-vers-paiements" data-uid="${escapeHtml(get(r, "UID"))}">
-    <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
-    <span class="acc-match">${escapeHtml(oppDe(r))}</span>
-    <span class="acc-montant acc-cost">${formatMoney(r._reste)}</span></button>`;
-
-  const ligneTraiter = r => {
-    const w = warningsReels(r);
-    const raison = w.length ? w.join(" · ") : (cleanText(get(r, "Statut paiement")) === "À vérifier" ? "Paiement à vérifier" : "À contrôler");
-    return `<button type="button" class="acc-ligne acc-vers-alertes" data-uid="${escapeHtml(get(r, "UID"))}">
-      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
-      <span class="acc-match">${escapeHtml(oppDe(r))}</span>
-      <span class="acc-raison">${escapeHtml(raison)}</span></button>`;
-  };
-
-  const ligneContact = r => {
-    const uid = escapeHtml(get(r, "UID"));
-    const tel = normalizePhoneFr(get(r, "Collègue téléphone"));
-    const fait = Boolean(get(r, "Contact collègue"));
-    return `<div class="acc-ligne acc-contact">
-      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}</span>
-      <span class="acc-match">${escapeHtml(cleanText(get(r, "Collègue nom")))}</span>
-      <span class="acc-contact-actions">
-        ${tel ? `<a class="action-link secondary" href="sms:${tel}">SMS</a>` : ""}
-        <button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Fait" : "Contact fait"}</button>
-      </span></div>`;
-  };
-
-  // Ligne compacte pour un match du week-end (pas de carte pleine).
+  // Ligne compacte pour un match du week-end.
   const ligneMatchWE = r => {
     const uid = escapeHtml(get(r, "UID"));
     const h = heureDe_(r);
@@ -952,35 +902,20 @@ function renderAccueil() {
       <span class="acc-montant">${formatMoney(r._amount)}</span></button>`;
   };
 
-  // Un bloc = titre + 3 lignes max + « voir tout → » vers l'onglet dédié.
-  const bloc = (titre, count, items, renderer, versClass, vide) => {
-    if (!items.length) return `<section class="acc-bloc"><h2 class="section-title">${titre}</h2>${empty(vide)}</section>`;
-    const liste = `<div class="acc-liste">${items.slice(0, 3).map(renderer).join("")}</div>`;
-    const plus = (items.length > 3 && versClass) ? `<button type="button" class="acc-voir ${versClass}">Voir les ${items.length} →</button>` : "";
-    return `<section class="acc-bloc"><h2 class="section-title">${titre} <span class="count">${count}</span></h2>${liste}${plus}</section>`;
-  };
+  const matchsHtml = weRows.length
+    ? `<div class="acc-liste">${weRows.map(ligneMatchWE).join("")}</div>`
+    : empty("Aucun match ce week-end.");
 
   root.innerHTML = `
     ${hero}
     ${compteurs}
-    ${bloc("Mes matchs du week-end", nb, weRows, ligneMatchWE, "", "Aucun match ce week-end.")}
-    ${bloc("À traiter", aTraiter.length, aTraiter, ligneTraiter, "acc-vers-alertes", "Rien à traiter pour les matchs à venir.")}
-    ${bloc("Collègues à contacter", aContacter.length, aContacter, ligneContact, "", "Aucun collègue à contacter ce week-end.")}
     <section class="acc-bloc">
-      <h2 class="section-title">Trésorerie <span class="count">${escapeHtml(saison)}</span></h2>
-      <div class="acc-kpis acc-kpis--treso">
-        <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(encaisseSaison)}</span><span class="acc-kpi-lbl">encaissé</span></div>
-        <div class="acc-kpi"><span class="acc-kpi-val acc-cost">${formatMoney(duSaison)}</span><span class="acc-kpi-lbl">restant dû</span></div>
-        <div class="acc-kpi"><span class="acc-kpi-val">${formatMoney(brutSaison)}</span><span class="acc-kpi-lbl">brut total</span></div>
-      </div>
+      <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
+      ${matchsHtml}
     </section>
-    ${bloc(`Impayés à surveiller <span class="acc-total">${formatMoney(totalDu)} dû</span>`, impayes.length, impayes, ligneImpaye, "acc-vers-paiements", "Aucun impayé en retard.")}
   `;
 
-  // Seuls les boutons « Contact fait » ont besoin d'un listener (pas de cartes ici).
-  attachContactListeners(root);
-
-  // Raccourcis : ouvrir un match dans son onglet, ou basculer vers un onglet.
+  // Ouvrir un match dans son onglet ; la tuile impayé bascule vers Paiements.
   const ouvrirMatch = uid => {
     const r = state.allRows.find(x => get(x, "UID") === uid);
     const tab = (r && r._format === "3x3") ? "troisx3" : "matchs";
@@ -993,7 +928,6 @@ function renderAccueil() {
   };
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
   root.querySelectorAll(".acc-vers-paiements").forEach(b => b.addEventListener("click", () => setActiveTab("paiements")));
-  root.querySelectorAll(".acc-vers-alertes").forEach(b => b.addEventListener("click", () => setActiveTab("alertes")));
 }
 
 /* ---------------- regroupement par week-end ----------------
