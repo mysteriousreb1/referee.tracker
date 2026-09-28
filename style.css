@@ -2078,3 +2078,67 @@ tr:last-child td { border-bottom: 0; }
   flex: 1 1 200px; min-height: 42px; padding: 9px 10px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text);
 }
+
+/* ==================== Onglet Accueil (coup d'œil rapide) ==================== */
+#accueil { display: block; }
+#accueil .acc-bloc { margin-top: 18px; }
+
+/* Hero prochain match */
+.acc-hero {
+  position: relative;
+  padding: 16px 18px;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #0A1F44, #14346f);
+  box-shadow: 0 6px 20px rgba(10,31,68,.25);
+}
+.acc-hero--vide { color: var(--muted); background: var(--surface-2); box-shadow: none; }
+.acc-hero-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.acc-hero-tag {
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .05em;
+  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  background: rgba(255,255,255,.16);
+}
+.acc-hero-date { font-size: 12px; opacity: .9; text-transform: capitalize; }
+.acc-hero-match { font-family: var(--display); font-size: 20px; font-weight: 800; margin-top: 8px; line-height: 1.15; }
+.acc-hero-sub { font-size: 13px; opacity: .9; margin-top: 2px; }
+.acc-hero-lieu { font-size: 13px; opacity: .8; margin-top: 2px; }
+.acc-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.acc-hero-indem { position: absolute; top: 16px; right: 18px; font-family: var(--mono); font-weight: 700; font-size: 15px; }
+.acc-hero .acc-hero-indem { top: auto; bottom: 14px; }
+
+/* Bandeaux de compteurs */
+.acc-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 14px; }
+.acc-kpis--treso { grid-template-columns: repeat(3, 1fr); }
+.acc-kpi {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  padding: 11px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line);
+}
+.acc-kpi--net { background: var(--green-soft); border-color: transparent; }
+.acc-kpi-val { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--text); }
+.acc-kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.acc-cost { color: var(--orange); }
+
+/* Listes compactes (à traiter / impayés / contacts) */
+.acc-liste { display: flex; flex-direction: column; gap: 6px; }
+.acc-ligne {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 12px; border-radius: 10px; background: var(--surface-2);
+  border: 1px solid var(--line); color: var(--text); cursor: pointer; font: inherit;
+}
+button.acc-ligne:hover { border-color: var(--gold, #c9a24a); }
+.acc-jour { flex: 0 0 auto; font-size: 11px; color: var(--muted); text-transform: capitalize; min-width: 74px; }
+.acc-match { flex: 1 1 auto; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-raison { flex: 0 0 auto; font-size: 11.5px; color: var(--orange); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-montant { flex: 0 0 auto; font-family: var(--mono); font-weight: 700; font-size: 13px; }
+.acc-contact { cursor: default; }
+.acc-contact-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.acc-total { font-family: var(--mono); font-size: 12px; color: var(--orange); font-weight: 700; }
+
+@media (max-width: 720px) {
+  .acc-kpis { grid-template-columns: repeat(2, 1fr); }
+  .acc-kpis--treso { grid-template-columns: repeat(3, 1fr); }
+  .acc-kpi--net { grid-column: 1 / -1; }
+  .acc-raison { display: none; }
+  .acc-hero-indem { position: static; margin-top: 10px; }
+}
