@@ -577,6 +577,62 @@ function safeRender_(fn, panelId, label) {
   }
 }
 
+/* Bloc 7 (28/09/2026) — Onglet IA Règlement : Q&A sur le corpus FIBA.
+   Chat simple ; chaque question part au backend reglement.ask (Gemini). */
+function renderReglement() {
+  const root = document.getElementById("reglement");
+  if (!root) return;
+  const hist = state._reglementHist || [];
+  root.innerHTML = `
+    <h2 class="section-title">Règlement & situations <span class="count">IA</span></h2>
+    <div class="stat-note">Pose une question de règle ou décris une situation de match. La réponse s'appuie sur le Règlement officiel FIBA, les Interprétations officielles et le Manuel de techniques d'arbitrage. Compte ~10-15 s : l'IA relit le règlement à chaque question.</div>
+    <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => `
+      <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : formatReglementReponse_(m.text)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
+    <form class="regl-form" id="reglForm">
+      <textarea id="reglInput" rows="2" placeholder="Ta question de règlement ou ta situation…"></textarea>
+      <button type="submit" class="rt-btn regl-send" id="reglSend">Demander</button>
+    </form>
+    <div class="regl-status" id="reglStatus" role="status"></div>`;
+  attachReglementListeners_(root);
+  const chat = document.getElementById("reglChat"); if (chat) chat.scrollTop = chat.scrollHeight;
+}
+
+function formatReglementReponse_(txt) {
+  let h = escapeHtml(String(txt || ""));
+  h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return h.replace(/\n/g, "<br>");
+}
+
+async function askReglement_(question) {
+  state._reglementHist = state._reglementHist || [];
+  state._reglementHist.push({ role: "user", text: question });
+  renderReglement();
+  const status = document.getElementById("reglStatus");
+  if (status) status.textContent = "L'IA lit le règlement… (10-15 s)";
+  const btn = document.getElementById("reglSend"); if (btn) btn.disabled = true;
+  try {
+    const res = await jsonp("reglement.ask", { question });
+    const r = res && res.result;
+    if (!res || !res.success || !r || !r.ok) throw new Error((r && r.error) || (res && res.error) || "Erreur inconnue");
+    state._reglementHist.push({ role: "ia", text: r.reponse });
+  } catch (err) {
+    state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") });
+  }
+  renderReglement();
+}
+
+function attachReglementListeners_(root) {
+  const form = root.querySelector("#reglForm");
+  if (form) form.addEventListener("submit", e => {
+    e.preventDefault();
+    const ta = document.getElementById("reglInput");
+    const q = ta ? ta.value.trim() : "";
+    if (!q) return;
+    ta.value = "";
+    askReglement_(q);
+  });
+}
+
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
   safeRender_(renderMatchs, "matchs", "Matchs");
@@ -592,7 +648,7 @@ function renderAll() {
   // et la classe .panel.active AVANT d'appeler renderAll(), donc ce test
   // capture bien le retour sur l'onglet Stats en mode "avancee".
   if (state.statsSubView === "avancee" && state.activeTab === "stats") safeRender_(renderAnalyse, "stats", "Analyse");
-  safeRender_(renderAgenda, "agenda", "Agenda");
+  safeRender_(renderReglement, "reglement", "Règlement");
   safeRender_(renderAlertes, "alertes", "Alertes");
   safeRender_(renderExport, "export", "Export");
   safeRender_(renderQcm, "qcm", "QCM");
