@@ -326,6 +326,12 @@ function loadData() {
       if (!res.success) throw new Error(res.error || "Erreur API");
       state.allRows = normalizeRows(res.data || []);
       state._lastLoadTs = Date.now();
+      // Sauvegarde de secours (28/09/2026) : dernier jeu de matchs valide,
+      // conservé hors du cache rt_c_ pour survivre à une purge de quota.
+      // Sert de filet si un rechargement ultérieur n'obtient pas de réponse
+      // du serveur (démarrage à froid Apps Script > 60 s, réseau coupé) —
+      // l'écran ne se vide plus jamais dès lors qu'un chargement a réussi.
+      try { localStorage.setItem("rt_last_matchs", JSON.stringify({ t: Date.now(), d: res.data || [] })); } catch (e) {}
       setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
       buildQuickFilterSelects_();
 
@@ -339,7 +345,30 @@ function loadData() {
       try { loadPrixCarburant(); } catch (e) { console.warn("Prix carburant indisponible :", e); }
       try { loadClassements(); } catch (e) { console.warn("Classements FFBB indisponibles :", e); }
     })
-    .catch(showApiError);
+    .catch(afficherDepuisSecours_);
+}
+
+/* Filet offline-first (28/09/2026) : quand l'API ne répond pas (démarrage à
+   froid Apps Script, réseau coupé, cache empoisonné), on réaffiche le dernier
+   jeu de matchs valide au lieu de vider l'écran. showApiError n'est montré
+   qu'en tout dernier recours — aucune sauvegarde disponible. */
+function afficherDepuisSecours_(err) {
+  try {
+    const brut = localStorage.getItem("rt_last_matchs");
+    if (brut) {
+      const o = JSON.parse(brut);
+      if (o && Array.isArray(o.d) && o.d.length) {
+        state.allRows = normalizeRows(o.d);
+        state._lastLoadTs = o.t || Date.now();
+        buildQuickFilterSelects_();
+        renderAll();
+        const quand = o.t ? new Date(o.t).toLocaleString("fr-FR") : "récemment";
+        setStatus("Hors ligne — matchs du " + quand + " (le serveur n'a pas répondu, réessai en arrière-plan)", "");
+        return;
+      }
+    }
+  } catch (e) { /* secours illisible : on tombe sur l'erreur classique */ }
+  showApiError(err);
 }
 
 /* Filet de sécurité au démarrage.
@@ -989,7 +1018,7 @@ function renderMatchCard(row) {
     : firstValue(row, ["Recevant", "Visiteur / événement", "Libellé compétition"]);
 
   const date = formatDateShort(row._date);
-  const time = get(row, "Heure/RDV");
+  const time = fmtHeure(get(row, "Heure/RDV"));
   const paiement = get(row, "Statut paiement") || "À recevoir";
   const isPaid = paiement === "Reçu";
   const isBenevole = paiement === BENEVOLE;
@@ -1257,7 +1286,7 @@ function buildSmsCollegue(row) {
   const prenom = prenomCollegue(row) || "";
 
   const date = formatDateLongue(row._date) || cleanText(get(row, "Date match"));
-  const heure = cleanText(get(row, "Heure/RDV"));
+  const heure = fmtHeure(cleanText(get(row, "Heure/RDV")));
   const club = cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
 
   const lignes = [
@@ -1335,6 +1364,59 @@ function mercrediSemaineSuivante_(dateStr) {
   return formatDateShort(cible);
 }
 
+/* Ventilation du paiement par club (28/09/2026).
+   Régimes « clubs » (Parts égales = 50/50 recevant/visiteur ; Association
+   recevante = 100 % recevant). Pointe le montant reçu + le mode par club,
+   barre de progression reçu/total, raccourci « un seul club a tout payé ».
+   Chaque saisie appelle updatePaiementClub — le statut est recalculé côté
+   serveur (À recevoir → Reçu partiel → Reçu / À vérifier). */
+const MODES_PAIEMENT = ["", "Espèces", "Chèque", "Virement"];
+
+function renderVentilationClubs_(row) {
+  const typePaiement = get(row, "Paiement Type") || "";
+  const estPartsEgales = typePaiement === "Parts égales (2 clubs)";
+  const estRecevante = typePaiement === "Association recevante";
+  if (!estPartsEgales && !estRecevante) return "";
+  if ((get(row, "Statut paiement") || "") === BENEVOLE) return "";
+
+  const uid = escapeHtml(get(row, "UID"));
+  const total = toNumber(get(row, "Indemnité totale"));
+  const nomRecev = get(row, "Recevant") || "Club recevant";
+  const nomVisit = get(row, "Visiteur / événement") || "Club visiteur";
+  const arAtt = toNumber(get(row, "Attendu recevant")) || (estPartsEgales ? round2(total / 2) : total);
+  const avAtt = toNumber(get(row, "Attendu visiteur")) || (estPartsEgales ? round2(total / 2) : 0);
+  const arRecu = get(row, "Reçu recevant");
+  const avRecu = get(row, "Reçu visiteur");
+  const arMode = get(row, "Mode recevant") || "";
+  const avMode = get(row, "Mode visiteur") || "";
+  const recuTotal = round2(toNumber(arRecu) + toNumber(avRecu));
+  const pct = total > 0 ? Math.min(100, Math.round(recuTotal / total * 100)) : 0;
+  const couvert = total > 0 && recuTotal >= total - 1;
+
+  const bloc = (cote, nom, att, recu, mode) => `
+    <div class="pay-club">
+      <div class="pay-club-nom">${escapeHtml(nom)} <span class="pay-club-att">attendu ${formatMoney(att)}</span></div>
+      <div class="pay-club-inputs">
+        <input class="pay-recu" type="number" step="0.01" inputmode="decimal" data-uid="${uid}" data-cote="${cote}" value="${recu === "" || recu == null ? "" : escapeHtml(String(recu))}" placeholder="reçu €" aria-label="Montant reçu ${escapeHtml(nom)}">
+        <select class="pay-mode-club" data-uid="${uid}" data-cote="${cote}" aria-label="Mode ${escapeHtml(nom)}">
+          ${MODES_PAIEMENT.map(m => `<option value="${m}" ${m === mode ? "selected" : ""}>${m || "Mode…"}</option>`).join("")}
+        </select>
+      </div>
+    </div>`;
+
+  return `
+    <div class="pay-clubs" data-uid="${uid}">
+      <div class="pay-clubs-head">
+        <strong>Paiement par club</strong>
+        <span class="pay-progress ${couvert ? "ok" : ""}">${formatMoney(recuTotal)} / ${formatMoney(total)}</span>
+      </div>
+      <div class="pay-bar"><i class="${couvert ? "ok" : ""}" style="width:${pct}%"></i></div>
+      ${bloc("ar", nomRecev, arAtt, arRecu, arMode)}
+      ${estPartsEgales ? bloc("av", nomVisit, avAtt, avRecu, avMode) : ""}
+      ${estPartsEgales ? `<button type="button" class="pay-tout small-btn" data-uid="${uid}" data-total="${total}">Un seul club a tout payé (${formatMoney(total)})</button>` : ""}
+    </div>`;
+}
+
 function renderPaymentControl(row) {
   const uid = escapeHtml(get(row, "UID"));
   const current = get(row, "Statut paiement") || "À recevoir";
@@ -1401,7 +1483,8 @@ function renderPaymentControl(row) {
     ${retardCD67 ? `
     <div class="payment-row-alert">
       <div class="badge-retard">⚠ Paiement CD67 en retard — relance à faire</div>
-    </div>` : ""}`;
+    </div>` : ""}
+    ${renderVentilationClubs_(row)}`;
 }
 
 function attachCardListeners(root) {
@@ -1578,6 +1661,29 @@ function attachPaymentListeners(root) {
     });
   });
 
+  // Ventilation par club (28/09/2026) : montant reçu, mode, « un seul paie tout »
+  root.querySelectorAll(".pay-recu").forEach(inp => {
+    inp.addEventListener("change", e => {
+      const uid = e.target.dataset.uid, cote = e.target.dataset.cote;
+      const val = e.target.value === "" ? "" : String(e.target.value).replace(",", ".");
+      const patch = {}; patch[cote === "ar" ? "arRecu" : "avRecu"] = val;
+      envoyerPaiementClub_(uid, patch, e.target);
+    });
+  });
+  root.querySelectorAll(".pay-mode-club").forEach(sel => {
+    sel.addEventListener("change", e => {
+      const uid = e.target.dataset.uid, cote = e.target.dataset.cote;
+      const patch = {}; patch[cote === "ar" ? "arMode" : "avMode"] = e.target.value;
+      envoyerPaiementClub_(uid, patch, e.target);
+    });
+  });
+  root.querySelectorAll(".pay-tout").forEach(btn => {
+    btn.addEventListener("click", e => {
+      const uid = e.currentTarget.dataset.uid, total = toNumber(e.currentTarget.dataset.total);
+      envoyerPaiementClub_(uid, { arAttendu: total, avAttendu: 0, arRecu: total, avRecu: "" }, e.currentTarget);
+    });
+  });
+
   root.querySelectorAll(".payment-select").forEach(select => {
     select.addEventListener("change", async e => {
       const uid = e.target.dataset.uid, status = e.target.value;
@@ -1616,6 +1722,38 @@ function attachPaymentListeners(root) {
       }
     });
   });
+}
+
+/* Envoi d'une saisie de paiement par club (28/09/2026). Le serveur écrit les
+   champs, recalcule le statut (À recevoir → Reçu partiel → Reçu / À vérifier)
+   et renvoie {statut, recuTotal, attenduTotal}. On répercute localement puis on
+   re-rend. */
+async function envoyerPaiementClub_(uid, patch, target) {
+  if (target) target.disabled = true;
+  setStatus("Mise à jour du paiement…", "");
+  try {
+    const res = await jsonp("updatePaiementClub", Object.assign({ uid }, patch));
+    if (!res.success) throw new Error(res.error || "Erreur update");
+    const r = res.result || {};
+    const row = state.allRows.find(x => get(x, "UID") === uid);
+    if (row) {
+      if (patch.arRecu !== undefined) row["Reçu recevant"] = patch.arRecu;
+      if (patch.avRecu !== undefined) row["Reçu visiteur"] = patch.avRecu;
+      if (patch.arMode !== undefined) row["Mode recevant"] = patch.arMode;
+      if (patch.avMode !== undefined) row["Mode visiteur"] = patch.avMode;
+      if (patch.arAttendu !== undefined) row["Attendu recevant"] = patch.arAttendu;
+      if (patch.avAttendu !== undefined) row["Attendu visiteur"] = patch.avAttendu;
+      if (r.statut) row["Statut paiement"] = r.statut;
+      if (r.recuTotal !== undefined) row["Montant reçu"] = r.recuTotal;
+    }
+    setStatus("Paiement mis à jour" + (r.statut ? " → " + r.statut : ""), "ok");
+    AN.statsCache = {};
+    try { loadStats(); } catch (e) {}
+    renderAll();
+  } catch (err) {
+    setStatus("Erreur paiement : " + err.message, "error");
+    if (target) target.disabled = false;
+  }
 }
 
 /* ---------------- Stats ---------------- */
@@ -2970,7 +3108,7 @@ function renderAgendaMatchMini_(row) {
   const title = format === "3x3"
     ? firstValue(row, ["Visiteur / événement", "Recevant", "Libellé compétition"])
     : firstValue(row, ["Recevant", "Visiteur / événement", "Libellé compétition"]);
-  const time = get(row, "Heure/RDV");
+  const time = fmtHeure(get(row, "Heure/RDV"));
   const niv = niveauCarte(row);
   const lieu = firstValue(row, ["Salle", "Ville"]);
   const paiement = get(row, "Statut paiement") || "À recevoir";
@@ -3698,6 +3836,8 @@ function parseFrDate(value) {
   const d = new Date(s); return isNaN(d.getTime()) ? null : d;
 }
 
+/* Heure d'affichage : "14:40:00" (import Google Sheets) -> "14:40". */
+function fmtHeure(h) { const s = String(h || "").trim(); const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/); return m ? m[1].padStart(2, "0") + ":" + m[2] : s; }
 function formatDateShort(date) { return date ? date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : ""; }
 function formatMoney(v) { return (Number(v) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }); }
 function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
