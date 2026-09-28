@@ -1099,8 +1099,7 @@ function renderMoneyStrip(gross, cost, net) {
 function renderDetails(row) {
   const groupes = [
     ["Rencontre", [
-      ["Compétition", get(row, "Libellé compétition"), true], ["Format", get(row, "Format")],
-      ["Catégorie", get(row, "Catégorie d'âge")], ["Genre", get(row, "Genre")],
+      ["Compétition", get(row, "Libellé compétition"), true],
       ["N° rencontre", get(row, "N° rencontre")], ["Code e-Marque", get(row, "Code e-Marque")],
       ["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]
     ]],
