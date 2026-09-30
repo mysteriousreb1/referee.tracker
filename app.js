@@ -340,8 +340,7 @@ function loadData() {
       state._lastLoadTs = Date.now();
       const cacheInfo = window.RT_CACHE_INFO && window.RT_CACHE_INFO.matchs;
       if (cacheInfo && cacheInfo.stale) {
-        const dateCache = new Date(cacheInfo.timestamp).toLocaleString("fr-FR");
-        setStatus(`${state.allRows.length} ligne(s) affichée(s) depuis la dernière sauvegarde locale (${dateCache}). Actualisation en arrière-plan.`, "");
+        setStatus(`${state.allRows.length} ligne(s) · actualisation en arrière-plan…`, "");
       } else {
         setStatus(`${state.allRows.length} ligne(s) chargée(s)`, "ok");
       }
@@ -665,6 +664,14 @@ function attachReglementListeners_(root) {
     ta.value = "";
     askReglement_(q);
   });
+  // Entrée = envoi ; Maj+Entrée = nouvelle ligne (28/09 -> 30/09)
+  const ta = root.querySelector("#reglInput");
+  if (ta) ta.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (form) { form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event("submit", { cancelable: true })); }
+    }
+  });
 }
 
 function renderAll() {
@@ -886,6 +893,7 @@ function renderAccueil() {
   const compteurs = `
     <div class="acc-kpis">
       <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(km, "")}</span><span class="acc-kpi-lbl">km ce week-end</span></div>
       <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
       <button type="button" class="acc-kpi acc-kpi--btn acc-vers-paiements"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">total impayé →</span></button>
     </div>`;
@@ -2022,9 +2030,8 @@ function renderStats() {
       <div class="kpi"><label>Net moyen / mission</label><strong>${money(m.net_reel_par_mission)}</strong></div>
       <div class="kpi"><label>Indemnité moy. 5×5</label><strong>${money(m.indemnite_par_5x5)}</strong></div>
       <div class="kpi"><label>Indemnité moy. 3×3</label><strong>${money(m.indemnite_par_3x3)}</strong></div>
-      <div class="kpi"><label>Équiv. barème fiscal*</label><strong>${formatMoney(t.equivalent_bareme_fiscal)}</strong><span class="sub">info — non versé</span></div>
     </div>
-    <div class="stat-note">* Le barème fiscal (chevaux fiscaux) est indicatif : la FFBB rembourse toujours 0,40 €/km, jamais au barème. ${s.note_3x3 ? escapeHtml(s.note_3x3) : ""}</div>
+    ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}
 
     ${renderRepartitionRoles()}
     ${renderRecords(rec)}
@@ -3437,33 +3444,36 @@ function renderExport() {
     </div>
 
     ${rows.length ? `
-    <div class="table-card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Date</th><th>Format</th><th>Niveau</th><th>Rencontre</th><th>Lieu</th>
-                <th class="num">Km</th><th class="num">Brut</th><th class="num">Carburant</th><th class="num">Net</th><th>Paiement</th></tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => {
-              const c = realFuelCostClient(r._km, r._date);
-              return `<tr>
-                <td>${escapeHtml(get(r, "Date match"))}</td>
-                <td>${escapeHtml(r._format)}</td>
-                <td>${escapeHtml(get(r, "Niveau administratif"))}</td>
-                <td>${escapeHtml(rencontreLabel(r))}</td>
-                <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
-                <td class="num">${formatNumber(r._km, "")}</td>
-                <td class="num">${formatMoney(r._amount)}</td>
-                <td class="num">${formatMoney(c)}</td>
-                <td class="num pos">${formatMoney(r._amount - c)}</td>
-                <td>${escapeHtml(get(r, "Statut paiement"))}</td>
-              </tr>`;
-            }).join("")}
-          </tbody>
-        </table>
+    <details class="rt-details" style="margin-top:14px">
+      <summary>Détail des missions (${rows.length}) — afficher le tableau</summary>
+      <div class="table-card" style="margin-top:10px">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Format</th><th>Niveau</th><th>Rencontre</th><th>Lieu</th>
+                  <th class="num">Km</th><th class="num">Brut</th><th class="num">Carburant</th><th class="num">Net</th><th>Paiement</th></tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => {
+                const c = realFuelCostClient(r._km, r._date);
+                return `<tr>
+                  <td>${escapeHtml(get(r, "Date match"))}</td>
+                  <td>${escapeHtml(r._format)}</td>
+                  <td>${escapeHtml(get(r, "Niveau administratif"))}</td>
+                  <td>${escapeHtml(rencontreLabel(r))}</td>
+                  <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
+                  <td class="num">${formatNumber(r._km, "")}</td>
+                  <td class="num">${formatMoney(r._amount)}</td>
+                  <td class="num">${formatMoney(c)}</td>
+                  <td class="num pos">${formatMoney(r._amount - c)}</td>
+                  <td>${escapeHtml(get(r, "Statut paiement"))}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>` : empty("Aucune mission pour cette période.")}
+    </details>` : empty("Aucune mission pour cette période.")}
   `;
 
   document.getElementById("exportModeSeasonBtn").addEventListener("click", () => { state.exportMode = "season"; renderExport(); });
