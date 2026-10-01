@@ -2160,3 +2160,49 @@ button.acc-ligne:active { transform: scale(.995); }
   .acc-lieu-mini { display: none; }
   .acc-jour { min-width: 78px; }
 }
+
+/* =====================================================
+   UX signalés en test — lot du 01/10/2026
+   1) barre d'onglets non-sticky sur téléphone
+   2) loupe header qui déplie Saison/Recherche/Filtre (téléphone)
+   3) tableaux STATS dépliables (<details>)
+   4) bouton collègue "Tél NOM Prénom" (icône téléphone)
+   ===================================================== */
+
+/* (1) La barre d'onglets ne colle plus au scroll sur téléphone : elle
+   défile avec la page (demande test). PC ≥1240px = sidebar fixe, inchangé. */
+@media (max-width: 720px) {
+  .tabs { position: static; top: auto; }
+}
+
+/* (2) Loupe : masquée sur PC (barre toujours visible), visible sur téléphone
+   où la barre Saison/Recherche/Filtre est repliée par défaut. */
+#searchToggleBtn { display: none; }
+@media (max-width: 720px) {
+  #searchToggleBtn { display: inline-flex; align-items: center; justify-content: center; }
+  #searchToggleBtn.active { border-color: var(--navy-600); background: var(--surface-2); }
+  .toolbar-search { display: none; }
+  .toolbar-search.search-open { display: grid; }
+}
+
+/* (3) Sections STATS dépliables — <summary> reprend la DA de .section-title. */
+.stat-fold { margin: 0 0 14px; }
+.stat-fold > summary.stat-fold-sum {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.stat-fold > summary.stat-fold-sum::-webkit-details-marker { display: none; }
+.stat-fold-chev { margin-left: auto; color: var(--muted); transition: transform 0.2s ease; flex: 0 0 auto; }
+.stat-fold[open] > summary .stat-fold-chev { transform: rotate(180deg); }
+.stat-fold-body { margin-top: 12px; }
+
+/* (4) Bouton collègue : icône téléphone + nom collé proprement. */
+.acc-tel-col { display: inline-flex; align-items: center; gap: 7px; }
+@media (prefers-reduced-motion: reduce) {
+  .stat-fold-chev { transition: none; }
+}
