@@ -3787,9 +3787,107 @@ function generateExportPdf() {
     }
   });
 
+  // Carte des salles (vectorielle, à partir des coords déjà géocodées)
+  try { ajouterCarteSallesPdf_(doc, rows, { navy, gold, grey, green }); }
+  catch (e) { console.warn("Carte PDF ignorée :", e && e.message); }
+
   const suffix = state.exportMonth || state.exportSeason.replace("/", "-");
   doc.save(`referee-tracker-${suffix}.pdf`);
   setStatus(`PDF généré — ${rows.length} mission(s)`, "ok");
+}
+
+/* Carte vectorielle des salles dans le PDF (01/10/2026). Les tuiles OSM ne se
+   rastérisent pas de façon fiable (CORS → canvas souillé), donc on dessine en
+   vectoriel jsPDF à partir des coords DÉJÀ géocodées à l'écran (geocodeCache) :
+   aucune requête réseau, instantané. Salles non géocodées = ignorées (afficher
+   la carte dans l'onglet Export peuple le cache et les inclut toutes). */
+function ajouterCarteSallesPdf_(doc, rows, couleurs) {
+  const cache = state.geocodeCache || {};
+  const navy = couleurs.navy, gold = couleurs.gold, grey = couleurs.grey;
+
+  const parSalle = {};
+  rows.forEach(r => {
+    const salle = cleanText(get(r, "Salle")) || cleanText(get(r, "Ville"));
+    if (!salle) return;
+    const adresse = cleanText(get(r, "Adresse")) || salle;
+    if (!parSalle[adresse]) parSalle[adresse] = { salle, adresse, count: 0 };
+    parSalle[adresse].count++;
+  });
+
+  const pts = [];
+  Object.values(parSalle).forEach(e => {
+    const g = cache[e.adresse];
+    if (g && isFinite(g.lat) && isFinite(g.lon)) pts.push({ lat: +g.lat, lon: +g.lon, count: e.count, salle: e.salle });
+  });
+  if (!pts.length) return; // rien de géocodé : pas de page carte
+
+  const homeValide = Number(HOME.lat) && Number(HOME.lon);
+  doc.addPage("a4", "landscape");
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(navy[0], navy[1], navy[2]);
+  doc.rect(0, 0, pageW, 20, "F");
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text("CARTE DES SALLES", 12, 13);
+  doc.setTextColor(gold[0], gold[1], gold[2]); doc.setFontSize(9);
+  doc.text("Nombre de fois arbitré", pageW - 12, 13, { align: "right" });
+
+  const boxX = 14, boxY = 28, boxW = pageW - 28, boxH = pageH - 44;
+
+  const tous = pts.slice();
+  if (homeValide) tous.push({ lat: +HOME.lat, lon: +HOME.lon, count: 0, salle: "Domicile", _home: true });
+  const latMoy = tous.reduce((s, p) => s + p.lat, 0) / tous.length;
+  const k = Math.cos(latMoy * Math.PI / 180) || 1;
+  tous.forEach(p => { p.px = p.lon * k; p.py = p.lat; });
+
+  const pxMin = Math.min(...tous.map(p => p.px)), pxMax = Math.max(...tous.map(p => p.px));
+  const pyMin = Math.min(...tous.map(p => p.py)), pyMax = Math.max(...tous.map(p => p.py));
+  const rangeX = (pxMax - pxMin) || 1e-6, rangeY = (pyMax - pyMin) || 1e-6;
+  const pad = 10;
+  const scale = Math.min((boxW - 2 * pad) / rangeX, (boxH - 2 * pad) / rangeY);
+  const drawnW = rangeX * scale, drawnH = rangeY * scale;
+  const offX = boxX + (boxW - drawnW) / 2, offY = boxY + (boxH - drawnH) / 2;
+  const projX = p => offX + (p.px - pxMin) * scale;
+  const projY = p => offY + (pyMax - p.py) * scale;
+
+  doc.setDrawColor(220, 227, 239); doc.setLineWidth(0.3);
+  doc.rect(boxX, boxY, boxW, boxH);
+
+  if (homeValide) {
+    const h = tous.find(p => p._home);
+    const hx = projX(h), hy = projY(h), s = 2.4;
+    doc.setFillColor(gold[0], gold[1], gold[2]);
+    doc.triangle(hx, hy - s, hx - s, hy + s, hx + s, hy + s, "F");
+    doc.setFontSize(6.5); doc.setTextColor(grey[0], grey[1], grey[2]);
+    doc.text("Domicile", hx, hy + s + 3, { align: "center" });
+  }
+
+  const maxCount = Math.max(...pts.map(p => p.count), 1);
+  const rayon = c => 1.4 + (c / maxCount) * 3.2;
+  pts.forEach(p => {
+    const x = projX(p), y = projY(p), r = rayon(p.count);
+    doc.setFillColor(navy[0], navy[1], navy[2]);
+    doc.circle(x, y, r, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold");
+    doc.setFontSize(Math.max(5, Math.min(8, r * 2)));
+    doc.text(String(p.count), x, y + 0.8, { align: "center" });
+  });
+
+  if (pts.length <= 25) {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(5.5); doc.setTextColor(grey[0], grey[1], grey[2]);
+    pts.forEach(p => {
+      const x = projX(p), y = projY(p), r = rayon(p.count);
+      doc.text(pdfSafe(p.salle).slice(0, 22), x, y + r + 2.4, { align: "center" });
+    });
+  }
+
+  doc.setFont("helvetica", "italic"); doc.setFontSize(7); doc.setTextColor(grey[0], grey[1], grey[2]);
+  const nbTotalSalles = Object.keys(parSalle).length;
+  const note = pts.length < nbTotalSalles
+    ? `${pts.length}/${nbTotalSalles} salles placées — affiche la carte dans l'onglet Export pour géocoder les autres.`
+    : `${pts.length} salles — carte schématique (positions relatives, sans fond de carte).`;
+  doc.text(note, 14, pageH - 8);
 }
 
 /* ---------------- Coût carburant client ----------------
