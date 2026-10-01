@@ -146,6 +146,7 @@ function bindUi() {
   document.querySelectorAll(".tab").forEach(btn => {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   });
+  setupMoreMenu_();
 
   const themeBtn = document.getElementById("themeToggleBtn");
   if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
@@ -320,6 +321,61 @@ function getSeasonsFrom2022ToCurrent() {
 }
 
 /* ---------------- Tabs ---------------- */
+
+/* Menu "Plus" (téléphone) — 01/10/2026 : désencombre la barre d'onglets en
+   repliant les onglets secondaires dans un panneau déroulant. PC/tablette
+   inchangés (tout masqué en CSS hors ≤720px). Injecté en JS : aucune
+   modification de la structure de index.html. */
+function setupMoreMenu_() {
+  const nav = document.querySelector("nav.tabs");
+  if (!nav || document.getElementById("tabMoreBtn")) return;
+  const SECONDARY = ["stats", "export", "qcm", "progression", "reglement", "contacts"];
+  SECONDARY.forEach(t => {
+    const b = nav.querySelector(`.tab[data-tab="${t}"]`);
+    if (b) b.classList.add("tab-secondary");
+  });
+
+  const more = document.createElement("button");
+  more.type = "button";
+  more.id = "tabMoreBtn";
+  more.className = "tab tab-more";
+  more.setAttribute("aria-expanded", "false");
+  more.innerHTML = `<span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="tab-label">Plus</span>`;
+  const foot = nav.querySelector(".tabs-foot");
+  nav.insertBefore(more, foot || null);
+
+  const panel = document.createElement("div");
+  panel.id = "tabMorePanel";
+  panel.className = "tab-more-panel";
+  panel.hidden = true;
+  SECONDARY.forEach(t => {
+    const src = nav.querySelector(`.tab[data-tab="${t}"] .tab-label`);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "tab-more-item";
+    item.dataset.goto = t;
+    item.textContent = src ? src.textContent : t;
+    panel.appendChild(item);
+  });
+  // Hors de la grille .tabs pour occuper toute la largeur proprement.
+  nav.parentNode.insertBefore(panel, nav.nextSibling);
+
+  const close = () => { panel.hidden = true; more.setAttribute("aria-expanded", "false"); more.classList.remove("active"); };
+  more.addEventListener("click", ev => {
+    ev.stopPropagation();
+    const open = panel.hidden;
+    panel.hidden = !open;
+    more.setAttribute("aria-expanded", open ? "true" : "false");
+    more.classList.toggle("active", open);
+  });
+  panel.addEventListener("click", ev => {
+    const it = ev.target.closest("[data-goto]");
+    if (!it) return;
+    setActiveTab(it.dataset.goto);
+    close();
+  });
+  document.addEventListener("click", () => { if (!panel.hidden) close(); });
+}
 
 function setActiveTab(tab) {
   state.activeTab = tab;
