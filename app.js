@@ -905,9 +905,6 @@ function renderAccueil() {
   const root = document.getElementById("accueil");
   if (!root) return;
 
-  const CONSO_L100 = 6.0;   // Audi A3 35 TFSI — à ajuster si le véhicule change
-  const prixL = (state.prixActuel && state.prixActuel > 0.5 && state.prixActuel < 4) ? state.prixActuel : 2.26;
-
   const actifs = state.allRows.filter(r => r._isActive && r._format !== "Alerte");
   const { start, end } = fenetreWE_();
 
@@ -921,7 +918,9 @@ function renderAccueil() {
   const nb = weRows.length;
   const km = weRows.reduce((t, r) => t + (r._km || 0), 0);
   const brut = weRows.reduce((t, r) => t + (r._amount || 0), 0);
-  const carburant = km * CONSO_L100 / 100 * prixL;
+  // Source unique du coût carburant : realFuelCostClient (prix historiques
+  // PRIX_E10 + conso datée 6,0/6,58). Évite la divergence Accueil vs Stats/Export.
+  const carburant = weRows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
   const netEstime = brut - carburant;
 
   // Total impayé en retard, toutes saisons (le détail vit dans l'onglet Paiements).
