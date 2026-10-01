@@ -2277,3 +2277,16 @@ button.acc-ligne:active { transform: scale(.995); }
 @media (max-width: 720px) {
   .acc-quick { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* =====================================================
+   Alertes — accent couleur + icône par groupe (01/10/2026)
+   ===================================================== */
+.alerte-bloc { border-left: 3px solid var(--line); padding-left: 14px; margin: 18px 0 4px; }
+.alerte-bloc--corriger, .alerte-bloc--retard { border-left-color: var(--danger); }
+.alerte-bloc--trancher { border-left-color: var(--gold); }
+.alerte-bloc-head { display: flex; align-items: center; gap: 9px; }
+.alerte-bloc-head .section-title.alerte-groupe { margin: 0; }
+.alerte-bloc-ic { display: inline-flex; flex: 0 0 auto; }
+.alerte-bloc--corriger .alerte-bloc-ic,
+.alerte-bloc--retard .alerte-bloc-ic { color: var(--danger); }
+.alerte-bloc--trancher .alerte-bloc-ic { color: var(--gold); }
