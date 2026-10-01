@@ -3628,7 +3628,10 @@ function renderExport() {
     <div class="table-card" style="padding:14px; margin-top:14px">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
         <strong>Carte des salles — nombre de fois arbitré</strong>
-        <button class="small-btn secondary" type="button" id="exportMapBtn"${rows.length ? "" : " disabled"}>Afficher la carte</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button class="small-btn secondary" type="button" id="exportMapBtn"${rows.length ? "" : " disabled"}>Afficher la carte</button>
+          <button class="small-btn secondary" type="button" id="exportMapImgBtn" hidden>Exporter en image</button>
+        </div>
       </div>
       <p class="card-sub" style="margin:6px 0 0">Géocodage un peu lent (respect du quota de l'API OSM gratuite, ~1 salle/seconde) — normal.</p>
       <div id="exportMap" style="height:320px; border-radius:12px; margin-top:10px; display:none"></div>
@@ -3744,8 +3747,10 @@ async function genererCarteSalles_(rows) {
   if (state.exportMapInstance) { state.exportMapInstance.remove(); state.exportMapInstance = null; }
   const homeValide = Number(HOME.lat) && Number(HOME.lon);
   const carte = L.map(conteneur, { scrollWheelZoom: false }).setView(homeValide ? [HOME.lat, HOME.lon] : [46.6, 2.3], homeValide ? 8 : 5);
+  // crossOrigin : indispensable pour que html2canvas puisse capturer les
+  // tuiles OSM (sinon canvas "tainted" → export image impossible).
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18, attribution: "© OpenStreetMap"
+    maxZoom: 18, attribution: "© OpenStreetMap", crossOrigin: true
   }).addTo(carte);
   if (homeValide) L.marker([HOME.lat, HOME.lon]).addTo(carte).bindPopup("Domicile");
   state.exportMapInstance = carte;
@@ -3774,6 +3779,42 @@ async function genererCarteSalles_(rows) {
 
   bouton.disabled = false;
   bouton.textContent = "Actualiser la carte";
+
+  // Export image : disponible seulement une fois la carte générée.
+  const imgBtn = document.getElementById("exportMapImgBtn");
+  if (imgBtn) { imgBtn.hidden = false; imgBtn.onclick = exporterCarteImage_; }
+}
+
+/* Charge html2canvas à la demande (évite ~30 Ko au chargement initial). */
+function ensureHtml2Canvas_() {
+  return new Promise((resolve, reject) => {
+    if (window.html2canvas) return resolve(window.html2canvas);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => reject(new Error("html2canvas indisponible"));
+    document.head.appendChild(s);
+  });
+}
+
+/* Export PNG de la carte des salles. Tuiles en crossOrigin + useCORS :
+   capture le fond de carte sans "tainted canvas". */
+async function exporterCarteImage_() {
+  const conteneur = document.getElementById("exportMap");
+  if (!conteneur) return;
+  try {
+    setStatus("Génération de l'image…", "");
+    const h2c = await ensureHtml2Canvas_();
+    const canvas = await h2c(conteneur, { useCORS: true, backgroundColor: "#ffffff", scale: 2 });
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `carte-salles-${new Date().toISOString().slice(0, 10)}.png`;
+    a.click();
+    setStatus("Image de la carte exportée", "ok");
+  } catch (e) {
+    console.error("Export carte image :", e);
+    setStatus("Export image impossible — réessaie une fois la carte entièrement affichée.", "error");
+  }
 }
 
 /* Export CSV — un fichier tiers (Excel, Sheets, compta) préfère des
