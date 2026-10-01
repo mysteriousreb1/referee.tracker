@@ -2290,3 +2290,39 @@ button.acc-ligne:active { transform: scale(.995); }
 .alerte-bloc--corriger .alerte-bloc-ic,
 .alerte-bloc--retard .alerte-bloc-ic { color: var(--danger); }
 .alerte-bloc--trancher .alerte-bloc-ic { color: var(--gold); }
+
+/* =====================================================
+   Menu "Plus" — barre d'onglets téléphone (01/10/2026)
+   PC/tablette : bouton + panneau masqués (barre complète inchangée).
+   ===================================================== */
+.tab-more { display: none; }
+.tab-more-panel { display: none; }
+@media (max-width: 720px) {
+  .tab-more { display: flex; }
+  .tab-secondary:not(.active) { display: none; }
+  .tab-more-panel {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin: -8px 0 20px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface-a);
+    box-shadow: var(--shadow-soft);
+  }
+  .tab-more-panel[hidden] { display: none; }
+  .tab-more-item {
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tab-more-item:hover { background: var(--surface-2); }
+  .tab-more-item:active { transform: scale(0.98); }
+}
