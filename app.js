@@ -2351,17 +2351,21 @@ function renderProgression() {
         <p class="eval-dropzone-sub">Le match correspondant est identifié automatiquement (date + club), le fichier est classé dans le Drive dédié, et l'IA en tire 2 points de travail prioritaires.</p>
         <input id="evalFileInput" type="file" accept="application/pdf" hidden />
       </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="small-btn secondary" type="button" id="importAllEvalsBtn">Importer toutes les évals du Drive</button>
+      </div>
     </div>
 
     ${evaluations.length ? `
     <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
-      <thead><tr><th>Déposé le</th><th>Match lié</th><th>Fichier</th><th>Statut IA</th></tr></thead>
+      <thead><tr><th>Déposé le</th><th>Match lié</th><th>Fichier</th><th>Statut IA</th><th></th></tr></thead>
       <tbody>${evaluations.map(ev => `<tr>
         <td>${escapeHtml(ev.dateDepot)}</td>
         <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
         <td><a href="${escapeHtml(ev.lien)}" target="_blank" rel="noopener">${escapeHtml(ev.fichier)}</a></td>
         <td>${escapeHtml(ev.statut || "—")}</td>
-      </tr>${ev.synthese ? `<tr><td colspan="4" style="padding-top:0">
+        <td><button type="button" class="action-link" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Supprimer</button></td>
+      </tr>${ev.synthese ? `<tr><td colspan="5" style="padding-top:0">
         <details class="past-block"><summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Voir la synthèse IA</span></span></summary>
         <div class="past-body" style="white-space:pre-wrap; font-size:13px; line-height:1.5">${escapeHtml(ev.synthese)}</div></details>
       </td></tr>` : ""}`).join("")}</tbody>
@@ -2444,6 +2448,43 @@ function renderProgression() {
         setStatus("Erreur : " + err.message, "error");
       }
     });
+  });
+
+  // Supprimer une évaluation importée (le PDF reste dans le Drive)
+  root.querySelectorAll("[data-del-eval-lien]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Retirer cette évaluation du suivi ? (le PDF reste dans le Drive)")) return;
+      try {
+        const res = await jsonp("deleteEvaluation", { lien: btn.dataset.delEvalLien, fichier: btn.dataset.delEvalFichier });
+        if (!res.success || !res.result || !res.result.ok) throw new Error((res.result && res.result.error) || res.error || "Erreur suppression");
+        state.evaluations = null;
+        loadEvaluations();
+      } catch (err) {
+        setStatus("Erreur : " + err.message, "error");
+      }
+    });
+  });
+
+  // Importer en masse les PDF du dossier Drive d'évaluations
+  const importAllBtn = root.querySelector("#importAllEvalsBtn");
+  if (importAllBtn) importAllBtn.addEventListener("click", async () => {
+    importAllBtn.disabled = true;
+    setStatus("Import des évaluations du Drive… (OCR + IA, patiente)", "");
+    try {
+      const res = await jsonp("importAllEvaluations");
+      const r = res && res.result;
+      if (!res.success || !r || !r.ok) throw new Error((r && r.error) || res.error || "Erreur import");
+      let msg = r.importes + " importée(s), " + r.ignores + " déjà présente(s)";
+      if (r.restants) msg += ", " + r.restants + " restante(s) — relance pour continuer";
+      if (r.erreurs && r.erreurs.length) msg += " · " + r.erreurs.length + " erreur(s)";
+      setStatus(msg, "ok");
+      state.evaluations = null;
+      loadEvaluations();
+    } catch (err) {
+      setStatus("Erreur : " + err.message, "error");
+    } finally {
+      importAllBtn.disabled = false;
+    }
   });
 
   const dz = root.querySelector("#evalDropzone");
