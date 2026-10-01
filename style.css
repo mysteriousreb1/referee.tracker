@@ -2326,3 +2326,9 @@ button.acc-ligne:active { transform: scale(.995); }
   .tab-more-item:hover { background: var(--surface-2); }
   .tab-more-item:active { transform: scale(0.98); }
 }
+
+/* Tablette / fenêtre étroite (721–1239px) : barre d'onglets non-sticky
+   (le sticky ne gêne plus au scroll ; signalé en test — 01/10/2026). */
+@media (min-width: 721px) and (max-width: 1239px) {
+  .tabs { position: static; top: auto; }
+}
