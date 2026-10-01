@@ -2079,7 +2079,7 @@ function renderStats() {
     ${renderCashFlow_(s.cash_flow)}
     ${renderComparaisonN1_(s.comparaison_saison_precedente)}
 
-    <h2 class="section-title">Efficacité</h2>
+    ${foldable_("Efficacité", `
     <div class="kpi-grid">
       <div class="kpi"><label>€ / km (indemnité)</label><strong>${money(m.eur_par_km)}</strong><span class="sub">0,40 €/km + match</span></div>
       <div class="kpi"><label>€ / heure (net réel)</label><strong>${money(m.eur_par_heure_moyen)}</strong><span class="sub">trajet inclus</span></div>
@@ -2089,7 +2089,7 @@ function renderStats() {
       <div class="kpi"><label>Indemnité moy. 5×5</label><strong>${money(m.indemnite_par_5x5)}</strong></div>
       <div class="kpi"><label>Indemnité moy. 3×3</label><strong>${money(m.indemnite_par_3x3)}</strong></div>
     </div>
-    ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}
+    ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}`)}
 
     ${renderRepartitionRoles()}
     ${renderRecords(rec)}
@@ -2154,13 +2154,12 @@ function renderRepartitionRoles() {
   const n2 = rows.filter(r => get(r, "Mon rôle") === "Arbitre n°2").length;
   const autre = rows.length - n1 - n2;
   const pct = n => rows.length ? Math.round((n / rows.length) * 100) : 0;
-  return `
-    <h2 class="section-title">Répartition des rôles (5×5)</h2>
+  return foldable_("Répartition des rôles (5×5)", `
     <div class="kpi-grid">
       <div class="kpi"><label>1er arbitre (Crew Chief)</label><strong>${n1}</strong><span class="sub">${pct(n1)} % des missions</span></div>
       <div class="kpi"><label>2ème arbitre</label><strong>${n2}</strong><span class="sub">${pct(n2)} % des missions</span></div>
       ${autre ? `<div class="kpi"><label>Rôle non renseigné</label><strong>${autre}</strong></div>` : ""}
-    </div>`;
+    </div>`);
 }
 
 /* Déplacements de formation non rémunérés (19/09/2026) — stages et
@@ -2873,8 +2872,8 @@ function renderRecords(rec) {
   if (rec.meilleur_net_reel) items.push(["Meilleur net réel", `${formatMoney(rec.meilleur_net_reel.net)} — ${rec.meilleur_net_reel.lieu}`]);
   if (rec.pire_rentabilite_horaire) items.push(["Pire rentabilité horaire", `${money(rec.pire_rentabilite_horaire.eur_heure)}/h — ${rec.pire_rentabilite_horaire.lieu}`]);
   if (!items.length) return "";
-  return `<h2 class="section-title">Records</h2><div class="kpi-grid">${items.map(([l, v]) =>
-    `<div class="kpi"><label>${escapeHtml(l)}</label><strong style="font-size:15px">${escapeHtml(v)}</strong></div>`).join("")}</div>`;
+  return foldable_("Records", `<div class="kpi-grid">${items.map(([l, v]) =>
+    `<div class="kpi"><label>${escapeHtml(l)}</label><strong style="font-size:15px">${escapeHtml(v)}</strong></div>`).join("")}</div>`);
 }
 
 function renderAggTable(title, rows, keyLabel) {
