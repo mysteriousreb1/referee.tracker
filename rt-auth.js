@@ -603,6 +603,15 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
+      <h3>Apparence</h3>
+      <p class="rt-help">Thème de l'interface — mémorisé sur cet appareil.</p>
+      <div class="rt-row">
+        <button type="button" class="rt-btn" id="pfThemeClair">Clair</button>
+        <button type="button" class="rt-btn" id="pfThemeSombre">Sombre</button>
+      </div>
+    </section>
+
+    <section class="rt-sect">
       <h3>Sécurité</h3>
       <details class="rt-details">
         <summary>Changer mon mot de passe</summary>
@@ -621,6 +630,16 @@ function renderProfile() {
   document.getElementById("pfSaveTarifs").addEventListener("click", saveTarifs);
   document.getElementById("pfAddVeh").addEventListener("click", addVehicule);
   document.getElementById("pfChangePwd").addEventListener("click", changePassword);
+  const setTheme = t => {
+    if (typeof applyTheme === "function") applyTheme(t);
+    else document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem("rt-theme", t); } catch (e) { /* stockage indisponible */ }
+    toast(t === "dark" ? "Thème sombre activé." : "Thème clair activé.");
+  };
+  const tc = document.getElementById("pfThemeClair");
+  if (tc) tc.addEventListener("click", () => setTheme("light"));
+  const ts = document.getElementById("pfThemeSombre");
+  if (ts) ts.addEventListener("click", () => setTheme("dark"));
   body.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", () => delVehicule(Number(b.dataset.del))));
 }
