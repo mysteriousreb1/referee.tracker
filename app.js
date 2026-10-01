@@ -177,6 +177,19 @@ function bindUi() {
     renderAll();
   });
 
+  // Loupe header (téléphone) : déplie/replie la barre Saison/Recherche/Filtre.
+  // Sur PC la barre est toujours visible (bouton masqué en CSS), toggle sans effet.
+  const searchToggle = document.getElementById("searchToggleBtn");
+  const toolbarSearch = document.getElementById("toolbarSearch");
+  if (searchToggle && toolbarSearch) {
+    searchToggle.addEventListener("click", () => {
+      const open = toolbarSearch.classList.toggle("search-open");
+      searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      searchToggle.classList.toggle("active", open);
+      if (open) { const i = document.getElementById("searchInput"); if (i) i.focus(); }
+    });
+  }
+
   // Filtres rapides Niveau / Paiement / Format (19/09/2026), repliés dans un
   // menu déroulant "Filtre" (20/09/2026) pour alléger la barre de recherche.
   document.getElementById("filterNiveauSelect").addEventListener("change", e => {
@@ -882,7 +895,7 @@ function renderAccueil() {
       <div class="acc-hero-lieu">${escapeHtml(salle || ville || "Lieu à préciser")}${salle && ville ? " · " + escapeHtml(ville) : ""}</div>
       <div class="acc-hero-actions">
         ${addr ? `<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes" target="_blank" rel="noopener">Waze</a>` : ""}
-        ${telBrut ? `<a class="action-link secondary" href="tel:${telBrut}">${escapeHtml(col || "Collègue")} · ${escapeHtml(formatPhoneFr(get(r, "Collègue téléphone")))}</a>` : ""}
+        ${telBrut ? `<a class="action-link secondary acc-tel-col" href="tel:${telBrut}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Tél ${escapeHtml(col || "collègue")}</a>` : ""}
         <button type="button" class="action-link secondary acc-vers-match" data-uid="${uid}">Voir le match</button>
       </div>
       <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
@@ -2059,9 +2072,7 @@ function renderMatchsAnnules() {
     .filter(r => r._format !== "Alerte" && !r._isActive)
     .sort(sortByDateDesc);
   if (!rows.length) return "";
-  return `
-    <h2 class="section-title">Matchs annulés <span class="count">${rows.length}</span></h2>
-    <div class="table-card"><div class="table-wrap"><table>
+  const body = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th><th>Annulation</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
         <td>${escapeHtml(get(r, "Date match"))}</td>
@@ -2071,6 +2082,21 @@ function renderMatchsAnnules() {
         <td>${escapeHtml(get(r, "Warning général") || "—")}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>`;
+  return foldable_("Matchs annulés", body, { count: rows.length });
+}
+
+/* Section STATS repliable (01/10/2026) — <details> natif : titre cliquable
+   (summary) + corps masqué par défaut pour désencombrer l'onglet Stats.
+   Le <h2 class="section-title"> des tableaux devient le <summary>, même DA. */
+function foldable_(title, body, opts) {
+  if (!body) return "";
+  const o = opts || {};
+  const count = (o.count !== undefined && o.count !== null && o.count !== "")
+    ? ` <span class="count">${escapeHtml(String(o.count))}</span>` : "";
+  return `<details class="stat-fold"${o.open ? " open" : ""}>
+    <summary class="section-title stat-fold-sum">${escapeHtml(title)}${count}<svg class="stat-fold-chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="stat-fold-body">${body}</div>
+  </details>`;
 }
 
 /* Répartition Arbitre n°1 (Crew Chief) / Arbitre n°2 sur les missions 5×5
@@ -2808,9 +2834,7 @@ function renderRecords(rec) {
 
 function renderAggTable(title, rows, keyLabel) {
   if (!rows || !rows.length) return "";
-  return `
-    <h2 class="section-title">${escapeHtml(title)}</h2>
-    <div class="table-card"><div class="table-wrap"><table>
+  const body = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>${escapeHtml(keyLabel || "Clé")}</th><th class="num">Missions</th><th class="num">Indemnités</th><th class="num">Carburant</th><th class="num">Net réel</th><th class="num">KM</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
         <td>${escapeHtml(r.label)}</td>
@@ -2821,6 +2845,7 @@ function renderAggTable(title, rows, keyLabel) {
         <td class="num">${formatNumber(r.km, "")}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>`;
+  return foldable_(title, body, { count: rows.length });
 }
 
 /* Top 3 uniquement : au-delà, la table encombre plus qu'elle n'informe.
@@ -2829,12 +2854,11 @@ function renderAggTable(title, rows, keyLabel) {
 function renderTop(title, rows) {
   if (!rows || !rows.length) return "";
   const top3 = rows.slice(0, 3);
-  return `
-    <h2 class="section-title">${escapeHtml(title)}</h2>
-    <div class="table-card"><div class="table-wrap"><table>
+  const body = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Nom</th><th class="num">Nombre</th><th class="num">Indemnités</th><th class="num">Net réel</th></tr></thead>
       <tbody>${top3.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
     </table></div></div>`;
+  return foldable_(title, body);
 }
 
 /* Calcul local, sur la saison réellement sélectionnée. Sert quand les
