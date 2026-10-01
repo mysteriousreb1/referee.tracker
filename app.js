@@ -866,8 +866,8 @@ function renderAccueil() {
     if (!prochain) return `<div class="acc-hero acc-hero--vide">Aucun match à venir.</div>`;
     const r = prochain;
     const uid = escapeHtml(get(r, "UID"));
-    const dateLong = r._date ? r._date.toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long" }) : "";
-    const heure = heureDe_(r);
+    const dateLong = r._date ? (r._date.toLocaleDateString("fr-FR", { weekday: "long" }) + " " + formatDateShort(r._date)) : "";
+    const heure = fmtHeure(heureDe_(r));
     const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")) || "";
     const role = cleanText(get(r, "Mon rôle"));
     const salle = cleanText(get(r, "Salle"));
@@ -901,7 +901,7 @@ function renderAccueil() {
   // Ligne compacte pour un match du week-end.
   const ligneMatchWE = r => {
     const uid = escapeHtml(get(r, "UID"));
-    const h = heureDe_(r);
+    const h = fmtHeure(heureDe_(r));
     const lieu = cleanText(get(r, "Ville") || get(r, "Salle")) || "";
     return `<button type="button" class="acc-ligne acc-vers-match" data-uid="${uid}">
       <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}${h ? " · " + escapeHtml(h) : ""}</span>
@@ -1402,7 +1402,7 @@ function formatDelai(minutes) {
 
 function formatDateLongue(date) {
   if (!date) return "";
-  return date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  return date.toLocaleDateString("fr-FR", { weekday: "long" }) + " " + formatDateShort(date); // ex. "samedi 04/10/2026"
 }
 
 /* Prénom du collègue à partir de « Collègue nom » (format FFBB : NOM en
@@ -2611,7 +2611,7 @@ function renderContactsPanel_() {
   const contacts = state.contacts || [];
   const q = normaliserRecherche(state.contactsSearch || "");
   const filtres = q
-    ? contacts.filter(c => normaliserRecherche([c.nom, c.role, c.organisation, c.telephone, c.email, c.notes].filter(Boolean).join(" ")).indexOf(q) >= 0)
+    ? contacts.filter(c => normaliserRecherche([c.nom, c.role, c.organisation, c.telephone, c.email, c.championnat, c.situation, c.notes].filter(Boolean).join(" ")).indexOf(q) >= 0)
     : contacts;
 
   return `
@@ -2621,11 +2621,13 @@ function renderContactsPanel_() {
 
     ${filtres.length ? `
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Nom</th><th>Rôle</th><th>Organisation / Club</th><th>Téléphone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th>Nom</th><th>Rôle</th><th>Organisation / Club</th><th>Championnat / Astreinte</th><th>Situation</th><th>Téléphone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
       <tbody>${filtres.map(c => `<tr>
         <td>${escapeHtml(c.nom || "—")}</td>
         <td>${escapeHtml(c.role || "—")}</td>
         <td>${escapeHtml(c.organisation || "—")}</td>
+        <td>${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : "—"}</td>
+        <td>${escapeHtml(c.situation || "—")}</td>
         <td>${c.telephone ? `<a href="tel:${escapeHtml(c.telephone)}">${escapeHtml(c.telephone)}</a>` : "—"}</td>
         <td>${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : "—"}</td>
         <td>${escapeHtml(c.notes || "—")}</td>
@@ -2638,16 +2640,27 @@ function renderContactsPanel_() {
       <div class="past-body">
         <form id="contactForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
           <div class="field"><label for="contactNom">Nom</label><input id="contactNom" type="text" required /></div>
-          <div class="field"><label for="contactRole">Rôle</label><input id="contactRole" type="text" placeholder="Ex. Responsable ligue, Collègue arbitre…" /></div>
+          <div class="field"><label for="contactRole">Rôle</label><input id="contactRole" type="text" placeholder="Ex. Répartiteur, CRA, Responsable ligue…" /></div>
           <div class="field"><label for="contactOrganisation">Organisation / Club</label><input id="contactOrganisation" type="text" /></div>
+          <div class="field"><label for="contactChampionnat">Championnat / Astreinte</label><input id="contactChampionnat" type="text" placeholder="Ex. Régional, CF Jeunes, Départemental…" /></div>
+          <div class="field"><label for="contactSituation">Situation (quand contacter)</label><input id="contactSituation" type="text" placeholder="Ex. Annulation, blessure, litige paiement…" /></div>
           <div class="field"><label for="contactTelephone">Téléphone</label><input id="contactTelephone" type="tel" /></div>
           <div class="field"><label for="contactEmail">Email</label><input id="contactEmail" type="email" /></div>
-          <div class="field"><label for="contactNotes">Notes</label><input id="contactNotes" type="text" /></div>
+          <div class="field"><label for="contactNotes">Notes / procédure de contact</label><input id="contactNotes" type="text" /></div>
         </form>
         <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="contactForm">Enregistrer</button></div>
       </div>
     </details>
   `;
+}
+
+/* Tri des procédures : Contact d'abord (le plus actionnable en situation),
+   puis par catégorie, puis par titre. */
+function trierProcedures_(procedures) {
+  const ordre = ["Contact", "Règlement", "Logistique", "Administratif", "Autre"];
+  const rang = c => { const i = ordre.indexOf(c || "Autre"); return i < 0 ? 99 : i; };
+  return procedures.slice().sort((a, b) =>
+    rang(a.categorie) - rang(b.categorie) || String(a.titre || "").localeCompare(String(b.titre || "")));
 }
 
 function renderProceduresPanel_() {
@@ -2656,10 +2669,12 @@ function renderProceduresPanel_() {
     ${procedures.length ? `
     <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
       <thead><tr><th>Titre</th><th>Catégorie</th><th>Contenu</th><th>Lien</th><th></th></tr></thead>
-      <tbody>${procedures.map(p => `<tr>
+      <tbody>${trierProcedures_(procedures).map(p => `<tr>
         <td>${escapeHtml(p.titre || "—")}</td>
-        <td>${escapeHtml(p.categorie || "—")}</td>
-        <td style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</td>
+        <td>${p.categorie ? `<span class="badge">${escapeHtml(p.categorie)}</span>` : "—"}</td>
+        <td>${(p.contenu || "").length > 160
+          ? `<details class="rt-details"><summary>Voir la procédure</summary><div style="white-space:pre-wrap">${escapeHtml(p.contenu)}</div></details>`
+          : `<span style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</span>`}</td>
         <td>${p.lien ? `<a href="${escapeHtml(p.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : "—"}</td>
         <td><button type="button" class="action-link" data-del-procedure-id="${p.id}">Supprimer</button></td>
       </tr>`).join("")}</tbody>
@@ -2673,6 +2688,7 @@ function renderProceduresPanel_() {
           <div class="field">
             <label for="procedureCategorie">Catégorie</label>
             <select id="procedureCategorie">
+              <option value="Contact">Contact</option>
               <option value="Règlement">Règlement</option>
               <option value="Logistique">Logistique</option>
               <option value="Administratif">Administratif</option>
@@ -2707,6 +2723,8 @@ function attachContactsPanelListeners_(root) {
         nom: document.getElementById("contactNom").value,
         role: document.getElementById("contactRole").value,
         organisation: document.getElementById("contactOrganisation").value,
+        championnat: document.getElementById("contactChampionnat").value,
+        situation: document.getElementById("contactSituation").value,
         telephone: document.getElementById("contactTelephone").value,
         email: document.getElementById("contactEmail").value,
         notes: document.getElementById("contactNotes").value
@@ -4081,9 +4099,8 @@ function formatPhoneFr(v) {
   return d.match(/.{2}/g).join(".");
 }
 function fmtHeure(h) {
-  const s = String(h || "").trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  return m ? m[1].padStart(2, "0") + ":" + m[2] : s;
+  const t = parseHeure(h);        // gère "20:30", "20h30", "20 h 30", "20.30"
+  return t ? formatHeureFr(t) : String(h || "").trim();   // -> "20h30"
 }
 function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
 function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
