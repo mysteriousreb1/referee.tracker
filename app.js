@@ -1,4 +1,4 @@
-/* =====================================================
+-/* =====================================================
    REFEREE TRACKER — INTERFACE GITHUB PAGES
    Connectée à Google Apps Script via rt-auth.js (POST authentifié).
    Carte : OpenStreetMap (Leaflet) + itinéraire OSRM.
@@ -927,9 +927,53 @@ function renderAccueil() {
     ? `<div class="acc-liste">${weRows.map(ligneMatchWE).join("")}</div>`
     : empty("Aucun match ce week-end.");
 
+  // --- Bandeau de bienvenue (salutation selon l'heure + résumé WE) ---
+  const now = new Date();
+  const hNow = now.getHours();
+  const salut = hNow < 12 ? "Bonjour" : (hNow < 18 ? "Bon après-midi" : "Bonsoir");
+  const dateJour = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  const sousTitre = nb
+    ? `${nb} match${nb > 1 ? "s" : ""} ce week-end · ${formatNumber(km, "")} km · ${formatMoney(netEstime)} net estimé`
+    : "Pas de match prévu ce week-end. Repos mérité.";
+  const bienvenue = `
+    <div class="acc-welcome">
+      <div class="acc-welcome-row">
+        <span class="acc-welcome-hi">${salut}</span>
+        <span class="acc-welcome-date">${escapeHtml(dateJour)}</span>
+      </div>
+      <p class="acc-welcome-sub">${escapeHtml(sousTitre)}</p>
+    </div>`;
+
+  // --- Accès rapides vers les onglets clés ---
+  const svgIc = p => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  const nbAlertes = state.allRows.filter(r => r._format === "Alerte").length;
+  const quick = `
+    <div class="acc-quick">
+      <button type="button" class="acc-quick-btn" data-goto="paiements">
+        ${svgIc('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>')}
+        <span class="acc-quick-lbl">Paiements</span>
+        ${totalDu > 0 ? `<span class="acc-quick-badge cost">${formatMoney(totalDu)}</span>` : ""}
+      </button>
+      <button type="button" class="acc-quick-btn" data-goto="alertes">
+        ${svgIc('<path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/>')}
+        <span class="acc-quick-lbl">Alertes</span>
+        ${nbAlertes > 0 ? `<span class="acc-quick-badge warn">${nbAlertes}</span>` : ""}
+      </button>
+      <button type="button" class="acc-quick-btn" data-goto="stats">
+        ${svgIc('<path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/>')}
+        <span class="acc-quick-lbl">Stats</span>
+      </button>
+      <button type="button" class="acc-quick-btn" data-goto="export">
+        ${svgIc('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/>')}
+        <span class="acc-quick-lbl">Export</span>
+      </button>
+    </div>`;
+
   root.innerHTML = `
+    ${bienvenue}
     ${hero}
     ${compteurs}
+    ${quick}
     <section class="acc-bloc">
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
@@ -949,6 +993,7 @@ function renderAccueil() {
   };
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
   root.querySelectorAll(".acc-vers-paiements").forEach(b => b.addEventListener("click", () => setActiveTab("paiements")));
+  root.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.goto)));
 }
 
 /* ---------------- regroupement par week-end ----------------
