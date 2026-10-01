@@ -1,4 +1,4 @@
--/* =====================================================
+/* =====================================================
    REFEREE TRACKER — INTERFACE GITHUB PAGES
    Connectée à Google Apps Script via rt-auth.js (POST authentifié).
    Carte : OpenStreetMap (Leaflet) + itinéraire OSRM.
@@ -3403,17 +3403,25 @@ function renderAlertes() {
     else if (paiementEnRetard(r)) enRetard.push(r);
   });
   const groupes = [
-    ["À corriger", "Imports ratés ou warnings de traitement à lever.", aCorriger],
-    ["Statut à trancher", "Missions dont le paiement reste à qualifier.", aTrancher],
-    ["Retard de paiement", "Échéance dépassée : contrôle et éventuelle relance à effectuer manuellement.", enRetard]
+    ["À corriger", "Imports ratés ou warnings de traitement à lever.", aCorriger, "corriger",
+      '<path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/>'],
+    ["Statut à trancher", "Missions dont le paiement reste à qualifier.", aTrancher, "trancher",
+      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ["Retard de paiement", "Échéance dépassée : contrôle et éventuelle relance à effectuer manuellement.", enRetard, "retard",
+      '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 10v4"/><path d="M12 16h.01"/>']
   ];
 
   root.innerHTML = `
     <h2 class="section-title">Alertes <span class="count">${base.length}</span></h2>
     ${groupes.filter(g => g[2].length).map(g => `
-      <h2 class="section-title alerte-groupe">${escapeHtml(g[0])} <span class="count">${g[2].length}</span></h2>
-      <div class="alerte-groupe-sub">${escapeHtml(g[1])}</div>
-      <div class="cards">${g[2].slice().sort(sortByDateAsc).map(renderMatchCard).join("")}</div>
+      <section class="alerte-bloc alerte-bloc--${g[3]}">
+        <div class="alerte-bloc-head">
+          <span class="alerte-bloc-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${g[4]}</svg></span>
+          <h2 class="section-title alerte-groupe">${escapeHtml(g[0])} <span class="count">${g[2].length}</span></h2>
+        </div>
+        <div class="alerte-groupe-sub">${escapeHtml(g[1])}</div>
+        <div class="cards">${g[2].slice().sort(sortByDateAsc).map(renderMatchCard).join("")}</div>
+      </section>
     `).join("")}`;
   attachCardListeners(root);
   attachPaymentListeners(root);
