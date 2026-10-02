@@ -618,7 +618,7 @@ function correspondRecherche_(row, mots) {
 /* ---------------- Normalisation ---------------- */
 
 function normalizeRows(rows) {
-  return rows.map(row => {
+  const out = rows.map(row => {
     const r = { ...row };
     r._date = parseFrDate(get(r, "Date match"));
 
@@ -635,6 +635,7 @@ function normalizeRows(rows) {
     r._encaisse = r._benevole ? 0 : Math.max(0, Math.min(r._recu, r._amount));
     r._reste = r._benevole ? 0 : Math.max(0, r._amount - r._encaisse);
     r._km = toNumber(get(r, "Km A/R stats"));
+    r._kmEff = r._km;   // km à compter (carburant/km parcourus) — ajusté pour les doublés
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
     r._isActive = !["annulé", "annule", "alerte"].includes(cleanText(get(r, "Statut")).toLowerCase()) && r._format !== "Alerte";
@@ -642,6 +643,47 @@ function normalizeRows(rows) {
     r._hay = indexRecherche_(r);
     return r;
   });
+  appliquerDoubles_(out);
+  return out;
+}
+
+/* Doublé (02/10/2026) : plusieurs matchs le même jour au même lieu = un
+   SEUL trajet A/R au total. Le km A/R est donc réparti à parts égales entre
+   les matchs du groupe (2 matchs → moitié chacun : aller sur l'un, retour
+   sur l'autre). Seul le COÛT (carburant + km parcourus) est réparti via
+   _kmEff ; _km garde la distance brute et l'indemnité de chaque match reste
+   entière. Non destructif, 100 % côté client. */
+function appliquerDoubles_(rows) {
+  const groupes = {};
+  rows.forEach(r => {
+    if (!r._isActive || r._format === "Alerte" || !r._date) return;
+    const lieu = lieuDouble_(r);
+    if (!lieu) return;
+    const cle = ymd_(r._date) + "|" + lieu;
+    (groupes[cle] = groupes[cle] || []).push(r);
+  });
+  Object.keys(groupes).forEach(cle => {
+    const grp = groupes[cle];
+    if (grp.length < 2) return;
+    // Le km du trajet n'est souvent renseigné que sur UNE convocation du
+    // groupe (les autres ont la case vide). On prend donc le km du GROUPE =
+    // le max, puis on le répartit : somme = 1 seul A/R, quel que soit le
+    // remplissage des lignes.
+    const kmGroupe = Math.max.apply(null, grp.map(r => r._km || 0));
+    grp.forEach(r => {
+      r._kmEff = kmGroupe / grp.length;
+      r._double = { taille: grp.length };
+    });
+  });
+}
+/* Lieu normalisé pour détecter un doublé : salle en priorité, sinon adresse,
+   sinon ville. */
+function lieuDouble_(r) {
+  const base = cleanText(get(r, "Salle")) || cleanText(get(r, "Adresse")) || cleanText(get(r, "Ville"));
+  return base ? normaliserRecherche(base) : "";
+}
+function ymd_(d) {
+  return d ? (d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate()) : "";
 }
 
 function normalizeSeason(value, date) {
@@ -916,11 +958,11 @@ function renderAccueil() {
 
   // Compteurs WE (prévisionnel).
   const nb = weRows.length;
-  const km = weRows.reduce((t, r) => t + (r._km || 0), 0);
+  const km = weRows.reduce((t, r) => t + (r._kmEff || 0), 0);
   const brut = weRows.reduce((t, r) => t + (r._amount || 0), 0);
   // Source unique du coût carburant : realFuelCostClient (prix historiques
   // PRIX_E10 + conso datée 6,0/6,58). Évite la divergence Accueil vs Stats/Export.
-  const carburant = weRows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
+  const carburant = weRows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
   const netEstime = brut - carburant;
 
   // Total impayé en retard, toutes saisons (le détail vit dans l'onglet Paiements).
@@ -2969,8 +3011,8 @@ function renderStatsClient(periodeRecue) {
   const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
 
   const gross = rows.reduce((t, r) => t + r._amount, 0);
-  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
-  const km = rows.reduce((t, r) => t + (r._km || 0), 0);
+  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
+  const km = rows.reduce((t, r) => t + (r._kmEff || 0), 0);
   const benevoles = rows.filter(r => r._benevole);
   const cinq = rows.filter(r => r._format === "5x5").length;
   const trois = rows.filter(r => r._format === "3x3").length;
@@ -3533,10 +3575,10 @@ function exportRows() {
 
 function exportTotals(rows) {
   const gross = rows.reduce((t, r) => t + r._amount, 0);
-  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._km, r._date), 0);
+  const cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
   return {
     gross, cost, net: gross - cost,
-    km: rows.reduce((t, r) => t + r._km, 0),
+    km: rows.reduce((t, r) => t + (r._kmEff || 0), 0),
     five: rows.filter(r => r._format === "5x5").length,
     three: rows.filter(r => r._format === "3x3").length
   };
@@ -3648,14 +3690,14 @@ function renderExport() {
             </thead>
             <tbody>
               ${rows.map(r => {
-                const c = realFuelCostClient(r._km, r._date);
+                const c = realFuelCostClient(r._kmEff, r._date);
                 return `<tr>
                   <td>${escapeHtml(get(r, "Date match"))}</td>
                   <td>${escapeHtml(r._format)}</td>
                   <td>${escapeHtml(get(r, "Niveau administratif"))}</td>
                   <td>${escapeHtml(rencontreLabel(r))}</td>
                   <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
-                  <td class="num">${formatNumber(r._km, "")}</td>
+                  <td class="num">${formatNumber(r._kmEff, "")}</td>
                   <td class="num">${formatMoney(r._amount)}</td>
                   <td class="num">${formatMoney(c)}</td>
                   <td class="num pos">${formatMoney(r._amount - c)}</td>
@@ -3826,10 +3868,10 @@ function downloadExportCsv() {
   const csvEscape = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
   const lines = [header.map(csvEscape).join(";")];
   rows.forEach(r => {
-    const c = realFuelCostClient(r._km, r._date);
+    const c = realFuelCostClient(r._kmEff, r._date);
     lines.push([
       get(r, "Date match"), r._format, get(r, "Niveau administratif"), rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
-      r._km, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), get(r, "Statut paiement")
+      r._kmEff, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), get(r, "Statut paiement")
     ].map(csvEscape).join(";"));
   });
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -3860,8 +3902,8 @@ function buildExportText() {
     ``,
     `Détail :`,
     ...rows.map(r => {
-      const c = realFuelCostClient(r._km, r._date);
-      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${get(r, "Niveau administratif")} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._km, " km")}`;
+      const c = realFuelCostClient(r._kmEff, r._date);
+      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${get(r, "Niveau administratif")} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._kmEff, " km")}`;
     })
   ].join("\n");
 }
@@ -3932,7 +3974,7 @@ function generateExportPdf() {
 
   // Tableau détaillé
   const body = rows.map(r => {
-    const c = realFuelCostClient(r._km, r._date);
+    const c = realFuelCostClient(r._kmEff, r._date);
     return [
       pdfSafe(get(r, "Date match")),
       pdfSafe(get(r, "Heure/RDV")),
@@ -4668,7 +4710,7 @@ function analyseRowsToutesSaisons() {
 }
 
 function enrichirPourAnalyse_(r) {
-  const km = r._km || 0;
+  const km = (r._kmEff != null ? r._kmEff : (r._km || 0));
   const brut = r._amount || 0;
   const carburant = realFuelCostClient(km, r._date);
   const net = round2(brut - carburant);
@@ -4801,7 +4843,7 @@ function litresTotal(rows) {
   return rows.reduce((t, r) => {
     const cutover = new Date(2026, 7, 1);
     const conso = (r._date && r._date >= cutover) ? 6.0 : 6.58;
-    return t + (r._km * conso / 100);
+    return t + ((r._kmEff != null ? r._kmEff : r._km) * conso / 100);
   }, 0);
 }
 
