@@ -1321,7 +1321,7 @@ function renderMatchCard(row) {
   const isPaid = paiement === "Reçu";
   const isBenevole = paiement === BENEVOLE;
 
-  const cost = realFuelCostClient(row._km, row._date);
+  const cost = realFuelCostClient(row._kmEff != null ? row._kmEff : row._km, row._date);
   const net = round2(row._amount - cost);
 
   const niv = niveauCarte(row);
@@ -1407,7 +1407,10 @@ function renderDetails(row) {
     ]],
     ["Lieu et trajet", [
       ["Salle", get(row, "Salle"), true], ["Adresse", get(row, "Adresse"), true],
-      ["Ville", get(row, "Ville")], ["KM A/R", row._km ? formatNumber(row._km, " km") : ""]
+      ["Ville", get(row, "Ville")],
+      ["KM A/R", row._double
+        ? `${formatNumber(row._kmEff, " km")} (doublé : ${formatNumber(Math.round(row._kmEff * row._double.taille), " km")} A/R partagés sur ${row._double.taille} matchs)`
+        : (row._km ? formatNumber(row._km, " km") : "")]
     ]],
     ["Équipe arbitrale", [
       ["Mon rôle", get(row, "Mon rôle")], ["Collègue", get(row, "Collègue nom"), true],
@@ -3982,7 +3985,7 @@ function generateExportPdf() {
       pdfSafe(get(r, "Niveau administratif")),
       pdfSafe(rencontreLabel(r)),
       pdfSafe(get(r, "Ville") || get(r, "Salle")),
-      pdfSafe(formatNumber(r._km, "")),
+      pdfSafe(formatNumber(r._kmEff != null ? r._kmEff : r._km, "")),
       pdfSafe(formatMoney(r._amount)),
       pdfSafe(formatMoney(c)),
       pdfSafe(formatMoney(r._amount - c)),
@@ -4890,7 +4893,7 @@ function groupMonths(rows, seasonFilter) {
 
     const m = map.get(key);
     m.net += r._net; m.carburant += r._carburant; m.brut += r._brut;
-    m.km += r._km; m.heures += r._heuresTotal; m.count++;
+    m.km += (r._kmEff != null ? r._kmEff : r._km); m.heures += r._heuresTotal; m.count++;
     if (r._paye) m.recu += r._brut; else m.du += r._brut;
   });
 
@@ -4922,7 +4925,7 @@ function groupBySimple(rows, keyFn) {
     if (!k) return;
     if (!map.has(k)) map.set(k, { label: k, net: 0, brut: 0, km: 0, count: 0, heures: 0 });
     const g = map.get(k);
-    g.net += r._net; g.brut += r._brut; g.km += r._km; g.count++; g.heures += r._heuresTotal;
+    g.net += r._net; g.brut += r._brut; g.km += (r._kmEff != null ? r._kmEff : r._km); g.count++; g.heures += r._heuresTotal;
   });
   return [...map.values()];
 }
@@ -5131,7 +5134,7 @@ function buildChartCategorie(rows) {
 
 function buildChartNuage(rows) {
   const c = ctx("chartNuage"); if (!c || typeof Chart === "undefined") return;
-  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
+  const pts = rows.filter(r => (r._kmEff || r._km) > 0 && r._eurHeure !== 0);
 
   AN.charts.nuage = new Chart(c, {
     type: "scatter",
@@ -5139,12 +5142,12 @@ function buildChartNuage(rows) {
       datasets: [
         {
           label: "5×5",
-          data: pts.filter(r => r._format === "5x5").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Recevant", "Visiteur / événement"]), date: get(r, "Date match") })),
+          data: pts.filter(r => r._format === "5x5").map(r => ({ x: (r._kmEff != null ? r._kmEff : r._km), y: r._eurHeure, lieu: firstValue(r, ["Recevant", "Visiteur / événement"]), date: get(r, "Date match") })),
           backgroundColor: AN.COLORS.navyMid, pointRadius: 5, pointHoverRadius: 7
         },
         {
           label: "3×3",
-          data: pts.filter(r => r._format === "3x3").map(r => ({ x: r._km, y: r._eurHeure, lieu: firstValue(r, ["Visiteur / événement", "Recevant"]), date: get(r, "Date match") })),
+          data: pts.filter(r => r._format === "3x3").map(r => ({ x: (r._kmEff != null ? r._kmEff : r._km), y: r._eurHeure, lieu: firstValue(r, ["Visiteur / événement", "Recevant"]), date: get(r, "Date match") })),
           backgroundColor: AN.COLORS.red, pointRadius: 5, pointHoverRadius: 7
         }
       ]
@@ -5183,8 +5186,8 @@ const ORDRE_TRANCHES = ["0–20 km", "20–40 km", "40–60 km", "60–100 km", 
 
 function buildChartTranches(rows) {
   const c = ctx("chartTranches"); if (!c || typeof Chart === "undefined") return;
-  const withKm = rows.filter(r => r._km > 0);
-  const g = groupBySimple(withKm, r => trancheDe(r._km))
+  const withKm = rows.filter(r => (r._kmEff != null ? r._kmEff : r._km) > 0);
+  const g = groupBySimple(withKm, r => trancheDe(r._kmEff != null ? r._kmEff : r._km))
     .sort((a, b) => ORDRE_TRANCHES.indexOf(a.label) - ORDRE_TRANCHES.indexOf(b.label));
 
   AN.charts.tranches = new Chart(c, {
@@ -5324,21 +5327,21 @@ function insightGenre(rows) {
 }
 
 function insightRentabilite(rows) {
-  const pts = rows.filter(r => r._km > 0 && r._eurHeure !== 0);
+  const pts = rows.filter(r => (r._kmEff != null ? r._kmEff : r._km) > 0 && r._eurHeure !== 0);
   if (pts.length < 3) return "";
   const pire = pts.reduce((a, b) => b._eurHeure < a._eurHeure ? b : a);
   const meilleure = pts.reduce((a, b) => b._eurHeure > a._eurHeure ? b : a);
   return `<div class="insight warn">
     Mission la moins rentable : <b>${escapeHtml(firstValue(pire, ["Recevant", "Visiteur / événement"]) || "—")}</b>
-    le ${escapeHtml(get(pire, "Date match"))} — ${formatNumber(pire._km, " km")} pour ${money(pire._eurHeure)}/h.
+    le ${escapeHtml(get(pire, "Date match"))} — ${formatNumber(pire._kmEff != null ? pire._kmEff : pire._km, " km")} pour ${money(pire._eurHeure)}/h.
     À l'inverse, ${escapeHtml(firstValue(meilleure, ["Recevant", "Visiteur / événement"]) || "—")} monte à ${money(meilleure._eurHeure)}/h.
   </div>`;
 }
 
 function insightTranches(rows) {
-  const withKm = rows.filter(r => r._km > 0);
+  const withKm = rows.filter(r => (r._kmEff != null ? r._kmEff : r._km) > 0);
   if (withKm.length < 4) return "";
-  const g = groupBySimple(withKm, r => trancheDe(r._km))
+  const g = groupBySimple(withKm, r => trancheDe(r._kmEff != null ? r._kmEff : r._km))
     .map(x => ({ ...x, eurH: x.heures > 0 ? x.net / x.heures : 0 }))
     .sort((a, b) => b.eurH - a.eurH);
   if (!g.length) return "";
