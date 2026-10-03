@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-09-28-final";
+const APP_VERSION = "2026-10-03-a2";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -385,7 +385,8 @@ function setActiveTab(tab) {
   const ongletActif = document.querySelector(".tab.active");
   if (ongletActif && ongletActif.scrollIntoView) { try { ongletActif.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) {} }
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
-  renderAll();
+  state.filteredRows = filterRows(state.allRows);
+  renderTab_(tab);
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
 }
 
@@ -481,7 +482,7 @@ function loadPrixCarburant() {
       const p = res && res.config ? Number(res.config.prix_e10_actuel) : 0;
       if (p > 0.5 && p < 4 && p !== state.prixActuel) {
         state.prixActuel = p;
-        renderAll();          // les coûts affichés changent
+        renderAllSoon_();     // les coûts affichés changent
       }
     })
     .catch(() => { /* on garde la table mensuelle en repli */ });
@@ -495,7 +496,7 @@ function loadClassements() {
   jsonp("classements")
     .then(res => {
       state.classements = (res && res.success) ? (res.data || []) : [];
-      renderAll();
+      renderAllSoon_();
     })
     .catch(() => { state.classements = state.classements || []; });
 }
@@ -616,6 +617,13 @@ function correspondRecherche_(row, mots) {
 }
 
 /* ---------------- Normalisation ---------------- */
+
+/* Ligne telle que le serveur l'a envoyée : sans les champs calculés (_xxx). */
+function rawOf_(r) {
+  const o = {};
+  Object.keys(r).forEach(k => { if (k.charAt(0) !== "_") o[k] = r[k]; });
+  return o;
+}
 
 function normalizeRows(rows) {
   const out = rows.map(row => {
@@ -785,29 +793,42 @@ function attachReglementListeners_(root) {
   });
 }
 
+/* Performance (03/10/2026) : on ne redessine QUE l'onglet visible. Les autres
+   se redessinent à l'ouverture (setActiveTab → renderTab_). Avant, chaque
+   rafraîchissement reconstruisait les 13 onglets d'un coup. */
+const TAB_RENDERERS_ = {
+  accueil:     [function () { renderAccueil(); },     "Accueil"],
+  matchs:      [function () { renderMatchs(); },      "Matchs"],
+  troisx3:     [function () { renderTroisx3(); },     "3×3"],
+  paiements:   [function () { renderPaiements(); },   "Paiements"],
+  stats:       [function () { renderStats(); },       "Statistiques"],
+  reglement:   [function () { renderReglement(); },   "Règlement"],
+  alertes:     [function () { renderAlertes(); },     "Alertes"],
+  export:      [function () { renderExport(); },      "Export"],
+  qcm:         [function () { renderQcm(); },         "QCM"],
+  progression: [function () { renderProgression(); }, "Progression"],
+  contacts:    [function () { renderContacts(); },    "Contacts"]
+};
+
+function renderTab_(tab) {
+  const e = TAB_RENDERERS_[tab];
+  if (!e) return;
+  safeRender_(e[0], tab, e[1]);
+  if (tab === "stats" && state.statsSubView === "avancee") safeRender_(renderAnalyse, "stats", "Analyse");
+}
+
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
-  safeRender_(renderAccueil, "accueil", "Accueil");
-  safeRender_(renderMatchs, "matchs", "Matchs");
-  safeRender_(renderTroisx3, "troisx3", "3×3");
-  safeRender_(renderPaiements, "paiements", "Paiements");
-  safeRender_(renderStats, "stats", "Statistiques");
-  // Ne (re)construire les graphiques Chart.js que si le panneau Stats est
-  // réellement visible : sinon le canvas a une taille 0 (display:none via
-  // .panel), Chart.js dimensionne les graphiques à 0px et ils restent
-  // vides même après un retour sur l'onglet — c'est ce qui donnait
-  // l'impression que « les graphiques ont disparu » lors de la fusion
-  // Stats/Analyse (19/09/2026). setActiveTab() met déjà state.activeTab
-  // et la classe .panel.active AVANT d'appeler renderAll(), donc ce test
-  // capture bien le retour sur l'onglet Stats en mode "avancee".
-  if (state.statsSubView === "avancee" && state.activeTab === "stats") safeRender_(renderAnalyse, "stats", "Analyse");
-  safeRender_(renderReglement, "reglement", "Règlement");
-  safeRender_(renderAlertes, "alertes", "Alertes");
-  safeRender_(renderExport, "export", "Export");
-  safeRender_(renderQcm, "qcm", "QCM");
-  safeRender_(renderProgression, "progression", "Progression");
-  safeRender_(renderContacts, "contacts", "Contacts");
+  renderTab_(state.activeTab || "accueil");
   safeRender_(renderTabBadges_, null, "Badges");
+}
+
+/* Regroupe les rendus demandés au même instant (stats, carburant,
+   classements arrivent presque ensemble au démarrage). */
+let _renderSoonId = 0;
+function renderAllSoon_() {
+  if (_renderSoonId) return;
+  _renderSoonId = requestAnimationFrame(function () { _renderSoonId = 0; renderAll(); });
 }
 
 /* Badges de notification sur les onglets Alertes / Paiements (19/09/2026).
@@ -1973,12 +1994,28 @@ function attachPaymentListeners(root) {
     try {
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "Mise à jour refusée");
-      const frais = await jsonpFrais("matchs");
-      if (!frais || frais.success === false) throw new Error((frais && frais.error) || "Rafraîchissement impossible");
-      const lignesMaj = normalizeRows(frais.data || []);
-      // Le paiement est déjà enregistré côté serveur. Si le rafraîchissement
-      // revient vide (hoquet), on garde les lignes actuelles au lieu de tout perdre.
-      if (lignesMaj.length || !state.allRows.length) state.allRows = lignesMaj;
+      // Le serveur renvoie la ligne mise à jour (res.row) : on la remplace
+      // sur place, sans retélécharger les ~200 lignes. Ancien backend : repli
+      // sur le rechargement complet.
+      let patche = false;
+      if (res.row && get(res.row, "UID")) {
+        const brut = state.allRows.map(rawOf_);
+        const i = brut.findIndex(r => get(r, "UID") === get(res.row, "UID"));
+        if (i >= 0) {
+          brut[i] = res.row;
+          state.allRows = normalizeRows(brut);
+          patche = true;
+          try { if (typeof _cacheEcrire === "function") _cacheEcrire(_cacheKey("matchs", {}), { success: true, data: brut }); } catch (e) {}
+        }
+      }
+      if (!patche) {
+        const frais = await jsonpFrais("matchs");
+        if (!frais || frais.success === false) throw new Error((frais && frais.error) || "Rafraîchissement impossible");
+        const lignesMaj = normalizeRows(frais.data || []);
+        // Le paiement est déjà enregistré côté serveur. Si le rafraîchissement
+        // revient vide (hoquet), on garde les lignes actuelles au lieu de tout perdre.
+        if (lignesMaj.length || !state.allRows.length) state.allRows = lignesMaj;
+      }
       state._lastLoadTs = Date.now();
       AN.statsCache = {};
       setStatus("Paiement enregistré", "ok");
@@ -2459,6 +2496,14 @@ function renderDesignationsParNiveau_() {
     </table></div></div>`;
 }
 
+/* « GES - LIGUE REGIONALE GRAND EST » (extranet FFBB) → libellé lisible. */
+function libelleSaisiPar_(v) {
+  const t = cleanText(v);
+  if (!t) return "—";
+  if (/^GES\b/i.test(t) || /GES\s*-\s*LIGUE/i.test(t)) return "Ligue Régionale de Basket GES";
+  return t;
+}
+
 function renderProgression() {
   const root = document.getElementById("progression");
   if (!root) return;
@@ -2544,16 +2589,15 @@ function renderProgression() {
     <h2 class="section-title">Historique du niveau</h2>
     ${niveaux.length ? `
     <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Type d'officiel</th><th>Niveau</th><th>Couleur</th><th>Recyclage</th><th>Début</th><th>Fin</th><th>Groupement</th><th>Saisi par</th><th></th></tr></thead>
+      <thead><tr><th>Type d'officiel</th><th>Niveau</th><th>Couleur</th><th>Début</th><th>Fin</th><th>Groupement</th><th>Saisi par</th><th></th></tr></thead>
       <tbody>${niveaux.map(n => `<tr>
         <td>${escapeHtml(n.typeOfficiel || "—")}</td>
         <td>${escapeHtml(n.niveau || "—")}</td>
         <td>${escapeHtml(n.couleur || "—")}</td>
-        <td>${escapeHtml(n.recyclage || "—")}</td>
         <td>${escapeHtml(n.dateDebut || "—")}</td>
         <td>${escapeHtml(n.dateFin || "—")}</td>
         <td>${escapeHtml(n.groupement || "—")}</td>
-        <td>${escapeHtml(n.saisiPar || "—")}</td>
+        <td>${escapeHtml(libelleSaisiPar_(n.saisiPar))}</td>
         <td><button type="button" class="action-link" data-del-niveau-id="${n.id}">Supprimer</button></td>
       </tr>`).join("")}</tbody>
     </table></div></div>` : empty("Aucun niveau enregistré pour l'instant.")}
@@ -3558,6 +3602,8 @@ function monthsOfSeason(season) {
 /* Refonte export (19/09/2026) : deux modes, saison/mois (existant) ou
    plage de dates libre — pratique pour un export "sur les 3 derniers
    mois" ou à cheval sur deux saisons, ce que le mode saison ne permet pas. */
+const EXPORT_TOUTES = "Toutes les saisons";
+
 function exportRows() {
   if (state.exportMode === "range") {
     const from = state.exportFrom ? new Date(state.exportFrom + "T00:00:00") : null;
@@ -3570,7 +3616,7 @@ function exportRows() {
   }
   return state.allRows
     .filter(r => r._isActive && r._format !== "Alerte")
-    .filter(r => r._season === state.exportSeason)
+    .filter(r => state.exportSeason === EXPORT_TOUTES || r._season === state.exportSeason)
     .filter(r => !state.exportMonth || monthKeyOf(r._date) === state.exportMonth)
     .slice()
     .sort(sortByDateAsc);
@@ -3604,7 +3650,7 @@ function exportPeriodLabel() {
     if (state.exportTo) return `Jusqu'au ${escapeHtml(state.exportTo)}`;
     return "Toutes dates";
   }
-  return state.exportMonth ? monthLabelOf(state.exportMonth) : `Saison complète ${state.exportSeason}`;
+  return state.exportMonth ? monthLabelOf(state.exportMonth) : (state.exportSeason === EXPORT_TOUTES ? EXPORT_TOUTES : `Saison complète ${state.exportSeason}`);
 }
 
 function renderExport() {
@@ -3612,11 +3658,12 @@ function renderExport() {
 
   // Valeurs par défaut : la saison courante, tous les mois, mode saison.
   const seasons = getSeasonsFrom2022ToCurrent();
-  if (!state.exportSeason || seasons.indexOf(state.exportSeason) === -1) {
+  if (!state.exportSeason || (state.exportSeason !== EXPORT_TOUTES && seasons.indexOf(state.exportSeason) === -1)) {
     state.exportSeason = seasons.indexOf(state.selectedSeason) !== -1 ? state.selectedSeason : getCurrentSeason();
   }
-  const months = monthsOfSeason(state.exportSeason);
-  if (state.exportMonth && !months.some(m => m.value === state.exportMonth)) state.exportMonth = "";
+  const toutes = state.exportSeason === EXPORT_TOUTES;
+  const months = toutes ? [] : monthsOfSeason(state.exportSeason);
+  if (toutes || (state.exportMonth && !months.some(m => m.value === state.exportMonth))) state.exportMonth = "";
   if (!state.exportMode) state.exportMode = "season";
 
   const rows = exportRows();
@@ -3639,13 +3686,14 @@ function renderExport() {
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
         <select id="exportSeasonSelect">
+          <option value="${EXPORT_TOUTES}"${toutes ? " selected" : ""}>${EXPORT_TOUTES}</option>
           ${seasons.map(s => `<option value="${s}"${s === state.exportSeason ? " selected" : ""}>${s}</option>`).join("")}
         </select>
       </div>
       <div class="field">
         <label for="exportMonthSelect">Mois</label>
-        <select id="exportMonthSelect">
-          <option value="">Toute la saison</option>
+        <select id="exportMonthSelect"${toutes ? " disabled" : ""}>
+          <option value="">${toutes ? "Toutes les saisons" : "Toute la saison"}</option>
           ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
         </select>
       </div>
@@ -3881,7 +3929,7 @@ function downloadExportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `referee-tracker-export-${state.exportMode === "range" ? (state.exportFrom || "debut") + "_" + (state.exportTo || "fin") : state.exportSeason}.csv`;
+  a.download = `referee-tracker-export-${state.exportMode === "range" ? (state.exportFrom || "debut") + "_" + (state.exportTo || "fin") : (state.exportSeason === EXPORT_TOUTES ? "toutes-saisons" : state.exportSeason.replace("/", "-"))}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -4026,7 +4074,7 @@ function generateExportPdf() {
   try { ajouterCarteSallesPdf_(doc, rows, { navy, gold, grey, green }); }
   catch (e) { console.warn("Carte PDF ignorée :", e && e.message); }
 
-  const suffix = state.exportMonth || state.exportSeason.replace("/", "-");
+  const suffix = state.exportMonth || (state.exportSeason === EXPORT_TOUTES ? "toutes-saisons" : state.exportSeason.replace("/", "-"));
   doc.save(`referee-tracker-${suffix}.pdf`);
   setStatus(`PDF généré — ${rows.length} mission(s)`, "ok");
 }
@@ -4350,7 +4398,21 @@ function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
 function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
 function escapeHtml(v) { return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
 
-function sortByDateAsc(a, b) { return (a._date ? a._date.getTime() : 0) - (b._date ? b._date.getTime() : 0); }
+/* Clé de tri = date + heure (RDV, à défaut heure du match). Sans heure : fin
+   de journée. Mise en cache sur la ligne (recalculée à chaque rechargement). */
+function tsMission_(r) {
+  if (r._ts != null) return r._ts;
+  let ts = 0;
+  if (r._date) {
+    const txt = heureDe_(r);
+    let t = parseHeure(txt);
+    if (!t) { const m = String(txt).match(/(\d{1,2})\s*h\b/i); if (m && Number(m[1]) < 24) t = { h: Number(m[1]), m: 0 }; }
+    ts = r._date.getTime() + (t ? t.h * 60 + t.m : 24 * 60 - 1) * 60000;
+  }
+  r._ts = ts;
+  return ts;
+}
+function sortByDateAsc(a, b) { return tsMission_(a) - tsMission_(b); }
 function sortByDateDesc(a, b) { return sortByDateAsc(b, a); }
 function sortByPaymentThenDate(a, b) {
   const pa = PAYMENT_STATUSES.indexOf(get(a, "Statut paiement")), pb = PAYMENT_STATUSES.indexOf(get(b, "Statut paiement"));
