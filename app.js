@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a4";
+const APP_VERSION = "2026-10-03-a6";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -2376,7 +2376,17 @@ function loadFormations() {
 function renderFormations() {
   if (state.formations === null) { loadFormations(); return ""; }
 
-  const rows = state.formations;
+  const rows = state.formations.slice().sort((a, b) => {
+    const da = parseFrDate(a.date), db = parseFrDate(b.date);
+    return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+  });
+  const parSaison = {};
+  rows.forEach(f => {
+    const d = parseFrDate(f.date);
+    const k = d ? normalizeSeason("", d) : "Sans date";
+    const o = parSaison[k] = parSaison[k] || { n: 0, km: 0, c: 0 };
+    o.n++; o.km += f.km; o.c += realFuelCostClient(f.km, d);
+  });
   const kmTotal = rows.reduce((t, f) => t + f.km, 0);
   const coutTotal = rows.reduce((t, f) => t + realFuelCostClient(f.km, parseFrDate(f.date)), 0);
 
@@ -2388,6 +2398,10 @@ function renderFormations() {
       <div class="kpi"><label>Km total A/R</label><strong>${formatNumber(kmTotal, " km")}</strong></div>
       <div class="kpi"><label>Coût carburant réel</label><strong>${formatMoney(coutTotal)}</strong><span class="sub">non remboursé</span></div>
     </div>
+    <div class="table-card" style="margin-bottom:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Saison</th><th class="num">Déplacements</th><th class="num">Km A/R</th><th class="num">Carburant</th></tr></thead>
+      <tbody>${Object.keys(parSaison).sort().reverse().map(k => `<tr><td>${escapeHtml(k)}</td><td class="num">${parSaison[k].n}</td><td class="num">${formatNumber(parSaison[k].km, "")}</td><td class="num">${formatMoney(parSaison[k].c)}</td></tr>`).join("")}</tbody>
+    </table></div></div>
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Date</th><th>Intitulé</th><th>Lieu</th><th class="num">Km A/R</th><th class="num">Carburant</th><th>Notes</th><th></th></tr></thead>
       <tbody>${rows.map(f => `<tr>
@@ -2404,7 +2418,7 @@ function renderFormations() {
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un déplacement</span></span></summary>
       <div class="past-body">
-        <form id="formationForm" class="toolbar" style="grid-template-columns: 1fr 2fr 2fr 1fr; align-items:end; margin-top:10px">
+        <form id="formationForm" class="toolbar form-formation" style="align-items:end; margin-top:10px">
           <div class="field"><label for="formationDate">Date</label><input id="formationDate" type="date" required /></div>
           <div class="field"><label for="formationIntitule">Intitulé</label><input id="formationIntitule" type="text" placeholder="Stage recyclage CD67…" required /></div>
           <div class="field"><label for="formationLieu">Lieu</label><input id="formationLieu" type="text" placeholder="Ville / salle" /></div>
@@ -2432,7 +2446,9 @@ function attachFormationsListeners_(root) {
         const res = await jsonp("addFormation", { date, intitule, lieu, km, notes });
         if (!res.success) throw new Error(res.error || "Erreur enregistrement");
         setStatus("Déplacement enregistré", "ok");
-        state.formations = null;
+        const [yy, mm, dd] = String(date).split("-");
+        state.formations = (state.formations || []).concat([{ date: dd + "/" + mm + "/" + yy, intitule, lieu, km: Number(km) || 0, notes }]);
+        renderStats();
         loadFormations();
       } catch (err) {
         setStatus("Erreur : " + err.message, "error");
