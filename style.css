@@ -2408,3 +2408,6 @@ button.acc-ligne:active { transform: scale(.995); }
   #stats th:first-child, #stats td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
   #paiements .past-summary, #paiements .stat-fold > summary { min-height: var(--tap); }
 }
+
+.form-formation { display: grid; grid-template-columns: 1fr 2fr 2fr 1fr; gap: var(--gap, 12px); }
+@media (max-width: 720px) { .form-formation { grid-template-columns: 1fr 1fr; } .form-formation .field:nth-child(2), .form-formation .field:nth-child(3) { grid-column: 1 / -1; } }
