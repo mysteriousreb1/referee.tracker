@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a3";
+const APP_VERSION = "2026-10-03-a4";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -1048,6 +1048,7 @@ function renderAccueil() {
   const sousTitre = nb
     ? `${nb} match${nb > 1 ? "s" : ""} ce week-end · ${formatNumber(km, "")} km · ${formatMoney(netEstime)} net estimé`
     : "Pas de match prévu ce week-end. Repos mérité.";
+  const nbAlertesAcc = alertesSplit_(state.filteredRows).actives.length;
   const bienvenue = `
     <div class="acc-welcome">
       <div class="acc-welcome-row">
@@ -1055,11 +1056,15 @@ function renderAccueil() {
         <span class="acc-welcome-date">${escapeHtml(dateJour)}</span>
       </div>
       <p class="acc-welcome-sub">${escapeHtml(sousTitre)}</p>
+      <div class="acc-welcome-chips">
+        <button type="button" class="acc-chip${nbAlertesAcc ? " warn" : ""}" data-goto="alertes">${nbAlertesAcc ? nbAlertesAcc + " alerte" + (nbAlertesAcc > 1 ? "s" : "") : "Aucune alerte"}</button>
+        <button type="button" class="acc-chip${totalDu > 0 ? " cost" : ""}" data-goto="paiements">${totalDu > 0 ? formatMoney(totalDu) + " impayé" : "Aucun impayé"}</button>
+      </div>
     </div>`;
 
   // --- Accès rapides vers les onglets clés ---
   const svgIc = p => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-  const nbAlertes = state.allRows.filter(r => r._format === "Alerte").length;
+  const nbAlertes = nbAlertesAcc;
   const quick = `
     <div class="acc-quick">
       <button type="button" class="acc-quick-btn" data-goto="paiements">
