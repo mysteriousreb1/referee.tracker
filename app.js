@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a6";
+const APP_VERSION = "2026-10-03-a7";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -731,12 +731,22 @@ function safeRender_(fn, panelId, label) {
 
 /* Bloc 7 (28/09/2026) — Onglet IA Règlement : Q&A sur le corpus FIBA.
    Chat simple ; chaque question part au backend reglement.ask (Gemini). */
+const REGL_LS_KEY = "rt-reglement-hist-v1";
+function reglHistLoad_() {
+  if (!state._reglementHist) {
+    try { state._reglementHist = JSON.parse(localStorage.getItem(REGL_LS_KEY) || "[]") || []; } catch (e) { state._reglementHist = []; }
+  }
+  return state._reglementHist;
+}
+function reglHistSave_() {
+  try { localStorage.setItem(REGL_LS_KEY, JSON.stringify((state._reglementHist || []).slice(-60))); } catch (e) { /* stockage indisponible */ }
+}
 function renderReglement() {
   const root = document.getElementById("reglement");
   if (!root) return;
-  const hist = state._reglementHist || [];
+  const hist = reglHistLoad_();
   root.innerHTML = `
-    <h2 class="section-title">Règlement & situations <span class="count">IA</span></h2>
+    <h2 class="section-title">Règlement & situations <span class="count">IA</span>${hist.length ? ` <button type="button" class="small-btn secondary" id="reglClear" style="margin-left:auto">Effacer l'historique</button>` : ""}</h2>
     <div class="stat-note">Pose une question de règle ou décris une situation de match. La réponse s'appuie sur le Règlement officiel FIBA, les Interprétations officielles et le Manuel de techniques d'arbitrage. Compte ~10-15 s : l'IA relit le règlement à chaque question.</div>
     <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => `
       <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : formatReglementReponse_(m.text)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
@@ -756,8 +766,18 @@ function formatReglementReponse_(txt) {
 }
 
 async function askReglement_(question) {
-  state._reglementHist = state._reglementHist || [];
+  reglHistLoad_();
+  const cle = normaliserRecherche(question);
+  const h0 = state._reglementHist;
+  // Même question déjà posée : réponse instantanée depuis l'historique.
+  for (let i = 0; i < h0.length - 1; i++) {
+    if (h0[i].role === "user" && normaliserRecherche(h0[i].text) === cle && h0[i + 1].role === "ia" && h0[i + 1].text.indexOf("⚠") !== 0) {
+      h0.push({ role: "user", text: question }, { role: "ia", text: h0[i + 1].text });
+      reglHistSave_(); renderReglement(); return;
+    }
+  }
   state._reglementHist.push({ role: "user", text: question });
+  reglHistSave_();
   renderReglement();
   const status = document.getElementById("reglStatus");
   if (status) status.textContent = "L'IA lit le règlement… (10-15 s)";
@@ -770,10 +790,16 @@ async function askReglement_(question) {
   } catch (err) {
     state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") });
   }
+  reglHistSave_();
   renderReglement();
 }
 
 function attachReglementListeners_(root) {
+  const clr = root.querySelector("#reglClear");
+  if (clr) clr.addEventListener("click", () => {
+    if (!confirm("Effacer l'historique des conversations ?")) return;
+    state._reglementHist = []; reglHistSave_(); renderReglement();
+  });
   const form = root.querySelector("#reglForm");
   if (form) form.addEventListener("submit", e => {
     e.preventDefault();
