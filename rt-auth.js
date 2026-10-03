@@ -164,6 +164,12 @@ const ECRITURES = {
   updatePaymentStatus: 1,
   "payment.update": 1,
   setContact: 1,
+  deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1,
+  addFormation: 1, deleteFormation: 1,
+  addNiveau: 1, deleteNiveau: 1,
+  addContact: 1, deleteContact: 1,
+  addProcedure: 1, deleteProcedure: 1,
+  addQcmSession: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1
 };
@@ -294,7 +300,7 @@ function _jsonpReseau(action, extra = {}) {
     return res;
   }).catch(err => {
     if (err && err.name === "AbortError") {
-      throw apiError("Délai dépassé (25 s) sans réponse de l'API",
+      throw apiError("Délai dépassé (60 s) sans réponse de l'API",
         "Relance, puis vérifie Apps Script → Exécutions.");
     }
     const status = err && err.httpStatus;
