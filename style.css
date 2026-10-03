@@ -2340,3 +2340,57 @@ button.acc-ligne:active { transform: scale(.995); }
 .alerte-item{display:flex;flex-direction:column;gap:6px}
 .alerte-motif{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:var(--radius-md,10px);border:1px solid var(--line,#ddd);background:var(--surface,#fff)}
 .alerte-motif-txt{font-size:13px;flex:1 1 200px}
+
+
+/* ===== 03/10/2026 — Phase 4 : Accueil, menus déroulants Stats, dimensions ===== */
+:root { --gap: 12px; --pad-card: 16px; --tap: 44px; }
+
+/* Bandeau d'accueil */
+.acc-welcome {
+  margin: 2px 0 16px; padding: 18px var(--pad-card);
+  border-radius: var(--radius-lg); color: #fff;
+  background: linear-gradient(135deg, var(--navy-900), var(--navy-600));
+  box-shadow: var(--shadow-soft);
+}
+.acc-welcome-hi { color: #fff; }
+.acc-welcome-date { color: rgba(255,255,255,0.75); }
+.acc-welcome-sub { color: rgba(255,255,255,0.88); margin-top: 8px; }
+.acc-welcome-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.acc-chip {
+  min-height: 34px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  font: 600 13px var(--body); color: #fff;
+  background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28);
+}
+.acc-chip:hover { background: rgba(255,255,255,0.24); }
+.acc-chip.warn { background: var(--gold); color: #3A2600; border-color: var(--gold); }
+.acc-chip.cost { background: var(--red); border-color: var(--red); }
+
+/* Menus déroulants Stats (cartes) */
+.stat-fold {
+  margin: 0 0 var(--gap); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden;
+}
+.stat-fold > summary.stat-fold-sum {
+  margin: 0; padding: 14px var(--pad-card); min-height: var(--tap);
+  transition: background .15s ease;
+}
+.stat-fold > summary.stat-fold-sum:hover { background: var(--surface-2); }
+.stat-fold[open] > summary.stat-fold-sum { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.stat-fold-chev {
+  width: 30px; height: 30px; padding: 5px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); box-sizing: border-box;
+}
+.stat-fold-body { margin: 0; padding: var(--pad-card); }
+.stat-fold .table-card { box-shadow: none; }
+
+/* Dimensions : une seule échelle (espacements, zones tactiles) */
+.cards { gap: var(--gap); }
+.kpi-grid { gap: var(--gap); }
+@media (max-width: 720px) {
+  .tab, .small-btn, .action-link, .acc-quick-btn { min-height: var(--tap); }
+  .acc-welcome { padding: 16px 14px; }
+  .stat-fold-body { padding: 12px; }
+}
+@media (min-width: 1100px) {
+  .cards { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+}
