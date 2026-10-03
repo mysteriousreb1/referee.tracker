@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a2";
+const APP_VERSION = "2026-10-03-a3";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -38,7 +38,7 @@ let state = {
   agendaSelectedDate: null,   // jour sélectionné dans le calendrier ("YYYY-MM-DD")
   contacts: null,             // MODIFICATION 19/09/2026 — onglet Contacts & Procédures
   procedures: null,
-  contactsSubView: "contacts", // "contacts" ou "procedures"
+  contactsSubView: "procedures", // "contacts" ou "procedures"
   contactsSearch: "",
   filterNiveau: "",   // MODIFICATION 19/09/2026 — filtres rapides toolbar
   filterStatut: "",
@@ -807,7 +807,7 @@ const TAB_RENDERERS_ = {
   export:      [function () { renderExport(); },      "Export"],
   qcm:         [function () { renderQcm(); },         "QCM"],
   progression: [function () { renderProgression(); }, "Progression"],
-  contacts:    [function () { renderContacts(); },    "Contacts"]
+  contacts:    [function () { renderContacts(); },    "Procédures"]
 };
 
 function renderTab_(tab) {
@@ -838,12 +838,7 @@ function renderAllSoon_() {
 function renderTabBadges_() {
   const rows = state.filteredRows || [];
 
-  const nbAlertes = rows.filter(r =>
-    (r._format === "Alerte" ||
-     hasWarningReel(r) ||
-     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
-     paiementEnRetard(r)) && !estAlerteParasite_(r)
-  ).length;
+  const nbAlertes = alertesSplit_(rows).actives.length;
   const badgeAlertes = document.getElementById("badgeAlertes");
   if (badgeAlertes) {
     badgeAlertes.textContent = nbAlertes > 99 ? "99+" : String(nbAlertes);
@@ -1458,10 +1453,54 @@ function renderMapContainer(row, uid) {
   return `<div class="card-map" id="map-${uid}" data-addr="${escapeHtml(addr)}"></div>`;
 }
 
+/* Carte (03/10/2026) : cache de géocodage persistant (localStorage), timeouts,
+   retry, messages lisibles, et carte recréée si le DOM a été redessiné. */
+const GEO_LS_KEY = "rt-geo-v1";
+function mapMsg_(el, txt) {
+  if (!el) return;
+  let m = el.querySelector(".card-map-msg");
+  if (!txt) { if (m) m.remove(); return; }
+  if (!m) { m = document.createElement("div"); m.className = "card-map-msg"; el.appendChild(m); }
+  m.textContent = txt;
+}
+function geoCacheGet_(addr) {
+  state.geocodeCache = state.geocodeCache || {};
+  if (state.geocodeCache[addr]) return state.geocodeCache[addr];
+  try {
+    const o = JSON.parse(localStorage.getItem(GEO_LS_KEY) || "{}");
+    if (o[addr]) { state.geocodeCache[addr] = o[addr]; return o[addr]; }
+  } catch (e) { /* stockage indisponible */ }
+  return null;
+}
+function geoCacheSet_(addr, v) {
+  state.geocodeCache = state.geocodeCache || {};
+  state.geocodeCache[addr] = v;
+  try {
+    const o = JSON.parse(localStorage.getItem(GEO_LS_KEY) || "{}");
+    o[addr] = v; localStorage.setItem(GEO_LS_KEY, JSON.stringify(o));
+  } catch (e) { /* stockage indisponible */ }
+}
+function fetchJsonTimeout_(url, ms) {
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const t = setTimeout(() => { if (ctl) ctl.abort(); }, ms || 8000);
+  return fetch(url, { headers: { "Accept": "application/json" }, signal: ctl ? ctl.signal : undefined })
+    .then(r => { clearTimeout(t); if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .catch(e => { clearTimeout(t); throw e; });
+}
+
 function initMapFor(uid, addr) {
-  if (state.maps[uid]) { setTimeout(() => state.maps[uid].invalidateSize(), 60); return; }
   const el = document.getElementById(`map-${uid}`);
   if (!el || typeof L === "undefined") return;
+  const ex = state.maps[uid];
+  if (ex) {
+    // Carte valide seulement si elle est attachée au conteneur ACTUEL
+    // (renderAll recrée le DOM : l'ancienne instance resterait blanche).
+    let ok = false;
+    try { ok = ex.getContainer() === el && !!el.querySelector(".leaflet-pane"); } catch (e) { ok = false; }
+    if (ok) { setTimeout(() => ex.invalidateSize(), 60); return; }
+    try { ex.remove(); } catch (e) { /* déjà détruite */ }
+    delete state.maps[uid];
+  }
 
   const homeValide = Number(HOME.lat) && Number(HOME.lon);
   const map = L.map(el, { scrollWheelZoom: false }).setView(homeValide ? [HOME.lat, HOME.lon] : [46.6, 2.3], homeValide ? 9 : 5);
@@ -1470,12 +1509,16 @@ function initMapFor(uid, addr) {
   }).addTo(map);
   if (homeValide) L.marker([HOME.lat, HOME.lon]).addTo(map).bindPopup("Domicile");
   state.maps[uid] = map;
+  mapMsg_(el, "Localisation en cours…");
 
   geocode(addr).then(dest => {
-    if (!dest) return;
+    if (!dest) { mapMsg_(el, "Adresse introuvable sur la carte."); return; }
+    mapMsg_(el, "");
     L.marker([dest.lat, dest.lon]).addTo(map).bindPopup("Salle");
     if (!homeValide) { map.setView([dest.lat, dest.lon], 12); return; }
+    mapMsg_(el, "Calcul de l'itinéraire…");
     route(HOME, dest).then(r => {
+      mapMsg_(el, "");
       if (r && r.geometry) {
         const line = L.geoJSON(r.geometry, { style: { color: "#E4002B", weight: 4, opacity: 0.85 } }).addTo(map);
         map.fitBounds(line.getBounds().pad(0.2));
@@ -1483,7 +1526,9 @@ function initMapFor(uid, addr) {
         L.popup().setLatLng([dest.lat, dest.lon])
           .setContent(`<b>${km} km A/R</b><br>${(km * 0.4).toFixed(2)} € remboursés`).openOn(map);
       } else {
+        L.polyline([[HOME.lat, HOME.lon], [dest.lat, dest.lon]], { color: "#E4002B", weight: 3, dashArray: "6 8" }).addTo(map);
         map.fitBounds(L.latLngBounds([[HOME.lat, HOME.lon], [dest.lat, dest.lon]]).pad(0.3));
+        mapMsg_(el, "Itinéraire indisponible (ligne droite).");
       }
     });
   });
@@ -1491,18 +1536,25 @@ function initMapFor(uid, addr) {
 }
 
 function geocode(address) {
-  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(address);
-  return fetch(url, { headers: { "Accept": "application/json" } })
-    .then(r => r.json())
+  if (!address) return Promise.resolve(null);
+  const hit = geoCacheGet_(address);
+  if (hit) return Promise.resolve(hit);
+  const parts = String(address).split(",").map(x => x.trim()).filter(Boolean);
+  const cands = [address];
+  if (parts.length > 2) cands.push(parts.slice(-2).join(", "));
+  const essai = (q, retry) => fetchJsonTimeout_("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), 8000)
     .then(d => (d && d.length) ? { lat: Number(d[0].lat), lon: Number(d[0].lon) } : null)
-    .catch(() => null);
+    .catch(() => retry ? new Promise(r => setTimeout(r, 1200)).then(() => essai(q, false)) : null);
+  return cands.reduce((p, q) => p.then(res => res || essai(q, true)), Promise.resolve(null))
+    .then(res => { if (res) geoCacheSet_(address, res); return res; });
 }
 
 function route(from, to) {
   const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=geojson`;
-  return fetch(url).then(r => r.json())
+  const essai = retry => fetchJsonTimeout_(url, 10000)
     .then(d => (d.routes && d.routes.length) ? { geometry: d.routes[0].geometry, distanceKm: d.routes[0].distance / 1000 } : null)
-    .catch(() => null);
+    .catch(() => retry ? new Promise(r => setTimeout(r, 1000)).then(() => essai(false)) : null);
+  return essai(true);
 }
 
 /* ---------------- Mode de règlement ----------------
@@ -2229,6 +2281,7 @@ function renderStats() {
     ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}`)}
 
     ${renderRepartitionRoles()}
+    ${renderDoublesStats_()}
     ${renderRecords(rec)}
     ${renderAggTable("Par saison", s.par_saison, "Saison")}
     ${renderAggTable("Par mois", s.par_mois, "Mois")}
@@ -2798,10 +2851,10 @@ function renderContacts() {
   if (state.procedures === null && !state._proceduresErreur) loadProcedures();
 
   root.innerHTML = `
-    <h2 class="section-title">Contacts &amp; Procédures</h2>
+    <h2 class="section-title">Procédures</h2>
     <div class="tabs-mini">
-      <button type="button" class="tabs-mini-btn${state.contactsSubView === "contacts" ? " active" : ""}" id="contactsSubContactsBtn">Contacts</button>
       <button type="button" class="tabs-mini-btn${state.contactsSubView === "procedures" ? " active" : ""}" id="contactsSubProceduresBtn">Procédures</button>
+      <button type="button" class="tabs-mini-btn${state.contactsSubView === "contacts" ? " active" : ""}" id="contactsSubContactsBtn">Contacts</button>
     </div>
     <div id="contactsSubPanel">${state.contactsSubView === "contacts" ? renderContactsPanel_() : renderProceduresPanel_()}</div>
   `;
@@ -2814,7 +2867,7 @@ function renderContacts() {
 
 function renderChargementErreur_(message, retryId) {
   return `
-    <h2 class="section-title">Contacts &amp; Procédures</h2>
+    <h2 class="section-title">Procédures</h2>
     <div class="table-card" style="padding:16px; text-align:center">
       <p class="card-sub" style="margin:0 0 10px">Impossible de charger cette partie (${escapeHtml(message)}).</p>
       <button type="button" class="small-btn secondary" id="${retryId}">Réessayer</button>
@@ -2871,7 +2924,7 @@ function renderContactsPanel_() {
 /* Tri des procédures : Contact d'abord (le plus actionnable en situation),
    puis par catégorie, puis par titre. */
 function trierProcedures_(procedures) {
-  const ordre = ["Contact", "Règlement", "Logistique", "Administratif", "Autre"];
+  const ordre = ["Formation", "Observations", "Classement des arbitres", "Contact", "Règlement", "Logistique", "Administratif", "Autre"];
   const rang = c => { const i = ordre.indexOf(c || "Autre"); return i < 0 ? 99 : i; };
   return procedures.slice().sort((a, b) =>
     rang(a.categorie) - rang(b.categorie) || String(a.titre || "").localeCompare(String(b.titre || "")));
@@ -2886,7 +2939,7 @@ function renderProceduresPanel_() {
       <tbody>${trierProcedures_(procedures).map(p => `<tr>
         <td>${escapeHtml(p.titre || "—")}</td>
         <td>${p.categorie ? `<span class="badge">${escapeHtml(p.categorie)}</span>` : "—"}</td>
-        <td>${(p.contenu || "").length > 160
+        <td>${(p.contenu || "").length > 0
           ? `<details class="rt-details"><summary>Voir la procédure</summary><div style="white-space:pre-wrap">${escapeHtml(p.contenu)}</div></details>`
           : `<span style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</span>`}</td>
         <td>${p.lien ? `<a href="${escapeHtml(p.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : "—"}</td>
@@ -2902,6 +2955,9 @@ function renderProceduresPanel_() {
           <div class="field">
             <label for="procedureCategorie">Catégorie</label>
             <select id="procedureCategorie">
+              <option value="Formation">Formation</option>
+              <option value="Observations">Observations</option>
+              <option value="Classement des arbitres">Classement des arbitres</option>
               <option value="Contact">Contact</option>
               <option value="Règlement">Règlement</option>
               <option value="Logistique">Logistique</option>
@@ -3006,6 +3062,47 @@ function attachContactsPanelListeners_(root) {
       }
     });
   });
+}
+
+/* Suivi des doublés (03/10/2026) : plusieurs matchs le même jour au même
+   lieu = un seul A/R. Économie = km (et carburant) des trajets évités. */
+function renderDoublesStats_() {
+  const rows = (state.filteredRows || []).filter(r => r._double && r._isActive && r._date);
+  if (!rows.length) return foldable_("Doublés", `<div class="stat-note">Aucun doublé sur la période filtrée.</div>`);
+  const groupes = {};
+  rows.forEach(r => { const k = ymd_(r._date) + "|" + lieuDouble_(r); (groupes[k] = groupes[k] || []).push(r); });
+  const liste = Object.keys(groupes).map(k => {
+    const g = groupes[k], n = g.length, d = g[0]._date;
+    const kmTrajet = (g[0]._kmEff || 0) * n;
+    const kmEco = kmTrajet * (n - 1);
+    return {
+      date: d, season: g[0]._season, n,
+      lieu: get(g[0], "Salle") || get(g[0], "Ville") || "—",
+      kmTrajet, kmEco,
+      carbEco: realFuelCostClient(kmEco, d),
+      indem: g.reduce((t, r) => t + (r._amount || 0), 0),
+      net: g.reduce((t, r) => t + (r._amount || 0), 0) - realFuelCostClient(kmTrajet, d)
+    };
+  }).sort((a, b) => b.date - a.date);
+  const tot = liste.reduce((t, x) => ({ n: t.n + 1, m: t.m + x.n, km: t.km + x.kmEco, c: t.c + x.carbEco, i: t.i + x.indem }), { n: 0, m: 0, km: 0, c: 0, i: 0 });
+  const parSaison = {};
+  liste.forEach(x => { const o = parSaison[x.season] = parSaison[x.season] || { n: 0, m: 0, km: 0, c: 0 }; o.n++; o.m += x.n; o.km += x.kmEco; o.c += x.carbEco; });
+  const body = `
+    <div class="kpi-grid">
+      <div class="kpi"><label>Doublés</label><strong>${tot.n}</strong><span class="sub">${tot.m} matchs concernés</span></div>
+      <div class="kpi"><label>KM économisés</label><strong>${formatNumber(tot.km, " km")}</strong></div>
+      <div class="kpi"><label>Carburant économisé</label><strong>${money(tot.c)}</strong></div>
+      <div class="kpi"><label>Indemnités des doublés</label><strong>${money(tot.i)}</strong></div>
+    </div>
+    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Saison</th><th class="num">Doublés</th><th class="num">Matchs</th><th class="num">KM éco.</th><th class="num">Carburant éco.</th></tr></thead>
+      <tbody>${Object.keys(parSaison).sort().reverse().map(k => `<tr><td>${escapeHtml(k)}</td><td class="num">${parSaison[k].n}</td><td class="num">${parSaison[k].m}</td><td class="num">${formatNumber(parSaison[k].km, "")}</td><td class="num">${money(parSaison[k].c)}</td></tr>`).join("")}</tbody>
+    </table></div></div>
+    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Lieu</th><th class="num">Matchs</th><th class="num">KM A/R trajet</th><th class="num">KM éco.</th><th class="num">Indemnités</th><th class="num">Net</th></tr></thead>
+      <tbody>${liste.map(x => `<tr><td>${escapeHtml(x.date.toLocaleDateString("fr-FR"))}</td><td>${escapeHtml(x.lieu)}</td><td class="num">${x.n}</td><td class="num">${formatNumber(x.kmTrajet, "")}</td><td class="num">${formatNumber(x.kmEco, "")}</td><td class="num">${money(x.indem)}</td><td class="num">${money(x.net)}</td></tr>`).join("")}</tbody>
+    </table></div></div>`;
+  return foldable_("Doublés", body, { count: tot.n });
 }
 
 function renderRecords(rec) {
@@ -3525,19 +3622,53 @@ function renderAgendaMatchMini_(row) {
     </div>`;
 }
 
+/* Alertes (03/10/2026) : chaque alerte affiche son motif et peut être
+   marquée « traitée » (stockage local). Une alerte traitée réapparaît si son
+   motif change (ex. nouveau retard, nouveau warning). */
+const ALERTES_TRAITEES_KEY = "rt-alertes-traitees-v1";
+function alertesTraitees_() {
+  try { return JSON.parse(localStorage.getItem(ALERTES_TRAITEES_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+function alertesSetTraitee_(id, motif) {
+  const o = alertesTraitees_();
+  if (motif === null) delete o[id]; else o[id] = motif;
+  try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(o)); } catch (e) { /* stockage indisponible */ }
+}
+function idAlerte_(r) {
+  return get(r, "UID") || (get(r, "Date match") + "|" + (rencontreLabel(r) || ""));
+}
+function estAlerte_(r) {
+  return (r._format === "Alerte" ||
+    hasWarningReel(r) ||
+    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
+    paiementEnRetard(r)) && !estAlerteParasite_(r);
+}
+function motifAlerte_(r) {
+  if (r._format === "Alerte" || hasWarningReel(r)) {
+    const w = warningsReels(r).join(" | ");
+    return "Warning : " + (w || "import en alerte, à vérifier dans le Sheet");
+  }
+  if (cleanText(get(r, "Statut paiement")) === "À vérifier") return "Statut de paiement à vérifier";
+  const prevu = get(r, "Date attendue") || get(r, "Date paiement");
+  const du = toNumber(get(r, "Indemnité totale"));
+  const recu = toNumber(get(r, "Reçu recevant")) + toNumber(get(r, "Reçu visiteur")) || toNumber(get(r, "Montant reçu"));
+  return "Paiement en retard" + (prevu ? " (attendu le " + prevu + ")" : "") + " : reçu " + money(recu) + " sur " + money(du);
+}
+function alertesSplit_(rows) {
+  const tr = alertesTraitees_();
+  const actives = [], traitees = [];
+  (rows || []).forEach(r => {
+    if (!estAlerte_(r)) return;
+    const id = idAlerte_(r);
+    if (tr[id] !== undefined && tr[id] === motifAlerte_(r)) traitees.push(r); else actives.push(r);
+  });
+  return { actives, traitees };
+}
+
 function renderAlertes() {
   const root = document.getElementById("alertes");
-  /* Une alerte doit être actionnable : import raté / warning, statut à
-     trancher, ou paiement en retard. Refonte 25/09/2026 — regroupées par
-     type d'action (priorité : corriger > trancher > relancer), chaque
-     mission n'apparaissant qu'une seule fois. */
-  const base = state.filteredRows.filter(r =>
-    (r._format === "Alerte" ||
-     hasWarningReel(r) ||
-     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
-     paiementEnRetard(r)) && !estAlerteParasite_(r)
-  );
-  if (!base.length) { root.innerHTML = empty("Aucune alerte pour cette saison. Rien à corriger, rien à relancer."); return; }
+  const { actives, traitees } = alertesSplit_(state.filteredRows);
+  const base = actives;
 
   const aCorriger = [], aTrancher = [], enRetard = [];
   base.forEach(r => {
@@ -3553,9 +3684,15 @@ function renderAlertes() {
     ["Retard de paiement", "Échéance dépassée : contrôle et éventuelle relance à effectuer manuellement.", enRetard, "retard",
       '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 10v4"/><path d="M12 16h.01"/>']
   ];
+  const item = (r, traite) => `<div class="alerte-item">${renderMatchCard(r)}
+      <div class="alerte-motif"><span class="alerte-motif-txt">${escapeHtml(motifAlerte_(r))}</span>
+      <button type="button" class="small-btn secondary" data-alerte-${traite ? "retablir" : "traitee"}="${escapeHtml(idAlerte_(r))}">${traite ? "Rétablir" : "Marquer traité"}</button></div></div>`;
 
+  const vide = !base.length
+    ? empty("Aucune alerte active. Rien à corriger, rien à relancer.") : "";
   root.innerHTML = `
     <h2 class="section-title">Alertes <span class="count">${base.length}</span></h2>
+    ${vide}
     ${groupes.filter(g => g[2].length).map(g => `
       <section class="alerte-bloc alerte-bloc--${g[3]}">
         <div class="alerte-bloc-head">
@@ -3563,12 +3700,22 @@ function renderAlertes() {
           <h2 class="section-title alerte-groupe">${escapeHtml(g[0])} <span class="count">${g[2].length}</span></h2>
         </div>
         <div class="alerte-groupe-sub">${escapeHtml(g[1])}</div>
-        <div class="cards">${g[2].slice().sort(sortByDateAsc).map(renderMatchCard).join("")}</div>
+        <div class="cards">${g[2].slice().sort(sortByDateAsc).map(r => item(r, false)).join("")}</div>
       </section>
-    `).join("")}`;
+    `).join("")}
+    ${traitees.length ? foldable_("Alertes traitées", `<div class="cards">${traitees.slice().sort(sortByDateAsc).map(r => item(r, true)).join("")}</div>`, { count: traitees.length }) : ""}`;
   attachCardListeners(root);
   attachPaymentListeners(root);
   attachContactListeners(root);
+  const maj = () => { renderAlertes(); renderTabBadges_(); };
+  root.querySelectorAll("[data-alerte-traitee]").forEach(b => b.addEventListener("click", () => {
+    const id = b.getAttribute("data-alerte-traitee");
+    const r = state.filteredRows.find(x => idAlerte_(x) === id);
+    if (r) { alertesSetTraitee_(id, motifAlerte_(r)); maj(); }
+  }));
+  root.querySelectorAll("[data-alerte-retablir]").forEach(b => b.addEventListener("click", () => {
+    alertesSetTraitee_(b.getAttribute("data-alerte-retablir"), null); maj();
+  }));
 }
 
 /* ---------------- Export ----------------
@@ -3850,7 +3997,7 @@ async function genererCarteSalles_(rows) {
   const points = homeValide ? [[HOME.lat, HOME.lon]] : [];
 
   for (const e of entrees) {
-    const dejaEnCache = !!state.geocodeCache[e.adresse];
+    const dejaEnCache = !!geoCacheGet_(e.adresse);
     const dest = await geocodeAvecCache_(e.adresse);
     if (dest) {
       const icon = L.divIcon({
