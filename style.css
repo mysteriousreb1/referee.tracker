@@ -2394,3 +2394,17 @@ button.acc-ligne:active { transform: scale(.995); }
 @media (min-width: 1100px) {
   .cards { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 }
+
+
+/* ===== 03/10/2026 — mobile : Paiements & Stats plus compacts ===== */
+@media (max-width: 720px) {
+  #paiements .kpi-grid, #stats .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #paiements .kpi, #stats .kpi { padding: 10px 12px; }
+  #paiements .kpi strong, #stats .kpi strong { font-size: 18px; }
+  #paiements .kpi label, #stats .kpi label { font-size: 11px; }
+  #paiements .section-title, #stats .section-title { margin-top: 16px; }
+  #stats .table-wrap table, #stats .table-card table { font-size: 12.5px; }
+  #stats th, #stats td { padding: 7px 8px; white-space: nowrap; }
+  #stats th:first-child, #stats td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+  #paiements .past-summary, #paiements .stat-fold > summary { min-height: var(--tap); }
+}
