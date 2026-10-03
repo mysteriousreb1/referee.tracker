@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a7";
+const APP_VERSION = "2026-10-03-a8";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
 
@@ -172,10 +172,17 @@ function bindUi() {
     renderAll();
   });
 
-  document.getElementById("searchInput").addEventListener("input", e => {
-    state.search = normaliserRecherche(e.target.value);
+  // Recherche : anti-rebond 180 ms (un rendu par pause de frappe, pas par touche) ; Échap efface.
+  let rechercheTimer = 0;
+  const searchEl = document.getElementById("searchInput");
+  const appliquerRecherche = () => {
+    state.search = normaliserRecherche(searchEl.value);
     state.searchTokens = state.search ? state.search.split(" ") : [];
     renderAll();
+  };
+  searchEl.addEventListener("input", () => { clearTimeout(rechercheTimer); rechercheTimer = setTimeout(appliquerRecherche, 180); });
+  searchEl.addEventListener("keydown", e => {
+    if (e.key === "Escape" && searchEl.value) { searchEl.value = ""; clearTimeout(rechercheTimer); appliquerRecherche(); }
   });
 
   // Loupe header (téléphone) : déplie/replie la barre Saison/Recherche/Filtre.
