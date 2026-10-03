@@ -2332,3 +2332,11 @@ button.acc-ligne:active { transform: scale(.995); }
 @media (min-width: 721px) and (max-width: 1239px) {
   .tabs { position: static; top: auto; }
 }
+
+
+/* ---- 03/10/2026 : carte, alertes ---- */
+.card-map{position:relative}
+.card-map-msg{position:absolute;left:8px;bottom:8px;z-index:500;padding:4px 10px;border-radius:8px;font-size:12px;background:var(--surface,#fff);color:var(--text,#222);border:1px solid var(--line,#ddd);box-shadow:0 1px 4px rgba(0,0,0,.15);pointer-events:none}
+.alerte-item{display:flex;flex-direction:column;gap:6px}
+.alerte-motif{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:var(--radius-md,10px);border:1px solid var(--line,#ddd);background:var(--surface,#fff)}
+.alerte-motif-txt{font-size:13px;flex:1 1 200px}
