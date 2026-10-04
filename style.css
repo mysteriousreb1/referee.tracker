@@ -2663,8 +2663,8 @@ button.acc-ligne:active { transform: scale(.995); }
 .relance-box { padding: 18px 20px; }
 .relance-box .cards { margin-top: 12px; }
 .rapp-dossier a { color: var(--gold); font-weight: 700; }
-.fbi-bloc { margin-top: 12px; }
-.fbi-grille td, .fbi-grille th { text-align: center; }
-.fbi-grille td:first-child, .fbi-grille th:first-child { text-align: left; }
-.fbi-off { background: rgba(220,38,38,.18); color: #ef4444; font-weight: 700; font-size: 12px; }
 .acc-alerte-indispo.is-conflit { border-color: rgba(220,38,38,.55); background: rgba(220,38,38,.12); }
+/* b10 — Rapports : modèles vierges */
+.rapp-modeles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 10px; }
+.rapp-modele { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
+.rapp-modele .rapp-act { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
