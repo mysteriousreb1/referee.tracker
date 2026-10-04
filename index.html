@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="preconnect" href="https://script.google.com" crossorigin />
-  <link rel="stylesheet" href="./style.css?v=2026-10-03-a8" />
+  <link rel="stylesheet" href="./style.css?v=2026-10-04-b3" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./favicon-32.png?v=2026-09-28-final" sizes="32x32" type="image/png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-09-28-final" />
@@ -102,6 +102,7 @@
         <button class="tab" data-tab="troisx3" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="tab-label">3×3</span></button>
         <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span><span class="tab-badge" id="badgePaiements" hidden>0</span></button>
         <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Stats</span></button>
+        <button class="tab" data-tab="hotel" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19V7"/><path d="M3 14h18v5"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.5"/></svg></span><span class="tab-label">Hôtel</span></button>
         <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span><span class="tab-badge" id="badgeAlertes" hidden>0</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
         <button class="tab" data-tab="qcm" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tab-label">QCM</span></button>
@@ -123,6 +124,7 @@
         <div id="statsFinancier"></div>
         <div id="statsAnalyse" style="display:none"></div>
       </section>
+      <section id="hotel" class="panel"></section>
       <section id="alertes" class="panel"></section>
       <section id="export" class="panel"></section>
       <section id="qcm" class="panel"></section>
@@ -141,7 +143,7 @@
   <!-- Génération du PDF de l'onglet Export -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="./rt-auth.js?v=2026-10-03-a8"></script>
-  <script src="./app.js?v=2026-10-03-a8"></script>
+  <script src="./rt-auth.js?v=2026-10-04-b3"></script>
+  <script src="./app.js?v=2026-10-04-b3"></script>
 </body>
 </html>
