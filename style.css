@@ -2411,3 +2411,53 @@ button.acc-ligne:active { transform: scale(.995); }
 
 .form-formation { display: grid; grid-template-columns: 1fr 2fr 2fr 1fr; gap: var(--gap, 12px); }
 @media (max-width: 720px) { .form-formation { grid-template-columns: 1fr 1fr; } .form-formation .field:nth-child(2), .form-formation .field:nth-child(3) { grid-column: 1 / -1; } }
+
+
+/* ===== 03/10/2026 — PC : largeur fluide, filtres visibles, Stats compact ===== */
+.page { width: min(1680px, 100%); }
+.toolbar-search { position: relative; z-index: 50; }
+@media (min-width: 1240px) {
+  .page { width: auto; max-width: 1760px; margin: 0 auto 0 228px; padding: 0 clamp(16px, 2vw, 40px); }
+  .toolbar-search { grid-template-columns: 190px minmax(240px, 1fr) auto; }
+}
+/* Filtres toujours visibles sur PC (plus de menu caché) */
+@media (min-width: 1100px) {
+  .filter-dropdown-btn { display: none; }
+  .filter-dropdown-wrap { display: flex; flex-direction: column; }
+  #filterDropdownPanel, #filterDropdownPanel[hidden] {
+    display: flex; flex-direction: row; align-items: flex-end; gap: 10px;
+    position: static; min-width: 0; padding: 0; border: 0; box-shadow: none; background: none;
+  }
+  #filterDropdownPanel .field { min-width: 120px; }
+  #filterDropdownPanel .filter-reset-btn { white-space: nowrap; }
+  .toolbar-search { grid-template-columns: 170px minmax(200px, 1fr) auto; }
+}
+.stat-fold > summary.stat-fold-sum { padding: 9px 14px; min-height: 40px; font-size: 15px; }
+.stat-fold-chev { width: 26px; height: 26px; padding: 4px; }
+.stat-fold-body { padding: 12px 14px; }
+@media (min-width: 1100px) {
+  #statsFinancier { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+  #statsFinancier > :not(.stat-fold) { grid-column: 1 / -1; }
+  #statsFinancier > .stat-fold { margin: 0; }
+}
+.regl-docs { margin: 0 0 10px; padding-left: 18px; font-size: 13.5px; }
+.regl-docs .sub { color: var(--muted); font-size: 12px; margin-left: 6px; }
+
+/* b2 — Réglages carburant & entretien */
+.rt-sub{margin:14px 0 6px;font-size:.95rem}
+.rt-plist{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:6px}
+.rt-plist li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line,rgba(128,128,128,.3));border-radius:10px}
+.rt-x{background:none;border:0;font-size:1.3rem;line-height:1;cursor:pointer;color:inherit;opacity:.7;padding:2px 8px}
+.rt-x:hover{opacity:1}
+@media (max-width:640px){.rt-row{flex-wrap:wrap}}
+
+/* b3 — Hôtel */
+.badge-hotel{background:#1f4e8c;color:#fff}
+.badge-hotel--veille{background:#5b7fb5}
+.hotel-panel{margin:10px 0;border:1px solid var(--line,rgba(128,128,128,.3));border-radius:12px;padding:0 12px}
+.hotel-panel>summary{cursor:pointer;padding:10px 0;font-weight:600}
+.hotel-body{padding:0 0 12px}
+.hotel-why{margin:0 0 10px;padding-left:18px}
+.hotel-body .money-strip{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+#hotel .form-formation{display:flex;flex-wrap:wrap;gap:10px}
+#hotel .form-formation .field{flex:1 1 150px;min-width:0}
