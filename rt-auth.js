@@ -168,7 +168,7 @@ const ECRITURES = {
   addFormation: 1, deleteFormation: 1,
   addNiveau: 1, deleteNiveau: 1,
   addContact: 1, deleteContact: 1,
-  addProcedure: 1, deleteProcedure: 1,
+  addProcedure: 1, updateProcedure: 1, deleteProcedure: 1,
   addQcmSession: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1,
@@ -604,10 +604,9 @@ function renderProfile() {
       <div class="rt-row">
         <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
-        <div class="rt-field"><label for="pfUsure">Usure par défaut (€/km)</label>
-          <input id="pfUsure" type="text" value="${esc(t.usure_km)}"></div>
       </div>
-      <p class="rt-help">Repli utilisé seulement si aucune ligne « Entretien » ne couvre la date. L'usure n'est versée par personne : elle sert à calculer un net réel plus complet.</p>
+      <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
+      <p class="rt-help">L'entretien du véhicule (€/km) se règle dans « Carburant &amp; entretien » ci-dessous, par période.</p>
       <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
     </section>
 
