@@ -2597,3 +2597,25 @@ button.acc-ligne:active { transform: scale(.995); }
 .stats-theme-btn { border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 8px 16px; border-radius: 999px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .stats-theme-btn:hover { background: var(--surface-2); }
 .stats-theme-btn.active { background: var(--navy-600); border-color: var(--navy-600); color: #fff; }
+
+/* ===== b7 — dimensions / aération ===== */
+@media (min-width: 1240px) {
+  .brand { gap: 10px; width: 200px; }
+  .brand-logo { width: 40px; height: 40px; font-size: 17px; border-radius: 12px; flex: 0 0 auto; }
+  .brand-text h1 { font-size: 15px; letter-spacing: .02em; white-space: nowrap; line-height: 1.1; }
+  .brand-text h1 span { display: block; margin-left: 0; }
+  .brand-text p { display: none; }
+  .content { padding: 16px 0 32px; }
+  .toolbar-search { margin-bottom: 20px; }
+  .panel > .section-title:first-child, .panel > h2:first-child { margin-top: 0; margin-bottom: 14px; }
+}
+.panel .empty { padding: 20px 22px; margin: 0 0 16px; }
+#alertes .empty { padding: 18px 22px; }
+#alertes .past-block { margin-top: 20px; padding: 16px 18px; }
+@media (min-width: 900px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 0 0 20px; } .kpi.hero { grid-column: 1 / -1; } }
+.kpi-grid { margin-bottom: 18px; }
+.section-title { margin: 22px 0 12px; }
+@media (max-width: 720px) {
+  .brand-text h1 { white-space: normal; overflow: visible; font-size: 17px; line-height: 1.1; letter-spacing: .02em; }
+  .brand-text h1 span { display: block; margin-left: 0; }
+}
