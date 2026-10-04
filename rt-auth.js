@@ -146,7 +146,7 @@ function apiCall(action, extra = {}, withToken = true) {
 const CACHE_PREFIX  = "rt_c_";
 const CACHE_MAX_AGE = 365 * 24 * 3600 * 1000; // dernier état connu conservé durablement
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
-const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1 };
+const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1 };
 
 /* Une réponse « matchs » vide est presque toujours un hoquet serveur
    (démarrage à froid, lecture du Sheet ratée), jamais une vraie base vide.
@@ -171,7 +171,9 @@ const ECRITURES = {
   addProcedure: 1, deleteProcedure: 1,
   addQcmSession: 1,
   "settings.profil": 1, "settings.tarifs": 1,
-  "settings.vehicule.add": 1, "settings.vehicule.del": 1
+  "settings.vehicule.add": 1, "settings.vehicule.del": 1,
+  "couts.set": 1,
+  addHotel: 1, deleteHotel: 1
 };
 
 function _cacheKey(action, extra) {
@@ -484,6 +486,7 @@ function logout() {
    roulait à cette date. Aucune modification n'est rétroactive. */
 
 var Profil = { email: "", config: null };
+var Couts = { prix: [], entretien: [] };   // carburant & entretien par périodes (serveur)
 
 function esc(v) {
   return String(v == null ? "" : v)
@@ -601,11 +604,39 @@ function renderProfile() {
       <div class="rt-row">
         <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
-        <div class="rt-field"><label for="pfUsure">Usure véhicule (€/km)</label>
+        <div class="rt-field"><label for="pfUsure">Usure par défaut (€/km)</label>
           <input id="pfUsure" type="text" value="${esc(t.usure_km)}"></div>
       </div>
-      <p class="rt-help">L'usure n'est versée par personne : elle sert à calculer un net réel plus complet.</p>
+      <p class="rt-help">Repli utilisé seulement si aucune ligne « Entretien » ne couvre la date. L'usure n'est versée par personne : elle sert à calculer un net réel plus complet.</p>
       <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
+    </section>
+
+    <section class="rt-sect">
+      <h3>Carburant &amp; entretien</h3>
+      <p class="rt-help">Chaque ligne s'applique à partir de sa date, jusqu'à la ligne suivante
+        (la dernière reste valable pour le futur). Les matchs passés et à venir sont recalculés
+        automatiquement à l'enregistrement.</p>
+      <h4 class="rt-sub">Prix du carburant TTC (€/L)</h4>
+      ${coutsListe_("prix")}
+      <div class="rt-row">
+        <div class="rt-field"><label for="cpDate">À partir du</label>
+          <input id="cpDate" type="date"></div>
+        <div class="rt-field"><label for="cpPrix">Prix (€/L)</label>
+          <input id="cpPrix" type="text" inputmode="decimal" placeholder="2,276"></div>
+      </div>
+      <button type="button" class="rt-btn" id="cpAddPrix">Ajouter ce prix</button>
+      <h4 class="rt-sub">Entretien du véhicule</h4>
+      ${coutsListe_("entretien")}
+      <div class="rt-row">
+        <div class="rt-field"><label for="ceDate">À partir du</label>
+          <input id="ceDate" type="date"></div>
+        <div class="rt-field"><label for="ceAnnuel">Coût annuel (€)</label>
+          <input id="ceAnnuel" type="text" inputmode="decimal" placeholder="1500"></div>
+        <div class="rt-field"><label for="ceKm">Km par an</label>
+          <input id="ceKm" type="text" inputmode="numeric" placeholder="8000"></div>
+      </div>
+      <button type="button" class="rt-btn" id="ceAdd">Ajouter cet entretien</button>
+      <p class="rt-help">Entretien (€/km) = coût annuel / km par an. Avant la première ligne, les anciens barèmes par véhicule restent appliqués.</p>
     </section>
 
     <section class="rt-sect">
@@ -635,6 +666,12 @@ function renderProfile() {
   document.getElementById("pfSaveProfil").addEventListener("click", saveProfil);
   document.getElementById("pfSaveTarifs").addEventListener("click", saveTarifs);
   document.getElementById("pfAddVeh").addEventListener("click", addVehicule);
+  document.getElementById("cpAddPrix").addEventListener("click", addCoutPrix);
+  document.getElementById("ceAdd").addEventListener("click", addCoutEntretien);
+  document.querySelectorAll("[data-couts-del]").forEach(b => b.addEventListener("click", () => {
+    const [type, i] = b.getAttribute("data-couts-del").split(":");
+    delCout(type, Number(i));
+  }));
   document.getElementById("pfChangePwd").addEventListener("click", changePassword);
   const setTheme = t => {
     if (typeof applyTheme === "function") applyTheme(t);
@@ -681,6 +718,61 @@ function saveTarifs() {
   }, "Tarifs enregistrés.");
 }
 
+/* ---- Carburant & entretien par périodes ---- */
+function _fr(iso) { const m = String(iso).split("-"); return m.length === 3 ? m[2] + "/" + m[1] + "/" + m[0] : iso; }
+function _n(v, d) { return Number(v).toLocaleString("fr-FR", { maximumFractionDigits: d }); }
+
+function coutsListe_(type) {
+  const l = (Couts && Couts[type]) || [];
+  if (!l.length) return '<p class="rt-help">Aucune ligne : anciens barèmes appliqués.</p>';
+  return '<ul class="rt-plist">' + l.map((p, i) => {
+    const txt = type === "prix"
+      ? _n(p.prix, 4) + " €/L"
+      : (p.annuel ? _n(p.annuel, 0) + " €/an sur " + _n(p.km_an, 0) + " km/an = " : "") + _n(p.eur_km, 4) + " €/km";
+    return '<li><span>Depuis le <b>' + esc(_fr(p.depuis)) + '</b> : ' + esc(txt) + '</span>' +
+      '<button type="button" class="rt-x" data-couts-del="' + type + ':' + i + '" aria-label="Supprimer">&times;</button></li>';
+  }).join("") + '</ul>';
+}
+
+function saveCouts_(nouveau, msg) {
+  return jsonp("couts.set", { donnees: JSON.stringify(nouveau) }).then(res => {
+    if (!res || !res.success) throw new Error((res && res.error) || "Échec");
+    Couts = res.couts || nouveau;
+    renderProfile();
+    toast(res.message || msg);
+    if (typeof window.rtCoutsMaj === "function") window.rtCoutsMaj(Couts);
+  }).catch(err => toast(err.message || "Échec", true));
+}
+
+function _coutsCopie_() { return JSON.parse(JSON.stringify(Couts || { prix: [], entretien: [] })); }
+
+function addCoutPrix() {
+  const depuis = val("cpDate"), prix = Number(val("cpPrix").replace(",", "."));
+  if (!depuis) return toast("Choisis une date.", true);
+  if (!(prix >= 0.5 && prix <= 5)) return toast("Prix invalide (entre 0,50 et 5 €/L).", true);
+  const c = _coutsCopie_();
+  c.prix = c.prix.filter(p => p.depuis !== depuis).concat([{ depuis, prix }]);
+  saveCouts_(c, "Prix enregistré.");
+}
+
+function addCoutEntretien() {
+  const depuis = val("ceDate");
+  const annuel = Number(val("ceAnnuel").replace(",", ".")), km = Number(val("ceKm").replace(",", "."));
+  if (!depuis) return toast("Choisis une date.", true);
+  if (!(annuel > 0 && km > 0)) return toast("Renseigne le coût annuel et les km par an.", true);
+  const c = _coutsCopie_();
+  c.entretien = c.entretien.filter(e => e.depuis !== depuis).concat([{ depuis, annuel, km_an: km }]);
+  saveCouts_(c, "Entretien enregistré.");
+}
+
+function delCout(type, i) {
+  const c = _coutsCopie_();
+  if (!c[type] || !c[type][i]) return;
+  if (!confirm("Supprimer cette ligne ?\n\nLes coûts seront recalculés.")) return;
+  c[type].splice(i, 1);
+  saveCouts_(c, "Ligne supprimée.");
+}
+
 function addVehicule() {
   envoyer("settings.vehicule.add", {
     vehicule: { nom: val("vhNom"), depuis: val("vhDepuis"), conso: val("vhConso"), cv: val("vhCv") }
@@ -721,6 +813,10 @@ function showProfile() {
 
   renderProfile();
   document.getElementById("rtProfile").classList.add("is-visible");
+
+  jsonp("couts.get").then(res => {
+    if (res && res.success && res.couts) { Couts = res.couts; renderProfile(); }
+  }).catch(() => { /* on garde la dernière valeur connue */ });
 
   if (!Profil.config) {
     jsonp("settings.get")
