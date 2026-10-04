@@ -218,7 +218,14 @@ function cacheVider() {
    repassent par jsonp, qui trouve alors un cache tout juste écrit : pas
    de boucle possible. */
 let _rafraichissementEnCours = false;
-function _rafraichirEcran() {
+function _rafraichirEcran(action) {
+  // Listes secondaires (contacts, procédures, hôtels…) : sans ceci, une entrée
+  // périmée restait affichée alors que le serveur avait des données neuves.
+  try {
+    const L = { contacts: "loadContacts", procedures: "loadProcedures", hotels: "loadHotels", enjeux: "loadEnjeux" };
+    if (action && L[action] && typeof window[L[action]] === "function") window[L[action]]();
+  } catch (e) {}
+  if (action && action !== "matchs" && action !== "stats") return;
   if (_rafraichissementEnCours) return;
   _rafraichissementEnCours = true;
   setTimeout(() => {
@@ -268,7 +275,7 @@ function jsonp(action, extra = {}) {
             if (_reponseVide(action, frais)) return;   // hoquet serveur : on garde le dernier bon jeu
             if (JSON.stringify(frais) !== JSON.stringify(hit.d)) {
               _cacheEcrire(cle, frais);
-              _rafraichirEcran();
+              _rafraichirEcran(action);
             } else {
               _cacheEcrire(cle, frais);   // rafraîchit l'horodatage
             }
