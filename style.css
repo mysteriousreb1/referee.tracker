@@ -2619,3 +2619,47 @@ button.acc-ligne:active { transform: scale(.995); }
   .brand-text h1 { white-space: normal; overflow: visible; font-size: 17px; line-height: 1.1; letter-spacing: .02em; }
   .brand-text h1 span { display: block; margin-left: 0; }
 }
+
+/* ===== b8 — e-Licence / Indispos / Rapports ===== */
+.tabs-mini { flex-wrap: wrap; }
+.elic-wrap { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-top: 14px; }
+.elic-actions { max-width: 320px; }
+.elic-actions .card-sub { margin-top: 10px; }
+.elic-card { width: 340px; max-width: 100%; border-radius: 18px; padding: 16px; color: #fff; background: linear-gradient(135deg, #0b1f4a, #1d4ed8 70%, #2f6fe0); box-shadow: 0 10px 28px rgba(0,0,0,.28); }
+.elic-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; opacity: .95; }
+.elic-badge { padding: 3px 9px; border-radius: 999px; font-size: 11px; letter-spacing: 0; text-transform: none; background: rgba(255,255,255,.18); }
+.elic-badge.is-warn { background: #f5b400; color: #1a1a1a; }
+.elic-badge.is-bad { background: #dc2626; }
+.elic-badge.is-ok { background: rgba(34,197,94,.35); }
+.elic-main { display: flex; gap: 14px; margin: 14px 0; }
+.elic-photo { flex: 0 0 88px; height: 112px; border-radius: 10px; background: rgba(255,255,255,.14); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.elic-photo img { width: 100%; height: 100%; object-fit: cover; }
+.elic-id { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 0; }
+.elic-id strong { font-size: 18px; line-height: 1.15; overflow-wrap: anywhere; }
+.elic-qr { background: #fff; border-radius: 12px; padding: 8px; width: 150px; height: 150px; margin: 0 auto; display: flex; align-items: center; justify-content: center; color: #111; font-size: 11px; text-align: center; }
+.elic-qr svg { width: 100%; height: 100%; }
+.elic-overlay { position: fixed; inset: 0; z-index: 9999; background: #0b1220; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+.elic-grand { width: min(92vw, 420px); }
+.elic-grand .elic-qr { width: min(70vw, 260px); height: min(70vw, 260px); }
+.elic-fermer { color: #9fb0cc; margin-top: 14px; font-size: 13px; }
+.indis-st { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--text); }
+.indis-st.is-ok { background: var(--green-soft); color: var(--green); }
+.indis-st.is-warn { background: rgba(245,180,0,.18); color: var(--gold); }
+.indis-st.is-bad { background: rgba(220,38,38,.18); color: #ef4444; }
+.acc-alerte-indispo { display: block; width: 100%; text-align: left; margin: 0 0 12px; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(245,180,0,.5); background: rgba(245,180,0,.12); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.rapp-dossier { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
+.rapp-inline { display: flex; gap: 8px; }
+.rapp-inline input { height: 34px; padding: 0 10px; border-radius: 8px; }
+.rapp-alerte { margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: rgba(220,38,38,.12); border: 1px solid rgba(220,38,38,.4); color: var(--text); font-weight: 600; }
+.rapp-act { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.rapp-elec { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 10px; }
+.rapp-sign { display: block; width: 100%; max-width: 360px; height: 120px; background: #fff; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
+@media (max-width: 720px) {
+  .rapp-elec { grid-template-columns: 1fr; }
+  #contacts form.toolbar { grid-template-columns: 1fr !important; }
+  #contacts form.toolbar > .field { grid-column: auto !important; }
+}
+.status-bar { margin-bottom: 14px; }
+.relance-box { padding: 18px 20px; }
+.relance-box .cards { margin-top: 12px; }
+.rapp-dossier a { color: var(--gold); font-weight: 700; }
