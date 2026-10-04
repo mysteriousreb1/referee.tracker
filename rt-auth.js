@@ -146,7 +146,7 @@ function apiCall(action, extra = {}, withToken = true) {
 const CACHE_PREFIX  = "rt_c_";
 const CACHE_MAX_AGE = 365 * 24 * 3600 * 1000; // dernier état connu conservé durablement
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
-const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1 };
+const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1, enjeux: 1 };
 
 /* Une réponse « matchs » vide est presque toujours un hoquet serveur
    (démarrage à froid, lecture du Sheet ratée), jamais une vraie base vide.
