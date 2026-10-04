@@ -11,9 +11,9 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b7";
+const APP_VERSION = "2026-10-05-b8";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
-const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux"];
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
 let state = {
   allRows: [],
@@ -440,6 +440,7 @@ function loadData() {
       _plus(loadPrixCarburant, "Prix carburant", 1200);
       _plus(loadClassements, "Classements FFBB", 2200);
       _plus(loadEnjeux, "Enjeux FFBB", 3500);
+      _plus(loadIndispos, "Indispos", 4500);
     })
     .catch(showApiError);
 }
@@ -495,6 +496,7 @@ function loadPrixCarburant() {
   jsonp("config")
     .then(res => {
       if (res && res.config && res.config.couts) state.couts = res.config.couts;
+      if (res && res.config && Array.isArray(res.config.vehicles)) state.vehicles = res.config.vehicles;
       const p = res && res.config ? Number(res.config.prix_e10_actuel) : 0;
       if (p > 0.5 && p < 4 && p !== state.prixActuel) {
         state.prixActuel = p;
@@ -1174,6 +1176,7 @@ function renderAccueil() {
 
   root.innerHTML = `
     ${bienvenue}
+    ${indispoBanner_()}
     <div class="acc-grid">
       ${hero}
       ${compteurs}
@@ -1995,7 +1998,9 @@ function renderPaiements() {
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
 
-  const grouped = groupBy(rows, r => get(r, "Statut paiement") || "À recevoir");
+  // Les dossiers en retard figurent déjà dans le bloc « Warnings » : pas de doublon dessous.
+  const dejaRelance = new Set(rows.filter(paiementEnRetard).map(r => get(r, "UID")));
+  const grouped = groupBy(rows.filter(r => !dejaRelance.has(get(r, "UID"))), r => get(r, "Statut paiement") || "À recevoir");
   const order = ["En retard", "À recevoir", "Reçu partiel", "À vérifier", "Écart à vérifier", "Reçu", BENEVOLE];
 
   const statutDe = r => get(r, "Statut paiement") || "À recevoir";
@@ -2976,19 +2981,34 @@ function renderContacts() {
   if (state.contacts === null && !state._contactsErreur) loadContacts();
   if (state.procedures === null && !state._proceduresErreur) loadProcedures();
 
+  const vue = state.contactsSubView;
+  const btn = (v, id, lib) => `<button type="button" class="tabs-mini-btn${vue === v ? " active" : ""}" id="${id}">${lib}</button>`;
+  const nbAl = nbAlertesIndispos_();
+  const panneau = vue === "contacts" ? renderContactsPanel_()
+    : vue === "elicence" ? renderElicencePanel_()
+    : vue === "indispos" ? renderIndisposPanel_()
+    : vue === "rapports" ? renderRapportsPanel_()
+    : renderProceduresPanel_();
   root.innerHTML = `
-    <h2 class="section-title">Procédures</h2>
+    <h2 class="section-title">Procédures &amp; outils perso</h2>
     <div class="tabs-mini">
-      <button type="button" class="tabs-mini-btn${state.contactsSubView === "procedures" ? " active" : ""}" id="contactsSubProceduresBtn">Procédures</button>
-      <button type="button" class="tabs-mini-btn${state.contactsSubView === "contacts" ? " active" : ""}" id="contactsSubContactsBtn">Contacts</button>
+      ${btn("procedures", "contactsSubProceduresBtn", "Procédures")}
+      ${btn("contacts", "contactsSubContactsBtn", "Contacts")}
+      ${btn("elicence", "contactsSubElicBtn", "e-Licence")}
+      ${btn("indispos", "contactsSubIndisBtn", "Indispos" + (nbAl ? " · " + nbAl : ""))}
+      ${btn("rapports", "contactsSubRappBtn", "Rapports")}
     </div>
-    <div id="contactsSubPanel">${state.contactsSubView === "contacts" ? renderContactsPanel_() : renderProceduresPanel_()}</div>
+    <div id="contactsSubPanel">${panneau}</div>
   `;
 
   root.querySelector("#contactsSubContactsBtn").addEventListener("click", () => setContactsSubView_("contacts"));
   root.querySelector("#contactsSubProceduresBtn").addEventListener("click", () => setContactsSubView_("procedures"));
+  root.querySelector("#contactsSubElicBtn").addEventListener("click", () => setContactsSubView_("elicence"));
+  root.querySelector("#contactsSubIndisBtn").addEventListener("click", () => setContactsSubView_("indispos"));
+  root.querySelector("#contactsSubRappBtn").addEventListener("click", () => setContactsSubView_("rapports"));
 
   attachContactsPanelListeners_(root);
+  attachPersoListeners_(root);
 }
 
 function renderChargementErreur_(message, retryId) {
@@ -3006,6 +3026,7 @@ function renderContactsPanel_() {
   const filtres = q
     ? contacts.filter(c => normaliserRecherche([c.nom, c.role, c.organisation, c.telephone, c.email, c.championnat, c.situation, c.notes].filter(Boolean).join(" ")).indexOf(q) >= 0)
     : contacts;
+  filtres.sort((a, b) => String(a.organisation || "~").localeCompare(String(b.organisation || "~"), "fr", { sensitivity: "base" }) || String(a.nom || "").localeCompare(String(b.nom || ""), "fr", { sensitivity: "base" }));
 
   return `
     <div class="toolbar" style="grid-template-columns: minmax(220px, 360px); margin-top:12px">
@@ -4707,12 +4728,22 @@ function prixCarburantPour(date) {
   return PRIX_E10[proche];
 }
 
+/* Consommation (L/100) du véhicule utilisé à cette date : même source que le
+   serveur (Mon profil → véhicules). Repli : valeurs historiques 108 / Audi. */
+function consoPour_(date) {
+  const l = state.vehicles;
+  if (date && Array.isArray(l) && l.length) {
+    const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+    let v = null;
+    l.forEach(x => { const d = String(x.depuis || ""); if (/^\d{4}-\d{2}-\d{2}/.test(d) && d.slice(0, 10) <= iso && Number(x.consoL100 || x.conso)) v = x; });
+    if (v) return Number(v.consoL100 || v.conso);
+  }
+  return (date && date >= new Date(2026, 7, 1)) ? 6.0 : 6.58;
+}
 function realFuelCostClient(km, date) {
   const k = Number(km) || 0;
   if (!k) return 0;
-  const cutover = new Date(2026, 7, 1);
-  const conso = (date && date >= cutover) ? 6.0 : 6.58;
-  return round2((k * conso / 100) * prixCarburantPour(date));
+  return round2((k * consoPour_(date) / 100) * prixCarburantPour(date));
 }
 
 /* ---------------- Utils ---------------- */
@@ -5094,9 +5125,11 @@ function saisonDebutAnnee_() {
 }
 function entretienKmClient_(date) {
   const l = state.couts && state.couts.entretien;
-  if (!date || !l || !l.length) return 0.1875;
+  // Avant les périodes saisies : même repli que le serveur (108 = 0,12 €/km, Audi = 0,1875).
+  const repli = (date && date < new Date(2026, 7, 1)) ? 0.12 : 0.1875;
+  if (!date || !l || !l.length) return repli;
   const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-  let r = 0.1875;
+  let r = repli;
   l.forEach(p => { if (p.depuis <= iso && Number(p.eur_km)) r = Number(p.eur_km); });
   return r;
 }
@@ -5473,8 +5506,7 @@ function kpi(label, value, sub) {
 
 function litresTotal(rows) {
   return rows.reduce((t, r) => {
-    const cutover = new Date(2026, 7, 1);
-    const conso = (r._date && r._date >= cutover) ? 6.0 : 6.58;
+    const conso = consoPour_(r._date);
     return t + ((r._kmEff != null ? r._kmEff : r._km) * conso / 100);
   }, 0);
 }
@@ -6431,4 +6463,448 @@ function renderHotelsStats_() {
       <thead><tr><th>Saison</th><th class="num">Nuits</th><th class="num">Hôtels</th><th class="num">Repas</th><th class="num">Net WE</th></tr></thead>
       <tbody>${Object.keys(parSaison).sort().reverse().map(k => `<tr><td>${escapeHtml(k)}</td><td class="num">${parSaison[k].n}</td><td class="num">${formatMoney(parSaison[k].h)}</td><td class="num">${formatMoney(parSaison[k].r)}</td><td class="num">${formatMoney(parSaison[k].net)}</td></tr>`).join("")}</tbody>
     </table></div></div>`, { count: hs.length });
+}
+
+
+/* =====================================================================
+   MODULES PERSO (05/10/2026) — e-Licence, Indispos FBI, Rapports.
+   Sous-vues de l'onglet « Procédures » (state.contactsSubView).
+   ===================================================================== */
+function isoL_(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function dmy_(iso) { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; }
+
+function persoCharger_(cle, action, assign) {
+  const flag = "_" + cle + "En";
+  if (state[flag]) return;
+  state[flag] = true;
+  jsonp(action)
+    .then(res => {
+      if (res && res.success !== false) { assign(res); state["_" + cle + "Err"] = ""; }
+      else state["_" + cle + "Err"] = (res && res.error) || "Erreur serveur";
+    })
+    .catch(e => { state["_" + cle + "Err"] = (e && e.message) || "Erreur de chargement"; })
+    .finally(() => {
+      state[flag] = false;
+      if (state.activeTab === "contacts") renderContacts();
+      else if (state.activeTab === "accueil") renderAllSoon_();
+    });
+}
+function loadElicence() { persoCharger_("elic", "elicence", r => { state.elicence = r.data || {}; }); }
+function loadIndispos() { persoCharger_("indis", "indispos", r => { state.indispos = r.data || []; }); }
+function loadRapports() { persoCharger_("rapp", "rapports", r => { state.rapports = (r.data && r.data.rapports) || []; state.rapportsDossier = (r.data && r.data.dossier) || {}; }); }
+function erreurPerso_(msg, id) {
+  return `<div class="table-card" style="padding:16px;text-align:center;margin-top:12px"><p class="card-sub" style="margin:0 0 10px">Chargement impossible (${escapeHtml(msg)}).</p><button type="button" class="small-btn secondary" id="${id}">Réessayer</button></div>`;
+}
+function chargementPerso_() { return `<p class="card-sub" style="margin-top:12px">Chargement…</p>`; }
+
+/* ---------- e-Licence ---------- */
+function elicCarteHtml_(e, grand) {
+  const val = e.validite ? new Date(e.validite + "T12:00:00") : null;
+  const jr = val ? Math.ceil((val - new Date()) / 86400000) : null;
+  const badge = val ? (jr < 0 ? `<span class="elic-badge is-bad">Expirée depuis ${-jr} j</span>`
+    : jr <= 60 ? `<span class="elic-badge is-warn">Renouvellement dans ${jr} j</span>`
+    : `<span class="elic-badge is-ok">Valide · ${jr} j</span>`) : "";
+  return `<div class="elic-card${grand ? " elic-grand" : ""}">
+    <div class="elic-top"><span class="elic-brand">Ma licence</span>${badge}</div>
+    <div class="elic-main">
+      <div class="elic-photo">${e.photo ? `<img src="${escapeHtml(e.photo)}" alt="Photo" />` : `<span>Photo</span>`}</div>
+      <div class="elic-id">
+        <strong>${escapeHtml(e.nom || "—")}</strong>
+        <span>N° ${escapeHtml(e.numero || "—")}</span>
+        <span>${escapeHtml(e.niveau || "Niveau non renseigné")}</span>
+        <span>${val ? "Valide jusqu'au " + escapeHtml(dmy_(e.validite)) : "Validité non renseignée"}</span>
+      </div>
+    </div>
+    <div class="elic-qr" data-qr="${escapeHtml(e.qr || e.numero || "")}"></div>
+  </div>`;
+}
+function remplirQr_(root) {
+  root.querySelectorAll(".elic-qr").forEach(el => {
+    const t = el.getAttribute("data-qr") || "";
+    if (!t) { el.innerHTML = `<small>QR : renseigne un n° de licence</small>`; return; }
+    try {
+      if (typeof qrcode !== "function") throw new Error("lib");
+      const q = qrcode(0, "M"); q.addData(t); q.make();
+      el.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+    } catch (err) { el.innerHTML = `<small>${escapeHtml(t)}</small>`; }
+  });
+}
+function renderElicencePanel_() {
+  if (state._elicErr) return erreurPerso_(state._elicErr, "retryElic");
+  if (state.elicence === undefined) { loadElicence(); return chargementPerso_(); }
+  const e = state.elicence || {};
+  return `
+    <div class="elic-wrap">
+      ${elicCarteHtml_(e, false)}
+      <div class="elic-actions">
+        <button type="button" class="small-btn" id="elicPlein">Plein écran (à présenter)</button>
+        <p class="card-sub">Copie personnelle pour l'avoir sous la main. Elle ne remplace pas l'e-Licence officielle.</p>
+      </div>
+    </div>
+    <details class="past-block" style="margin-top:12px"${(e.nom || e.numero) ? "" : " open"}>
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Modifier ma licence</span></span></summary>
+      <div class="past-body">
+        <form id="elicForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field"><label for="elicNom">Nom</label><input id="elicNom" type="text" value="${escapeHtml(e.nom || "")}" required /></div>
+          <div class="field"><label for="elicNumero">N° de licence</label><input id="elicNumero" type="text" value="${escapeHtml(e.numero || "")}" required /></div>
+          <div class="field"><label for="elicNiveau">Niveau</label><input id="elicNiveau" type="text" placeholder="Ex. Arbitre régional" value="${escapeHtml(e.niveau || "")}" /></div>
+          <div class="field"><label for="elicValidite">Valide jusqu'au</label><input id="elicValidite" type="date" value="${escapeHtml(e.validite || "")}" /></div>
+          <div class="field"><label for="elicQr">Contenu du QR (optionnel)</label><input id="elicQr" type="text" placeholder="Par défaut : n° de licence" value="${escapeHtml(e.qr || "")}" /></div>
+          <div class="field"><label for="elicPhoto">Photo</label><input id="elicPhoto" type="file" accept="image/*" /></div>
+          <div style="grid-column: 1 / -1; display:flex; gap:8px; flex-wrap:wrap">
+            <button type="submit" class="small-btn">Enregistrer</button>
+            ${e.photo ? `<button type="button" class="small-btn secondary" id="elicPhotoDel">Retirer la photo</button>` : ""}
+            <span class="card-sub" id="elicMsg"></span>
+          </div>
+        </form>
+      </div>
+    </details>`;
+}
+function photoRedim_(file) {
+  return new Promise((ok, ko) => {
+    const u = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const W = 220, H = 280, c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      const k = Math.max(W / img.width, H / img.height);
+      const w = img.width * k, h = img.height * k;
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+      g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+      URL.revokeObjectURL(u);
+      let q = 0.85, out = c.toDataURL("image/jpeg", q);
+      while (out.length > 44000 && q > 0.3) { q -= 0.1; out = c.toDataURL("image/jpeg", q); }
+      out.length > 46000 ? ko(new Error("Photo trop lourde")) : ok(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); ko(new Error("Image illisible")); };
+    img.src = u;
+  });
+}
+async function sauverElicence_(extra) {
+  const g = id => (document.getElementById(id) || {}).value || "";
+  const msg = document.getElementById("elicMsg");
+  const donnees = { nom: g("elicNom"), numero: g("elicNumero"), niveau: g("elicNiveau"), validite: g("elicValidite"), qr: g("elicQr") };
+  const f = document.getElementById("elicPhoto") && document.getElementById("elicPhoto").files[0];
+  try {
+    if (f) donnees.photo = await photoRedim_(f);
+    if (extra && extra.photoEffacer) donnees.photoEffacer = "1";
+    if (msg) msg.textContent = "Enregistrement…";
+    const res = await jsonp("elicence.set", donnees);
+    if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+    state.elicence = res.data;
+    renderContacts();
+  } catch (err) { if (msg) msg.textContent = "Erreur : " + err.message; }
+}
+function elicPleinEcran_() {
+  const e = state.elicence || {};
+  const ov = document.createElement("div");
+  ov.className = "elic-overlay";
+  ov.innerHTML = `${elicCarteHtml_(e, true)}<p class="elic-fermer">Touche l'écran pour fermer</p>`;
+  ov.addEventListener("click", () => ov.remove());
+  document.body.appendChild(ov);
+  remplirQr_(ov);
+}
+
+/* ---------- Indispos FBI ---------- */
+function weekendsAVenir_(n) {
+  const t = new Date(); t.setHours(12, 0, 0, 0);
+  const sam = new Date(t), dow = t.getDay();
+  sam.setDate(sam.getDate() + (dow === 0 ? -1 : 6 - dow));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const s = new Date(sam); s.setDate(sam.getDate() + 7 * i);
+    const d = new Date(s); d.setDate(s.getDate() + 1);
+    out.push({ sam: s, dim: d });
+  }
+  return out;
+}
+function statutWeekends_() {
+  const ind = state.indispos || [];
+  const couvert = iso => ind.some(x => x.debut <= iso && iso <= x.fin);
+  const actifs = (state.allRows || []).filter(r => r._isActive && r._date);
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  return weekendsAVenir_(10).map(w => {
+    const s = isoL_(w.sam), d = isoL_(w.dim);
+    const ms = actifs.filter(r => { const k = isoL_(r._date); return k === s || k === d; });
+    const cs = couvert(s), cd = couvert(d);
+    const statut = ms.length ? "designe" : (cs && cd ? "indispo" : (cs || cd ? "partiel" : "dispo"));
+    const jours = Math.round((w.sam - auj) / 86400000);
+    return { w, s, d, ms, statut, alerte: (statut === "dispo" || statut === "partiel") && jours <= 14 && w.dim >= auj };
+  });
+}
+function libelleWeekend_(w) {
+  const o = { day: "numeric", month: "long" };
+  return w.sam.toLocaleDateString("fr-FR", o) + " – " + w.dim.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
+function mailRepartiteurs_(wk) {
+  const dest = (state.contacts || []).filter(c => c.email && /r[ée]partiteur|d[ée]signat/i.test((c.role || "") + " " + (c.situation || ""))).map(c => c.email);
+  const sujet = "Disponibilité — week-end du " + libelleWeekend_(wk.w);
+  const corps = "Bonjour,\n\nJe suis disponible le week-end du " + libelleWeekend_(wk.w) + " et je n'ai pas de désignation à ce jour. Pouvez-vous me proposer des matchs si besoin ?\n\nCordialement,\nClément";
+  return "mailto:" + dest.join(",") + "?subject=" + encodeURIComponent(sujet) + "&body=" + encodeURIComponent(corps);
+}
+function nbAlertesIndispos_() {
+  return state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0;
+}
+function indispoBanner_() {
+  const n = nbAlertesIndispos_();
+  if (!n) return "";
+  return `<button type="button" class="acc-alerte-indispo" onclick="allerIndispos_()">${n} week-end${n > 1 ? "s" : ""} où tu es dispo sans désignation · voir et écrire aux répartiteurs</button>`;
+}
+function allerIndispos_() { state.contactsSubView = "indispos"; setActiveTab("contacts"); }
+function renderIndisposPanel_() {
+  if (state._indisErr) return erreurPerso_(state._indisErr, "retryIndis");
+  if (state.indispos === undefined) { loadIndispos(); return chargementPerso_(); }
+  if (state.contacts === null && !state._contactsErreur) loadContacts();
+  const wk = statutWeekends_();
+  const lib = { designe: ["Désigné", "is-ok"], indispo: ["Indisponible", ""], partiel: ["Partiellement indisponible, rien de désigné", "is-warn"], dispo: ["Dispo, aucune désignation", "is-warn"] };
+  const ind = state.indispos;
+  return `
+    <p class="card-sub" style="margin-top:12px">FBI n'a pas d'API : recopie ici tes indispos (ou colle-les en bloc). Alerte quand un week-end à moins de 14 jours n'a ni désignation ni indispo.</p>
+    <div class="table-card" style="margin-top:8px"><div class="table-wrap"><table>
+      <thead><tr><th>Week-end</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${wk.map(x => `<tr>
+        <td>${escapeHtml(libelleWeekend_(x.w))}</td>
+        <td><span class="indis-st ${lib[x.statut][1]}">${lib[x.statut][0]}</span>${x.ms.length ? ` · ${x.ms.length} match${x.ms.length > 1 ? "s" : ""}` : ""}</td>
+        <td>${x.alerte ? `<a class="action-link" href="${escapeHtml(mailRepartiteurs_(x))}">Écrire aux répartiteurs</a>` : ""}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>
+    ${(state.contacts || []).some(c => c.email && /r[ée]partiteur|d[ée]signat/i.test((c.role || "") + " " + (c.situation || ""))) ? "" : `<p class="card-sub">Aucun contact « répartiteur » avec e-mail dans Contacts : le mail s'ouvrira sans destinataire.</p>`}
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter / importer des indispos</span></span></summary>
+      <div class="past-body">
+        <form id="indisForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field"><label for="indisDebut">Du</label><input id="indisDebut" type="date" required /></div>
+          <div class="field"><label for="indisFin">Au (vide = 1 jour)</label><input id="indisFin" type="date" /></div>
+          <div class="field"><label for="indisNote">Note</label><input id="indisNote" type="text" /></div>
+          <div style="grid-column:1 / -1"><button type="submit" class="small-btn">Ajouter</button> <span class="card-sub" id="indisMsg"></span></div>
+        </form>
+        <div class="field" style="margin-top:14px"><label for="indisColle">Coller depuis FBI (une période par ligne : 12/10/2026 ou 12/10/2026 - 18/10/2026)</label>
+          <textarea id="indisColle" rows="4" style="width:100%"></textarea></div>
+        <button type="button" class="small-btn secondary" id="indisImport" style="margin-top:8px">Importer</button>
+      </div>
+    </details>
+    ${ind.length ? `<div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Du</th><th>Au</th><th>Note</th><th></th></tr></thead>
+      <tbody>${ind.map(x => `<tr><td>${escapeHtml(dmy_(x.debut))}</td><td>${escapeHtml(dmy_(x.fin))}</td><td>${escapeHtml(x.note || "—")}</td><td><button type="button" class="action-link" data-del-indis="${escapeHtml(x.id)}">Supprimer</button></td></tr>`).join("")}</tbody>
+    </table></div></div>` : empty("Aucune indispo enregistrée.")}`;
+}
+
+/* ---------- Rapports ---------- */
+const RAPP_ROLES_ = ["Table de marque", "Responsable de salle", "Coach", "Capitaine"];
+const RAPP_48H_ = ["Table de marque", "Responsable de salle"];
+const RAPP_CRITERES_ = ["Autorité et maîtrise du match", "Communication (table, coachs, capitaines)", "Cohérence des décisions", "Gestion des comportements", "Placement et condition physique"];
+function rapportsRetard_() {
+  const now = Date.now();
+  return (state.rapports || []).filter(r => r.statut === "Demandé" && r.echeance && new Date(r.echeance).getTime() < now);
+}
+function rapportMailto_(r) {
+  const delai = RAPP_48H_.indexOf(r.role) >= 0 ? "\n\nMerci de me le retourner sous 48 h." : "";
+  const sujet = "Rapport — " + r.role + " — " + r.match;
+  const corps = "Bonjour" + (r.contactNom ? " " + r.contactNom : "") + ",\n\nPourriez-vous remplir le rapport (" + r.role + ") concernant : " + r.match + "." + (r.notes ? "\n\n" + r.notes : "") + delai + "\n\nMerci,\nClément";
+  return "mailto:" + (r.contactEmail || "") + "?subject=" + encodeURIComponent(sujet) + "&body=" + encodeURIComponent(corps);
+}
+function matchsPourRapports_() {
+  return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte")
+    .sort((a, b) => b._date - a._date).slice(0, 40);
+}
+function renderRapportsPanel_() {
+  if (state._rappErr) return erreurPerso_(state._rappErr, "retryRapp");
+  if (state.rapports === undefined) { loadRapports(); return chargementPerso_(); }
+  if (state.contacts === null && !state._contactsErreur) loadContacts();
+  const L = state.rapports, dos = state.rapportsDossier || {}, retard = rapportsRetard_();
+  const ms = matchsPourRapports_();
+  const contacts = (state.contacts || []).filter(c => c.email);
+  return `
+    <div class="rapp-dossier">
+      <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(dos.url)}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
+      <form id="rappDossierForm" class="rapp-inline"><input id="rappDossierNom" type="text" placeholder="Renommer le dossier" /><button type="submit" class="small-btn secondary">Renommer</button></form>
+    </div>
+    ${retard.length ? `<div class="rapp-alerte">${retard.length} rapport${retard.length > 1 ? "s" : ""} en retard (délai 48 h dépassé) : ${retard.map(r => escapeHtml(r.role + " — " + r.match)).join(" · ")}</div>` : ""}
+    ${L.length ? `<div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Match</th><th>Rôle</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${L.map(r => {
+        const enRetard = r.statut === "Demandé" && r.echeance && new Date(r.echeance).getTime() < Date.now();
+        return `<tr>
+        <td>${escapeHtml(dmy_(r.cree))}</td>
+        <td>${escapeHtml(r.match)}</td>
+        <td>${escapeHtml(r.role)}</td>
+        <td>${escapeHtml(r.contactNom || "—")}${r.contactEmail ? `<br><small>${escapeHtml(r.contactEmail)}</small>` : ""}</td>
+        <td><span class="indis-st ${r.statut === "Reçu" ? "is-ok" : (enRetard ? "is-bad" : "is-warn")}">${escapeHtml(r.statut)}${enRetard ? " · en retard" : ""}</span>${r.statut === "Demandé" && r.echeance ? `<br><small>avant le ${escapeHtml(dmy_(r.echeance))}</small>` : ""}</td>
+        <td class="rapp-act">
+          ${r.fichier ? `<a class="action-link" href="${escapeHtml(r.fichier)}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<a class="action-link" href="${escapeHtml(rapportMailto_(r))}">Relancer par mail</a> <label class="action-link" style="cursor:pointer">Déposer<input type="file" accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}" hidden /></label>`}
+          <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>
+        </td></tr>`; }).join("")}</tbody>
+    </table></div></div>` : empty("Aucun rapport pour l'instant.")}
+    <details class="past-block" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Nouveau rapport / nouvelle demande</span></span></summary>
+      <div class="past-body">
+        <form id="rappForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
+          <div class="field" style="grid-column: span 2"><label for="rappMatch">Match</label><select id="rappMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
+          <div class="field"><label for="rappRole">Rôle</label><select id="rappRole">${RAPP_ROLES_.map(x => `<option>${x}</option>`).join("")}</select></div>
+          <div class="field"><label for="rappNom">Contact (nom)</label><input id="rappNom" type="text" list="rappContacts" /></div>
+          <div class="field"><label for="rappEmail">Contact (e-mail)</label><input id="rappEmail" type="email" list="rappEmails" /></div>
+          <div class="field"><label for="rappLien">Lien du formulaire (optionnel)</label><input id="rappLien" type="url" placeholder="https://…" /></div>
+          <datalist id="rappContacts">${contacts.map(c => `<option value="${escapeHtml(c.nom)}"></option>`).join("")}</datalist>
+          <datalist id="rappEmails">${contacts.map(c => `<option value="${escapeHtml(c.email)}"></option>`).join("")}</datalist>
+          <div class="field" style="grid-column: span 2"><label for="rappNotes">Notes</label><input id="rappNotes" type="text" /></div>
+          <div class="field"><label for="rappFichier">Rapport déjà rempli (PDF / photo)</label><input id="rappFichier" type="file" accept="application/pdf,image/*" /></div>
+          <div style="grid-column:1 / -1" class="card-sub">Sans fichier : demande créée. Table de marque et responsable de salle : retour attendu sous 48 h. Coachs et capitaine : sans délai.</div>
+          <details style="grid-column:1 / -1" id="rappElec">
+            <summary class="card-sub" style="cursor:pointer">Remplir sur place (signature à l'écran, PDF généré)</summary>
+            <div class="rapp-elec">
+              <div class="field"><label for="rappPar">Rempli par (nom, club / fonction)</label><input id="rappPar" type="text" /></div>
+              ${RAPP_CRITERES_.map((c, i) => `<div class="field"><label for="rappC${i}">${escapeHtml(c)}</label><select id="rappC${i}"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>`).join("")}
+              <div class="field" style="grid-column:1 / -1"><label for="rappCom">Commentaire</label><textarea id="rappCom" rows="3" style="width:100%"></textarea></div>
+              <div class="field" style="grid-column:1 / -1"><label>Signature</label><canvas id="rappSign" width="360" height="120" class="rapp-sign"></canvas><button type="button" class="small-btn secondary" id="rappSignClear">Effacer</button></div>
+            </div>
+          </details>
+          <div style="grid-column:1 / -1"><button type="submit" class="small-btn">Enregistrer</button> <span class="card-sub" id="rappMsg"></span></div>
+        </form>
+      </div>
+    </details>`;
+}
+function rapportPdfDepuisForm_(match, role) {
+  const note = i => (document.getElementById("rappC" + i) || {}).value || "";
+  const par = (document.getElementById("rappPar") || {}).value || "";
+  const com = (document.getElementById("rappCom") || {}).value || "";
+  const cv = document.getElementById("rappSign");
+  const veutPdf = par || com || RAPP_CRITERES_.some((c, i) => note(i));
+  if (!veutPdf) return null;
+  const J = window.jspdf && window.jspdf.jsPDF;
+  if (!J) throw new Error("Générateur PDF indisponible");
+  const doc = new J({ unit: "mm", format: "a4" });
+  let y = 20;
+  doc.setFontSize(16); doc.text(pdfSafe("Rapport — " + role), 15, y); y += 8;
+  doc.setFontSize(11); doc.text(pdfSafe(match), 15, y); y += 6;
+  doc.text(pdfSafe("Rempli par : " + (par || "—") + "   le " + new Date().toLocaleDateString("fr-FR")), 15, y); y += 10;
+  RAPP_CRITERES_.forEach((c, i) => { doc.text(pdfSafe(c) + " : " + (note(i) || "—") + " / 5", 15, y); y += 7; });
+  y += 4; doc.text("Commentaire :", 15, y); y += 6;
+  doc.splitTextToSize(pdfSafe(com || "—"), 180).forEach(l => { if (y > 250) { doc.addPage(); y = 20; } doc.text(l, 15, y); y += 5.5; });
+  if (cv && cv.dataset.signe === "1") { y = Math.min(y + 8, 262); doc.text("Signature :", 15, y); doc.addImage(cv.toDataURL("image/png"), "PNG", 15, y + 2, 60, 20); }
+  const uri = doc.output("datauristring");
+  return uri.split(",")[1];
+}
+function initSignature_(root) {
+  const cv = root.querySelector("#rappSign");
+  if (!cv) return;
+  const g = cv.getContext("2d");
+  g.lineWidth = 2; g.lineCap = "round"; g.strokeStyle = "#111";
+  let dessine = false;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.style.touchAction = "none";
+  cv.addEventListener("pointerdown", e => { dessine = true; const p = pos(e); g.beginPath(); g.moveTo(p[0], p[1]); cv.dataset.signe = "1"; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => { if (!dessine) return; const p = pos(e); g.lineTo(p[0], p[1]); g.stroke(); });
+  ["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, () => { dessine = false; }));
+  const eff = root.querySelector("#rappSignClear");
+  if (eff) eff.addEventListener("click", () => { g.clearRect(0, 0, cv.width, cv.height); cv.dataset.signe = ""; });
+}
+async function fichierRapport_(f) {
+  if (!f) return null;
+  if (f.size > 4 * 1024 * 1024) throw new Error("Fichier trop volumineux (max 4 Mo)");
+  const mime = f.type || "application/pdf";
+  return { fNom: f.name, fMime: mime, fData: await fichierEnBase64_(f) };
+}
+
+function attachPersoListeners_(root) {
+  const clic = (sel, fn) => root.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
+  const retry = (id, cle, fn) => { const b = root.querySelector("#" + id); if (b) b.addEventListener("click", () => { state[cle] = ""; fn(); renderContacts(); }); };
+  retry("retryElic", "_elicErr", loadElicence); retry("retryIndis", "_indisErr", loadIndispos); retry("retryRapp", "_rappErr", loadRapports);
+
+  // e-Licence
+  const ef = root.querySelector("#elicForm");
+  if (ef) ef.addEventListener("submit", e => { e.preventDefault(); sauverElicence_(); });
+  const ed = root.querySelector("#elicPhotoDel");
+  if (ed) ed.addEventListener("click", () => sauverElicence_({ photoEffacer: true }));
+  const ep = root.querySelector("#elicPlein");
+  if (ep) ep.addEventListener("click", elicPleinEcran_);
+  remplirQr_(root);
+
+  // Indispos
+  const nf = root.querySelector("#indisForm");
+  if (nf) nf.addEventListener("submit", async e => {
+    e.preventDefault();
+    const m = root.querySelector("#indisMsg");
+    try {
+      const res = await jsonp("indispo.add", { debut: root.querySelector("#indisDebut").value, fin: root.querySelector("#indisFin").value, note: root.querySelector("#indisNote").value });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      state.indispos = undefined; loadIndispos(); renderContacts();
+    } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
+  });
+  const ni = root.querySelector("#indisImport");
+  if (ni) ni.addEventListener("click", async () => {
+    const t = root.querySelector("#indisColle").value;
+    if (!t.trim()) return;
+    try {
+      const res = await jsonp("indispo.import", { texte: t });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      const r = res.result || {};
+      setStatus(`Import : ${r.ajoutes || 0} ajoutée(s), ${r.doublons || 0} déjà présente(s), ${r.ignores || 0} ligne(s) ignorée(s)`, "ok");
+      state.indispos = undefined; loadIndispos(); renderContacts();
+    } catch (err) { setStatus("Erreur import : " + err.message, "error"); }
+  });
+  clic("[data-del-indis]", async e => {
+    try { await jsonp("indispo.delete", { id: e.currentTarget.getAttribute("data-del-indis") }); state.indispos = undefined; loadIndispos(); renderContacts(); }
+    catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  });
+
+  // Rapports
+  initSignature_(root);
+  const df = root.querySelector("#rappDossierForm");
+  if (df) df.addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      const res = await jsonp("rapport.dossier", { nom: root.querySelector("#rappDossierNom").value });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      state.rapportsDossier = res.result; renderContacts();
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  });
+  const rf = root.querySelector("#rappForm");
+  if (rf) rf.addEventListener("submit", async e => {
+    e.preventDefault();
+    const g = id => root.querySelector("#" + id).value;
+    const m = root.querySelector("#rappMsg");
+    const sel = root.querySelector("#rappMatch");
+    try {
+      if (!sel.value) throw new Error("Choisis un match");
+      if (m) m.textContent = "Enregistrement…";
+      const f = await fichierRapport_(root.querySelector("#rappFichier").files[0]);
+      const role = g("rappRole");
+      const matchLib = sel.options[sel.selectedIndex].text;
+      let fic = f;
+      if (!fic) {
+        const b64 = rapportPdfDepuisForm_(matchLib, role);
+        if (b64) fic = { fNom: "rapport_" + role, fMime: "application/pdf", fData: b64 };
+      }
+      const notes = [g("rappNotes"), g("rappLien") ? "Formulaire : " + g("rappLien") : ""].filter(Boolean).join(" | ");
+      const res = await jsonp("rapport.add", Object.assign({ matchUid: sel.value, match: matchLib, role, contactNom: g("rappNom"), contactEmail: g("rappEmail"), notes }, fic || {}));
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      state.rapports = undefined; loadRapports(); renderContacts();
+    } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
+  });
+  root.querySelectorAll("[data-rapp-file]").forEach(inp => inp.addEventListener("change", async () => {
+    try {
+      const f = await fichierRapport_(inp.files[0]);
+      if (!f) return;
+      const res = await jsonp("rapport.file", Object.assign({ id: inp.getAttribute("data-rapp-file") }, f));
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      state.rapports = undefined; loadRapports(); renderContacts();
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  }));
+  clic("[data-rapp-del]", async e => {
+    if (!window.confirm("Supprimer cette ligne de suivi ? (le fichier reste dans Drive)")) return;
+    try { await jsonp("rapport.delete", { id: e.currentTarget.getAttribute("data-rapp-del") }); state.rapports = undefined; loadRapports(); renderContacts(); }
+    catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  });
+  clic("[data-rapp-send]", async e => {
+    const id = e.currentTarget.getAttribute("data-rapp-send");
+    const r = (state.rapports || []).find(x => x.id === id);
+    const dest = window.prompt("Envoyer le rapport à quelle adresse e-mail ?", (r && r.contactEmail) || "");
+    if (!dest) return;
+    try {
+      const res = await jsonp("rapport.send", { id, email: dest });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      setStatus("Rapport envoyé à " + dest + (res.result && res.result.piece ? "" : " (sans pièce jointe)"), "ok");
+    } catch (err) { setStatus("Erreur d'envoi : " + err.message, "error"); }
+  });
 }
