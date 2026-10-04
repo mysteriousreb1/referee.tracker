@@ -169,7 +169,7 @@ const ECRITURES = {
   addNiveau: 1, deleteNiveau: 1,
   addContact: 1, deleteContact: 1,
   addProcedure: 1, updateProcedure: 1, deleteProcedure: 1,
-  addQcmSession: 1,
+  addQcmSession: 1, deleteQcmSession: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1,
   "couts.set": 1,
