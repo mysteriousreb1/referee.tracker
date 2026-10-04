@@ -11,9 +11,9 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-04-b5";
+const APP_VERSION = "2026-10-04-b6";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
-const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels"];
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux"];
 
 let state = {
   allRows: [],
@@ -156,6 +156,8 @@ function bindUi() {
   const statsSubAvanceeBtn = document.getElementById("statsSubAvanceeBtn");
   if (statsSubOverviewBtn) statsSubOverviewBtn.addEventListener("click", () => setStatsSubView_("overview"));
   if (statsSubAvanceeBtn) statsSubAvanceeBtn.addEventListener("click", () => setStatsSubView_("avancee"));
+  const statsSubEstimationBtn = document.getElementById("statsSubEstimationBtn");
+  if (statsSubEstimationBtn) statsSubEstimationBtn.addEventListener("click", () => setStatsSubView_("estimation"));
 
   const refresh = document.getElementById("refreshBtn");
   refresh.addEventListener("click", () => {
@@ -434,6 +436,7 @@ function loadData() {
       try { loadStats(); } catch (e) { console.warn("Stats serveur indisponibles :", e); }
       try { loadPrixCarburant(); } catch (e) { console.warn("Prix carburant indisponible :", e); }
       try { loadClassements(); } catch (e) { console.warn("Classements FFBB indisponibles :", e); }
+      try { loadEnjeux(); } catch (e) { console.warn("Enjeux FFBB indisponibles :", e); }
     })
     .catch(showApiError);
 }
@@ -509,6 +512,19 @@ function loadClassements() {
       renderAllSoon_();
     })
     .catch(() => { state.classements = state.classements || []; });
+}
+
+/* Enjeu via l'API publique FFBB (calculé par le serveur, en arrière-plan). */
+function loadEnjeux() {
+  if (state._enjeuxEnCours) return;
+  state._enjeuxEnCours = true;
+  jsonp("enjeux")
+    .then(res => {
+      state.enjeux = (res && res.success && res.enjeux && res.enjeux.data) || {};
+      if (Object.keys(state.enjeux).length) renderAllSoon_();
+    })
+    .catch(() => { state.enjeux = state.enjeux || {}; })
+    .then(() => { state._enjeuxEnCours = false; });
 }
 
 function classementPour_(codeClub, codeCompetition, numeroEquipe) {
@@ -880,6 +896,7 @@ function renderTab_(tab) {
   if (!e) return;
   safeRender_(e[0], tab, e[1]);
   if (tab === "stats" && state.statsSubView === "avancee") safeRender_(renderAnalyse, "stats", "Analyse");
+  if (tab === "stats" && state.statsSubView === "estimation") safeRender_(renderEstimation, "stats", "Estimation");
 }
 
 function renderAll() {
@@ -933,11 +950,15 @@ function setStatsSubView_(view) {
   const avanceeBtn = document.getElementById("statsSubAvanceeBtn");
   if (overviewBtn) overviewBtn.classList.toggle("active", view === "overview");
   if (avanceeBtn) avanceeBtn.classList.toggle("active", view === "avancee");
+  const estBtn = document.getElementById("statsSubEstimationBtn");
+  if (estBtn) estBtn.classList.toggle("active", view === "estimation");
   const financier = document.getElementById("statsFinancier");
   const analyse = document.getElementById("statsAnalyse");
+  const estim = document.getElementById("statsEstimation");
   if (financier) financier.style.display = view === "overview" ? "" : "none";
   if (analyse) analyse.style.display = view === "avancee" ? "" : "none";
-  if (view === "avancee") renderAnalyse(); else renderStats();
+  if (estim) estim.style.display = view === "estimation" ? "" : "none";
+  if (view === "avancee") renderAnalyse(); else if (view === "estimation") renderEstimation(); else renderStats();
 }
 
 function filterRows(rows) {
@@ -1424,6 +1445,11 @@ function renderMatchCard(row) {
    est neuf, les anciens matchs n'ont pas de code club enregistré). */
 function renderEnjeuClassement_(row) {
   if (row._isPast) return "";
+  const en = state.enjeux && state.enjeux[get(row, "UID")];
+  if (en && (en.rec || en.vis)) {
+    const lg = (nom, c) => c ? `<div class="enjeu-ligne"><strong>${escapeHtml(nom)}</strong> — ${c.pos}e/${en.taille} · ${c.pts} pt${c.pts > 1 ? "s" : ""} (${c.j} match${c.j > 1 ? "s" : ""})</div>` : "";
+    return `<div class="enjeu-classement">${lg(get(row, "Recevant") || "Recevant", en.rec)}${lg(get(row, "Visiteur / événement") || "Visiteur", en.vis)}${en.enjeu ? `<div class="enjeu-ligne"><em>${escapeHtml(en.enjeu)}</em></div>` : ""}</div>`;
+  }
   const codeComp = get(row, "Code compétition");
   const cR = classementPour_(
     get(row, "Code club recevant"), codeComp,
@@ -2291,7 +2317,7 @@ function renderStats() {
 
   const t = s.totaux, m = s.moyennes, rec = s.records;
 
-  root.innerHTML = `
+  const kpis = `
     <h2 class="section-title">Bilan financier <span class="count">${escapeHtml(s.season)}</span></h2>
     <div class="kpi-grid">
       <div class="kpi hero">
@@ -2303,12 +2329,8 @@ function renderStats() {
       <div class="kpi"><label>Coût carburant réel</label><strong>−${formatMoney(t.cout_reel_carburant)}</strong></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(t.recu_total)}</strong><span class="sub">${t.nb_recu} paiement(s)</span></div>
       <div class="kpi"><label>Reste à percevoir</label><strong>${formatMoney(t.a_recevoir_total)}</strong><span class="sub">${t.nb_a_recevoir} en attente</span></div>
-    </div>
-
-    ${renderCashFlow_(s.cash_flow)}
-    ${renderComparaisonN1_(s.comparaison_saison_precedente)}
-
-    ${foldable_("Efficacité", `
+    </div>`;
+  const efficacite = foldable_("Efficacité", `
     <div class="kpi-grid">
       <div class="kpi"><label>€ / km (indemnité)</label><strong>${money(m.eur_par_km)}</strong><span class="sub">0,40 €/km + match</span></div>
       <div class="kpi"><label>€ / heure (net réel)</label><strong>${money(m.eur_par_heure_moyen)}</strong><span class="sub">trajet inclus</span></div>
@@ -2318,24 +2340,59 @@ function renderStats() {
       <div class="kpi"><label>Indemnité moy. 5×5</label><strong>${money(m.indemnite_par_5x5)}</strong></div>
       <div class="kpi"><label>Indemnité moy. 3×3</label><strong>${money(m.indemnite_par_3x3)}</strong></div>
     </div>
-    ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}`)}
+    ${s.note_3x3 ? `<div class="stat-note">${escapeHtml(s.note_3x3)}</div>` : ""}`, { open: true });
 
-    ${renderRepartitionRoles()}
-    ${renderDoublesStats_()}
-    ${renderRecords(rec)}
-    ${renderAggTable("Par saison", s.par_saison, "Saison")}
-    ${renderAggTable("Par mois", s.par_mois, "Mois")}
-    ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}
-    ${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
-    ${renderTop("Top 3 salles (5×5)", s.top_salles)}
-    ${renderTop("Top 3 villes", s.top_villes)}
-    ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
-    ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
-    ${renderMatchsAnnules()}
-    ${renderHotelsStats_()}
-    ${renderFormations()}
+  const THEMES = [["argent", "Argent"], ["km", "Km et trajets"], ["lieux", "Lieux, clubs, collègues"], ["suivi", "Suivi"]];
+  const theme = THEMES.some(x => x[0] === state.statsTheme) ? state.statsTheme : "argent";
+  const blocs = {
+    argent: `${kpis}
+      ${renderCashFlow_(s.cash_flow)}
+      ${renderComparaisonN1_(s.comparaison_saison_precedente)}
+      ${renderAggTable("Par saison", s.par_saison, "Saison")}
+      ${renderAggTable("Par mois", s.par_mois, "Mois")}
+      ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}`,
+    km: `${efficacite}
+      ${renderKmParMois_()}
+      ${renderRecords(rec)}`,
+    lieux: `${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
+      ${renderTop("Top 3 salles (5×5)", s.top_salles)}
+      ${renderTop("Top 3 villes", s.top_villes)}
+      ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
+      ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
+      ${renderRepartitionRoles()}`,
+    suivi: `${renderDoublesStats_()}
+      ${renderMatchsAnnules()}
+      ${renderHotelsStats_()}
+      ${renderFormations()}`
+  };
+  root.innerHTML = `
+    <div class="stats-themes" role="tablist">${THEMES.map(x => `<button type="button" role="tab" class="stats-theme-btn${x[0] === theme ? " active" : ""}" data-stheme="${x[0]}">${x[1]}</button>`).join("")}</div>
+    ${blocs[theme]}
   `;
+  root.querySelectorAll("[data-stheme]").forEach(btn => btn.addEventListener("click", () => { state.statsTheme = btn.dataset.stheme; renderStats(); }));
   attachFormationsListeners_(root);
+}
+
+/* Km, carburant et entretien par mois (calcul local, doublés partagés). */
+function renderKmParMois_() {
+  const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte" && r._date);
+  if (!rows.length) return "";
+  const mois = {};
+  rows.forEach(r => {
+    const k = r._date.getFullYear() + "-" + String(r._date.getMonth() + 1).padStart(2, "0");
+    const km = r._kmEff != null ? r._kmEff : (r._km || 0);
+    const o = mois[k] = mois[k] || { n: 0, km: 0, carb: 0, ent: 0 };
+    o.n++; o.km += km; o.carb += realFuelCostClient(km, r._date); o.ent += km * entretienKmClient_(r._date);
+  });
+  const cles = Object.keys(mois).sort().reverse();
+  const tot = cles.reduce((t, k) => ({ n: t.n + mois[k].n, km: t.km + mois[k].km, carb: t.carb + mois[k].carb, ent: t.ent + mois[k].ent }), { n: 0, km: 0, carb: 0, ent: 0 });
+  return `<h2 class="section-title">Km par mois</h2>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Mois</th><th class="num">Matchs</th><th class="num">Km A/R</th><th class="num">Carburant</th><th class="num">Entretien</th></tr></thead>
+      <tbody>${cles.map(k => `<tr><td>${k.slice(5)}/${k.slice(0, 4)}</td><td class="num">${mois[k].n}</td><td class="num">${formatNumber(Math.round(mois[k].km), " km")}</td><td class="num">${formatMoney(mois[k].carb)}</td><td class="num">${formatMoney(mois[k].ent)}</td></tr>`).join("")}
+      <tr><td><strong>Total</strong></td><td class="num"><strong>${tot.n}</strong></td><td class="num"><strong>${formatNumber(Math.round(tot.km), " km")}</strong></td><td class="num"><strong>${formatMoney(tot.carb)}</strong></td><td class="num"><strong>${formatMoney(tot.ent)}</strong></td></tr></tbody>
+    </table></div></div>
+    <p class="card-sub">Km réellement parcourus (un doublé ne compte qu'un seul aller-retour). Entretien selon ton enveloppe annuelle de Mon profil.</p>`;
 }
 
 /* Suivi des matchs annulés — rubrique STATS séparée (19/09/2026).
@@ -5013,6 +5070,143 @@ document.addEventListener("click", function (e) {
     setTimeout(renderStats, 1200);
   }
 });
+
+/* ---------------- Estimation de fin de saison (b6) ----------------
+   Méthode (mélange de trois sources) :
+   1. CALENDRIER CONNU : matchs déjà désignés à venir, valorisés exactement
+      (indemnité, km réels, carburant au prix de la période, entretien).
+   2. RYTHME DE LA SAISON PASSÉE : nombre de matchs que tu avais arbitrés
+      sur la même période restante l'an dernier.
+   3. RYTHME ACTUEL : ratio (matchs de cette saison / matchs de l'an dernier
+      à la même date), lissé et borné [0,6 ; 1,6] pour éviter les emballements.
+   Matchs attendus d'ici la fin = max(calendrier connu, restant N-1 x ratio).
+   Bas = calendrier connu seul ; haut = estimation centrale + 25 %.
+   Les matchs "à prévoir" sont valorisés à la moyenne de la saison en cours. */
+
+function saisonDebutAnnee_() {
+  const s = state.selectedSeason;
+  if (s && s !== "Toutes les saisons") { const y = parseInt(s, 10); if (y) return y; }
+  const n = new Date();
+  return n >= new Date(n.getFullYear(), 6, 30) ? n.getFullYear() : n.getFullYear() - 1;
+}
+function entretienKmClient_(date) {
+  const l = state.couts && state.couts.entretien;
+  if (!date || !l || !l.length) return 0.1875;
+  const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  let r = 0.1875;
+  l.forEach(p => { if (p.depuis <= iso && Number(p.eur_km)) r = Number(p.eur_km); });
+  return r;
+}
+function agregEstim_(rows) {
+  const o = { n: 0, ind: 0, km: 0, carb: 0, ent: 0 };
+  rows.forEach(r => {
+    const km = r._kmEff != null ? r._kmEff : (r._km || 0);
+    o.n++; o.ind += r._amount || 0; o.km += km;
+    o.carb += realFuelCostClient(km, r._date);
+    o.ent += km * entretienKmClient_(r._date);
+  });
+  o.ind = round2(o.ind); o.km = Math.round(o.km); o.carb = round2(o.carb); o.ent = round2(o.ent);
+  return o;
+}
+function calculerEstimation_() {
+  const Y = saisonDebutAnnee_();
+  const debut = new Date(Y, 6, 30), fin = new Date(Y + 1, 6, 29, 23, 59, 59);
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  const actifs = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date);
+  const saison = actifs.filter(r => r._date >= debut && r._date <= fin);
+  const faits = saison.filter(r => r._date < auj);
+  const avenir = saison.filter(r => r._date >= auj);
+
+  const decale = d => new Date(d.getFullYear() - 1, d.getMonth(), d.getDate());
+  const prevDebut = decale(debut), prevAuj = decale(auj), prevFin = decale(fin);
+  const prev = actifs.filter(r => r._date >= prevDebut && r._date <= prevFin);
+  const prevEcoule = prev.filter(r => r._date < prevAuj).length;
+  const prevReste = prev.filter(r => r._date >= prevAuj).length;
+
+  const semainesRestantes = Math.max(0, (fin - auj) / (7 * 86400000));
+  const semainesEcoulees = Math.max(1, (auj - debut) / (7 * 86400000));
+  let ratio = 1, methode;
+  if (prev.length && prevReste > 0) {
+    ratio = Math.min(1.6, Math.max(0.6, (faits.length + 3) / (prevEcoule + 3)));
+    methode = "calendrier connu + rythme de la saison passée (x" + ratio.toFixed(2).replace(".", ",") + " selon ton rythme actuel)";
+  } else {
+    methode = "calendrier connu + rythme actuel (pas d'historique N-1 comparable, estimation prudente)";
+  }
+  let restantCentral;
+  if (prev.length && prevReste > 0) restantCentral = Math.max(avenir.length, Math.round(prevReste * ratio));
+  else restantCentral = avenir.length + Math.round((faits.length / semainesEcoulees) * semainesRestantes * 0.6);
+  const restantHaut = Math.max(restantCentral, Math.round(restantCentral * 1.25));
+  const extraC = Math.max(0, restantCentral - avenir.length);
+  const extraH = Math.max(0, restantHaut - avenir.length);
+
+  const base = (faits.length + avenir.length) ? faits.concat(avenir) : prev;
+  const moy = agregEstim_(base);
+  const m = { ind: base.length ? moy.ind / base.length : 0, km: base.length ? moy.km / base.length : 0 };
+  const carbMoy = realFuelCostClient(m.km, auj), entMoy = m.km * entretienKmClient_(auj);
+  const extraVal = n => ({ n, ind: round2(n * m.ind), km: Math.round(n * m.km), carb: round2(n * carbMoy), ent: round2(n * entMoy) });
+
+  const rF = agregEstim_(faits), rA = agregEstim_(avenir), rC = extraVal(extraC), rH = extraVal(extraH);
+
+  // Hôtels : payés (saison) + nuits conseillées à venir non encore saisies
+  const hotelsPayes = (state.hotels || []).filter(h => { const d = parseFrDate(h.date); return d && d >= debut && d <= fin; })
+    .reduce((t, h) => t + h.prix + h.repas, 0);
+  const aVenirHotel = Object.keys(state.hotelInfo || {}).map(k => state.hotelInfo[k])
+    .filter(e => e.actif && e.date >= auj && e.date <= fin && !hotelNuitEnregistree_(e.date));
+  const hotelPrevu = aVenirHotel.length * HOTEL_CFG.budget;
+  const ecoHotel = round2(aVenirHotel.reduce((t, e) => t + (e.ecoEur || 0), 0));
+
+  const net = (ag, hotel) => round2(ag.ind - ag.carb - ag.ent - hotel);
+  const recuSaison = round2(saison.reduce((t, r) => t + (r._encaisse || 0), 0));
+  const resteConnu = round2(saison.reduce((t, r) => t + (r._reste || 0), 0));
+  const tot = (a, b, c) => ({ n: a.n + b.n + c.n, ind: round2(a.ind + b.ind + c.ind), km: a.km + b.km + c.km, carb: round2(a.carb + b.carb + c.carb), ent: round2(a.ent + b.ent + c.ent) });
+  const totC = tot(rF, rA, rC), totB = tot(rF, rA, { n: 0, ind: 0, km: 0, carb: 0, ent: 0 }), totH = tot(rF, rA, rH);
+  const hotelsFin = round2(hotelsPayes + hotelPrevu);
+  return {
+    Y, rF, rA, rC, totC, totB, totH, hotelsPayes: round2(hotelsPayes), hotelPrevu, nbHotelPrevu: aVenirHotel.length, ecoHotel,
+    hotelsFin, netC: net(totC, hotelsFin), netB: net(totB, hotelsFin), netH: net(totH, hotelsFin),
+    recuSaison, resteConnu, aToucherFin: round2(resteConnu + rC.ind), aToucherHaut: round2(resteConnu + rH.ind),
+    restantCentral, extraC, methode, semainesRestantes: Math.round(semainesRestantes), prevN: prev.length, m
+  };
+}
+
+function renderEstimation() {
+  const root = document.getElementById("statsEstimation");
+  if (!root) return;
+  if (state.hotels === undefined || state.hotels === null) loadHotels();
+  const e = calculerEstimation_();
+  const F = formatMoney, N = v => formatNumber(v, " km");
+  const ligne = (lab, f, a, c, t, fmt) => `<tr><td>${lab}</td><td class="num">${fmt(f)}</td><td class="num">${fmt(a)}</td><td class="num">${fmt(c)}</td><td class="num"><strong>${fmt(t)}</strong></td></tr>`;
+  const entier = v => String(v);
+  const neg = v => v > 0 ? "−" + F(v) : F(0);
+  const hFait = e.hotelsPayes, hPrevu = e.hotelPrevu;
+  root.innerHTML = `
+    <h2 class="section-title">Estimation fin de saison <span class="count">${e.Y}/${e.Y + 1}</span></h2>
+    <div class="kpi-grid">
+      <div class="kpi hero"><label>Net estimé fin de saison</label><strong>${F(e.netC)}</strong>
+        <span class="sub">fourchette ${F(e.netB)} (calendrier connu seul) à ${F(e.netH)}</span></div>
+      <div class="kpi"><label>Montants à toucher d'ici la fin</label><strong>${F(e.aToucherFin)}</strong><span class="sub">dont ${F(e.resteConnu)} déjà dus · jusqu'à ${F(e.aToucherHaut)}</span></div>
+      <div class="kpi"><label>Déjà encaissé cette saison</label><strong>${F(e.recuSaison)}</strong></div>
+      <div class="kpi"><label>Km prévus (saison)</label><strong>${N(e.totC.km)}</strong><span class="sub">${N(e.rA.km + e.rC.km)} restants</span></div>
+      <div class="kpi"><label>Carburant + entretien prévus</label><strong>−${F(e.totC.carb + e.totC.ent)}</strong><span class="sub">carburant ${F(e.totC.carb)} · entretien ${F(e.totC.ent)}</span></div>
+      <div class="kpi"><label>Matchs attendus</label><strong>${e.totC.n}</strong><span class="sub">${e.rF.n} faits · ${e.rA.n} désignés · ${e.rC.n} à prévoir</span></div>
+    </div>
+
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th></th><th class="num">Réalisé</th><th class="num">À venir (désignés)</th><th class="num">À prévoir</th><th class="num">Total saison</th></tr></thead>
+      <tbody>
+        ${ligne("Matchs", e.rF.n, e.rA.n, e.rC.n, e.totC.n, entier)}
+        ${ligne("Indemnités", e.rF.ind, e.rA.ind, e.rC.ind, e.totC.ind, F)}
+        ${ligne("Km A/R", e.rF.km, e.rA.km, e.rC.km, e.totC.km, N)}
+        ${ligne("Carburant", e.rF.carb, e.rA.carb, e.rC.carb, e.totC.carb, neg)}
+        ${ligne("Entretien", e.rF.ent, e.rA.ent, e.rC.ent, e.totC.ent, neg)}
+        <tr><td>Hôtels &amp; repas</td><td class="num">${neg(hFait)}</td><td class="num">${neg(hPrevu)}</td><td class="num">—</td><td class="num"><strong>${neg(e.hotelsFin)}</strong></td></tr>
+      </tbody>
+    </table></div></div>
+
+    <div class="insight">Méthode : ${escapeHtml(e.methode)}. ${e.nbHotelPrevu ? `Hôtels prévus : ${e.nbHotelPrevu} nuit(s) conseillée(s) à ${HOTEL_CFG.budget} € max (économie de carburant correspondante : ${F(e.ecoHotel)}, non déduite des km). ` : ""}La fourchette basse ne compte que les matchs déjà désignés ; la haute ajoute 25 % de matchs supplémentaires. Les matchs "à prévoir" sont valorisés à la moyenne de ta saison (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km).</div>
+    <p class="card-sub">Carburant au prix de ta période (Mon profil), entretien selon ton enveloppe annuelle. Ces chiffres se recalculent à chaque nouvelle désignation.</p>
+  `;
+}
 
 function renderStatsAvancees(stats) {
   const cc = stats.cout_complet || {};
