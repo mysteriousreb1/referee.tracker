@@ -433,10 +433,13 @@ function loadData() {
       // loadStats() sautait le rendu et laissait la page à zéro match.
       renderAll();
 
-      try { loadStats(); } catch (e) { console.warn("Stats serveur indisponibles :", e); }
-      try { loadPrixCarburant(); } catch (e) { console.warn("Prix carburant indisponible :", e); }
-      try { loadClassements(); } catch (e) { console.warn("Classements FFBB indisponibles :", e); }
-      try { loadEnjeux(); } catch (e) { console.warn("Enjeux FFBB indisponibles :", e); }
+      // Chargements secondaires étalés : on évite 4 appels Apps Script
+      // simultanés qui se ralentissent entre eux et retardent l'affichage.
+      const _plus = (fn, nom, ms) => setTimeout(() => { try { fn(); } catch (e) { console.warn(nom + " indisponible :", e); } }, ms);
+      _plus(loadStats, "Stats serveur", 300);
+      _plus(loadPrixCarburant, "Prix carburant", 1200);
+      _plus(loadClassements, "Classements FFBB", 2200);
+      _plus(loadEnjeux, "Enjeux FFBB", 3500);
     })
     .catch(showApiError);
 }
