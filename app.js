@@ -11,7 +11,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-04-b3";
+const APP_VERSION = "2026-10-04-b4";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels"];
 
@@ -1022,6 +1022,23 @@ function heureDe_(r) {
   return cleanText(get(r, "Heure/RDV") || get(r, "Heure RDV") || get(r, "Heure") || "");
 }
 
+/* Début réel d'un match (date + heure de coup d'envoi) ; sans heure : fin de journée. */
+function startDT_(r) {
+  if (!r._date) return null;
+  const t = parseHeure(heureDe_(r));
+  return new Date(r._date.getFullYear(), r._date.getMonth(), r._date.getDate(), t ? t.h : 23, t ? t.m : 59);
+}
+const DUREE_MATCH_MIN_ = 120;   // un match reste « en cours » 2 h après le coup d'envoi
+
+/* Prochain match = 1er match non terminé (début + 2 h > maintenant), toutes dates.
+   Samedi 18h30 puis 20h30 : à 20h30 pile on passe au second. */
+function prochainMatch_(actifs) {
+  const now = Date.now();
+  return actifs
+    .filter(r => { const s = startDT_(r); return s && s.getTime() + DUREE_MATCH_MIN_ * 60000 > now; })
+    .sort((a, b) => startDT_(a) - startDT_(b))[0] || null;
+}
+
 function renderAccueil() {
   const root = document.getElementById("accueil");
   if (!root) return;
@@ -1029,32 +1046,27 @@ function renderAccueil() {
   const actifs = state.allRows.filter(r => r._isActive && r._format !== "Alerte");
   const { start, end } = fenetreWE_();
 
-  // Matchs du week-end à venir (5x5 + 3x3), triés par date/heure.
+  // Matchs du week-end (5x5 + 3x3), triés par date/heure.
   const weRows = actifs.filter(r => r._date && r._date >= start && r._date <= end).sort(sortByDateAsc);
+  const prochain = prochainMatch_(actifs);
 
-  // Prochain match : le 1er du WE, sinon le prochain match à venir toutes dates.
-  const prochain = weRows[0] || actifs.filter(r => r._date && !r._isPast).sort(sortByDateAsc)[0] || null;
-
-  // Compteurs WE (prévisionnel).
+  // Compteurs WE (prévisionnel). Carburant : source unique realFuelCostClient.
   const nb = weRows.length;
   const km = weRows.reduce((t, r) => t + (r._kmEff || 0), 0);
   const brut = weRows.reduce((t, r) => t + (r._amount || 0), 0);
-  // Source unique du coût carburant : realFuelCostClient (prix historiques
-  // PRIX_E10 + conso datée 6,0/6,58). Évite la divergence Accueil vs Stats/Export.
   const carburant = weRows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
   const netEstime = brut - carburant;
+  const impayes = state.allRows.filter(paiementEnRetard);
+  const totalDu = impayes.reduce((t, r) => t + (r._reste || 0), 0);
 
-  // Total impayé en retard, toutes saisons (le détail vit dans l'onglet Paiements).
-  const totalDu = state.allRows.filter(paiementEnRetard).reduce((t, r) => t + (r._reste || 0), 0);
-
-  const fmtJourCourt = d => d ? d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" }) : "";
   const oppDe = r => (cleanText(get(r, "Recevant")) + " / " + cleanText(get(r, "Visiteur / événement"))).replace(/^ \/ | \/ $/g, "");
 
-  // --- Hero prochain match (infos brutes, aucun calcul) ---
+  // --- Hero prochain match ---
   const hero = (() => {
     if (!prochain) return `<div class="acc-hero acc-hero--vide">Aucun match à venir.</div>`;
     const r = prochain;
     const uid = escapeHtml(get(r, "UID"));
+    const enCours = startDT_(r).getTime() <= Date.now();
     const dateLong = r._date ? (r._date.toLocaleDateString("fr-FR", { weekday: "long" }) + " " + formatDateShort(r._date)) : "";
     const heure = fmtHeure(heureDe_(r));
     const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")) || "";
@@ -1065,116 +1077,82 @@ function renderAccueil() {
     const col = cleanText(get(r, "Collègue nom"));
     const telBrut = normalizePhoneFr(get(r, "Collègue téléphone"));
     return `<div class="acc-hero">
-      <div class="acc-hero-top"><span class="acc-hero-tag">Prochain match</span><span class="acc-hero-date">${escapeHtml(dateLong)}${heure ? " · " + escapeHtml(heure) : ""}</span></div>
+      <div class="acc-hero-top"><span class="acc-hero-tag">${enCours ? "En cours" : "Prochain match"}</span><span class="acc-hero-date">${escapeHtml(dateLong)}${heure ? " · " + escapeHtml(heure) : ""}</span></div>
       <div class="acc-hero-match">${escapeHtml(oppDe(r))}</div>
       <div class="acc-hero-sub">${escapeHtml(comp)}${role ? " · " + escapeHtml(role) : ""}</div>
       <div class="acc-hero-lieu">${escapeHtml(salle || ville || "Lieu à préciser")}${salle && ville ? " · " + escapeHtml(ville) : ""}</div>
       <div class="acc-hero-actions">
         ${addr ? `<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes" target="_blank" rel="noopener">Waze</a>` : ""}
-        ${telBrut ? `<a class="action-link secondary acc-tel-col" href="tel:${telBrut}"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Tél ${escapeHtml(col || "collègue")}</a>` : ""}
+        ${telBrut ? `<a class="action-link secondary acc-tel-col" href="tel:${telBrut}">Tél ${escapeHtml(col || "collègue")}</a>` : ""}
         <button type="button" class="action-link secondary acc-vers-match" data-uid="${uid}">Voir le match</button>
       </div>
       <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
     </div>`;
   })();
 
-  // --- 3 chiffres clés (rien de plus) ---
+  // --- 4 chiffres clés : information seule, aucun lien ---
   const compteurs = `
     <div class="acc-kpis">
       <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
       <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(km, "")}</span><span class="acc-kpi-lbl">km ce week-end</span></div>
       <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
-      <button type="button" class="acc-kpi acc-kpi--btn acc-vers-paiements"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">total impayé →</span></button>
+      <div class="acc-kpi"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">total impayé${impayes.length ? " · " + impayes.length : ""}</span></div>
     </div>`;
 
-  // Ligne compacte pour un match du week-end.
-  const ligneMatchWE = r => {
-    const uid = escapeHtml(get(r, "UID"));
-    const h = fmtHeure(heureDe_(r));
-    const lieu = cleanText(get(r, "Ville") || get(r, "Salle")) || "";
-    return `<button type="button" class="acc-ligne acc-vers-match" data-uid="${uid}">
-      <span class="acc-jour">${escapeHtml(fmtJourCourt(r._date))}${h ? " · " + escapeHtml(h) : ""}</span>
-      <span class="acc-match">${escapeHtml(oppDe(r))}</span>
-      <span class="acc-lieu-mini">${escapeHtml(lieu)}</span>
-      <span class="acc-montant">${formatMoney(r._amount)}</span></button>`;
-  };
-
-  const matchsHtml = weRows.length
-    ? `<div class="acc-liste">${weRows.map(ligneMatchWE).join("")}</div>`
-    : empty("Aucun match ce week-end.");
-
-  // --- Bandeau de bienvenue (salutation selon l'heure + résumé WE) ---
+  // --- Bandeau de bienvenue compact ---
   const now = new Date();
   const hNow = now.getHours();
   const salut = hNow < 12 ? "Bonjour" : (hNow < 18 ? "Bon après-midi" : "Bonsoir");
   const dateJour = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-  const sousTitre = nb
-    ? `${nb} match${nb > 1 ? "s" : ""} ce week-end · ${formatNumber(km, "")} km · ${formatMoney(netEstime)} net estimé`
-    : "Pas de match prévu ce week-end. Repos mérité.";
-  const nbAlertesAcc = alertesSplit_(state.filteredRows).actives.length;
   const bienvenue = `
     <div class="acc-welcome">
-      <div class="acc-welcome-row">
-        <span class="acc-welcome-hi">${salut}</span>
-        <span class="acc-welcome-date">${escapeHtml(dateJour)}</span>
-      </div>
-      <p class="acc-welcome-sub">${escapeHtml(sousTitre)}</p>
-      <div class="acc-welcome-chips">
-        <button type="button" class="acc-chip${nbAlertesAcc ? " warn" : ""}" data-goto="alertes">${nbAlertesAcc ? nbAlertesAcc + " alerte" + (nbAlertesAcc > 1 ? "s" : "") : "Aucune alerte"}</button>
-        <button type="button" class="acc-chip${totalDu > 0 ? " cost" : ""}" data-goto="paiements">${totalDu > 0 ? formatMoney(totalDu) + " impayé" : "Aucun impayé"}</button>
-      </div>
+      <span class="acc-welcome-hi">${salut}</span>
+      <span class="acc-welcome-date">${escapeHtml(dateJour)}</span>
     </div>`;
 
-  // --- Accès rapides vers les onglets clés ---
-  const svgIc = p => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-  const nbAlertes = nbAlertesAcc;
-  const quick = `
-    <div class="acc-quick">
-      <button type="button" class="acc-quick-btn" data-goto="paiements">
-        ${svgIc('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>')}
-        <span class="acc-quick-lbl">Paiements</span>
-        ${totalDu > 0 ? `<span class="acc-quick-badge cost">${formatMoney(totalDu)}</span>` : ""}
-      </button>
-      <button type="button" class="acc-quick-btn" data-goto="alertes">
-        ${svgIc('<path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/>')}
-        <span class="acc-quick-lbl">Alertes</span>
-        ${nbAlertes > 0 ? `<span class="acc-quick-badge warn">${nbAlertes}</span>` : ""}
-      </button>
-      <button type="button" class="acc-quick-btn" data-goto="stats">
-        ${svgIc('<path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/>')}
-        <span class="acc-quick-lbl">Stats</span>
-      </button>
-      <button type="button" class="acc-quick-btn" data-goto="export">
-        ${svgIc('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/>')}
-        <span class="acc-quick-lbl">Export</span>
-      </button>
+  // --- Week-end : une carte par jour, matchs dans l'ordre horaire ---
+  const parJour = {};
+  weRows.forEach(r => { const k = ymd_(r._date); (parJour[k] = parJour[k] || []).push(r); });
+  const jours = Object.keys(parJour).map(k => parJour[k]).sort((a, b) => a[0]._date - b[0]._date);
+  const nextUid = prochain ? get(prochain, "UID") : "";
+  const ligne = r => {
+    const uid = get(r, "UID");
+    const s = startDT_(r).getTime();
+    const fini = s + DUREE_MATCH_MIN_ * 60000 <= Date.now();
+    const etat = fini ? "Terminé" : (uid === nextUid ? (s <= Date.now() ? "En cours" : "Prochain") : "À venir");
+    const cls = fini ? "is-fini" : (uid === nextUid ? "is-next" : "");
+    const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif"));
+    const lieu = cleanText(get(r, "Ville") || get(r, "Salle"));
+    return `<button type="button" class="acc-m ${cls} acc-vers-match" data-uid="${escapeHtml(uid)}">
+      <span class="acc-m-h">${escapeHtml(fmtHeure(heureDe_(r)) || "—")}</span>
+      <span class="acc-m-body"><strong>${escapeHtml(oppDe(r))}</strong><small>${escapeHtml([comp, lieu].filter(Boolean).join(" · "))}</small></span>
+      <span class="acc-m-side"><span class="acc-m-eur">${formatMoney(r._amount)}</span><span class="acc-m-etat">${etat}</span></span>
+    </button>`;
+  };
+  const carteJour = rows => {
+    const d = rows[0]._date;
+    const titre = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    const tot = rows.reduce((t, r) => t + (r._amount || 0), 0);
+    return `<div class="acc-day">
+      <div class="acc-day-head"><h3>${escapeHtml(titre)}</h3><span>${rows.length} match${rows.length > 1 ? "s" : ""} · ${formatMoney(tot)}</span></div>
+      ${rows.map(ligne).join("")}
     </div>`;
+  };
+  const matchsHtml = jours.length ? `<div class="acc-days">${jours.map(carteJour).join("")}</div>` : empty("Aucun match ce week-end. Repos mérité.");
 
   root.innerHTML = `
     ${bienvenue}
-    ${hero}
-    ${compteurs}
-    ${quick}
+    <div class="acc-grid">
+      ${hero}
+      ${compteurs}
+    </div>
     <section class="acc-bloc">
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
   `;
 
-  // Ouvrir un match dans son onglet ; la tuile impayé bascule vers Paiements.
-  const ouvrirMatch = uid => {
-    const r = state.allRows.find(x => get(x, "UID") === uid);
-    const tab = (r && r._format === "3x3") ? "troisx3" : "matchs";
-    setActiveTab(tab);
-    setTimeout(() => {
-      document.querySelectorAll("#" + tab + " .match-card").forEach(c => {
-        if (c.dataset.uid === uid) { c.classList.add("open"); c.scrollIntoView({ behavior: "smooth", block: "start" }); }
-      });
-    }, 0);
-  };
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
-  root.querySelectorAll(".acc-vers-paiements").forEach(b => b.addEventListener("click", () => setActiveTab("paiements")));
-  root.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.goto)));
 }
 
 /* ---------------- regroupement par week-end ----------------
@@ -1316,12 +1294,15 @@ function slugCompetition(row) {
 function logoCompetition(row) {
   const slug = slugCompetition(row);
   const fichier = LOGOS_DISPONIBLES[slug];
-  if (!fichier) return "";                     // pas de logo connu : rien, la carte reste intacte
+  if (!fichier) {
+    // Pas de fichier image pour cette catégorie : pastille avec le code (DM4, DMU18…)
+    return slug ? `<span class="comp-logo comp-logo--txt" title="${escapeHtml(cleanText(get(row, "Libellé compétition")) || slug)}">${escapeHtml(slug)}</span>` : "";
+  }
 
   const alt = cleanText(get(row, "Libellé compétition")) || slug;
   return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(fichier)}"
                alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}"
-               loading="lazy" decoding="async" onerror="this.remove()">`;
+               loading="lazy" decoding="async" onerror="this.outerHTML='<span class=\\'comp-logo comp-logo--txt\\'>${escapeHtml(slug)}</span>'">`;
 }
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.
@@ -3011,12 +2992,13 @@ function renderProceduresPanel_() {
           ? `<details class="rt-details"><summary>Voir la procédure</summary><div style="white-space:pre-wrap">${escapeHtml(p.contenu)}</div></details>`
           : `<span style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</span>`}</td>
         <td>${p.lien ? `<a href="${escapeHtml(p.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : "—"}</td>
-        <td><button type="button" class="action-link" data-del-procedure-id="${p.id}">Supprimer</button></td>
+        <td><button type="button" class="action-link" data-edit-procedure-id="${p.id}">Modifier</button>
+            <button type="button" class="action-link" data-del-procedure-id="${p.id}">Supprimer</button></td>
       </tr>`).join("")}</tbody>
     </table></div></div>` : empty("Aucune procédure enregistrée pour l'instant.")}
 
-    <details class="past-block" style="margin-top:12px">
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter une procédure</span></span></summary>
+    <details class="past-block" id="procedureBlock" style="margin-top:12px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title" id="procedureBlockTitre">Ajouter une procédure</span></span></summary>
       <div class="past-body">
         <form id="procedureForm" class="toolbar" style="grid-template-columns: 1fr 1fr; align-items:end; margin-top:10px; row-gap:12px">
           <div class="field"><label for="procedureTitre">Titre</label><input id="procedureTitre" type="text" required /></div>
@@ -3106,7 +3088,8 @@ function attachContactsPanelListeners_(root) {
       };
       setStatus("Enregistrement de la procédure…", "");
       try {
-        const res = await jsonp("addProcedure", payload);
+        const editId = procedureForm.dataset.editId;
+        const res = editId ? await jsonp("updateProcedure", Object.assign({ id: editId }, payload)) : await jsonp("addProcedure", payload);
         if (!res.success) throw new Error(res.error || "Erreur enregistrement");
         setStatus("Procédure enregistrée", "ok");
         state.procedures = null;
@@ -3116,6 +3099,21 @@ function attachContactsPanelListeners_(root) {
       }
     });
   }
+
+  root.querySelectorAll("[data-edit-procedure-id]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = (state.procedures || []).find(x => String(x.id) === btn.dataset.editProcedureId);
+      if (!p || !procedureForm) return;
+      document.getElementById("procedureTitre").value = p.titre || "";
+      document.getElementById("procedureCategorie").value = p.categorie || "Autre";
+      document.getElementById("procedureContenu").value = p.contenu || "";
+      document.getElementById("procedureLien").value = p.lien || "";
+      procedureForm.dataset.editId = String(p.id);
+      const blk = root.querySelector("#procedureBlock"); if (blk) { blk.open = true; blk.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      const t = root.querySelector("#procedureBlockTitre"); if (t) t.textContent = "Modifier la procédure";
+      const sb = root.querySelector('button[form="procedureForm"]'); if (sb) sb.textContent = "Enregistrer les modifications";
+    });
+  });
 
   root.querySelectorAll("[data-del-procedure-id]").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -3929,7 +3927,6 @@ function renderExport() {
     <div class="actions" style="margin-top:14px">
       <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>Générer le PDF</button>
       <button class="small-btn secondary" type="button" id="exportCsvBtn"${rows.length ? "" : " disabled"}>Exporter en CSV</button>
-      <button class="small-btn secondary" type="button" id="copyExportBtn"${rows.length ? "" : " disabled"}>Copier en texte</button>
     </div>
 
     <div class="table-card" style="padding:14px; margin-top:14px">
@@ -3937,11 +3934,12 @@ function renderExport() {
         <strong>Carte des salles — nombre de fois arbitré</strong>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <button class="small-btn secondary" type="button" id="exportMapBtn"${rows.length ? "" : " disabled"}>Afficher la carte</button>
-          <button class="small-btn secondary" type="button" id="exportMapImgBtn" hidden>Exporter en image</button>
+          <button class="small-btn" type="button" id="exportMapImgBtn" hidden>Exporter la carte en PDF</button>
         </div>
       </div>
       <p class="card-sub" style="margin:6px 0 0">Géocodage un peu lent (respect du quota de l'API OSM gratuite, ~1 salle/seconde) — normal.</p>
-      <div id="exportMap" style="height:320px; border-radius:12px; margin-top:10px; display:none"></div>
+      <div id="exportMapStatus" class="map-status" hidden></div>
+      <div id="exportMap" style="height:440px; border-radius:12px; margin-top:10px; display:none"></div>
     </div>
 
     ${rows.length ? `
@@ -4001,12 +3999,6 @@ function renderExport() {
   const csvBtn = document.getElementById("exportCsvBtn");
   if (csvBtn) csvBtn.addEventListener("click", downloadExportCsv);
 
-  const copyBtn = document.getElementById("copyExportBtn");
-  if (copyBtn) copyBtn.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(buildExportText()); setStatus("Export copié", "ok"); }
-    catch { setStatus("Copie impossible — utilise le PDF", "error"); }
-  });
-
   const mapBtn = document.getElementById("exportMapBtn");
   if (mapBtn) mapBtn.addEventListener("click", () => genererCarteSalles_(rows));
 }
@@ -4050,6 +4042,12 @@ async function genererCarteSalles_(rows) {
   bouton.disabled = true;
   bouton.textContent = "Géocodage en cours…";
   conteneur.style.display = "";
+  state.exportMapRows = rows;
+  const stat = document.getElementById("exportMapStatus");
+  const imgBtn0 = document.getElementById("exportMapImgBtn");
+  if (imgBtn0) imgBtn0.hidden = true;
+  if (stat) { stat.hidden = false; stat.className = "map-status"; stat.textContent = "Génération de la carte… 0/" + entrees.length; }
+  let fait = 0;
 
   if (state.exportMapInstance) { state.exportMapInstance.remove(); state.exportMapInstance = null; }
   const homeValide = Number(HOME.lat) && Number(HOME.lon);
@@ -4076,20 +4074,25 @@ async function genererCarteSalles_(rows) {
       L.marker([dest.lat, dest.lon], { icon }).addTo(carte).bindPopup(`<b>${escapeHtml(e.salle)}</b><br>${e.count} fois arbitré`);
       points.push([dest.lat, dest.lon]);
     }
+    fait++;
+    if (stat) stat.textContent = "Génération de la carte… " + fait + "/" + entrees.length;
     // Respecte le quota Nominatim (max 1 requête/seconde) — seulement quand
     // l'appel vient réellement d'interroger le réseau (pas un hit de cache).
     if (!dejaEnCache) await new Promise(res => setTimeout(res, 1100));
   }
 
-  if (points.length > 1) carte.fitBounds(points, { padding: [24, 24] });
+  // Cadre la carte sur la zone où tu as arbitré (un peu élargie), pas sur la France.
+  if (points.length > 1) carte.fitBounds(points, { padding: [40, 40], maxZoom: 11 });
+  else if (points.length === 1) carte.setView(points[0], 11);
   setTimeout(() => carte.invalidateSize(), 80);
 
   bouton.disabled = false;
   bouton.textContent = "Actualiser la carte";
+  if (stat) { stat.className = "map-status is-ready"; stat.textContent = "✓ Carte prête — " + entrees.length + " salle(s). Tu peux l'exporter en PDF."; }
 
   // Export image : disponible seulement une fois la carte générée.
   const imgBtn = document.getElementById("exportMapImgBtn");
-  if (imgBtn) { imgBtn.hidden = false; imgBtn.onclick = exporterCarteImage_; }
+  if (imgBtn) { imgBtn.hidden = false; imgBtn.onclick = exporterCartePdf_; }
 }
 
 /* Charge html2canvas à la demande (évite ~30 Ko au chargement initial). */
@@ -4122,6 +4125,78 @@ async function exporterCarteImage_() {
     console.error("Export carte image :", e);
     setStatus("Export image impossible — réessaie une fois la carte entièrement affichée.", "error");
   }
+}
+
+/* Récap par ville : clubs, salles, nombre de matchs, km A/R réellement parcourus
+   (_kmEff = km partagés entre matchs d'un même doublé, donc pas de double compte). */
+function recapVilles_(rows) {
+  const m = {};
+  rows.forEach(r => {
+    const ville = cleanText(get(r, "Ville")) || cleanText(get(r, "Salle")) || "—";
+    const o = m[ville] = m[ville] || { ville, clubs: new Set(), salles: new Set(), n: 0, km: 0 };
+    const club = cleanText(get(r, "Recevant"));
+    if (club) o.clubs.add(club);
+    const salle = cleanText(get(r, "Salle"));
+    if (salle) o.salles.add(salle);
+    o.n++;
+    o.km += (r._kmEff != null ? r._kmEff : r._km) || 0;
+  });
+  return Object.values(m).sort((a, b) => b.km - a.km);
+}
+
+/* Export de la carte en PDF : image de la carte cadrée sur la zone arbitrée,
+   puis tableau récap (villes, clubs, salles, matchs, km A/R). */
+async function exporterCartePdf_() {
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  const conteneur = document.getElementById("exportMap");
+  if (!jsPDFCtor || !conteneur) { setStatus("Bibliothèque PDF non chargée — recharge la page (Cmd+Maj+R)", "error"); return; }
+  const rows = state.exportMapRows || exportRows();
+  const stat = document.getElementById("exportMapStatus");
+  const info = t => { setStatus(t, ""); if (stat) { stat.className = "map-status"; stat.textContent = t; } };
+  info("Création du PDF de la carte…");
+
+  const navy = [10, 31, 68], gold = [245, 180, 0], grey = [91, 104, 132];
+  const doc = new jsPDFCtor({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFillColor(navy[0], navy[1], navy[2]); doc.rect(0, 0, pageW, 20, "F");
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+  doc.text("CARTE DES SALLES ARBITRÉES", 12, 13);
+  doc.setTextColor(gold[0], gold[1], gold[2]); doc.setFontSize(9);
+  doc.text(pdfSafe(exportPeriodLabel()), pageW - 12, 13, { align: "right" });
+
+  let y = 26, imageOk = false;
+  try {
+    const h2c = await ensureHtml2Canvas_();
+    if (state.exportMapInstance) state.exportMapInstance.invalidateSize();
+    await new Promise(r => setTimeout(r, 600));   // laisse les tuiles finir de s'afficher
+    const canvas = await h2c(conteneur, { useCORS: true, backgroundColor: "#ffffff", scale: 2 });
+    const w = pageW - 24, hMax = 112, ratio = canvas.height / canvas.width;
+    let iw = w, ih = w * ratio;
+    if (ih > hMax) { ih = hMax; iw = hMax / ratio; }
+    doc.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 12 + (w - iw) / 2, y, iw, ih);
+    y += ih + 6;
+    imageOk = true;
+  } catch (e) { console.warn("Capture carte :", e); }
+
+  const recap = recapVilles_(rows);
+  const totKm = recap.reduce((t, o) => t + o.km, 0), totN = recap.reduce((t, o) => t + o.n, 0);
+  doc.autoTable({
+    startY: y,
+    head: [["Ville", "Club(s) recevant", "Salle(s)", "Matchs", "Km A/R"]],
+    body: recap.map(o => [pdfSafe(o.ville), pdfSafe(Array.from(o.clubs).join(" · ")), pdfSafe(Array.from(o.salles).join(" · ")), String(o.n), pdfSafe(formatNumber(Math.round(o.km * 10) / 10, ""))]),
+    foot: [["TOTAL", "", "", String(totN), pdfSafe(formatNumber(Math.round(totKm * 10) / 10, " km"))]],
+    theme: "grid",
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: [12, 23, 48], lineColor: [220, 227, 239] },
+    headStyles: { fillColor: navy, textColor: 255, fontStyle: "bold" },
+    footStyles: { fillColor: [242, 245, 251], textColor: navy, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [246, 248, 252] },
+    columnStyles: { 3: { halign: "right", cellWidth: 18 }, 4: { halign: "right", cellWidth: 24 } },
+    margin: { left: 12, right: 12 }
+  });
+  if (!imageOk) { try { ajouterCarteSallesPdf_(doc, rows, { navy, gold, grey, green: [14, 123, 71] }); } catch (e) {} }
+  doc.save(`carte-salles-${new Date().toISOString().slice(0, 10)}.pdf`);
+  if (stat) { stat.className = "map-status is-ready"; stat.textContent = "✓ PDF de la carte téléchargé."; }
+  setStatus("PDF de la carte exporté", "ok");
 }
 
 /* Export CSV — un fichier tiers (Excel, Sheets, compta) préfère des
@@ -5870,7 +5945,7 @@ function renderHotelPanel_(row) {
           <a class="action-link gold" href="${escapeHtml(l.booking)}" target="_blank" rel="noopener">Booking (filtres appliqués)</a>
           <a class="action-link secondary" href="${escapeHtml(l.maps)}" target="_blank" rel="noopener">Chaînes sur la carte</a>
           ${deja ? `<span class="badge green">Nuit enregistrée</span>`
-                 : `<button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer le prix payé</button>`}
+                 : `<button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-uid="${escapeHtml(e.uid)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer le prix payé</button>`}
         </div>
       </div>
     </details>`;
@@ -5897,6 +5972,44 @@ function hotelWeekend_(date) {
   const brut = rows.reduce((t, r) => t + (r._amount || 0), 0);
   const carb = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff != null ? r._kmEff : r._km, r._date), 0);
   return { n: rows.length, brut: round2(brut), carb: round2(carb) };
+}
+
+/* Ouvre la carte d'un match dans son onglet (5x5 ou 3x3). */
+function ouvrirMatch(uid) {
+  const r = state.allRows.find(x => get(x, "UID") === uid);
+  const tab = (r && r._format === "3x3") ? "troisx3" : "matchs";
+  setActiveTab(tab);
+  setTimeout(() => {
+    document.querySelectorAll("#" + tab + " .match-card").forEach(c => {
+      if (c.dataset.uid === uid) { c.classList.add("open"); c.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    });
+  }, 0);
+}
+
+/* Matchs liés à une nuit : ceux du jour J et de J+1 (hors alertes). */
+function hotelMatchsDeNuit_(isoDate) {
+  const d = isoDate ? new Date(isoDate + "T00:00:00") : null;
+  if (!d || isNaN(d)) return [];
+  const k0 = ymd_(d), k1 = ymd_(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
+  return state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date && (ymd_(r._date) === k0 || ymd_(r._date) === k1))
+    .sort((a, b) => a._date - b._date || (parseHeure(heureDe_(a)) ? parseHeure(heureDe_(a)).h : 0) - (parseHeure(heureDe_(b)) ? parseHeure(heureDe_(b)).h : 0));
+}
+function hotelMatchLabel_(r) {
+  return formatDateShort(r._date) + " · " + (fmtHeure(heureDe_(r)) || "—") + " · " + (cleanText(get(r, "Recevant")) || "?") + " (" + (cleanText(get(r, "Ville")) || cleanText(get(r, "Salle")) || "?") + ")";
+}
+function hotelMatchOptions_(isoDate, choisi) {
+  const ms = hotelMatchsDeNuit_(isoDate);
+  const info = Object.keys(state.hotelInfo || {}).map(k => state.hotelInfo[k]).find(e => e.nuit === isoDate);
+  const def = choisi || (info ? info.uid : (ms[0] ? get(ms[0], "UID") : ""));
+  return `<option value="">— Aucun match —</option>` + ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}"${get(r, "UID") === def ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(r))}</option>`).join("");
+}
+function fichierEnBase64_(f) {
+  return new Promise((ok, ko) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(",")[1] || "");
+    fr.onerror = () => ko(new Error("Lecture du fichier impossible"));
+    fr.readAsDataURL(f);
+  });
 }
 
 /* ---- Onglet Hôtel ---- */
@@ -5943,7 +6056,7 @@ function renderHotel() {
           <td>${e.a ? "Trajet long + match le lendemain" : ""}${e.a && e.b ? " · " : ""}${e.b ? "Retour tardif (~" + escapeHtml(hhmmMin_(e.arrivee)) + ")" : ""}</td>
           <td class="num">${formatMoney(e.net)}</td>
           <td><a class="action-link gold" href="${escapeHtml(l.booking)}" target="_blank" rel="noopener">Booking</a>
-              <button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer</button></td>
+              <button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-uid="${escapeHtml(e.uid)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer</button></td>
         </tr>`;
       }).join("")}</tbody>
     </table></div></div>` : ""}
@@ -5951,26 +6064,29 @@ function renderHotel() {
     <h3 class="section-title">Enregistrer une nuit</h3>
     <form id="hotelForm" class="toolbar form-formation" style="align-items:end">
       <div class="field"><label for="hotelDate">Nuit du</label><input id="hotelDate" type="date" required value="${escapeHtml(pre.date || "")}" /></div>
+      <div class="field" style="min-width:240px"><label for="hotelMatch">Match lié</label><select id="hotelMatch">${hotelMatchOptions_(pre.date || "", pre.uid || "")}</select></div>
       <div class="field"><label for="hotelLieu">Ville / lieu</label><input id="hotelLieu" type="text" placeholder="Ville du match" value="${escapeHtml(pre.lieu || "")}" /></div>
       <div class="field"><label for="hotelNom">Hôtel</label><input id="hotelNom" type="text" placeholder="B&B, Ibis Budget…" /></div>
       <div class="field"><label for="hotelPrix">Prix payé (€ TTC)</label><input id="hotelPrix" type="text" inputmode="decimal" placeholder="58,00" required /></div>
       <div class="field"><label for="hotelRepas">Repas dépensés (€)</label><input id="hotelRepas" type="text" inputmode="decimal" placeholder="0" /></div>
+      <div class="field"><label for="hotelFacture">Facture (PDF/JPG/PNG, Drive)</label><input id="hotelFacture" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" /></div>
       <div class="field"><label for="hotelNotes">Notes</label><input id="hotelNotes" type="text" placeholder="Optionnel" /></div>
       <button class="small-btn secondary" type="submit">Enregistrer</button>
     </form>
 
     <h3 class="section-title" style="margin-top:16px">Historique</h3>
     ${hs.length ? `<div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Nuit du</th><th>Lieu</th><th>Hôtel</th><th class="num">Prix</th><th class="num">Repas</th><th class="num">Indemnités WE</th><th class="num">Carburant WE</th><th class="num">Net WE</th><th></th></tr></thead>
+      <thead><tr><th>Nuit du</th><th>Match</th><th>Lieu</th><th>Hôtel</th><th class="num">Prix</th><th class="num">Repas</th><th class="num">Indemnités WE</th><th class="num">Carburant WE</th><th class="num">Net WE</th><th>Facture</th><th></th></tr></thead>
       <tbody>${hs.map(h => {
         const d = parseFrDate(h.date);
         const w = d ? hotelWeekend_(d) : { n: 0, brut: 0, carb: 0 };
         const net = round2(w.brut - w.carb - h.prix - h.repas);
         return `<tr>
-          <td>${escapeHtml(h.date)}</td><td>${escapeHtml(h.lieu || "—")}</td><td>${escapeHtml(h.hotel || "—")}</td>
+          <td>${escapeHtml(h.date)}</td><td>${(() => { const m = h.matchUid && state.allRows.find(r => get(r, "UID") === h.matchUid); return m ? `<a href="#" class="action-link" data-open-match="${escapeHtml(h.matchUid)}">${escapeHtml(cleanText(get(m, "Recevant")) || "Match")}</a>` : "—"; })()}</td><td>${escapeHtml(h.lieu || "—")}</td><td>${escapeHtml(h.hotel || "—")}</td>
           <td class="num">${formatMoney(h.prix)}</td><td class="num">${formatMoney(h.repas)}</td>
           <td class="num">${w.n ? formatMoney(w.brut) : "—"}</td><td class="num">${w.n ? "−" + formatMoney(w.carb) : "—"}</td>
           <td class="num">${w.n ? formatMoney(net) : "—"}</td>
+          <td>${h.facture ? `<a class="action-link gold" href="${escapeHtml(h.facture)}" target="_blank" rel="noopener">Voir</a>` : "—"}</td>
           <td><button type="button" class="action-link" data-del-hotel="${escapeHtml(h.id)}">Supprimer</button></td>
         </tr>`;
       }).join("")}</tbody>
@@ -5981,12 +6097,27 @@ function renderHotel() {
   state.hotelPrefill = null;
 
   const form = root.querySelector("#hotelForm");
+  const dEl = root.querySelector("#hotelDate");
+  if (dEl) dEl.addEventListener("change", () => {
+    const sel = root.querySelector("#hotelMatch");
+    if (sel) sel.innerHTML = hotelMatchOptions_(dEl.value, "");
+    const m = hotelMatchsDeNuit_(dEl.value)[0], l = root.querySelector("#hotelLieu");
+    if (m && l && !l.value) l.value = cleanText(get(m, "Ville")) || cleanText(get(m, "Salle"));
+  });
+  root.querySelectorAll("[data-open-match]").forEach(a => a.addEventListener("click", ev => {
+    ev.preventDefault();
+    ouvrirMatch(a.dataset.openMatch);
+  }));
   if (form) form.addEventListener("submit", async ev => {
     ev.preventDefault();
     const v = id => document.getElementById(id).value;
     setStatus("Enregistrement de la nuit…", "");
     try {
-      const res = await jsonp("addHotel", { date: v("hotelDate"), lieu: v("hotelLieu"), hotel: v("hotelNom"), prix: v("hotelPrix"), repas: v("hotelRepas"), notes: v("hotelNotes") });
+      const f = document.getElementById("hotelFacture").files[0];
+      if (f && f.size > 4 * 1024 * 1024) throw new Error("Facture > 4 Mo : réduis ou compresse le fichier");
+      const extra = { date: v("hotelDate"), lieu: v("hotelLieu"), hotel: v("hotelNom"), prix: v("hotelPrix"), repas: v("hotelRepas"), notes: v("hotelNotes"), matchUid: v("hotelMatch") };
+      if (f) { extra.fNom = f.name; extra.fMime = f.type; extra.fData = await fichierEnBase64_(f); }
+      const res = await jsonp("addHotel", extra);
       if (!res.success) throw new Error(res.error || "Erreur enregistrement");
       setStatus("Nuit enregistrée", "ok");
       state.hotels = null; state._hotelRowsRef = null;
@@ -6008,7 +6139,7 @@ function renderHotel() {
 document.addEventListener("click", ev => {
   const b = ev.target.closest && ev.target.closest("[data-hotel-add]");
   if (!b) return;
-  state.hotelPrefill = { date: b.getAttribute("data-hotel-add"), lieu: b.getAttribute("data-hotel-lieu") || "" };
+  state.hotelPrefill = { date: b.getAttribute("data-hotel-add"), lieu: b.getAttribute("data-hotel-lieu") || "", uid: b.getAttribute("data-hotel-uid") || "" };
   setActiveTab("hotel");
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
