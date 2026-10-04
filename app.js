@@ -11,9 +11,9 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b8";
+const APP_VERSION = "2026-10-05-b9";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
-const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports", "indisposFbi"];
 
 let state = {
   allRows: [],
@@ -441,6 +441,7 @@ function loadData() {
       _plus(loadClassements, "Classements FFBB", 2200);
       _plus(loadEnjeux, "Enjeux FFBB", 3500);
       _plus(loadIndispos, "Indispos", 4500);
+      _plus(loadIndisposFbi, "Indispos FBI", 5200);
     })
     .catch(showApiError);
 }
@@ -6607,6 +6608,38 @@ function elicPleinEcran_() {
 }
 
 /* ---------- Indispos FBI ---------- */
+function loadIndisposFbi() { persoCharger_("fbi", "indisposFbi", r => { state.indisposFbi = r.data || { vide: true }; }); }
+const FBI_CRENEAUX_ = ["Matin", "Midi", "Après-midi", "Soir"];
+function fbiDmyIso_(v) { const m = String(v || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; }
+/* Créneaux indisponibles ce jour-là d'après FBI : récurrentes (jour de semaine) + temporaires. */
+function fbiCreneauxJour_(iso) {
+  const f = state.indisposFbi, out = [false, false, false, false];
+  if (!f || f.vide) return out;
+  const d = new Date(iso + "T12:00:00");
+  const rec = (f.recurrentes || [])[(d.getDay() + 6) % 7];
+  if (rec) rec.creneaux.forEach((v, i) => { if (v) out[i] = true; });
+  (f.temporaires || []).forEach(t => {
+    const a = fbiDmyIso_(t.debut), b = fbiDmyIso_(t.fin) || a;
+    if (a && a <= iso && iso <= b) t.creneaux.forEach((v, i) => { if (v) out[i] = true; });
+  });
+  return out;
+}
+/* Matin < 12 h · Midi 12–14 h · Après-midi 14–18 h · Soir ≥ 18 h (heure du coup d'envoi). */
+function creneauMatch_(r) {
+  const t = parseHeure(heureDe_(r));
+  if (!t) return -1;
+  const h = t.h + t.m / 60;
+  return h < 12 ? 0 : h < 14 ? 1 : h < 18 ? 2 : 3;
+}
+function conflitsFbi_() {
+  const f = state.indisposFbi;
+  if (!f || f.vide) return [];
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  return (state.allRows || []).filter(r => r._isActive && r._date && r._date >= auj && r._format !== "Alerte")
+    .map(r => ({ r, c: creneauMatch_(r) }))
+    .filter(x => x.c >= 0 && fbiCreneauxJour_(isoL_(x.r._date))[x.c])
+    .sort((a, b) => a.r._date - b.r._date);
+}
 function weekendsAVenir_(n) {
   const t = new Date(); t.setHours(12, 0, 0, 0);
   const sam = new Date(t), dow = t.getDay();
@@ -6621,7 +6654,7 @@ function weekendsAVenir_(n) {
 }
 function statutWeekends_() {
   const ind = state.indispos || [];
-  const couvert = iso => ind.some(x => x.debut <= iso && iso <= x.fin);
+  const couvert = iso => ind.some(x => x.debut <= iso && iso <= x.fin) || fbiCreneauxJour_(iso).every(Boolean);
   const actifs = (state.allRows || []).filter(r => r._isActive && r._date);
   const auj = new Date(); auj.setHours(0, 0, 0, 0);
   return weekendsAVenir_(10).map(w => {
@@ -6629,8 +6662,9 @@ function statutWeekends_() {
     const ms = actifs.filter(r => { const k = isoL_(r._date); return k === s || k === d; });
     const cs = couvert(s), cd = couvert(d);
     const statut = ms.length ? "designe" : (cs && cd ? "indispo" : (cs || cd ? "partiel" : "dispo"));
+    const conflit = ms.some(r => { const c = creneauMatch_(r); return c >= 0 && fbiCreneauxJour_(isoL_(r._date))[c]; });
     const jours = Math.round((w.sam - auj) / 86400000);
-    return { w, s, d, ms, statut, alerte: (statut === "dispo" || statut === "partiel") && jours <= 14 && w.dim >= auj };
+    return { w, s, d, ms, statut, conflit, alerte: (statut === "dispo" || statut === "partiel") && jours <= 14 && w.dim >= auj };
   });
 }
 function libelleWeekend_(w) {
@@ -6644,14 +6678,48 @@ function mailRepartiteurs_(wk) {
   return "mailto:" + dest.join(",") + "?subject=" + encodeURIComponent(sujet) + "&body=" + encodeURIComponent(corps);
 }
 function nbAlertesIndispos_() {
-  return state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0;
+  return (state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0) + conflitsFbi_().length;
 }
 function indispoBanner_() {
-  const n = nbAlertesIndispos_();
-  if (!n) return "";
-  return `<button type="button" class="acc-alerte-indispo" onclick="allerIndispos_()">${n} week-end${n > 1 ? "s" : ""} où tu es dispo sans désignation · voir et écrire aux répartiteurs</button>`;
+  const cf = conflitsFbi_().length;
+  const n = state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0;
+  let h = "";
+  if (cf) h += `<button type="button" class="acc-alerte-indispo is-conflit" onclick="allerIndispos_()">${cf} match${cf > 1 ? "s" : ""} désigné${cf > 1 ? "s" : ""} sur un créneau que tu as déclaré indisponible sur FBI · voir</button>`;
+  if (n) h += `<button type="button" class="acc-alerte-indispo" onclick="allerIndispos_()">${n} week-end${n > 1 ? "s" : ""} où tu es dispo sans désignation · voir et écrire aux répartiteurs</button>`;
+  return h;
 }
 function allerIndispos_() { state.contactsSubView = "indispos"; setActiveTab("contacts"); }
+function renderFbiBloc_() {
+  if (state.indisposFbi === undefined) {
+    if (state._fbiErr) return `<div class="fbi-bloc"><p class="card-sub">Indispos FBI indisponibles (${escapeHtml(state._fbiErr)}).</p><button type="button" class="small-btn secondary" id="retryFbi">Réessayer</button></div>`;
+    loadIndisposFbi(); return `<p class="card-sub" style="margin-top:12px">Chargement des indispos FBI…</p>`;
+  }
+  const f = state.indisposFbi || { vide: true };
+  const bouton = `<button type="button" class="small-btn secondary" id="fbiSync">Synchroniser maintenant</button> <span class="card-sub" id="fbiMsg"></span>`;
+  if (f.vide) {
+    return `<div class="fbi-bloc"><h3 class="section-title" style="margin:0 0 8px">Indispos FBI</h3>
+      <p class="card-sub">${f.absent ? "Le fichier FbiIndispos.gs n'est pas dans le projet Apps Script." : f.erreur ? "Erreur : " + escapeHtml(f.erreur) : "Aucune donnée FBI pour l'instant : lance SYNC_INDISPOS_FBI dans Apps Script (une fois), ou clique ci-dessous."}</p>${bouton}</div>`;
+  }
+  const m = String(f.maj || "").match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+  const age = m ? (Date.now() - new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]).getTime()) / 3600000 : null;
+  const perime = age !== null && age > 36;
+  const conf = conflitsFbi_();
+  const grille = `<div class="table-card"><div class="table-wrap"><table class="fbi-grille">
+    <thead><tr><th>Récurrentes</th>${FBI_CRENEAUX_.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+    <tbody>${(f.recurrentes || []).map(j => `<tr><td>${escapeHtml(j.jour)}</td>${j.creneaux.map(v => `<td class="${v ? "fbi-off" : ""}">${v ? "Indispo" : ""}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table></div></div>`;
+  const temp = (f.temporaires || []).length ? `<div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
+    <thead><tr><th>Du</th><th>Au</th><th>Créneaux</th><th>Raison</th></tr></thead>
+    <tbody>${f.temporaires.map(t => `<tr><td>${escapeHtml(t.debut)}</td><td>${escapeHtml(t.fin)}</td><td>${escapeHtml(t.creneaux.every(Boolean) ? "Journée" : FBI_CRENEAUX_.filter((c, i) => t.creneaux[i]).join(", ") || "—")}</td><td>${escapeHtml(t.raison || "—")}</td></tr>`).join("")}</tbody>
+  </table></div></div>` : `<p class="card-sub">Aucune indispo temporaire sur FBI.</p>`;
+  return `<div class="fbi-bloc">
+    <div class="rapp-dossier"><span>Indispos FBI · dernière synchro : <strong>${escapeHtml(f.maj || "—")}</strong>${perime ? ` <span class="indis-st is-bad">synchro ancienne (&gt; 36 h)</span>` : ""}</span><span>${bouton}</span></div>
+    ${conf.length ? `<div class="rapp-alerte">${conf.length} match${conf.length > 1 ? "s" : ""} sur un créneau déclaré indisponible : ${conf.map(x => escapeHtml(formatDateShort(x.r._date) + " " + (fmtHeure(heureDe_(x.r)) || "") + " " + (cleanText(get(x.r, "Recevant")) || "?"))).join(" · ")}</div>` : ""}
+    <div style="margin-top:12px">${grille}</div>
+    <div style="margin-top:12px">${temp}</div>
+    <p class="card-sub">Créneaux : Matin avant 12 h, Midi 12–14 h, Après-midi 14–18 h, Soir dès 18 h (heure du coup d'envoi). Lecture seule : rien n'est jamais écrit sur FBI.</p>
+  </div>`;
+}
 function renderIndisposPanel_() {
   if (state._indisErr) return erreurPerso_(state._indisErr, "retryIndis");
   if (state.indispos === undefined) { loadIndispos(); return chargementPerso_(); }
@@ -6660,12 +6728,14 @@ function renderIndisposPanel_() {
   const lib = { designe: ["Désigné", "is-ok"], indispo: ["Indisponible", ""], partiel: ["Partiellement indisponible, rien de désigné", "is-warn"], dispo: ["Dispo, aucune désignation", "is-warn"] };
   const ind = state.indispos;
   return `
+    ${renderFbiBloc_()}
+    <h3 class="section-title" style="margin-top:20px">Saisie manuelle (secours)</h3>
     <p class="card-sub" style="margin-top:12px">FBI n'a pas d'API : recopie ici tes indispos (ou colle-les en bloc). Alerte quand un week-end à moins de 14 jours n'a ni désignation ni indispo.</p>
     <div class="table-card" style="margin-top:8px"><div class="table-wrap"><table>
       <thead><tr><th>Week-end</th><th>Statut</th><th></th></tr></thead>
       <tbody>${wk.map(x => `<tr>
         <td>${escapeHtml(libelleWeekend_(x.w))}</td>
-        <td><span class="indis-st ${lib[x.statut][1]}">${lib[x.statut][0]}</span>${x.ms.length ? ` · ${x.ms.length} match${x.ms.length > 1 ? "s" : ""}` : ""}</td>
+        <td><span class="indis-st ${lib[x.statut][1]}">${lib[x.statut][0]}</span>${x.ms.length ? ` · ${x.ms.length} match${x.ms.length > 1 ? "s" : ""}` : ""}${x.conflit ? ` <span class="indis-st is-bad">match sur créneau indispo</span>` : ""}</td>
         <td>${x.alerte ? `<a class="action-link" href="${escapeHtml(mailRepartiteurs_(x))}">Écrire aux répartiteurs</a>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>
@@ -6809,7 +6879,7 @@ async function fichierRapport_(f) {
 function attachPersoListeners_(root) {
   const clic = (sel, fn) => root.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
   const retry = (id, cle, fn) => { const b = root.querySelector("#" + id); if (b) b.addEventListener("click", () => { state[cle] = ""; fn(); renderContacts(); }); };
-  retry("retryElic", "_elicErr", loadElicence); retry("retryIndis", "_indisErr", loadIndispos); retry("retryRapp", "_rappErr", loadRapports);
+  retry("retryElic", "_elicErr", loadElicence); retry("retryIndis", "_indisErr", loadIndispos); retry("retryRapp", "_rappErr", loadRapports); retry("retryFbi", "_fbiErr", loadIndisposFbi);
 
   // e-Licence
   const ef = root.querySelector("#elicForm");
@@ -6820,7 +6890,18 @@ function attachPersoListeners_(root) {
   if (ep) ep.addEventListener("click", elicPleinEcran_);
   remplirQr_(root);
 
-  // Indispos
+  // Indispos FBI
+  const fs_ = root.querySelector("#fbiSync");
+  if (fs_) fs_.addEventListener("click", async () => {
+    const m = root.querySelector("#fbiMsg");
+    fs_.disabled = true; if (m) m.textContent = "Synchronisation…";
+    try {
+      const res = await jsonp("indisposFbi.sync");
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      state.indisposFbi = res.data; renderContacts();
+    } catch (err) { fs_.disabled = false; if (m) m.textContent = "Erreur : " + err.message; }
+  });
+  // Indispos (saisie manuelle)
   const nf = root.querySelector("#indisForm");
   if (nf) nf.addEventListener("submit", async e => {
     e.preventDefault();
