@@ -11,14 +11,15 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-03-a8";
+const APP_VERSION = "2026-10-04-b3";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
-const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures"];
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels"];
 
 let state = {
   allRows: [],
   filteredRows: [],
   serverStats: null,
+  couts: null,             // périodes carburant/entretien (réglages)
   prixActuel: null,        // prix E10 temps réel, fourni par le serveur
   activeTab: "accueil",
   selectedSeason: "",
@@ -486,6 +487,7 @@ function showApiError(err) {
 function loadPrixCarburant() {
   jsonp("config")
     .then(res => {
+      if (res && res.config && res.config.couts) state.couts = res.config.couts;
       const p = res && res.config ? Number(res.config.prix_e10_actuel) : 0;
       if (p > 0.5 && p < 4 && p !== state.prixActuel) {
         state.prixActuel = p;
@@ -754,16 +756,37 @@ function renderReglement() {
   const hist = reglHistLoad_();
   root.innerHTML = `
     <h2 class="section-title">Règlement & situations <span class="count">IA</span>${hist.length ? ` <button type="button" class="small-btn secondary" id="reglClear" style="margin-left:auto">Effacer l'historique</button>` : ""}</h2>
-    <div class="stat-note">Pose une question de règle ou décris une situation de match. La réponse s'appuie sur le Règlement officiel FIBA, les Interprétations officielles et le Manuel de techniques d'arbitrage. Compte ~10-15 s : l'IA relit le règlement à chaque question.</div>
     <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => `
       <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : formatReglementReponse_(m.text)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
     <form class="regl-form" id="reglForm">
       <textarea id="reglInput" rows="2" placeholder="Ta question de règlement ou ta situation…"></textarea>
       <button type="submit" class="rt-btn regl-send" id="reglSend">Demander</button>
     </form>
-    <div class="regl-status" id="reglStatus" role="status"></div>`;
+    <div class="regl-status" id="reglStatus" role="status"></div>
+    ${renderReglementDocs_()}`;
   attachReglementListeners_(root);
   const chat = document.getElementById("reglChat"); if (chat) chat.scrollTop = chat.scrollHeight;
+}
+
+/* Documents lus par l'IA (dossier Drive « Referee Tracker - Corpus »).
+   Pour intégrer une nouvelle version du règlement : ajouter / remplacer le
+   fichier dans ce dossier, pris en compte dès la question suivante. */
+function renderReglementDocs_() {
+  if (state._reglDocs === undefined && !state._reglDocsEnCours) {
+    state._reglDocsEnCours = true;
+    jsonp("reglement.docs").then(res => {
+      state._reglDocs = (res && res.success && res.result && res.result.ok) ? res.result : null;
+    }).catch(() => { state._reglDocs = null; }).then(() => {
+      state._reglDocsEnCours = false;
+      if (state.activeTab === "reglement") renderReglement();
+    });
+    return "";
+  }
+  const d = state._reglDocs;
+  if (!d) return "";
+  const body = `<ul class="regl-docs">${d.docs.map(x => `<li><strong>${escapeHtml(x.nom)}</strong> <span class="sub">mis à jour le ${escapeHtml(x.maj)}</span></li>`).join("")}</ul>
+    <p class="card-sub">Nouvelle version du règlement ? Remplace ou ajoute le fichier (.txt ou Google Doc) dans <a href="${escapeHtml(d.dossierUrl)}" target="_blank" rel="noopener">le dossier Drive</a>. Pris en compte à la question suivante, sans mise à jour du site.</p>`;
+  return foldable_("Documents lus par l'IA", body, { count: d.docs.length });
 }
 
 function formatReglementReponse_(txt) {
@@ -840,7 +863,8 @@ const TAB_RENDERERS_ = {
   export:      [function () { renderExport(); },      "Export"],
   qcm:         [function () { renderQcm(); },         "QCM"],
   progression: [function () { renderProgression(); }, "Progression"],
-  contacts:    [function () { renderContacts(); },    "Procédures"]
+  contacts:    [function () { renderContacts(); },    "Procédures"],
+  hotel:       [function () { renderHotel(); },       "Hôtel"]
 };
 
 function renderTab_(tab) {
@@ -852,6 +876,7 @@ function renderTab_(tab) {
 
 function renderAll() {
   state.filteredRows = filterRows(state.allRows);
+  try { hotelScan_(); } catch (e) { console.warn("Hôtel :", e); }
   renderTab_(state.activeTab || "accueil");
   safeRender_(renderTabBadges_, null, "Badges");
 }
@@ -870,6 +895,11 @@ function renderAllSoon_() {
    compteur est à 0 pour ne pas alourdir la barre de navigation inutile. */
 function renderTabBadges_() {
   const rows = state.filteredRows || [];
+  const sessEl = document.querySelector(".tabs-foot span:last-child");
+  if (sessEl && typeof Session !== "undefined" && Session && Session.email) {
+    sessEl.textContent = "Session : " + Session.email;
+    sessEl.title = "Tu es connecté avec ce compte. La session reste ouverte tant que tu utilises le site (30 jours d'inactivité maximum).";
+  }
 
   const nbAlertes = alertesSplit_(rows).actives.length;
   const badgeAlertes = document.getElementById("badgeAlertes");
@@ -1203,29 +1233,10 @@ function libelleGroupe(dates) {
 }
 
 function renderWeekendGroups(rows, decroissant) {
-  const groupes = [];
-  const index = {};
-
-  rows.forEach(r => {
-    const cle = r._date ? cleSemaine(r._date) : "sans-date";
-    if (!index[cle]) { index[cle] = { cle, rows: [], dates: [] }; groupes.push(index[cle]); }
-    index[cle].rows.push(r);
-    if (r._date) index[cle].dates.push(r._date);
-  });
-
-  return groupes.map(g => {
-    const titre = g.dates.length ? libelleGroupe(g.dates) : "Date à confirmer";
-    const nb = g.rows.length;
-    const rowsTriees = g.rows.slice().sort(decroissant ? sortByDateDesc : sortByDateAsc);
-    return `
-      <section class="we-group">
-        <div class="we-head">
-          <span class="we-label">${escapeHtml(titre)}</span>
-          <span class="we-count">${nb} match${nb > 1 ? "s" : ""}</span>
-        </div>
-        <div class="cards">${rowsTriees.map(renderMatchCard).join("")}</div>
-      </section>`;
-  }).join("");
+  // 03/10/2026 : plus de regroupement par week-end — les matchs se suivent
+  // simplement dans l'ordre chronologique (décroissant pour les passés).
+  const tries = rows.slice().sort(decroissant ? sortByDateDesc : sortByDateAsc);
+  return `<div class="cards">${tries.map(renderMatchCard).join("")}</div>`;
 }
 
 /* ---------------- niveaux à distinguer ----------------
@@ -1393,6 +1404,7 @@ function renderMatchCard(row) {
             ${format && format !== "3x3" ? badge(format, "gray") : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${row._isPast ? badge("Passé", "gray") : ""}
+            ${renderHotelBadge_(row)}
             ${isBenevole ? badge("Bénévole", "gray")
               : isPaid ? badge("Payé", "green")
               : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
@@ -1409,6 +1421,7 @@ function renderMatchCard(row) {
         ${renderMoneyStrip(row._amount, cost, net)}
         ${enjeu}
         ${renderDetails(row)}
+        ${renderHotelPanel_(row)}
         ${renderMapContainer(row, uid)}
         ${renderActions(row)}
         ${renderPaymentControl(row)}
@@ -2330,6 +2343,7 @@ function renderStats() {
     ${renderTop("Top 3 collègues (5×5)", s.top_collegues)}
     ${renderAggTable("Événements 3×3", s.evenements_3x3, "Événement")}
     ${renderMatchsAnnules()}
+    ${renderHotelsStats_()}
     ${renderFormations()}
   `;
   attachFormationsListeners_(root);
@@ -4456,7 +4470,26 @@ const PRIX_DEFAUT = 1.95;
 
 const numMois_ = c => { const p = String(c).split("-"); return Number(p[0]) * 12 + Number(p[1]); };
 
+/* Réglages « Mon profil » : prix par période (dernière ligne <= date). */
+function prixPeriode_(date) {
+  const l = state.couts && state.couts.prix;
+  if (!date || !l || !l.length) return 0;
+  const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  let r = 0;
+  l.forEach(p => { if (p.depuis <= iso) r = Number(p.prix) || r; });
+  return r;
+}
+
+/* Appelé par rt-auth.js après enregistrement des réglages carburant/entretien. */
+window.rtCoutsMaj = function (c) {
+  state.couts = c;
+  try { loadStats(true); } catch (e) {}
+  renderAllSoon_();
+};
+
 function prixCarburantPour(date) {
+  const pp = prixPeriode_(date);
+  if (pp) return pp;
   if (!date) return PRIX_DEFAUT;
   const cle = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
   if (PRIX_E10[cle]) return PRIX_E10[cle];
@@ -4573,11 +4606,15 @@ function fmtHeure(h) {
 function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
 function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
 
+let _statusTimer = 0;
 function setStatus(message, type) {
   const bar = document.getElementById("statusBar");
   bar.textContent = message;
   bar.className = "status-bar show" + (type ? " " + type : "");
-  if (type === "ok") setTimeout(() => bar.classList.remove("show"), 2600);
+  clearTimeout(_statusTimer);
+  // Succès et infos : disparaissent seuls (plus de bandeau jaune permanent).
+  // Les erreurs restent jusqu'au message suivant.
+  if (type !== "error") _statusTimer = setTimeout(() => bar.classList.remove("show"), type === "ok" ? 2600 : 3500);
 }
 
 function parseFrDate(value) {
@@ -5636,4 +5673,377 @@ function insightPaiements(rows) {
     <b>${retard.length} paiement(s) en retard</b> pour ${formatMoney(montantRetard)} :
     la date prévue est passée sans réception enregistrée. Total restant dû : ${formatMoney(montantTotal)}.
   </div>`;
+}
+
+/* =====================================================================
+   HÔTEL (b3, 04/10/2026)
+   Règle validée :
+   A. Match J1 loin de chez toi (>= 180 km OU >= 1h30 de route, aller) ET
+      match J2 le lendemain / même week-end dans le même club, ou avec une
+      économie >= 150 km (= km domicile-J1 + km domicile-J2 - km J1-J2).
+   B. Retour estimé après 00h30 (coup d'envoi + 2h20 + trajet retour).
+   Indemnités toujours calculées depuis chez toi : l'hôtel est un confort,
+   son coût n'entre que dans le suivi (onglet Hôtel + Stats).
+   ===================================================================== */
+const HOTEL_CFG = {
+  seuilKm: 180, seuilMin: 90, vitesseKmh: 80, ecoMinKm: 150,
+  matchMin: 140, retourMaxMin: 24 * 60 + 30, budget: 60, facteurRoute: 1.3
+};
+
+function isoLocal_(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function hhmmMin_(min) {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, "0") + "h" + String(m % 60).padStart(2, "0");
+}
+function dureeTxt_(min) {
+  const m = Math.round(min);
+  return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0");
+}
+function haversineKm_(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function hotelFinaliser_(e) {
+  if (e.sameLieu) { e.eco = e.d1 + (e.d2 || e.d1); }
+  else if (e.d12 !== null && e.d12 >= 0 && e.m2uid) { e.eco = e.d1 + e.d2 - e.d12; }
+  else { e.eco = null; }
+  e.a = !!(e.distA && e.m2uid && e.eco !== null && (e.sameLieu || e.eco >= HOTEL_CFG.ecoMinKm));
+  e.actif = e.a || e.b;
+  if (!e.a) e.ecoEff = 0; else e.ecoEff = Math.max(0, e.eco);
+  e.ecoEur = e.ecoEff > 0 ? realFuelCostClient(e.ecoEff, e.date) : 0;
+  e.net = round2(e.ecoEur - HOTEL_CFG.budget);
+}
+
+function hotelCalculerBase_() {
+  const jours = {};
+  state.allRows.forEach(r => {
+    if (!r._isActive || r._format === "Alerte" || !r._date) return;
+    (jours[ymd_(r._date)] = jours[ymd_(r._date)] || []).push(r);
+  });
+  const limite = new Date(); limite.setHours(0, 0, 0, 0); limite.setDate(limite.getDate() - 14);
+  const debutMin = r => { const t = parseHeure(heureDe_(r)); return t ? t.h * 60 + t.m : -1; };
+  const villeN = r => normaliserRecherche(get(r, "Ville"));
+  const kmAller = (rows, lieu) => Math.max.apply(null, rows.filter(r => lieuDouble_(r) === lieu).map(r => r._km || 0).concat([0])) / 2;
+  const adresseDe = r => cleanText(get(r, "Adresse")) || [get(r, "Salle"), get(r, "Ville")].map(cleanText).filter(Boolean).join(", ");
+
+  const info = {}, veille = {}, aGeocoder = [];
+  state._hotelD12 = state._hotelD12 || {};
+
+  Object.keys(jours).forEach(k => {
+    const rows = jours[k], d = rows[0]._date;
+    if (d < limite) return;
+    const m1 = rows.slice().sort((a, b) => debutMin(b) - debutMin(a))[0];
+    const lieu1 = lieuDouble_(m1);
+    const d1 = kmAller(rows, lieu1);
+    if (!(d1 > 0)) return;
+    const t1 = d1 / HOTEL_CFG.vitesseKmh * 60;
+    const distA = d1 >= HOTEL_CFG.seuilKm || t1 >= HOTEL_CFG.seuilMin;
+    const t0 = debutMin(m1);
+    const arrivee = t0 >= 0 ? t0 + HOTEL_CFG.matchMin + t1 : null;
+    const b = arrivee !== null && arrivee > HOTEL_CFG.retourMaxMin;
+
+    let m2 = null, rows2 = null;
+    const offs = d.getDay() === 5 ? [1, 2] : [1];
+    for (const o of offs) {
+      const dd = new Date(d); dd.setDate(d.getDate() + o);
+      const rr = jours[ymd_(dd)];
+      if (rr && rr.length) { rows2 = rr; m2 = rr.slice().sort((a, b2) => debutMin(a) - debutMin(b2))[0]; break; }
+    }
+    const e = {
+      uid: get(m1, "UID"), date: d, nuit: isoLocal_(d), distA, d1, t1, arrivee, b,
+      heure: fmtHeure(heureDe_(m1)), adresse: adresseDe(m1),
+      lieuLabel: cleanText(get(m1, "Ville")) || cleanText(get(m1, "Salle")),
+      m2uid: m2 ? get(m2, "UID") : "", d2: 0, sameLieu: false, d12: null, adresse2: ""
+    };
+    if (m2) {
+      const lieu2 = lieuDouble_(m2);
+      e.d2 = kmAller(rows2, lieu2);
+      e.sameLieu = (!!lieu1 && lieu1 === lieu2) || (!!villeN(m1) && villeN(m1) === villeN(m2));
+      e.adresse2 = adresseDe(m2);
+      const cle = e.adresse + "|" + e.adresse2;
+      if (!e.sameLieu && e.d2 > 0 && e.adresse && e.adresse2) {
+        if (state._hotelD12[cle] !== undefined) e.d12 = state._hotelD12[cle];
+        else if (distA) aGeocoder.push(e);
+      }
+    }
+    hotelFinaliser_(e);
+    info[e.uid] = e;
+    if (e.a && e.m2uid) veille[e.m2uid] = e.uid;
+  });
+  state.hotelInfo = info; state.hotelVeille = veille;
+  return aGeocoder;
+}
+
+let _hotelGeoBusy = false;
+async function hotelGeocoder_(liste) {
+  if (_hotelGeoBusy || !liste.length) return;
+  _hotelGeoBusy = true;
+  const pause = ms => new Promise(r => setTimeout(r, ms));
+  const geo = async adr => {
+    const hit = geoCacheGet_(adr);
+    if (hit) return hit;
+    await pause(1100);
+    return geocode(adr);
+  };
+  try {
+    for (const e of liste) {
+      const cle = e.adresse + "|" + e.adresse2;
+      if (state._hotelD12[cle] !== undefined) continue;
+      let d12 = -1;
+      try {
+        const g1 = await geo(e.adresse), g2 = await geo(e.adresse2);
+        if (g1 && g2) d12 = haversineKm_(g1, g2) * HOTEL_CFG.facteurRoute;
+      } catch (err) { d12 = -1; }
+      state._hotelD12[cle] = d12;
+    }
+  } finally { _hotelGeoBusy = false; }
+  state._hotelRowsRef = null;   // force le recalcul avec les distances J1-J2
+  renderAllSoon_();
+}
+
+/* Appelé à chaque renderAll : ne recalcule que si les lignes ont changé. */
+function hotelScan_() {
+  if (state._hotelRowsRef === state.allRows) return;
+  state._hotelRowsRef = state.allRows;
+  const aGeo = hotelCalculerBase_();
+  if (aGeo.length) hotelGeocoder_(aGeo);
+}
+
+function hotelNuitEnregistree_(date) {
+  if (!state.hotels || !date) return false;
+  const k = ymd_(date);
+  return state.hotels.some(h => ymd_(parseFrDate(h.date)) === k);
+}
+
+function renderHotelBadge_(row) {
+  const uid = get(row, "UID");
+  const e = state.hotelInfo && state.hotelInfo[uid];
+  if (e && e.actif) return `<span class="badge badge-hotel" title="Hôtel conseillé la nuit du ${escapeHtml(formatDateShort(e.date))}">Hôtel</span>`;
+  if (state.hotelVeille && state.hotelVeille[uid]) return `<span class="badge badge-hotel badge-hotel--veille" title="Nuit d'hôtel conseillée la veille">Hôtel la veille</span>`;
+  return "";
+}
+
+function hotelLiens_(e) {
+  const ci = e.nuit;
+  const co = isoLocal_(new Date(e.date.getFullYear(), e.date.getMonth(), e.date.getDate() + 1));
+  const lieu = e.adresse || e.lieuLabel;
+  const nflt = encodeURIComponent("price=EUR-min-" + HOTEL_CFG.budget + "-1;mealplan=1");
+  const booking = "https://www.booking.com/searchresults.fr.html?ss=" + encodeURIComponent(lieu) +
+    "&checkin=" + ci + "&checkout=" + co + "&group_adults=1&no_rooms=1&group_children=0&selected_currency=EUR" +
+    "&order=distance_from_search&nflt=" + nflt;
+  const maps = "https://www.google.com/maps/search/?api=1&query=" +
+    encodeURIComponent("B&B Hôtel OR Ibis Budget OR hotelF1 près de " + lieu);
+  return { booking, maps };
+}
+
+function renderHotelPanel_(row) {
+  const e = state.hotelInfo && state.hotelInfo[get(row, "UID")];
+  if (!e || !e.actif) return "";
+  const raisons = [];
+  const dist = Math.round(e.d1) + " km (~" + dureeTxt_(e.t1) + ")";
+  if (e.a) {
+    raisons.push(e.sameLieu
+      ? "Match loin de chez toi (" + dist + ") et match le lendemain dans le même club."
+      : "Match loin de chez toi (" + dist + ") et match le lendemain : en dormant sur place tu évites " + Math.round(e.ecoEff) + " km.");
+  }
+  if (e.b) raisons.push("Retour estimé vers " + hhmmMin_(e.arrivee) + " (coup d'envoi " + e.heure + " + 2h20 + " + dureeTxt_(e.t1) + " de route).");
+  const l = hotelLiens_(e);
+  const deja = hotelNuitEnregistree_(e.date);
+  return `
+    <details class="hotel-panel">
+      <summary><span class="hotel-sum">Hôtel conseillé — nuit du ${escapeHtml(formatDateShort(e.date))}</span></summary>
+      <div class="hotel-body">
+        <ul class="hotel-why">${raisons.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+        <div class="money-strip">
+          <div class="money-cell"><label>Km économisés</label><strong>${formatNumber(Math.round(e.ecoEff), " km")}</strong></div>
+          <div class="money-cell"><label>Carburant économisé</label><strong>${formatMoney(e.ecoEur)}</strong></div>
+          <div class="money-cell"><label>Hôtel (max)</label><strong>−${formatMoney(HOTEL_CFG.budget)}</strong></div>
+          <div class="money-cell net"><label>Net</label><strong>${formatMoney(e.net)}</strong></div>
+        </div>
+        <p class="card-sub">Max ${HOTEL_CFG.budget} € TTC · petit-déjeuner inclus · proche de la salle · B&amp;B, Ibis Budget ou hotelF1. Indemnités inchangées (calculées depuis chez toi).</p>
+        <div class="actions">
+          <a class="action-link gold" href="${escapeHtml(l.booking)}" target="_blank" rel="noopener">Booking (filtres appliqués)</a>
+          <a class="action-link secondary" href="${escapeHtml(l.maps)}" target="_blank" rel="noopener">Chaînes sur la carte</a>
+          ${deja ? `<span class="badge green">Nuit enregistrée</span>`
+                 : `<button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer le prix payé</button>`}
+        </div>
+      </div>
+    </details>`;
+}
+
+/* ---- Données ---- */
+function loadHotels() {
+  if (state._hotelsEnCours) return;
+  state._hotelsEnCours = true;
+  jsonp("hotels")
+    .then(res => {
+      state.hotels = (res && res.success) ? (res.data || []) : [];
+      state._hotelsEnCours = false;
+      renderAllSoon_();
+    })
+    .catch(() => { state._hotelsEnCours = false; if (!state.hotels) state.hotels = []; renderAllSoon_(); });
+}
+
+function hotelWeekend_(date) {
+  const k0 = ymd_(date);
+  const d2 = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+  const k1 = ymd_(d2);
+  const rows = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date && (ymd_(r._date) === k0 || ymd_(r._date) === k1));
+  const brut = rows.reduce((t, r) => t + (r._amount || 0), 0);
+  const carb = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff != null ? r._kmEff : r._km, r._date), 0);
+  return { n: rows.length, brut: round2(brut), carb: round2(carb) };
+}
+
+/* ---- Onglet Hôtel ---- */
+function renderHotel() {
+  const root = document.getElementById("hotel");
+  if (!root) return;
+  if (state.hotels === undefined || state.hotels === null) {
+    loadHotels();
+    root.innerHTML = `<p class="card-sub">Chargement…</p>`;
+    return;
+  }
+  const hs = state.hotels.slice().sort((a, b) => {
+    const da = parseFrDate(a.date), db = parseFrDate(b.date);
+    return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+  });
+  const totHotel = hs.reduce((t, h) => t + h.prix, 0);
+  const totRepas = hs.reduce((t, h) => t + h.repas, 0);
+
+  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+  const conseilles = Object.keys(state.hotelInfo || {}).map(k => state.hotelInfo[k])
+    .filter(e => e.actif && e.date >= aujourdhui && !hotelNuitEnregistree_(e.date))
+    .sort((a, b) => a.date - b.date);
+
+  const pre = state.hotelPrefill || {};
+  root.innerHTML = `
+    <h2 class="section-title">Hôtel &amp; repas <span class="count">${hs.length}</span></h2>
+    <div class="kpi-grid">
+      <div class="kpi"><label>Nuits d'hôtel</label><strong>${hs.length}</strong></div>
+      <div class="kpi"><label>Hôtels payés</label><strong>${formatMoney(totHotel)}</strong></div>
+      <div class="kpi"><label>Repas</label><strong>${formatMoney(totRepas)}</strong></div>
+      <div class="kpi hero"><label>Total week-ends (hôtel + repas)</label><strong>${formatMoney(totHotel + totRepas)}</strong>
+        <span class="sub">${hs.length ? formatMoney((totHotel + totRepas) / hs.length) + " par nuit" : "aucune nuit enregistrée"}</span></div>
+    </div>
+
+    ${conseilles.length ? `
+    <h3 class="section-title">Nuits conseillées à venir</h3>
+    <div class="table-card" style="margin-bottom:12px"><div class="table-wrap"><table>
+      <thead><tr><th>Nuit du</th><th>Lieu</th><th>Raison</th><th class="num">Net estimé</th><th></th></tr></thead>
+      <tbody>${conseilles.map(e => {
+        const l = hotelLiens_(e);
+        return `<tr>
+          <td>${escapeHtml(formatDateShort(e.date))}</td>
+          <td>${escapeHtml(e.lieuLabel)}</td>
+          <td>${e.a ? "Trajet long + match le lendemain" : ""}${e.a && e.b ? " · " : ""}${e.b ? "Retour tardif (~" + escapeHtml(hhmmMin_(e.arrivee)) + ")" : ""}</td>
+          <td class="num">${formatMoney(e.net)}</td>
+          <td><a class="action-link gold" href="${escapeHtml(l.booking)}" target="_blank" rel="noopener">Booking</a>
+              <button type="button" class="action-link secondary" data-hotel-add="${escapeHtml(e.nuit)}" data-hotel-lieu="${escapeHtml(e.lieuLabel)}">Enregistrer</button></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div></div>` : ""}
+
+    <h3 class="section-title">Enregistrer une nuit</h3>
+    <form id="hotelForm" class="toolbar form-formation" style="align-items:end">
+      <div class="field"><label for="hotelDate">Nuit du</label><input id="hotelDate" type="date" required value="${escapeHtml(pre.date || "")}" /></div>
+      <div class="field"><label for="hotelLieu">Ville / lieu</label><input id="hotelLieu" type="text" placeholder="Ville du match" value="${escapeHtml(pre.lieu || "")}" /></div>
+      <div class="field"><label for="hotelNom">Hôtel</label><input id="hotelNom" type="text" placeholder="B&B, Ibis Budget…" /></div>
+      <div class="field"><label for="hotelPrix">Prix payé (€ TTC)</label><input id="hotelPrix" type="text" inputmode="decimal" placeholder="58,00" required /></div>
+      <div class="field"><label for="hotelRepas">Repas dépensés (€)</label><input id="hotelRepas" type="text" inputmode="decimal" placeholder="0" /></div>
+      <div class="field"><label for="hotelNotes">Notes</label><input id="hotelNotes" type="text" placeholder="Optionnel" /></div>
+      <button class="small-btn secondary" type="submit">Enregistrer</button>
+    </form>
+
+    <h3 class="section-title" style="margin-top:16px">Historique</h3>
+    ${hs.length ? `<div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Nuit du</th><th>Lieu</th><th>Hôtel</th><th class="num">Prix</th><th class="num">Repas</th><th class="num">Indemnités WE</th><th class="num">Carburant WE</th><th class="num">Net WE</th><th></th></tr></thead>
+      <tbody>${hs.map(h => {
+        const d = parseFrDate(h.date);
+        const w = d ? hotelWeekend_(d) : { n: 0, brut: 0, carb: 0 };
+        const net = round2(w.brut - w.carb - h.prix - h.repas);
+        return `<tr>
+          <td>${escapeHtml(h.date)}</td><td>${escapeHtml(h.lieu || "—")}</td><td>${escapeHtml(h.hotel || "—")}</td>
+          <td class="num">${formatMoney(h.prix)}</td><td class="num">${formatMoney(h.repas)}</td>
+          <td class="num">${w.n ? formatMoney(w.brut) : "—"}</td><td class="num">${w.n ? "−" + formatMoney(w.carb) : "—"}</td>
+          <td class="num">${w.n ? formatMoney(net) : "—"}</td>
+          <td><button type="button" class="action-link" data-del-hotel="${escapeHtml(h.id)}">Supprimer</button></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div></div>
+    <p class="card-sub">Net WE = indemnités des matchs de la nuit et du lendemain − carburant − hôtel − repas.</p>`
+    : empty("Aucune nuit d'hôtel enregistrée.")}
+  `;
+  state.hotelPrefill = null;
+
+  const form = root.querySelector("#hotelForm");
+  if (form) form.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const v = id => document.getElementById(id).value;
+    setStatus("Enregistrement de la nuit…", "");
+    try {
+      const res = await jsonp("addHotel", { date: v("hotelDate"), lieu: v("hotelLieu"), hotel: v("hotelNom"), prix: v("hotelPrix"), repas: v("hotelRepas"), notes: v("hotelNotes") });
+      if (!res.success) throw new Error(res.error || "Erreur enregistrement");
+      setStatus("Nuit enregistrée", "ok");
+      state.hotels = null; state._hotelRowsRef = null;
+      loadHotels();
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  });
+  root.querySelectorAll("[data-del-hotel]").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Supprimer cette nuit ?")) return;
+    try {
+      const res = await jsonp("deleteHotel", { id: btn.dataset.delHotel });
+      if (!res.success) throw new Error(res.error || "Erreur suppression");
+      state.hotels = null;
+      loadHotels();
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  }));
+}
+
+/* Bouton « Enregistrer le prix payé » (carte match / liste des nuits conseillées). */
+document.addEventListener("click", ev => {
+  const b = ev.target.closest && ev.target.closest("[data-hotel-add]");
+  if (!b) return;
+  state.hotelPrefill = { date: b.getAttribute("data-hotel-add"), lieu: b.getAttribute("data-hotel-lieu") || "" };
+  setActiveTab("hotel");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+/* ---- Stats : suivi des hôtels ---- */
+function renderHotelsStats_() {
+  if (state.hotels === undefined || state.hotels === null) { loadHotels(); return ""; }
+  const saison = state.selectedSeason && state.selectedSeason !== "Toutes les saisons" ? state.selectedSeason : "";
+  const hs = state.hotels.filter(h => {
+    if (!saison) return true;
+    const d = parseFrDate(h.date);
+    return d && normalizeSeason("", d) === saison;
+  });
+  if (!hs.length) return foldable_("Hôtels & repas", empty("Aucune nuit d'hôtel enregistrée sur cette période."));
+  let tH = 0, tR = 0, net = 0;
+  const parSaison = {};
+  hs.forEach(h => {
+    const d = parseFrDate(h.date);
+    const w = d ? hotelWeekend_(d) : { n: 0, brut: 0, carb: 0 };
+    const nWE = round2(w.brut - w.carb - h.prix - h.repas);
+    tH += h.prix; tR += h.repas; net += nWE;
+    const k = d ? normalizeSeason("", d) : "Sans date";
+    const o = parSaison[k] = parSaison[k] || { n: 0, h: 0, r: 0, net: 0 };
+    o.n++; o.h += h.prix; o.r += h.repas; o.net += nWE;
+  });
+  return foldable_("Hôtels & repas", `
+    <div class="kpi-grid">
+      <div class="kpi"><label>Nuits</label><strong>${hs.length}</strong></div>
+      <div class="kpi"><label>Hôtels</label><strong>${formatMoney(tH)}</strong><span class="sub">${formatMoney(tH / hs.length)} par nuit</span></div>
+      <div class="kpi"><label>Repas</label><strong>${formatMoney(tR)}</strong></div>
+      <div class="kpi"><label>Dépense totale</label><strong>${formatMoney(tH + tR)}</strong><span class="sub">${formatMoney((tH + tR) / hs.length)} par week-end</span></div>
+      <div class="kpi"><label>Net des week-ends</label><strong>${formatMoney(net)}</strong><span class="sub">après carburant, hôtel et repas</span></div>
+    </div>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Saison</th><th class="num">Nuits</th><th class="num">Hôtels</th><th class="num">Repas</th><th class="num">Net WE</th></tr></thead>
+      <tbody>${Object.keys(parSaison).sort().reverse().map(k => `<tr><td>${escapeHtml(k)}</td><td class="num">${parSaison[k].n}</td><td class="num">${formatMoney(parSaison[k].h)}</td><td class="num">${formatMoney(parSaison[k].r)}</td><td class="num">${formatMoney(parSaison[k].net)}</td></tr>`).join("")}</tbody>
+    </table></div></div>`, { count: hs.length });
 }
