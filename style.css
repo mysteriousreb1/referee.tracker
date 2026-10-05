@@ -1,3 +1,4 @@
+/* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur.  */
 /* =====================================================
    REFEREE TRACKER — Design system
    Identité FFBB : bleu marine profond + rouge signal + or.
@@ -2668,3 +2669,75 @@ button.acc-ligne:active { transform: scale(.995); }
 .rapp-modeles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 10px; }
 .rapp-modele { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
 .rapp-modele .rapp-act { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ===== b11 — Header global PC, groupes de menu, logo cliquable ===== */
+.brand { cursor: pointer; }
+.tab-group { display: none; }
+@media (min-width: 1240px) {
+  .app-header { position: fixed; top: 0; left: 0; right: 0; width: auto; height: 64px; padding: 0 24px; z-index: 80; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+  .header-inner { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 0; padding: 0; }
+  .brand { position: static; width: auto; }
+  .tabs { top: 64px; padding-top: 16px; }
+  .page { padding-top: 64px; }
+  .toolbar-search { margin-right: 0; }
+  .tab-group { display: block; margin: 14px 14px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+}
+
+.badge-examinateur { background: var(--gold); color: #1a1a1a; font-weight: 800; border: 0; }
+.exam-title { color: var(--text); }
+
+/* b11 — header clair, Règlement lecture fluide */
+.brand-text h1 { color: var(--text); }
+@media (max-width: 1239px) { .brand-text h1 { color: #fff; } }
+.regl-chat { max-height: 62vh; overflow: auto; padding: 4px 4px 12px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.regl-msg { display: flex; }
+.regl-user { justify-content: flex-end; }
+.regl-bulle { max-width: min(820px, 92%); line-height: 1.6; }
+.regl-sources { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.regl-sources-t { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.regl-src-n { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; margin-right: 8px; border-radius: 50%; background: var(--navy-600); color: #fff; font-size: 11px; font-weight: 800; }
+.regl-corpus { margin-top: 26px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); }
+.regl-form { margin-top: 18px; }
+
+/* b11 — Modale d'édition, cartes contacts, procédures */
+.rt-modal-ov { position: fixed; inset: 0; z-index: 200; background: rgba(8,16,36,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.rt-modal { width: min(640px, 100%); max-height: 92vh; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.35); padding: 20px 22px; }
+.rt-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rt-modal-head h3 { margin: 0; font-size: 18px; }
+.rt-modal-x { border: 0; background: transparent; color: var(--muted); font-size: 26px; line-height: 1; cursor: pointer; }
+.rt-modal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.rt-modal-form .rt-modal-large, .rt-modal-act { grid-column: 1 / -1; }
+.rt-modal-form input, .rt-modal-form select, .rt-modal-form textarea { width: 100%; }
+.rt-modal-act { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rt-modal-del { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
+.rt-modal-delbtn { border: 0; background: transparent; color: var(--red); font: inherit; font-weight: 700; cursor: pointer; padding: 8px 12px; }
+.rt-modal-delbtn:hover { text-decoration: underline; }
+@media (max-width: 560px) { .rt-modal-form { grid-template-columns: 1fr; } }
+.ct-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.ct-group { margin: 22px 0 10px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ct-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); }
+.ct-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ct-nom { display: block; font-size: 15px; }
+.ct-role { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.ct-org { font-size: 13px; }
+.ct-liens { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.ct-note { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.ct-gear { flex: 0 0 auto; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+.ct-gear:hover { color: var(--text); background: var(--surface-2); }
+.pr-liste { display: grid; gap: 8px; }
+.pr-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
+.pr-det { flex: 1 1 auto; min-width: 0; }
+.pr-det summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; font-size: 14.5px; min-height: 32px; }
+.pr-lien { font-size: 12.5px; font-weight: 600; }
+.pr-corps { white-space: pre-wrap; margin-top: 8px; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.export-check{display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer}.export-check input{width:auto}
+
+/* b11 — messages jaunes réduits : seul le chargement (.status-bar) reste jaune */
+.stat-note { background: var(--surface-2); border: 1px solid var(--border, rgba(128,128,128,.25)); color: var(--text); }
+.insight.warn { background: var(--surface-2); color: var(--text); border-left-color: var(--orange); }
+:root[data-theme="dark"] .insight.warn { color: var(--text); }
+.rt-modal .stat-note { background: transparent; border: 0; padding: 0; margin: 8px 0 0; }
+.rt-modal .stat-note p { margin: 0 0 10px; line-height: 1.5; }
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border, rgba(128,128,128,.4)); background: transparent; color: var(--text-soft, var(--text)); cursor: pointer; vertical-align: middle; }
+.info-btn:hover { background: var(--surface-2); }
+@media (max-width: 640px) { .toolbar { grid-template-columns: 1fr !important; } .toolbar .field { min-width: 0; } .toolbar select, .toolbar input { max-width: 100%; } }
