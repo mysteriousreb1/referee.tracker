@@ -163,7 +163,7 @@ function _reponseVide(action, res) {
    avant même qu'il ne serve. */
 const ECRITURES = {
   updatePaymentStatus: 1,
-  "payment.update": 1,
+  "payment.update": 1, "bank.add": 1, "bank.undo": 1,
   setContact: 1,
   deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1,
   addFormation: 1, deleteFormation: 1,
