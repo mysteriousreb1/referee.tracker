@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b15";
+const APP_VERSION = "2026-10-05-b16";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -2086,8 +2086,11 @@ const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67", ffbb: "FFBB", c
 function moisPaiementsData_() {
   const now = new Date();
   const d0 = new Date(now.getFullYear(), now.getMonth(), 1), d1 = new Date(now.getFullYear(), now.getMonth() + 1, 1), d2 = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+  const sy = now >= new Date(now.getFullYear(), 6, 30) ? now.getFullYear() : now.getFullYear() - 1, saison = `${sy}/${sy + 1}`;
   const z = () => ({ ret: 0, mois: 0, suiv: 0, plus: 0, sans: 0, nbMois: 0, nbRet: 0, recu: 0, delais: [] });
   const par = { ligue: z(), cd: z(), ffbb: z(), club: z() }, tot = z();
+  const det = { mois: [], ret: [], ancien: [] };
+  let ancien = 0;
   (RB.hist || []).forEach(h => {   // délais réels : date du virement − date du match
     const ds = h.uids.map(u => state.allRows.find(r => get(r, "UID") === u)).filter(r => r && r._date).map(r => new Date(String(h.date).slice(0, 10) + "T12:00:00") - r._date);
     const j = ds.length ? Math.round(Math.max(...ds) / 86400000) : -1;
@@ -2097,13 +2100,12 @@ function moisPaiementsData_() {
   let predMois = 0, predOk = false;
   state.allRows.forEach(r => {
     if (!r._isActive || r._format === "Alerte" || r._benevole) return;
-    const c = par[rbClasse_(r)] || par.club;
-    const rd = parseFrDate(get(r, "Date reçu recevant") || get(r, "Date reçu visiteur"));
-    if (r._encaisse > 0 && state.filteredRows.includes(r)) { c.recu += r._encaisse; tot.recu += r._encaisse; }
-    if (rd && r._date) { const j = Math.round((rd - r._date) / 86400000); if (j >= 0 && j < 400) { c.delais.push(j); tot.delais.push(j); } }
+    const cl = rbClasse_(r), c = par[cl] || par.club;
+    if (r._season !== saison) { if (r._reste > 0) { ancien += r._reste; det.ancien.push({ r, cl }); } return; }   // saisons passées : à part
+    if (r._encaisse > 0) { c.recu += r._encaisse; tot.recu += r._encaisse; }
     if (!(r._reste > 0)) return;
     const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
-    const mc = moyC(rbClasse_(r) in par ? rbClasse_(r) : "club");
+    const mc = moyC(par[cl] ? cl : "club");
     if (att && r._date && mc !== null) { predOk = true; const pr = new Date(Math.max(att.getTime(), r._date.getTime() + mc * 86400000)); if (pr >= d0 && pr < d1) predMois += r._reste; }
     [c, tot].forEach(o => {
       if (!att) o.sans += r._reste;
@@ -2112,8 +2114,16 @@ function moisPaiementsData_() {
       else if (att < d2) o.suiv += r._reste;
       else o.plus += r._reste;
     });
+    if (att && att >= d0 && att < d1) det.mois.push({ r, cl, att });
+    else if (att && att < d0) det.ret.push({ r, cl, att });
   });
-  return { predMois, predOk, par, tot, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
+  const tri = (a, b) => (a.att || 0) - (b.att || 0);
+  det.mois.sort(tri); det.ret.sort(tri);
+  return { predMois, predOk, par, tot, det, ancien, saison, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
+}
+function moisDetailHtml_(titre, liste, avecAtt) {
+  if (!liste.length) return "";
+  return `<details class="mp-det"><summary>${escapeHtml(titre)} (${liste.length})</summary><ul class="rb-ms">${liste.map(x => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(rbEquipes_(x.r))}</strong><small>Match ${escapeHtml(rbFmtDate_(x.r._date))} · ${escapeHtml(PAYEURS_LIB_[x.cl])}${avecAtt && x.att ? " · échéance " + escapeHtml(rbFmtDate_(x.att)) : ""} · ${escapeHtml(get(x.r, "Statut paiement") || "À recevoir")} · ${escapeHtml(codeCompetition(x.r) || "")}</small></span><span class="rb-m-v">${formatMoney(x.r._reste)}</span></label></li>`).join("")}</ul></details>`;
 }
 function renderMoisPaiements_() {
   const m = moisPaiementsData_(), t = m.tot;
@@ -2122,11 +2132,14 @@ function renderMoisPaiements_() {
   return `
     <div class="kpi-grid mp-kpis">
       <div class="kpi hero"><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) · échéance au plus tard le ${m.fin.toLocaleDateString("fr-FR")}</span></div>
-      <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (avant ce mois)</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
+      <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (saison ${escapeHtml(m.saison)})</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
       ${m.predOk ? `<div class="kpi"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">selon le délai moyen constaté de chaque payeur</span></div>` : ""}
       <div class="kpi"><label>Mois suivant</label><strong>${formatMoney(t.suiv)}</strong></div>
       <div class="kpi"><label>Plus tard / sans échéance</label><strong>${formatMoney(t.plus + t.sans)}</strong></div>
     </div>
+    ${moisDetailHtml_("Détail : à recevoir ce mois-ci", m.det.mois, true)}
+    ${moisDetailHtml_("Détail : en retard (saison " + m.saison + ")", m.det.ret, true)}
+    ${m.ancien > 0 ? moisDetailHtml_("Saisons précédentes non soldées — " + formatMoney(m.ancien) + " (à pointer ou marquer bénévole)", m.det.ancien, false) : ""}
     ${lignes ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table">
       <thead><tr><th>Payeur</th><th>En retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Déjà reçu</th><th>Délai réel</th></tr></thead>
       <tbody>${lignes}</tbody></table></div></div>` : ""}`;
@@ -2405,7 +2418,7 @@ function rbChargerXlsx_() {
   if (window.XLSX) return Promise.resolve();
   return new Promise((ok, ko) => {
     const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.src = "./vendor/xlsx.full.min.js?v=0.18.5";   // copie locale (même origine) : pas de dépendance CDN
     s.onload = ok; s.onerror = () => ko(new Error("Lecteur Excel indisponible (réseau). Exporte le relevé en CSV."));
     document.head.appendChild(s);
   });
@@ -2452,13 +2465,16 @@ function rbExtraire_() {
    Régional → LIGUE (LRGEB) ; Départemental et 3x3 → COMITÉ (CD67) ;
    Championnat de France séniors (NF3) → FFBB ; CF jeunes (U15/U18 France), amical, autre → CLUB. */
 function rbClasse_(r) {
-  const niv = rbNorm_(get(r, "Niveau administratif")), code = rbNorm_([get(r, "Code compétition"), get(r, "Libellé compétition"), get(r, "Catégorie d'âge")].join(" "));
+  /* Priorité au CODE de compétition (fiable) : le texte « Indemnisé par » de la convocation désigne parfois
+     la Ligue pour des NF3 pourtant payés par la FFBB. */
+  const code = codeCompetition(r), niv = rbNorm_(get(r, "Niveau administratif"));
   if (r._format === "3x3") return "cd";
-  const rg = paiementRegime_(r);   // régime déjà lu sur la convocation (« Indemnisé par »)
+  if (/^N[MF]U\d{2}/.test(code)) return "club";         // CF jeunes (U15/U18 France) : payés par les clubs
+  if (/^N[MF]\d$/.test(code)) return "ffbb";            // CF séniors (NM1-3, NF1-3) : FFBB
+  const rg = paiementRegime_(r);                          // régime lu sur la convocation / colonne Régime
   if (rg) return { cd67: "cd", region: "ligue", federation: "ffbb" }[rg] || "club";
-  if (/departement/.test(niv)) return "cd";
-  if (/regional/.test(niv)) return "ligue";
-  if (/france/.test(niv)) return /u ?1[0-9]|jeune|cadet|minime/.test(code) && !/nf3|senior/.test(code) ? "club" : "ffbb";
+  if (/^D[MF]/.test(code) || /departement/.test(niv)) return "cd";
+  if (/^(PN|PR|R)[MF]/.test(code) || /regional/.test(niv)) return "ligue";
   return "club";
 }
 const RB_MEM_KEY_ = "rt_rb_payeurs_v1";
