@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b11";
+const APP_VERSION = "2026-10-05-b13";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -685,7 +685,7 @@ function normalizeRows(rows) {
     r._kmEff = r._km;   // km à compter (carburant/km parcourus) — ajusté pour les doublés
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
-    r._isActive = !["annulé", "annule", "alerte"].includes(cleanText(get(r, "Statut")).toLowerCase()) && r._format !== "Alerte";
+    r._isActive = !/annul|alerte/i.test(cleanText(get(r, "Statut"))) && r._format !== "Alerte";
     r._isPast = isPastMission(r);
     r._hay = indexRecherche_(r);
     return r;
@@ -815,14 +815,14 @@ function renderReglementDocs_() {
   const d = state._reglDocs;
   if (!d) return "";
   const body = `<ul class="regl-docs">${d.docs.map(x => `<li><strong>${escapeHtml(x.nom)}</strong> <span class="sub">mis à jour le ${escapeHtml(x.maj)}</span></li>`).join("")}</ul>
-    <p class="card-sub">Nouvelle version du règlement ? Remplace ou ajoute le fichier (.txt ou Google Doc) dans <a href="${escapeHtml(d.dossierUrl)}" target="_blank" rel="noopener">le dossier Drive</a>. Pris en compte à la question suivante, sans mise à jour du site.</p>`;
+    <p class="card-sub">Nouvelle version du règlement ? Remplace ou ajoute le fichier (.txt ou Google Doc) dans <a href="${escapeHtml(safeUrl_(d.dossierUrl))}" target="_blank" rel="noopener">le dossier Drive</a>. Pris en compte à la question suivante, sans mise à jour du site.</p>`;
   return `<div class="regl-corpus"><div class="regl-sources-t">Documents lus par l'IA</div>${body}</div>`;
 }
 
 function reglSourcesHtml_(src) {
   if (!src || !src.length) return "";
   return `<div class="regl-sources"><div class="regl-sources-t">Sources</div>${src.map((x, i) => `
-    <div class="regl-src-item"><div class="regl-src-doc"><span class="regl-src-n">${i + 1}</span>${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
+    <div class="regl-src-item"><div class="regl-src-doc"><span class="regl-src-n">${i + 1}</span>${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
     <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</div>`;
 }
 
@@ -906,6 +906,25 @@ const TAB_RENDERERS_ = {
   rapports:    [function () { renderPersoTab_("rapports", "Rapports", renderRapportsPanel_); }, "Rapports"],
   hotel:       [function () { renderHotel(); },       "Hôtel"]
 };
+
+/* Un seul grand titre par page : le premier h2 du panneau, les suivants deviennent des sous-titres. */
+let _titresId = 0;
+function harmoniserTitres_() {
+  _titresId = 0;
+  document.querySelectorAll(".panel").forEach(p => {
+    let premier = true;
+    p.querySelectorAll("h2.section-title").forEach(h => {
+      if (h.classList.contains("stat-fold-sum")) return;
+      if (premier) { h.classList.add("page-title"); h.classList.remove("sub-title"); premier = false; }
+      else { h.classList.add("sub-title"); h.classList.remove("page-title"); }
+    });
+  });
+}
+(function () {
+  const lancer = () => { if (_titresId) return; _titresId = requestAnimationFrame(() => { try { harmoniserTitres_(); } catch (_) {} }); };
+  const init = () => { const c = document.querySelector(".content") || document.body; new MutationObserver(lancer).observe(c, { childList: true, subtree: true }); lancer(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+})();
 
 function renderTab_(tab) {
   const e = TAB_RENDERERS_[tab];
@@ -1195,17 +1214,41 @@ function renderAccueil() {
   };
   const matchsHtml = jours.length ? `<div class="acc-days">${jours.map(carteJour).join("")}</div>` : empty("Aucun match ce week-end. Repos mérité.");
 
+  // --- Bandeau saison (style tableau de bord) ---
+  const saison = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
+  const aVenir = saison.filter(r => !r._isPast);
+  const recuS = saison.reduce((t, r) => t + (r._encaisse || 0), 0);
+  const attS = saison.reduce((t, r) => t + (r._reste || 0), 0);
+  const saisonHtml = `<div class="acc-season">
+    <div class="acc-s"><span class="acc-s-val">${saison.length}</span><span class="acc-s-lbl">Matchs saison</span></div>
+    <div class="acc-s"><span class="acc-s-val">${aVenir.length}</span><span class="acc-s-lbl">À venir</span></div>
+    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoney(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span></div>
+    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoney(attS)}</span><span class="acc-s-lbl">En attente</span></div>
+  </div>`;
+  // --- Prochains matchs (hors week-end en cours) ---
+  const idsWE = new Set(weRows.map(r => get(r, "UID")));
+  const suivants = aVenir.filter(r => !idsWE.has(get(r, "UID"))).sort(sortByDateAsc).slice(0, 5);
+  const suivantsHtml = suivants.length ? `<section class="acc-bloc"><h2 class="section-title">Prochains matchs</h2><div class="acc-days"><div class="acc-day">${suivants.map(r => `<button type="button" class="acc-m acc-m--date acc-vers-match" data-uid="${escapeHtml(get(r, "UID"))}">
+      <span class="acc-m-h acc-m-h--date">${escapeHtml(formatDateShort(r._date))}</span>
+      <span class="acc-m-body"><strong>${escapeHtml(oppDe(r))}</strong><small>${escapeHtml([cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")), cleanText(get(r, "Ville") || get(r, "Salle"))].filter(Boolean).join(" · "))}</small></span>
+      <span class="acc-m-side"><span class="acc-m-eur">${formatMoney(r._amount)}</span><span class="acc-m-etat">${escapeHtml(fmtHeure(heureDe_(r)) || "")}</span></span>
+    </button>`).join("")}</div></div></section>` : "";
+
   root.innerHTML = `
     ${bienvenue}
     ${indispoBanner_()}
+    ${saisonHtml}
     <div class="acc-grid">
       ${hero}
       ${compteurs}
     </div>
-    <section class="acc-bloc">
-      <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
-      ${matchsHtml}
-    </section>
+    <div class="acc-cols">
+      <section class="acc-bloc">
+        <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
+        ${matchsHtml}
+      </section>
+      ${suivantsHtml}
+    </div>
   `;
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
@@ -2028,6 +2071,50 @@ function renderRelance45_(rows) {
     </div>`;
 }
 
+/* ---- Page Paiements : vue du mois et suivi par payeur ----
+   Dû = reste à percevoir de chaque mission (hors bénévolat/annulé), classé par échéance
+   (« Date attendue ») : en retard (avant ce mois), ce mois-ci, mois suivant, ensuite, sans date.
+   Payeur : Ligue / Comité / FFBB / Clubs (mêmes règles que le rapprochement bancaire). */
+const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67", ffbb: "FFBB", club: "Clubs" };
+function moisPaiementsData_() {
+  const now = new Date();
+  const d0 = new Date(now.getFullYear(), now.getMonth(), 1), d1 = new Date(now.getFullYear(), now.getMonth() + 1, 1), d2 = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+  const z = () => ({ ret: 0, mois: 0, suiv: 0, plus: 0, sans: 0, nbMois: 0, nbRet: 0, recu: 0, delais: [] });
+  const par = { ligue: z(), cd: z(), ffbb: z(), club: z() }, tot = z();
+  state.allRows.forEach(r => {
+    if (!r._isActive || r._format === "Alerte" || r._benevole) return;
+    const c = par[rbClasse_(r)] || par.club;
+    const rd = parseFrDate(get(r, "Date reçu recevant") || get(r, "Date reçu visiteur"));
+    if (r._encaisse > 0 && state.filteredRows.includes(r)) { c.recu += r._encaisse; tot.recu += r._encaisse; }
+    if (rd && r._date) { const j = Math.round((rd - r._date) / 86400000); if (j >= 0 && j < 400) { c.delais.push(j); tot.delais.push(j); } }
+    if (!(r._reste > 0)) return;
+    const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+    [c, tot].forEach(o => {
+      if (!att) o.sans += r._reste;
+      else if (att < d0) { o.ret += r._reste; o.nbRet++; }
+      else if (att < d1) { o.mois += r._reste; o.nbMois++; }
+      else if (att < d2) o.suiv += r._reste;
+      else o.plus += r._reste;
+    });
+  });
+  return { par, tot, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
+}
+function renderMoisPaiements_() {
+  const m = moisPaiementsData_(), t = m.tot;
+  const moy = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) + " j" : "—";
+  const lignes = Object.keys(m.par).map(k => { const c = m.par[k]; const du = c.ret + c.mois + c.suiv + c.plus + c.sans; return du || c.recu ? `<tr><td>${PAYEURS_LIB_[k]}</td><td class="num${c.ret ? " mp-ret" : ""}">${c.ret ? formatMoney(c.ret) : "—"}</td><td class="num"><strong>${c.mois ? formatMoney(c.mois) : "—"}</strong></td><td class="num">${c.suiv ? formatMoney(c.suiv) : "—"}</td><td class="num">${(c.plus + c.sans) ? formatMoney(c.plus + c.sans) : "—"}</td><td class="num">${formatMoney(c.recu)}</td><td class="num">${moy(c.delais)}</td></tr>` : ""; }).join("");
+  return `
+    <div class="kpi-grid mp-kpis">
+      <div class="kpi hero"><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) · échéance au plus tard le ${m.fin.toLocaleDateString("fr-FR")}</span></div>
+      <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (avant ce mois)</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
+      <div class="kpi"><label>Mois suivant</label><strong>${formatMoney(t.suiv)}</strong></div>
+      <div class="kpi"><label>Plus tard / sans échéance</label><strong>${formatMoney(t.plus + t.sans)}</strong></div>
+    </div>
+    ${lignes ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table">
+      <thead><tr><th>Payeur</th><th>En retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Déjà reçu</th><th>Délai réel</th></tr></thead>
+      <tbody>${lignes}</tbody></table></div></div>` : ""}`;
+}
+
 function renderPaiements() {
   const root = document.getElementById("paiements");
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
@@ -2049,7 +2136,7 @@ function renderPaiements() {
      traité récemment) et on replie le reste sous un même principe que
      les onglets 5×5 / 3×3. Seuil : 8 lignes récentes visibles, le reste
      replié — au-delà la liste devient illisible. */
-  const RECENTS_VISIBLES = 8;
+  const RECENTS_VISIBLES = Infinity;
   // MODIFICATION 19/09/2026 — ce qui est déjà soldé (Reçu, Bénévole) ne
   // doit plus encombrer l'écran : replié par défaut dans un menu déroulant,
   // même en dessous du seuil de 8. Ce qui reste à pointer (À recevoir,
@@ -2057,11 +2144,14 @@ function renderPaiements() {
   const TOUJOURS_REPLIES = ["Reçu", BENEVOLE];
 
   root.innerHTML = `
+    <h2 class="section-title">Paiements</h2>
     <div class="kpi-grid">
       <div class="kpi"><label>En attente de paiement</label><strong>${formatMoney(totalDu)}</strong></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
       ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
     </div>
+    ${renderMoisPaiements_()}
+    ${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}
     ${renderRelance45_(rows)}
     ${order.filter(k => grouped[k]).map(status => {
       const liste = grouped[status].slice().sort(sortByDateAsc);
@@ -2107,6 +2197,7 @@ function renderPaiements() {
   attachPaymentListeners(root);
   attachContactListeners(root);
   attachPastToggle(root);
+  attachRapprochement_(root);
 }
 
 /* MODIFICATION 11 — marquage du contact collègue.
@@ -2241,6 +2332,372 @@ function attachPaymentListeners(root) {
   });
 }
 
+/* ===================================================================
+   RAPPROCHEMENT BANCAIRE (05/10/2026)
+   Import d'un relevé Excel/CSV lu UNIQUEMENT dans le navigateur : rien n'est
+   envoyé ni stocké. Seuls les UID des missions validées partent vers le
+   serveur (payment.update / marquer_recu), comme le bouton « Marquer reçu ».
+   Principe : chaque virement entrant est comparé aux montants restant dus ;
+   on cherche 1 mission, ou une somme de 2 à 6 missions (virement groupé),
+   dont le total égale le virement (± tolérance). Validation toujours manuelle.
+   =================================================================== */
+const RB = { brut: [], entete: -1, cols: {}, lignes: [], props: [], tol: 0, fichier: "", msg: "", ouvert: false, busy: false };
+const RB_STOP_ = new Set(["basket", "club", "association", "comite", "region", "regional", "regionale", "departemental", "departementale", "championnat", "match", "senior", "seniors", "feminin", "feminine", "masculin", "masculine", "saint", "sainte", "coupe", "U13", "U15", "U18", "U20", "excellence", "pre", "nationale", "region", "poule", "phase", "equipe", "ffbb", "virement", "vir", "sepa", "recu", "inst", "association", "assoc", "frais", "arbitrage", "arbitre", "amical", "faveur", "votre", "remise", "cheque"]);
+
+const RB_IGNORE_ = /salaire|pension|epargne|rachat|assur|\basp\b|agence comptable|inst de|elite basket|\bebc\b|loyer|caf\b|impot|dgfip|remboursement secu|cpam/;
+function rbNorm_(s) { return String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+
+function rbCents_(v) {
+  if (typeof v === "number") return isFinite(v) ? Math.round(v * 100) : null;
+  let s = String(v == null ? "" : v).replace(/[\s €$]/g, "");
+  if (!s) return null;
+  if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else s = s.replace(/,/g, "");
+  const n = Number(s.replace(/^\+/, ""));
+  return isFinite(n) ? Math.round(n * 100) : null;
+}
+
+function rbDate_(v) {
+  if (v instanceof Date && !isNaN(v)) { const d = new Date(v.getTime() + 12 * 3600e3); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12); }
+  if (typeof v === "number" && v > 20000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 86400000)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12); }
+  const s = String(v == null ? "" : v).trim();
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if (m) { const y = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]); return new Date(y, Number(m[2]) - 1, Number(m[1]), 12); }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12);
+  return null;
+}
+
+function rbFmtDate_(d) { return d ? d.toLocaleDateString("fr-FR") : "—"; }
+
+function rbCsv_(txt) {
+  const sep = ((txt.split("\n")[0] || "").match(/;/g) || []).length >= ((txt.split("\n")[0] || "").match(/,/g) || []).length ? ";" : ",";
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < txt.length; i++) {
+    const c = txt[i];
+    if (q) { if (c === '"') { if (txt[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === sep) { row.push(cur); cur = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && txt[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.some(x => x !== "")) rows.push(row); row = []; }
+    else cur += c;
+  }
+  row.push(cur); if (row.some(x => x !== "")) rows.push(row);
+  return rows;
+}
+
+function rbChargerXlsx_() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((ok, ko) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.onload = ok; s.onerror = () => ko(new Error("Lecteur Excel indisponible (réseau). Exporte le relevé en CSV."));
+    document.head.appendChild(s);
+  });
+}
+
+function rbDevinerCols_() {
+  const h = (RB.brut[RB.entete] || []).map(rbNorm_);
+  const f = re => { const i = h.findIndex(x => re.test(x)); return i >= 0 ? i : -1; };
+  RB.cols = {
+    date: f(/date/), libelle: f(/libell|intitul|descr|motif|detail|operation|reference/),
+    credit: f(/credit/), debit: f(/debit/), montant: f(/montant|amount|somme/)
+  };
+  if (RB.cols.credit >= 0) RB.cols.montant = -1;
+}
+
+function rbExtraire_() {
+  const c = RB.cols; const out = []; let ign = 0;
+  for (let i = RB.entete + 1; i < RB.brut.length; i++) {
+    const r = RB.brut[i];
+    const d = c.date >= 0 ? rbDate_(r[c.date]) : null;
+    let cents = null;
+    if (c.credit >= 0) { cents = rbCents_(r[c.credit]); }
+    else if (c.montant >= 0) { cents = rbCents_(r[c.montant]); }
+    if (!cents || cents <= 0) continue;                 // seuls les crédits comptent
+    const lib = c.libelle >= 0 ? String(r[c.libelle] == null ? "" : r[c.libelle]).trim() : r.filter(x => typeof x === "string" && x.trim() && !rbDate_(x) && rbCents_(x) === null).join(" ");
+    const n = rbNorm_(lib);
+    if (RB_IGNORE_.test(n) && !/arbitr|\barb\b|frais arb|indemn/.test(n)) { ign++; continue; }   // salaire, épargne, pension…
+    out.push({ id: out.length, date: d, libelle: lib, cents, n, words: new Set(n.split(/[^a-z0-9]+/)) });
+  }
+  RB.ign = ign;
+  RB.lignes = out.sort((a, b) => (a.date || 0) - (b.date || 0));
+}
+
+/* Qui paie quoi (règles de Clément) :
+   Régional → LIGUE (LRGEB) ; Départemental et 3x3 → COMITÉ (CD67) ;
+   Championnat de France séniors (NF3) → FFBB ; CF jeunes (U15/U18 France), amical, autre → CLUB. */
+function rbClasse_(r) {
+  const niv = rbNorm_(get(r, "Niveau administratif")), code = rbNorm_([get(r, "Code compétition"), get(r, "Libellé compétition"), get(r, "Catégorie d'âge")].join(" "));
+  if (r._format === "3x3") return "cd";
+  const rg = paiementRegime_(r);   // régime déjà lu sur la convocation (« Indemnisé par »)
+  if (rg) return { cd67: "cd", region: "ligue", federation: "ffbb" }[rg] || "club";
+  if (/departement/.test(niv)) return "cd";
+  if (/regional/.test(niv)) return "ligue";
+  if (/france/.test(niv)) return /u ?1[0-9]|jeune|cadet|minime/.test(code) && !/nf3|senior/.test(code) ? "club" : "ffbb";
+  return "club";
+}
+const RB_MEM_KEY_ = "rt_rb_payeurs_v1";
+function rbMemLire_() { try { return JSON.parse(localStorage.getItem(RB_MEM_KEY_) || "{}") || {}; } catch (e) { return {}; } }
+function rbMemEcrire_(m) { try { localStorage.setItem(RB_MEM_KEY_, JSON.stringify(m)); } catch (e) { /* stockage indisponible : sans effet */ } }
+/* Clé stable d'un payeur : nom de l'émetteur sans références (VG62…, numéros). Reste dans le navigateur. */
+function rbCle_(n) {
+  return String(n || "").replace(/virement en votre faveur|remise de cheque|versement d'especes/g, "").replace(/^[\s-]+/, "").split(" - ")[0].split(/\n/)[0]
+    .replace(/\b[a-z]*\d[a-z0-9]*\b/g, "").replace(/\s+/g, " ").trim();
+}
+function rbPayeur_(n) {
+  const m = rbMemLire_()[rbCle_(n)];
+  if (m && m.cls) return m.cls;
+  if (/ligue regionale|lrgeb|grand est/.test(n)) return "ligue";
+  if (/comite|bas rhin|\bcd ?67\b/.test(n)) return "cd";
+  if (/federation francaise|\bffbb\b/.test(n)) return "ffbb";
+  return "";
+}
+function rbCandidats_() {
+  return state.allRows
+    .filter(r => r._isActive && r._format !== "Alerte" && !r._benevole && r._reste > 0)
+    .map(r => {
+      const toks = new Set();
+      [get(r, "Recevant"), get(r, "Visiteur / événement"), get(r, "Libellé compétition"), get(r, "Code compétition")].forEach(t =>
+        rbNorm_(t).split(/[^a-z0-9]+/).forEach(w => { if (w.length >= 3 && !RB_STOP_.has(w)) toks.add(w); }));
+      return { uid: get(r, "UID"), c: Math.round(r._reste * 100), date: r._date, toks: [...toks], niv: rbNorm_(get(r, "Niveau administratif")), cls: rbClasse_(r), att: parseFrDate(get(r, "Date attendue")) };
+    })
+    .filter(x => x.uid && x.c > 0)
+    .sort((a, b) => (a.date || 0) - (b.date || 0));
+}
+
+/* Analyse par montant d'un crédit sans correspondance exacte : mission déjà reçue de même
+   montant, ou missions les plus proches (écart signé = virement − indemnité due). */
+function rbAnalyse_(t, deja, tolC, lv, pris) {
+  const dj = deja.find(x => Math.abs(x.c - t.cents) <= tolC);
+  if (dj) return { txt: "Montant identique à une mission déjà marquée reçue : " + dj.lib, part: [] };
+  const lst = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && !r._benevole && r._amountTheorique > 0 && (!r._date || !t.date || r._date <= t.date) && (!lv || rbClasse_(r) === lv) && !(pris && pris.has(get(r, "UID"))))
+    .map(r => {
+      const du = Math.round(r._amountTheorique * 100), h = rbTokensRow_(r).filter(w => t.words.has(w) || (t.mtoks || []).includes(w)).length;
+      return { r, ecart: t.cents - du, h, ab: Math.abs(t.cents - du) };
+    })
+    .filter(x => x.h > 0 || x.ab <= Math.max(300, t.cents * 0.15) || (lv && x.ecart < 0 && t.cents >= Math.round(x.r._amountTheorique * 100) * 0.4))
+    .sort((a, b) => b.h - a.h || a.ab - b.ab).slice(0, 3);
+  if (!lst.length) return { txt: "Aucune mission d'un montant proche.", part: [] };
+  const txt = "Missions les plus proches : " + lst.map(x => {
+    const nm = [get(x.r, "Recevant"), get(x.r, "Visiteur / événement")].filter(Boolean).join(" / ");
+    const e = x.ecart / 100;
+    return `${nm} (${rbFmtDate_(x.r._date)}, dû ${money(x.r._amountTheorique)}, ${get(x.r, "Statut paiement") || "À recevoir"}) → écart ${(e > 0 ? "+" : "") + money(e)}${x.ecart > 0 ? " (trop-perçu ?)" : x.ecart < 0 ? " (paiement partiel ?)" : ""}`;
+  }).join(" ; ");
+  // Paiement partiel proposé : virement inférieur au dû, mission encore à solder
+  const part = lst.filter(x => x.ecart < 0 && x.r._reste > 0).map(x => ({ uid: get(x.r, "UID"), nom: [get(x.r, "Recevant"), get(x.r, "Visiteur / événement")].filter(Boolean).join(" / ") }));
+  return { txt, part };
+}
+function rbMode_(n) { return /cheque/.test(n) ? "Chèque" : /especes/.test(n) ? "Espèces" : "Virement"; }
+function rbIso_(d) { return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""; }
+function rbTokensRow_(r) {
+  const o = [];
+  [get(r, "Recevant"), get(r, "Visiteur / événement"), get(r, "Libellé compétition"), get(r, "Code compétition")].forEach(t =>
+    rbNorm_(t).split(/[^a-z0-9]+/).forEach(w => { if (w.length >= 3 && !RB_STOP_.has(w) && !o.includes(w)) o.push(w); }));
+  return o;
+}
+
+function rbRapprocher_() {
+  const tolC = Math.round((Number(RB.tol) || 0) * 100);
+  const cands = rbCandidats_();
+  const pris = new Set();
+  const deja = state.allRows.filter(r => r._isActive && r._encaisse > 0).map(r => ({ c: Math.round(r._encaisse * 100), lib: (get(r, "Recevant") || "") + " / " + (get(r, "Visiteur / événement") || ""), d: r._date }));
+  const resoudre = t => {
+    t.mtoks = (rbMemLire_()[rbCle_(t.n)] || {}).toks || [];
+    const hint = x => x.toks.filter(w => t.words.has(w) || (t.mtoks || []).includes(w)).length;
+    let pool = cands.filter(x => !pris.has(x.uid) && (!x.date || !t.date || x.date <= t.date)).map(x => ({ ...x, h: hint(x) }));
+    /* Payeur institutionnel reconnu dans le libellé → on ne garde que son niveau de compétition
+       (Ligue/LRGEB/Grand Est = Régional ; Comité/CD = Départemental ; FFBB = Championnat de France). */
+    const lv = rbPayeur_(t.n);
+    const anonyme = /remise de cheque|especes/.test(t.n);   // chèque/espèces : payeur inconnu, toutes classes possibles
+    /* STRICT dans tous les sens : Ligue = Régional seulement ; Comité = Départemental + 3x3 ; FFBB = CF séniors ;
+       un virement dont l'émetteur n'est pas une institution (club) ne peut payer qu'un match « club ». */
+    if (lv) pool = pool.filter(x => x.cls === lv).map(x => ({ ...x, h: x.h + 1 }));
+    else if (!anonyme) pool = pool.filter(x => x.cls === "club");
+    pool.sort((a, b) => b.h - a.h || (a.date || 0) - (b.date || 0));
+    pool = pool.slice(0, 40);
+    pool.sort((a, b) => b.c - a.c);
+    const rest = new Array(pool.length + 1).fill(0);
+    for (let i = pool.length - 1; i >= 0; i--) rest[i] = rest[i + 1] + pool[i].c;
+    const sols = []; let noeuds = 0;
+    const lo = t.cents - tolC, hi = t.cents + tolC;
+    (function dfs(i, somme, pick) {
+      if (sols.length >= 30 || noeuds++ > 300000) return;
+      if (somme >= lo && somme <= hi && pick.length) { sols.push(pick.slice()); return; }
+      if (pick.length >= 6 || i >= pool.length || somme + rest[i] < lo) return;
+      for (let j = i; j < pool.length; j++) {
+        if (somme + pool[j].c > hi) continue;
+        pick.push(pool[j]); dfs(j + 1, somme + pool[j].c, pick); pick.pop();
+        if (sols.length >= 30 || noeuds > 300000) return;
+      }
+    })(0, 0, []);
+    const sc = s => ({ items: s, h: s.reduce((a, x) => a + x.h, 0), n: s.length, d: s.reduce((a, x) => a + (x.date ? x.date.getTime() : 0), 0) / s.length,
+      e: t.date ? s.reduce((a, x) => a + Math.abs(t.date - (x.att || x.date || t.date)), 0) / s.length : 0 });   // écart à la date attendue
+    const alts = sols.map(sc).sort((a, b) => b.h - a.h || a.e - b.e || a.n - b.n || a.d - b.d).slice(0, 5);
+    let conf = "aucune";
+    if (alts.length) {
+      const [a, b] = alts;
+      if (alts.length === 1) conf = (a.n === 1 || a.h > 0) ? "haute" : "moyenne";
+      else if (a.h > b.h && a.h > 0) conf = "haute";
+      else if (a.h > 0 && alts.every(z => z.h === a.h && z.items.map(x => x.c).sort().join() === a.items.map(x => x.c).sort().join())) conf = "haute";   // missions interchangeables (même club, même montant)
+      else conf = "ambigu";
+      if (conf === "haute" || conf === "moyenne") a.items.forEach(x => pris.add(x.uid));
+    }
+    const an = alts.length ? { txt: "", part: [] } : rbAnalyse_(t, deja, tolC, lv, pris);
+    const note = an.txt;
+    if (t.multi && conf === "haute") conf = "moyenne";
+    // Match CF jeunes / club : pointé à la main par défaut, jamais pré-coché sans nom de club reconnu.
+    if (conf === "haute" && alts[0].items.some(x => x.cls === "club") && !alts[0].items.every(x => x.h > (lv ? 1 : 0))) conf = "moyenne";
+    return { t, alts, sel: 0, conf, note, part: an.part, coches: new Set(alts.length && conf === "haute" ? alts[0].items.map(x => x.uid) : []), faits: new Set() };
+  };
+  RB.props = RB.lignes.map(resoudre);
+  /* 2e passe : un règlement coupé en 2 virements/dépôts (ex. 70 € espèces + 2 € ailleurs
+     pour une mission de 72 €). On essaie les paires de crédits restés sans correspondance
+     à moins de 21 jours ; résultat toujours « à contrôler » (jamais pré-coché). */
+  const libres = RB.props.filter(p => !p.alts.length && p.t.date);
+  const absorbes = new Set();
+  for (let i = 0; i < libres.length; i++) for (let j = i + 1; j < libres.length; j++) {
+    const a = libres[i], b = libres[j];
+    if (absorbes.has(a) || absorbes.has(b) || Math.abs(a.t.date - b.t.date) > 21 * 86400000) continue;
+    const t = { id: "m" + a.t.id + "_" + b.t.id, date: a.t.date > b.t.date ? a.t.date : b.t.date, cents: a.t.cents + b.t.cents, multi: true,
+      libelle: a.t.libelle + " + " + b.t.libelle, n: a.t.n + " " + b.t.n, words: new Set([...a.t.words, ...b.t.words]) };
+    const m = resoudre(t);
+    if (m.alts.length && m.conf !== "ambigu") { absorbes.add(a); absorbes.add(b); RB.props[RB.props.indexOf(a)] = m; }
+  }
+  RB.props = RB.props.filter(p => !absorbes.has(p));
+}
+
+function rbLigneMatch_(uid, coche, fait) {
+  const r = state.allRows.find(x => get(x, "UID") === uid);
+  if (!r) return `<li class="rb-m">Mission introuvable (${escapeHtml(uid)})</li>`;
+  const equipes = [get(r, "Recevant"), get(r, "Visiteur / événement")].filter(Boolean).join(" / ") || get(r, "Libellé compétition") || "Mission";
+  return `<li class="rb-m"><label><input type="checkbox" data-rb-uid="${escapeHtml(uid)}"${coche ? " checked" : ""}${fait ? " disabled" : ""}>
+    <span class="rb-m-t"><strong>${escapeHtml(equipes)}</strong><small>${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(get(r, "Libellé compétition") || "")}</small></span>
+    <span class="rb-m-v">${formatMoney(r._reste)}</span></label></li>`;
+}
+
+function rbHtmlProp_(p, i) {
+  const c = p.conf;
+  const lib = { haute: "Correspondance probable", moyenne: p.t.multi ? "Cumul de virements" : "À contrôler", ambigu: "Plusieurs possibilités", aucune: "Aucune correspondance" }[c];
+  const valide = p.alts.length && [...p.coches].length && [...p.coches].every(u => p.faits.has(u));
+  const alt = p.alts[p.sel];
+  const sel = p.alts.length > 1 ? `<select class="rb-alt" data-rb-i="${i}" aria-label="Combinaison">${p.alts.map((a, k) => `<option value="${k}"${k === p.sel ? " selected" : ""}>Combinaison ${k + 1} · ${a.n} mission(s)</option>`).join("")}</select>` : "";
+  return `<div class="rb-card rb-${valide ? "ok" : c}" data-rb-card="${i}">
+    <div class="rb-head"><span class="rb-d">${escapeHtml(rbFmtDate_(p.t.date))}</span><span class="rb-l" title="${escapeHtml(p.t.libelle)}">${escapeHtml(p.t.libelle || "(sans libellé)")}</span><strong class="rb-v">${formatMoney(p.t.cents / 100)}</strong>
+    <span class="rb-b rb-b-${valide ? "ok" : c}">${valide ? "Validé" : lib}</span></div>
+    ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.uid, p.coches.has(x.uid), p.faits.has(x.uid))).join("")}</ul>` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.uid)}"${p.faits.has(q.uid) ? " disabled" : ""}>${p.faits.has(q.uid) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom)}</button>`).join("")}` : "")}
+  </div>`;
+}
+
+function rbHtml_() {
+  const colSel = (k, lab) => {
+    const h = RB.brut[RB.entete] || [];
+    return `<label class="field rb-f"><span>${lab}</span><select data-rb-col="${k}"><option value="-1">—</option>${h.map((x, j) => `<option value="${j}"${RB.cols[k] === j ? " selected" : ""}>${escapeHtml(String(x || "Col. " + (j + 1)))}</option>`).join("")}</select></label>`;
+  };
+  const zoneFichier = `
+    <p class="rb-aide">Charge l'export Excel/CSV de tes mouvements bancaires. Le fichier est lu dans ton navigateur : rien n'est envoyé ni enregistré. Seules les missions que tu valides sont marquées « Reçu ».</p>
+    <div class="rb-bar"><label class="btn rb-file"><input type="file" id="rbFile" accept=".xlsx,.xls,.csv,.txt" hidden>Choisir le relevé</label>
+    ${RB.fichier ? `<span class="rb-fn">${escapeHtml(RB.fichier)}</span>` : ""}
+    <label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label></div>
+    ${RB.msg ? `<div class="rb-note">${escapeHtml(RB.msg)}</div>` : ""}`;
+  if (!RB.brut.length) return zoneFichier;
+  const sel = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).length, 0);
+  const tot = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).reduce((s, u) => { const r = state.allRows.find(x => get(x, "UID") === u); return s + (r ? r._reste : 0); }, 0), 0);
+  const avec = RB.props.filter(p => p.alts.length), sans = RB.props.filter(p => !p.alts.length);
+  return `${zoneFichier}
+    <div class="rb-cols">${colSel("date", "Date")}${colSel("libelle", "Libellé")}${colSel("credit", "Crédit")}${colSel("montant", "Montant (si pas de colonne Crédit)")}</div>
+    <div class="rb-sum"><strong>${RB.lignes.length}</strong> virement(s) entrant(s) · <strong>${avec.length}</strong> rapproché(s) · <strong>${sans.length}</strong> sans correspondance${RB.ign ? ` · ${RB.ign} ignoré(s) (salaire, épargne, pension…)` : ""}</div>
+    ${avec.map(p => rbHtmlProp_(p, RB.props.indexOf(p))).join("")}
+    ${sans.length ? `<details class="rb-sans"><summary>Sans correspondance (${sans.length})</summary>${sans.map(p => rbHtmlProp_(p, RB.props.indexOf(p))).join("")}</details>` : ""}
+    <div class="rb-foot"><button type="button" class="btn rb-go" id="rbValider"${sel && !RB.busy ? "" : " disabled"}>Valider la sélection — ${sel} mission(s), ${formatMoney(tot)}</button></div>`;
+}
+
+async function rbValider_(zone) {
+  const uids = [...new Set(RB.props.flatMap(p => [...p.coches].filter(u => !p.faits.has(u))))];
+  if (!uids.length) return;
+  RB.busy = true; const erreurs = [];
+  for (let i = 0; i < uids.length; i++) {
+    setStatus(`Validation ${i + 1}/${uids.length}…`, "");
+    try {
+      const pr = RB.props.find(p => p.coches.has(uids[i]));
+      const params = { uid: uids[i], marquer_recu: "1" };
+      if (pr && pr.t.date) { params.date_recu_recevant = rbIso_(pr.t.date); params.mode_recevant = rbMode_(pr.t.n); }   // date réelle du virement
+      const res = await jsonp("payment.update", params);
+      if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
+      RB.props.forEach(p => { if (p.coches.has(uids[i])) p.faits.add(uids[i]); });
+    } catch (e) { erreurs.push(e.message || String(e)); }
+  }
+  RB.busy = false;
+  // Mémoire des payeurs (navigateur uniquement) : libellé validé → classe de payeur + équipes (pour les clubs).
+  try {
+    const mem = rbMemLire_();
+    RB.props.forEach(p => {
+      const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.faits.has(x.uid)) : [];
+      const k = rbCle_(p.t.n); const cl = new Set(items.map(x => x.cls));
+      if (!items.length || !k || cl.size !== 1 || /^(remise de cheque|espèces|especes)/.test(k)) return;
+      const c = [...cl][0];
+      mem[k] = { cls: c, toks: c === "club" ? [...new Set(items.flatMap(x => x.toks))].filter(w => p.t.words && p.t.words.has(w)).slice(0, 12) : [] };
+    });
+    rbMemEcrire_(mem);
+  } catch (e) { /* mémoire facultative */ }
+  try {
+    const frais = await jsonpFrais("matchs");
+    if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
+  } catch (e) { /* le paiement est déjà enregistré côté serveur */ }
+  state._lastLoadTs = Date.now(); AN.statsCache = {};
+  setStatus(erreurs.length ? `${uids.length - erreurs.length} validé(s), ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${uids.length} paiement(s) marqué(s) reçu(s)`, erreurs.length ? "error" : "ok");
+  RB.ouvert = true; renderAll(); loadStats(true);
+}
+
+function attachRapprochement_(root) {
+  const zone = root.querySelector("#rbZone"); if (!zone) return;
+  const fold = zone.closest("details");
+  if (fold) fold.addEventListener("toggle", () => { RB.ouvert = fold.open; });
+  const redessiner = () => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); };
+  zone.addEventListener("change", async e => {
+    const t = e.target;
+    if (t.id === "rbFile" && t.files && t.files[0]) {
+      const f = t.files[0]; RB.msg = ""; RB.fichier = f.name;
+      if (f.size > 8e6) { RB.msg = "Fichier trop volumineux (8 Mo max)."; RB.brut = []; redessiner(); return; }
+      try {
+        if (/\.(csv|txt)$/i.test(f.name)) RB.brut = rbCsv_(await f.text());
+        else {
+          await rbChargerXlsx_();
+          const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
+          RB.brut = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+        }
+        RB.entete = Math.max(0, RB.brut.slice(0, 30).findIndex(r => r.filter(x => /date|libell|montant|credit|crédit|debit|débit|operation|opération|intitul/i.test(String(x))).length >= 2));
+        rbDevinerCols_(); rbExtraire_(); rbRapprocher_();
+        if (!RB.lignes.length) RB.msg = "Aucun virement entrant détecté : vérifie les colonnes ci-dessous.";
+      } catch (err) { RB.msg = "Lecture impossible : " + err.message; RB.brut = []; RB.props = []; }
+      redessiner(); return;
+    }
+    if (t.id === "rbTol") { RB.tol = Math.min(5, Math.max(0, Number(t.value) || 0)); if (RB.lignes.length) rbRapprocher_(); redessiner(); return; }
+    if (t.dataset.rbCol) { RB.cols[t.dataset.rbCol] = Number(t.value); if (t.dataset.rbCol === "credit" && Number(t.value) >= 0) RB.cols.montant = -1; rbExtraire_(); rbRapprocher_(); redessiner(); return; }
+    if (t.classList.contains("rb-alt")) { const p = RB.props[Number(t.dataset.rbI)]; p.sel = Number(t.value); p.coches = new Set(p.alts[p.sel].items.map(x => x.uid)); redessiner(); return; }
+    if (t.dataset.rbUid) {
+      const card = t.closest("[data-rb-card]"); const p = RB.props[Number(card.dataset.rbCard)];
+      if (t.checked) p.coches.add(t.dataset.rbUid); else p.coches.delete(t.dataset.rbUid);
+      redessiner();
+    }
+  });
+  zone.addEventListener("click", async e => {
+    if (e.target.id === "rbValider") { rbValider_(zone); return; }
+    const b = e.target.closest("[data-rb-part]"); if (!b) return;
+    const p = RB.props[Number(b.dataset.rbPart)], uid = b.dataset.rbUid2;
+    const r = state.allRows.find(x => get(x, "UID") === uid); if (!p || !r) return;
+    b.disabled = true;
+    try {
+      const params = { uid, recu_recevant: round2((r._recu || 0) + p.t.cents / 100).toFixed(2), recu_visiteur: "0.00", mode_recevant: rbMode_(p.t.n) };
+      if (p.t.date) params.date_recu_recevant = rbIso_(p.t.date);
+      const res = await jsonp("payment.update", params);
+      if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
+      p.faits.add(uid);
+      const frais = await jsonpFrais("matchs");
+      if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
+      AN.statsCache = {}; setStatus("Paiement partiel enregistré", "ok"); RB.ouvert = true; renderAll(); loadStats(true);
+    } catch (err) { setStatus("Erreur paiement partiel : " + err.message, "error"); b.disabled = false; }
+  });
+}
+
 /* ---------------- Stats ---------------- */
 
 /* ===================================================================
@@ -2334,6 +2791,11 @@ function renderComparaisonN1_(c) {
 }
 
 function renderStats() {
+  FOLD_OFF_ = true;
+  try { renderStatsInner_(); } finally { FOLD_OFF_ = false; }
+}
+let FOLD_OFF_ = false;
+function renderStatsInner_() {
   const root = document.getElementById("statsFinancier");
   if (!root) return;
   const s = state.serverStats;
@@ -2405,7 +2867,6 @@ function renderStats() {
       ${renderRepartitionRoles()}`,
     suivi: `${renderDoublesStats_()}
       ${renderMatchsAnnules()}
-      ${renderHotelsStats_()}
       ${renderFormations()}`
   };
   root.innerHTML = `
@@ -2467,6 +2928,10 @@ function renderMatchsAnnules() {
 function foldable_(title, body, opts) {
   if (!body) return "";
   const o = opts || {};
+  if (FOLD_OFF_) {
+    const cnt = (o.count !== undefined && o.count !== null && o.count !== "") ? ` <span class="count">${escapeHtml(String(o.count))}</span>` : "";
+    return `<h2 class="section-title">${escapeHtml(title)}${cnt}</h2>${body}`;
+  }
   const count = (o.count !== undefined && o.count !== null && o.count !== "")
     ? ` <span class="count">${escapeHtml(String(o.count))}</span>` : "";
   return `<details class="stat-fold"${o.open ? " open" : ""}>
@@ -2796,7 +3261,7 @@ function renderProgression() {
       <tbody>${evaluations.map(ev => `<tr>
         <td>${escapeHtml(ev.dateDepot)}</td>
         <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
-        <td><a href="${escapeHtml(ev.lien)}" target="_blank" rel="noopener">${escapeHtml(ev.fichier)}</a></td>
+        <td><a href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">${escapeHtml(ev.fichier)}</a></td>
         <td>${escapeHtml(ev.statut || "—")}</td>
         <td><button type="button" class="action-link" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Supprimer</button></td>
       </tr>${ev.synthese ? `<tr><td colspan="5" style="padding-top:0">
@@ -3050,28 +3515,28 @@ function renderChargementErreur_(message, retryId) {
 /* Fenêtre de modification générique (engrenage) : champs + Enregistrer, Supprimer tout en bas. */
 const ICONE_ENGRENAGE_ = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 function ouvrirModaleEdition_(cfg) {
-  const ancien = document.getElementById("rtModal"); if (ancien) ancien.remove();
+  const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
   const ov = document.createElement("div");
-  ov.id = "rtModal"; ov.className = "rt-modal-ov";
+  ov.id = "rtmDialog"; ov.className = "rtm-ov";
   const champ = f => {
     const id = "rtm_" + f.id;
     const ctrl = f.type === "textarea" ? `<textarea id="${id}" rows="${f.rows || 5}">${escapeHtml(f.value || "")}</textarea>`
       : f.type === "select" ? `<select id="${id}">${f.options.map(o => `<option${o === f.value ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")}</select>`
       : `<input id="${id}" type="${f.type || "text"}" value="${escapeHtml(f.value || "")}"${f.required ? " required" : ""} />`;
-    return `<div class="field${f.large ? " rt-modal-large" : ""}"><label for="${id}">${escapeHtml(f.label)}</label>${ctrl}</div>`;
+    return `<div class="field${f.large ? " rtm-large" : ""}"><label for="${id}">${escapeHtml(f.label)}</label>${ctrl}</div>`;
   };
-  ov.innerHTML = `<div class="rt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.titre)}">
-    <div class="rt-modal-head"><h3>${escapeHtml(cfg.titre)}</h3><button type="button" class="rt-modal-x" aria-label="Fermer">×</button></div>
-    <form class="rt-modal-form">${cfg.champs.map(champ).join("")}
-      <div class="rt-modal-act"><span class="card-sub rt-modal-msg"></span><button type="submit" class="small-btn">Enregistrer</button></div>
+  ov.innerHTML = `<div class="rtm" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.titre)}">
+    <div class="rtm-head"><h3>${escapeHtml(cfg.titre)}</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
+    <form class="rtm-form">${cfg.champs.map(champ).join("")}
+      <div class="rtm-act"><span class="card-sub rtm-msg"></span><button type="submit" class="small-btn">Enregistrer</button></div>
     </form>
-    ${cfg.onDelete ? `<div class="rt-modal-del"><button type="button" class="rt-modal-delbtn">${escapeHtml(cfg.libSuppr || "Supprimer")}</button></div>` : ""}
+    ${cfg.onDelete ? `<div class="rtm-del"><button type="button" class="rtm-delbtn">${escapeHtml(cfg.libSuppr || "Supprimer")}</button></div>` : ""}
   </div>`;
   document.body.appendChild(ov);
   const fermer = () => ov.remove();
-  const msg = ov.querySelector(".rt-modal-msg");
+  const msg = ov.querySelector(".rtm-msg");
   ov.addEventListener("click", e => { if (e.target === ov) fermer(); });
-  ov.querySelector(".rt-modal-x").addEventListener("click", fermer);
+  ov.querySelector(".rtm-x").addEventListener("click", fermer);
   document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { fermer(); document.removeEventListener("keydown", esc); } });
   ov.querySelector("form").addEventListener("submit", async e => {
     e.preventDefault();
@@ -3079,7 +3544,7 @@ function ouvrirModaleEdition_(cfg) {
     msg.textContent = "Enregistrement…";
     try { await cfg.onSave(vals); fermer(); } catch (err) { msg.textContent = "Erreur : " + err.message; }
   });
-  const d = ov.querySelector(".rt-modal-delbtn");
+  const d = ov.querySelector(".rtm-delbtn");
   if (d) d.addEventListener("click", async () => {
     if (!confirm(cfg.confirmSuppr || "Supprimer définitivement ?")) return;
     msg.textContent = "Suppression…";
@@ -3090,16 +3555,16 @@ function ouvrirModaleEdition_(cfg) {
 
 const ICONE_INFO_ = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>';
 function ouvrirModaleInfo_(titre, html) {
-  const ancien = document.getElementById("rtModal"); if (ancien) ancien.remove();
+  const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
   const ov = document.createElement("div");
-  ov.id = "rtModal"; ov.className = "rt-modal-ov";
-  ov.innerHTML = `<div class="rt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(titre)}">
-    <div class="rt-modal-head"><h3>${escapeHtml(titre)}</h3><button type="button" class="rt-modal-x" aria-label="Fermer">×</button></div>
+  ov.id = "rtmDialog"; ov.className = "rtm-ov";
+  ov.innerHTML = `<div class="rtm" role="dialog" aria-modal="true" aria-label="${escapeHtml(titre)}">
+    <div class="rtm-head"><h3>${escapeHtml(titre)}</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
     <div class="stat-note">${html}</div></div>`;
   document.body.appendChild(ov);
   const f = () => ov.remove();
   ov.addEventListener("click", e => { if (e.target === ov) f(); });
-  ov.querySelector(".rt-modal-x").addEventListener("click", f);
+  ov.querySelector(".rtm-x").addEventListener("click", f);
   document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { f(); document.removeEventListener("keydown", esc); } });
 }
 
@@ -3167,14 +3632,15 @@ function trierProcedures_(procedures) {
     rang(a.categorie) - rang(b.categorie) || String(a.titre || "").localeCompare(String(b.titre || "")));
 }
 
+function mailsDe_(t) { const r = String(t || "").match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []; return r.filter((m, i) => r.indexOf(m) === i).slice(0, 3); }
 function renderProceduresPanel_() {
   const procedures = state.procedures || [];
   const tri = state.proceduresTri || "categorie";
   const q = normaliserRecherche(state.proceduresSearch || "");
   const liste0 = q ? procedures.filter(p => normaliserRecherche([p.titre, p.categorie, p.contenu].join(" ")).indexOf(q) >= 0) : procedures;
   const item = p => `<div class="pr-item">
-      <details class="pr-det"><summary><span class="pr-titre">${escapeHtml(p.titre || "—")}</span>${p.lien ? `<a class="pr-lien" href="${escapeHtml(p.lien)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Lien</a>` : ""}</summary>
-        <div class="pr-corps">${escapeHtml(p.contenu || "—")}</div></details>
+      <details class="pr-det"><summary><span class="pr-titre">${escapeHtml(p.titre || "—")}</span>${p.lien ? `<a class="pr-lien" href="${escapeHtml(safeUrl_(p.lien))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Lien</a>` : ""}</summary>
+        <div class="pr-corps">${escapeHtml(p.contenu || "—")}</div>${mailsDe_(p.contenu + " " + (p.lien || "")).map(m => `<a class="pr-cta" href="mailto:${escapeHtml(m)}?subject=${encodeURIComponent(p.titre || "")}">Écrire à ${escapeHtml(m)}</a>`).join("")}</details>
       <button type="button" class="ct-gear" data-edit-procedure-id="${p.id}" aria-label="Modifier ${escapeHtml(p.titre || "la procédure")}" title="Modifier">${ICONE_ENGRENAGE_}</button>
     </div>`;
   let corps;
@@ -3361,7 +3827,7 @@ function renderDoublesStats_() {
   const groupes = {};
   rows.forEach(r => { const k = ymd_(r._date) + "|" + lieuDouble_(r); (groupes[k] = groupes[k] || []).push(r); });
   const liste = Object.keys(groupes).map(k => {
-    const g = groupes[k], n = g.length, d = g[0]._date;
+    const g = groupes[k], n = (g[0]._double && g[0]._double.taille) || g.length, d = g[0]._date;
     const kmTrajet = (g[0]._kmEff || 0) * n;
     const kmEco = kmTrajet * (n - 1);
     return {
@@ -4989,6 +5455,7 @@ function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("
 function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }
 function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
 function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
+function safeUrl_(u) { u = String(u == null ? "" : u).trim(); return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : "#"; }
 function escapeHtml(v) { return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
 
 /* Clé de tri = date + heure (RDV, à défaut heure du match). Sans heure : fin
@@ -6395,11 +6862,12 @@ function loadHotels() {
     .catch(() => { state._hotelsEnCours = false; if (!state.hotels) state.hotels = []; renderAllSoon_(); });
 }
 
-function hotelWeekend_(date) {
+function hotelWeekend_(date, vus) {
   const k0 = ymd_(date);
   const d2 = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
   const k1 = ymd_(d2);
-  const rows = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date && (ymd_(r._date) === k0 || ymd_(r._date) === k1));
+  const rows = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date && (ymd_(r._date) === k0 || ymd_(r._date) === k1) && !(vus && vus.has(get(r, "UID"))));
+  if (vus) rows.forEach(r => vus.add(get(r, "UID")));
   const brut = rows.reduce((t, r) => t + (r._amount || 0), 0);
   const carb = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff != null ? r._kmEff : r._km, r._date), 0);
   return { n: rows.length, brut: round2(brut), carb: round2(carb) };
@@ -6516,7 +6984,7 @@ function renderHotel() {
           <td class="num">${formatMoney(h.prix)}</td><td class="num">${formatMoney(h.repas)}</td>
           <td class="num">${w.n ? formatMoney(w.brut) : "—"}</td><td class="num">${w.n ? "−" + formatMoney(w.carb) : "—"}</td>
           <td class="num">${w.n ? formatMoney(net) : "—"}</td>
-          <td>${h.facture ? `<a class="action-link gold" href="${escapeHtml(h.facture)}" target="_blank" rel="noopener">Voir</a>` : "—"}</td>
+          <td>${h.facture ? `<a class="action-link gold" href="${escapeHtml(safeUrl_(h.facture))}" target="_blank" rel="noopener">Voir</a>` : "—"}</td>
           <td><button type="button" class="action-link" data-del-hotel="${escapeHtml(h.id)}">Supprimer</button></td>
         </tr>`;
       }).join("")}</tbody>
@@ -6585,10 +7053,10 @@ function renderHotelsStats_() {
   });
   if (!hs.length) return foldable_("Hôtels & repas", empty("Aucune nuit d'hôtel enregistrée sur cette période."));
   let tH = 0, tR = 0, net = 0;
-  const parSaison = {};
-  hs.forEach(h => {
+  const parSaison = {}, vusWE_ = new Set();
+  hs.slice().sort((a, b) => ((parseFrDate(a.date) || 0) - (parseFrDate(b.date) || 0))).forEach(h => {
     const d = parseFrDate(h.date);
-    const w = d ? hotelWeekend_(d) : { n: 0, brut: 0, carb: 0 };
+    const w = d ? hotelWeekend_(d, vusWE_) : { n: 0, brut: 0, carb: 0 };
     const nWE = round2(w.brut - w.carb - h.prix - h.repas);
     tH += h.prix; tR += h.repas; net += nWE;
     const k = d ? normalizeSeason("", d) : "Sans date";
@@ -6617,6 +7085,9 @@ function renderHotelsStats_() {
 function isoL_(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function dmy_(iso) { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; }
 
+function msgServeur_(m) {
+  return /404|en cours de d[ée]veloppement/i.test(String(m)) ? "Le serveur ne reconnaît pas cette action : le déploiement Apps Script est ancien ou une route intercepte la requête (voir Auth.gs, RT2_route)." : m;
+}
 function persoCharger_(cle, action, assign) {
   const flag = "_" + cle + "En";
   if (state[flag]) return;
@@ -6624,9 +7095,9 @@ function persoCharger_(cle, action, assign) {
   jsonp(action)
     .then(res => {
       if (res && res.success !== false) { assign(res); state["_" + cle + "Err"] = ""; }
-      else state["_" + cle + "Err"] = (res && res.error) || "Erreur serveur";
+      else state["_" + cle + "Err"] = msgServeur_((res && res.error) || "Erreur serveur");
     })
-    .catch(e => { state["_" + cle + "Err"] = (e && e.message) || "Erreur de chargement"; })
+    .catch(e => { state["_" + cle + "Err"] = msgServeur_((e && e.message) || "Erreur de chargement"); })
     .finally(() => {
       state[flag] = false;
       rerenderPerso_();
@@ -6920,7 +7391,7 @@ function renderRapportsPanel_() {
   const ms = matchsPourRapports_();
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
-  const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(r.fichier)}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
+  const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
   return `
     <h3 class="section-title" style="margin-top:4px">Rapport brut</h3>
     <p class="card-sub">Formulaires officiels vierges : voir, imprimer ou envoyer par mail.</p>
@@ -6928,14 +7399,10 @@ function renderRapportsPanel_() {
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
       <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
     </div>`).join("")}</div>
-    ${foldable_("Modèles d'évaluation (internes)", `<div class="rapp-modeles">${RAPP_MODELES_.filter(m => m.role).map(m => `<div class="rapp-modele">
-      <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
-      <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
-    </div>`).join("")}</div>`)}
 
     <h3 class="section-title" style="margin-top:24px">Sauvegarde de rapports</h3>
     <div class="rapp-dossier">
-      <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(dos.url)}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
+      <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(safeUrl_(dos.url))}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
       <form id="rappDossierForm" class="rapp-inline"><input id="rappDossierNom" type="text" placeholder="Renommer le dossier" /><button type="submit" class="small-btn secondary">Renommer</button></form>
     </div>
     <details class="past-block" style="margin-top:12px" ${mes.length ? "" : "open"}>
