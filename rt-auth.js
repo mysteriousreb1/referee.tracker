@@ -1,4 +1,5 @@
- /* =====================================================
+/* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
+/* =====================================================
    REFEREE TRACKER — AUTHENTIFICATION + COUCHE API
    À charger AVANT app.js dans index.html.
 
@@ -168,7 +169,7 @@ const ECRITURES = {
   addFormation: 1, deleteFormation: 1,
   addNiveau: 1, deleteNiveau: 1,
   addContact: 1, deleteContact: 1,
-  addProcedure: 1, updateProcedure: 1, deleteProcedure: 1,
+  addProcedure: 1, updateProcedure: 1, deleteProcedure: 1, updateContact: 1,
   addQcmSession: 1, deleteQcmSession: 1,
   "settings.profil": 1, "settings.tarifs": 1,
   "settings.vehicule.add": 1, "settings.vehicule.del": 1,
@@ -621,30 +622,32 @@ function renderProfile() {
 
     <section class="rt-sect">
       <h3>Carburant &amp; entretien</h3>
-      <p class="rt-help">Chaque ligne s'applique à partir de sa date, jusqu'à la ligne suivante
-        (la dernière reste valable pour le futur). Les matchs passés et à venir sont recalculés
-        automatiquement à l'enregistrement.</p>
-      <h4 class="rt-sub">Prix du carburant TTC (€/L)</h4>
-      ${coutsListe_("prix")}
-      <div class="rt-row">
-        <div class="rt-field"><label for="cpDate">À partir du</label>
-          <input id="cpDate" type="date"></div>
-        <div class="rt-field"><label for="cpPrix">Prix (€/L)</label>
-          <input id="cpPrix" type="text" inputmode="decimal" placeholder="2,276"></div>
-      </div>
-      <button type="button" class="rt-btn" id="cpAddPrix">Ajouter ce prix</button>
-      <h4 class="rt-sub">Entretien du véhicule</h4>
-      ${coutsListe_("entretien")}
-      <div class="rt-row">
-        <div class="rt-field"><label for="ceDate">À partir du</label>
-          <input id="ceDate" type="date"></div>
-        <div class="rt-field"><label for="ceAnnuel">Coût annuel (€)</label>
-          <input id="ceAnnuel" type="text" inputmode="decimal" placeholder="1500"></div>
-        <div class="rt-field"><label for="ceKm">Km par an</label>
-          <input id="ceKm" type="text" inputmode="numeric" placeholder="8000"></div>
-      </div>
-      <button type="button" class="rt-btn" id="ceAdd">Ajouter cet entretien</button>
-      <p class="rt-help">Entretien (€/km) = coût annuel / km par an. Avant la première ligne, les anciens barèmes par véhicule restent appliqués.</p>
+      <p class="rt-help">Chaque ligne s'applique dès sa date. Matchs passés et à venir recalculés à l'enregistrement.</p>
+      <details class="rt-details">
+        <summary>Carburant : <b>${esc(coutsResume_("prix"))}</b></summary>
+        ${coutsListe_("prix")}
+        <div class="rt-row">
+          <div class="rt-field"><label for="cpDate">À partir du</label>
+            <input id="cpDate" type="date"></div>
+          <div class="rt-field"><label for="cpPrix">Prix (€/L)</label>
+            <input id="cpPrix" type="text" inputmode="decimal" placeholder="2,276"></div>
+        </div>
+        <button type="button" class="rt-btn" id="cpAddPrix">Ajouter ce prix</button>
+      </details>
+      <details class="rt-details">
+        <summary>Entretien : <b>${esc(coutsResume_("entretien"))}</b></summary>
+        ${coutsListe_("entretien")}
+        <div class="rt-row">
+          <div class="rt-field"><label for="ceDate">À partir du</label>
+            <input id="ceDate" type="date"></div>
+          <div class="rt-field"><label for="ceAnnuel">Coût annuel (€)</label>
+            <input id="ceAnnuel" type="text" inputmode="decimal" placeholder="1500"></div>
+          <div class="rt-field"><label for="ceKm">Km par an</label>
+            <input id="ceKm" type="text" inputmode="numeric" placeholder="8000"></div>
+        </div>
+        <button type="button" class="rt-btn" id="ceAdd">Ajouter cet entretien</button>
+        <p class="rt-help">€/km = coût annuel / km par an.</p>
+      </details>
     </section>
 
     <section class="rt-sect">
@@ -729,6 +732,13 @@ function saveTarifs() {
 /* ---- Carburant & entretien par périodes ---- */
 function _fr(iso) { const m = String(iso).split("-"); return m.length === 3 ? m[2] + "/" + m[1] + "/" + m[0] : iso; }
 function _n(v, d) { return Number(v).toLocaleString("fr-FR", { maximumFractionDigits: d }); }
+
+function coutsResume_(type) {
+  const l = (Couts && Couts[type]) || [];
+  if (!l.length) return "barème par défaut";
+  const d = l[l.length - 1];
+  return type === "prix" ? _n(d.prix, 3) + " €/L" : _n(d.eur_km, 3) + " €/km";
+}
 
 function coutsListe_(type) {
   const l = (Couts && Couts[type]) || [];
