@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b16";
+const APP_VERSION = "2026-10-05-b17";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -2134,15 +2134,8 @@ function renderMoisPaiements_() {
       <div class="kpi hero"><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) · échéance au plus tard le ${m.fin.toLocaleDateString("fr-FR")}</span></div>
       <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (saison ${escapeHtml(m.saison)})</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
       ${m.predOk ? `<div class="kpi"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">selon le délai moyen constaté de chaque payeur</span></div>` : ""}
-      <div class="kpi"><label>Mois suivant</label><strong>${formatMoney(t.suiv)}</strong></div>
-      <div class="kpi"><label>Plus tard / sans échéance</label><strong>${formatMoney(t.plus + t.sans)}</strong></div>
     </div>
-    ${moisDetailHtml_("Détail : à recevoir ce mois-ci", m.det.mois, true)}
-    ${moisDetailHtml_("Détail : en retard (saison " + m.saison + ")", m.det.ret, true)}
-    ${m.ancien > 0 ? moisDetailHtml_("Saisons précédentes non soldées — " + formatMoney(m.ancien) + " (à pointer ou marquer bénévole)", m.det.ancien, false) : ""}
-    ${lignes ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table">
-      <thead><tr><th>Payeur</th><th>En retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Déjà reçu</th><th>Délai réel</th></tr></thead>
-      <tbody>${lignes}</tbody></table></div></div>` : ""}`;
+    ${foldable_("Détail par payeur et missions", `${moisDetailHtml_("À recevoir ce mois-ci", m.det.mois, true)}${moisDetailHtml_("En retard (saison " + m.saison + ")", m.det.ret, true)}${m.ancien > 0 ? moisDetailHtml_("Saisons précédentes non soldées : " + formatMoney(m.ancien), m.det.ancien, false) : ""}${lignes ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table"><thead><tr><th>Payeur</th><th>Retard</th><th>Ce mois</th><th>Suivant</th><th>Plus tard</th><th>Reçu</th><th>Délai</th></tr></thead><tbody>${lignes}</tbody></table></div></div>` : ""}`)}`;
 }
 
 function renderPaiements() {
@@ -2175,11 +2168,7 @@ function renderPaiements() {
 
   root.innerHTML = `
     <h2 class="section-title">Paiements</h2>
-    <div class="kpi-grid">
-      <div class="kpi"><label>En attente de paiement</label><strong>${formatMoney(totalDu)}</strong></div>
-      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
-      ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
-    </div>
+    <p class="mp-line">En attente : <strong>${formatMoney(totalDu)}</strong> · Déjà reçu : <strong>${formatMoney(totalRecu)}</strong>${benevoles.length ? " · Bénévole : <strong>" + benevoles.length + "</strong>" : ""}</p>
     <div id="moisZone">${renderMoisPaiements_()}</div>
     ${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}
     ${renderRelance45_(rows)}
