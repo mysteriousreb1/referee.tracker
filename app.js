@@ -6867,7 +6867,15 @@ function matchsPourRapports_() {
     .sort((a, b) => b._date - a._date).slice(0, 40);
 }
 /* --- Partie 1 : modèles vierges (générés ici, en PDF) --- */
-const RAPP_MES_TYPES_ = ["Rapport d'incident", "Rapport technique / disqualifiante", "Rapport de comportement", "Autre rapport"];
+const RAPP_TYPES_SAISIE_ = ["Incident(s) disciplinaire(s)", "Faute(s) disqualifiante(s)", "Réclamation", "Incident(s) matériel(s)", "Commotion cérébrale", "Autre rapport"];
+const RAPP_MES_TYPES_ = RAPP_TYPES_SAISIE_.concat(["Rapport d'incident", "Rapport technique / disqualifiante", "Rapport de comportement"]);
+const RAPP_OFFICIELS_ = [
+  { id: "disciplinaire", fichier: "docs/rapports/incident-disciplinaire.pdf", titre: "Incident(s) disciplinaire(s)", desc: "FFBB — Commission fédérale de discipline." },
+  { id: "disqualifiante", fichier: "docs/rapports/faute-disqualifiante.pdf", titre: "Faute(s) disqualifiante(s)", desc: "FFBB — Commission fédérale de discipline." },
+  { id: "reclamation", fichier: "docs/rapports/reclamation.pdf", titre: "Réclamation", desc: "FFBB — Commission fédérale 5x5." },
+  { id: "materiel", fichier: "docs/rapports/incident-materiel.pdf", titre: "Incident(s) matériel(s)", desc: "FFBB — Commission fédérale équipements." },
+  { id: "commotion", fichier: "docs/rapports/commotion-cerebrale.pdf", titre: "Protocole commotion cérébrale", desc: "FFBB — Commission fédérale médicale." }
+];
 const RAPP_MODELES_ = [
   { id: "incident", titre: "Rapport d'incident / comportement", desc: "Faits, personnes concernées, décision prise, témoins, signature." },
   { id: "tdm", titre: "Évaluation — Table de marque", role: "Table de marque", desc: "5 critères notés de 1 à 5, commentaire, signature." },
@@ -6915,11 +6923,15 @@ function renderRapportsPanel_() {
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(r.fichier)}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
   return `
     <h3 class="section-title" style="margin-top:4px">Rapport brut</h3>
-    <p class="card-sub">Documents vides à voir, imprimer ou envoyer par mail. Modèles génériques : pour utiliser un formulaire officiel, dépose-le plutôt dans la partie 2.</p>
-    <div class="rapp-modeles">${RAPP_MODELES_.map(m => `<div class="rapp-modele">
+    <p class="card-sub">Formulaires officiels vierges : voir, imprimer ou envoyer par mail.</p>
+    <div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
       <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
     </div>`).join("")}</div>
+    ${foldable_("Modèles d'évaluation (internes)", `<div class="rapp-modeles">${RAPP_MODELES_.filter(m => m.role).map(m => `<div class="rapp-modele">
+      <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
+      <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
+    </div>`).join("")}</div>`)}
 
     <h3 class="section-title" style="margin-top:24px">Sauvegarde de rapports</h3>
     <div class="rapp-dossier">
@@ -6931,7 +6943,7 @@ function renderRapportsPanel_() {
       <div class="past-body">
         <form id="rappForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
           <div class="field" style="grid-column: span 2"><label for="rappMatch">Match</label><select id="rappMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
-          <div class="field"><label for="rappRole">Type</label><select id="rappRole">${RAPP_MES_TYPES_.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></div>
+          <div class="field"><label for="rappRole">Type</label><select id="rappRole">${RAPP_TYPES_SAISIE_.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></div>
           <div class="field" style="grid-column: span 2"><label for="rappNotes">Notes (optionnel)</label><input id="rappNotes" type="text" /></div>
           <div class="field"><label for="rappFichier">Fichier (PDF / photo, 4 Mo max)</label><input id="rappFichier" type="file" accept="application/pdf,image/*" required /></div>
           <div style="grid-column:1 / -1"><button type="submit" class="small-btn">Enregistrer</button> <span class="card-sub" id="rappMsg"></span></div>
@@ -7057,17 +7069,33 @@ function attachPersoListeners_(root) {
       state.rapports = undefined; loadRapports(); rerenderPerso_();
     } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
   });
-  const modele = id => RAPP_MODELES_.find(x => x.id === id);
-  clic("[data-mod-voir]", e => { try { window.open(modelePdf_(modele(e.currentTarget.getAttribute("data-mod-voir"))).output("bloburl"), "_blank"); } catch (err) { setStatus("Erreur : " + err.message, "error"); } });
-  clic("[data-mod-imp]", e => { try { const d = modelePdf_(modele(e.currentTarget.getAttribute("data-mod-imp"))); d.autoPrint(); window.open(d.output("bloburl"), "_blank"); } catch (err) { setStatus("Erreur : " + err.message, "error"); } });
+  const modele = id => RAPP_OFFICIELS_.concat(RAPP_MODELES_).find(x => x.id === id);
+  const pdfB64_ = async mo => {
+    if (!mo.fichier) return modeleBase64_(modelePdf_(mo));
+    const r = await fetch(mo.fichier); if (!r.ok) throw new Error("Fichier introuvable");
+    const buf = new Uint8Array(await r.arrayBuffer()); let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+  clic("[data-mod-voir]", e => { try { const mo = modele(e.currentTarget.getAttribute("data-mod-voir")); window.open(mo.fichier || modelePdf_(mo).output("bloburl"), "_blank", "noopener"); } catch (err) { setStatus("Erreur : " + err.message, "error"); } });
+  clic("[data-mod-imp]", e => {
+    try {
+      const mo = modele(e.currentTarget.getAttribute("data-mod-imp"));
+      if (!mo.fichier) { const d = modelePdf_(mo); d.autoPrint(); window.open(d.output("bloburl"), "_blank"); return; }
+      const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;width:0;height:0;border:0;opacity:0";
+      fr.onload = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (_) { window.open(mo.fichier, "_blank", "noopener"); } setTimeout(() => fr.remove(), 60000); };
+      fr.src = mo.fichier; document.body.appendChild(fr);
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  });
   clic("[data-mod-send]", async e => {
     const mo = modele(e.currentTarget.getAttribute("data-mod-send"));
     const dest = window.prompt("Envoyer « " + mo.titre + " » à quelle adresse e-mail ?", "");
     if (!dest) return;
     try {
-      const res = await jsonp("rapport.modele.send", { email: dest, titre: mo.titre, fNom: "modele_" + mo.id + ".pdf", fMime: "application/pdf", fData: modeleBase64_(modelePdf_(mo)) });
+      setStatus("Envoi en cours…", "");
+      const res = await jsonp("rapport.modele.send", { email: dest, titre: mo.titre, fNom: (mo.fichier ? mo.fichier.split("/").pop() : "modele_" + mo.id + ".pdf"), fMime: "application/pdf", fData: await pdfB64_(mo) });
       if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
-      setStatus("Modèle envoyé à " + dest, "ok");
+      setStatus("Document envoyé à " + dest, "ok");
     } catch (err) { setStatus("Erreur d'envoi : " + err.message, "error"); }
   });
   root.querySelectorAll("[data-rapp-file]").forEach(inp => inp.addEventListener("change", async () => {

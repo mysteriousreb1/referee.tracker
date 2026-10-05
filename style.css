@@ -2741,3 +2741,33 @@ button.acc-ligne:active { transform: scale(.995); }
 .info-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border, rgba(128,128,128,.4)); background: transparent; color: var(--text-soft, var(--text)); cursor: pointer; vertical-align: middle; }
 .info-btn:hover { background: var(--surface-2); }
 @media (max-width: 640px) { .toolbar { grid-template-columns: 1fr !important; } .toolbar .field { min-width: 0; } .toolbar select, .toolbar input { max-width: 100%; } }
+
+/* ===== b11 — Refonte DA (moodboard) : navy #0B1F3B / #133863, jaune #FFC400, rouge #FF2D55, clarté #F6F8FB, Montserrat ===== */
+:root {
+  --navy-900: #0B1F3B; --navy-800: #133863; --navy-700: #1B4A80; --navy-600: #245A9C;
+  --red: #FF2D55; --red-soft: #FFE6EB;
+  --gold: #FFC400; --gold-soft: #FFF4CC;
+  --bg: #F6F8FB; --surface-2: #F1F4F9;
+  --text: #0B1F3B; --muted: #5E6C84; --line: #E1E7F0;
+  --display: "Montserrat", system-ui, sans-serif;
+  --body: "Montserrat", system-ui, sans-serif;
+}
+:root[data-theme="dark"] {
+  --navy-900: #0B1F3B; --navy-800: #133863; --navy-700: #245A9C; --navy-600: #3770B8;
+  --red: #FF4D6E; --gold: #FFC400;
+  --bg: #08162B; --bg-top: #0B1F3B;
+}
+body { font-weight: 500; }
+img.brand-logo {
+  width: auto !important; height: 40px !important; display: block;
+  background: none !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,.28));
+}
+.brand { gap: 12px; }
+.brand-text h1 { font-weight: 800; font-style: italic; letter-spacing: 0; line-height: .95; font-size: clamp(17px, 3.2vw, 21px); }
+.brand-text h1 span { display: block; margin-left: 0; }
+.section-title, .page h2 { font-weight: 800; letter-spacing: .2px; }
+.kpi strong, .date-pill strong { font-family: var(--mono); }
+.small-btn:not(.secondary) { background: var(--gold); color: var(--navy-900); font-weight: 700; border-color: var(--gold); }
+.tab.active { background: linear-gradient(135deg, var(--navy-800), var(--navy-700)); }
+.acc-hero-sub, .acc-hero .sub { color: rgba(255,255,255,.85) !important; opacity: 1; }
