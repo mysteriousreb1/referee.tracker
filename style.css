@@ -2854,3 +2854,12 @@ img.brand-logo {
 .mp-ret { color: var(--red); font-weight: 700; }
 .mp-kpis { margin-bottom: 10px; }
 .mp-table { margin-bottom: 12px; } .table-card.mp-wrap { margin-bottom: 14px; }
+.rb-warn { margin-top: 6px; font-size: .82rem; color: #7A5600; background: var(--gold-soft); border-radius: 8px; padding: 6px 10px; }
+:root[data-theme="dark"] .rb-warn { color: #FFD9A8; background: rgba(245,180,0,.12); }
+.rb-hist { margin-top: 14px; }
+.rb-hist summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.rb-undo { border: 1px solid var(--red); background: transparent; color: var(--red); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: .78rem; cursor: pointer; }
+.rb-m label:has(.rb-undo) { grid-template-columns: 1fr auto auto; }
+.mp-det { margin: 8px 0; }
+.mp-det summary { cursor: pointer; font-weight: 600; }
+.mp-line{margin:4px 0 10px;font-size:.85rem;opacity:.8}
