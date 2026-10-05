@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b13";
+const APP_VERSION = "2026-10-05-b15";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -1546,7 +1546,14 @@ function renderEnjeuClassement_(row) {
     get(row, "Code club visiteur"), codeComp,
     get(row, "N° équipe visiteur") || numeroEquipeDepuisNom_(get(row, "Visiteur / événement"))
   );
-  if (!cR && !cV) return raisonTxt;
+  if (!cR && !cV) {
+    if (raisonTxt) return raisonTxt;
+    // Aucun enjeu calculé pour une rencontre CF proche : on le dit au lieu de rester muet.
+    const j = row._date ? (row._date.getTime() - Date.now()) / 86400000 : 99;
+    if (!en && niveauRencontre(row) === "france" && j >= -1 && j <= 21 && state.enjeux && Object.keys(state.enjeux).length)
+      return `<div class="enjeu-classement"><div class="enjeu-ligne" style="opacity:.7"><em>Classement indisponible : rencontre absente du calcul (voir DIAG_ENJEUX dans Apps Script)</em></div></div>`;
+    return "";
+  }
 
   const ligne = (nom, c) => {
     if (!c) return "";
@@ -2081,6 +2088,13 @@ function moisPaiementsData_() {
   const d0 = new Date(now.getFullYear(), now.getMonth(), 1), d1 = new Date(now.getFullYear(), now.getMonth() + 1, 1), d2 = new Date(now.getFullYear(), now.getMonth() + 2, 1);
   const z = () => ({ ret: 0, mois: 0, suiv: 0, plus: 0, sans: 0, nbMois: 0, nbRet: 0, recu: 0, delais: [] });
   const par = { ligue: z(), cd: z(), ffbb: z(), club: z() }, tot = z();
+  (RB.hist || []).forEach(h => {   // délais réels : date du virement − date du match
+    const ds = h.uids.map(u => state.allRows.find(r => get(r, "UID") === u)).filter(r => r && r._date).map(r => new Date(String(h.date).slice(0, 10) + "T12:00:00") - r._date);
+    const j = ds.length ? Math.round(Math.max(...ds) / 86400000) : -1;
+    if (j >= 0 && j < 400 && par[h.classe]) { par[h.classe].delais.push(j); tot.delais.push(j); }
+  });
+  const moyC = k => par[k].delais.length ? par[k].delais.reduce((a, b) => a + b, 0) / par[k].delais.length : null;
+  let predMois = 0, predOk = false;
   state.allRows.forEach(r => {
     if (!r._isActive || r._format === "Alerte" || r._benevole) return;
     const c = par[rbClasse_(r)] || par.club;
@@ -2089,6 +2103,8 @@ function moisPaiementsData_() {
     if (rd && r._date) { const j = Math.round((rd - r._date) / 86400000); if (j >= 0 && j < 400) { c.delais.push(j); tot.delais.push(j); } }
     if (!(r._reste > 0)) return;
     const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+    const mc = moyC(rbClasse_(r) in par ? rbClasse_(r) : "club");
+    if (att && r._date && mc !== null) { predOk = true; const pr = new Date(Math.max(att.getTime(), r._date.getTime() + mc * 86400000)); if (pr >= d0 && pr < d1) predMois += r._reste; }
     [c, tot].forEach(o => {
       if (!att) o.sans += r._reste;
       else if (att < d0) { o.ret += r._reste; o.nbRet++; }
@@ -2097,7 +2113,7 @@ function moisPaiementsData_() {
       else o.plus += r._reste;
     });
   });
-  return { par, tot, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
+  return { predMois, predOk, par, tot, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
 }
 function renderMoisPaiements_() {
   const m = moisPaiementsData_(), t = m.tot;
@@ -2107,6 +2123,7 @@ function renderMoisPaiements_() {
     <div class="kpi-grid mp-kpis">
       <div class="kpi hero"><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) · échéance au plus tard le ${m.fin.toLocaleDateString("fr-FR")}</span></div>
       <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (avant ce mois)</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
+      ${m.predOk ? `<div class="kpi"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">selon le délai moyen constaté de chaque payeur</span></div>` : ""}
       <div class="kpi"><label>Mois suivant</label><strong>${formatMoney(t.suiv)}</strong></div>
       <div class="kpi"><label>Plus tard / sans échéance</label><strong>${formatMoney(t.plus + t.sans)}</strong></div>
     </div>
@@ -2150,7 +2167,7 @@ function renderPaiements() {
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong></div>
       ${benevoles.length ? `<div class="kpi"><label>Arbitré bénévolement</label><strong>${benevoles.length}</strong><span class="sub">mission(s), aucune indemnité attendue</span></div>` : ""}
     </div>
-    ${renderMoisPaiements_()}
+    <div id="moisZone">${renderMoisPaiements_()}</div>
     ${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}
     ${renderRelance45_(rows)}
     ${order.filter(k => grouped[k]).map(status => {
@@ -2341,7 +2358,7 @@ function attachPaymentListeners(root) {
    on cherche 1 mission, ou une somme de 2 à 6 missions (virement groupé),
    dont le total égale le virement (± tolérance). Validation toujours manuelle.
    =================================================================== */
-const RB = { brut: [], entete: -1, cols: {}, lignes: [], props: [], tol: 0, fichier: "", msg: "", ouvert: false, busy: false };
+const RB = { brut: [], entete: -1, cols: {}, lignes: [], props: [], tol: 0, fichier: "", msg: "", ouvert: false, busy: false, hist: [], histOk: false, histErr: "", dejaN: 0, autres: {} };
 const RB_STOP_ = new Set(["basket", "club", "association", "comite", "region", "regional", "regionale", "departemental", "departementale", "championnat", "match", "senior", "seniors", "feminin", "feminine", "masculin", "masculine", "saint", "sainte", "coupe", "U13", "U15", "U18", "U20", "excellence", "pre", "nationale", "region", "poule", "phase", "equipe", "ffbb", "virement", "vir", "sepa", "recu", "inst", "association", "assoc", "frais", "arbitrage", "arbitre", "amical", "faveur", "votre", "remise", "cheque"]);
 
 const RB_IGNORE_ = /salaire|pension|epargne|rachat|assur|\basp\b|agence comptable|inst de|elite basket|\bebc\b|loyer|caf\b|impot|dgfip|remboursement secu|cpam/;
@@ -2404,8 +2421,11 @@ function rbDevinerCols_() {
   if (RB.cols.credit >= 0) RB.cols.montant = -1;
 }
 
+function rbH_(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36) + str.length.toString(36); }
+function rbCatAutre_(n) { return /elite basket|\bebc\b|salaire/.test(n) ? "EBC / salaire" : /epargne|rachat|inst de|virement depuis/.test(n) ? "Épargne / virements internes" : "Autres crédits"; }
 function rbExtraire_() {
-  const c = RB.cols; const out = []; let ign = 0;
+  const c = RB.cols; const out = []; let ign = 0, dejaN = 0; const occ = {}, autres = {};
+  const histSet = new Set((RB.hist || []).map(h => h.hash));
   for (let i = RB.entete + 1; i < RB.brut.length; i++) {
     const r = RB.brut[i];
     const d = c.date >= 0 ? rbDate_(r[c.date]) : null;
@@ -2415,10 +2435,16 @@ function rbExtraire_() {
     if (!cents || cents <= 0) continue;                 // seuls les crédits comptent
     const lib = c.libelle >= 0 ? String(r[c.libelle] == null ? "" : r[c.libelle]).trim() : r.filter(x => typeof x === "string" && x.trim() && !rbDate_(x) && rbCents_(x) === null).join(" ");
     const n = rbNorm_(lib);
-    if (RB_IGNORE_.test(n) && !/arbitr|\barb\b|frais arb|indemn/.test(n)) { ign++; continue; }   // salaire, épargne, pension…
-    out.push({ id: out.length, date: d, libelle: lib, cents, n, words: new Set(n.split(/[^a-z0-9]+/)) });
+    if (RB_IGNORE_.test(n) && !/arbitr|\barb\b|frais arb|indemn/.test(n)) {   // salaire, épargne, pension…
+      ign++; const cat = rbCatAutre_(n); autres[cat] = autres[cat] || { n: 0, cents: 0 }; autres[cat].n++; autres[cat].cents += cents; continue;
+    }
+    const base = rbIso_(d) + "|" + cents + "|" + n.replace(/\s+/g, " ").slice(0, 120);
+    const k = occ[base] = (occ[base] == null ? 0 : occ[base] + 1);
+    const hash = rbH_(base + "#" + k);
+    if (histSet.has(hash)) { dejaN++; continue; }   // déjà pointé lors d'un import précédent
+    out.push({ id: out.length, date: d, libelle: lib, cents, n, hash, dup: k > 0, words: new Set(n.split(/[^a-z0-9]+/)) });
   }
-  RB.ign = ign;
+  RB.ign = ign; RB.dejaN = dejaN; RB.autres = autres;
   RB.lignes = out.sort((a, b) => (a.date || 0) - (b.date || 0));
 }
 
@@ -2518,7 +2544,8 @@ function rbRapprocher_() {
     const rest = new Array(pool.length + 1).fill(0);
     for (let i = pool.length - 1; i >= 0; i--) rest[i] = rest[i + 1] + pool[i].c;
     const sols = []; let noeuds = 0;
-    const lo = t.cents - tolC, hi = t.cents + tolC;
+    const tolT = Math.max(tolC, Math.abs(((rbMemLire_()[rbCle_(t.n)] || {}).ecart) || 0));   // écart habituel de ce payeur
+    const lo = t.cents - tolT, hi = t.cents + tolT;
     (function dfs(i, somme, pick) {
       if (sols.length >= 30 || noeuds++ > 300000) return;
       if (somme >= lo && somme <= hi && pick.length) { sols.push(pick.slice()); return; }
@@ -2543,10 +2570,12 @@ function rbRapprocher_() {
     }
     const an = alts.length ? { txt: "", part: [] } : rbAnalyse_(t, deja, tolC, lv, pris);
     const note = an.txt;
+    let warn = t.dup ? "Possible doublon : même date, montant et libellé qu'une autre ligne du relevé." : "";
+    if (alts.length && new Set(alts[0].items.map(x => x.cls)).size > 1) { warn += " Missions de payeurs différents (Ligue/Comité/FFBB/club) : à vérifier."; if (conf === "haute") conf = "moyenne"; }
     if (t.multi && conf === "haute") conf = "moyenne";
     // Match CF jeunes / club : pointé à la main par défaut, jamais pré-coché sans nom de club reconnu.
     if (conf === "haute" && alts[0].items.some(x => x.cls === "club") && !alts[0].items.every(x => x.h > (lv ? 1 : 0))) conf = "moyenne";
-    return { t, alts, sel: 0, conf, note, part: an.part, coches: new Set(alts.length && conf === "haute" ? alts[0].items.map(x => x.uid) : []), faits: new Set() };
+    return { t, alts, sel: 0, conf, note, warn: warn.trim(), part: an.part, coches: new Set(alts.length && conf === "haute" ? alts[0].items.map(x => x.uid) : []), faits: new Set() };
   };
   RB.props = RB.lignes.map(resoudre);
   /* 2e passe : un règlement coupé en 2 virements/dépôts (ex. 70 € espèces + 2 € ailleurs
@@ -2557,12 +2586,66 @@ function rbRapprocher_() {
   for (let i = 0; i < libres.length; i++) for (let j = i + 1; j < libres.length; j++) {
     const a = libres[i], b = libres[j];
     if (absorbes.has(a) || absorbes.has(b) || Math.abs(a.t.date - b.t.date) > 21 * 86400000) continue;
-    const t = { id: "m" + a.t.id + "_" + b.t.id, date: a.t.date > b.t.date ? a.t.date : b.t.date, cents: a.t.cents + b.t.cents, multi: true,
+    const t = { parts: [a.t, b.t], hash: a.t.hash + "+" + b.t.hash, id: "m" + a.t.id + "_" + b.t.id, date: a.t.date > b.t.date ? a.t.date : b.t.date, cents: a.t.cents + b.t.cents, multi: true,
       libelle: a.t.libelle + " + " + b.t.libelle, n: a.t.n + " " + b.t.n, words: new Set([...a.t.words, ...b.t.words]) };
     const m = resoudre(t);
     if (m.alts.length && m.conf !== "ambigu") { absorbes.add(a); absorbes.add(b); RB.props[RB.props.indexOf(a)] = m; }
   }
   RB.props = RB.props.filter(p => !absorbes.has(p));
+}
+
+/* ---- Historique des virements pointés (feuille VIREMENTS_POINTES) ---- */
+const RB_CLS_LIB_ = { ligue: "Ligue", cd: "Comité", ffbb: "FFBB", club: "Clubs", mixte: "Mixte" };
+async function rbChargerHist_() {
+  try {
+    const res = await jsonpFrais("bank.list");
+    if (!res || res.success === false) throw new Error((res && res.error) || "indisponible");
+    RB.hist = (res.data || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    RB.histOk = true; RB.histErr = "";
+  } catch (e) { RB.histOk = false; RB.histErr = "Historique indisponible (code.gs à mettre à jour ?) : " + (e.message || e); }
+}
+function rbEquipes_(r) { return [get(r, "Recevant"), get(r, "Visiteur / événement")].filter(Boolean).join(" / ") || get(r, "Libellé compétition") || "Mission"; }
+/* Entrées à mémoriser pour un virement validé (une par virement du relevé). Calculé AVANT le rechargement des missions. */
+function rbEntrees_(p, items) {
+  const cl = new Set(items.map(x => x.cls));
+  const diff = p.t.cents - items.reduce((a, x) => a + x.c, 0);
+  const missions = items.map(x => { const r = state.allRows.find(y => get(y, "UID") === x.uid); return r ? rbEquipes_(r) + " (" + rbFmtDate_(r._date) + ")" : x.uid; }).join(" + ");
+  return (p.t.parts || [p.t]).map((t, i) => ({ hash: t.hash, date: rbIso_(t.date), libelle: t.libelle, montant: t.cents / 100, classe: cl.size === 1 ? [...cl][0] : "mixte", missions, uids: items.map(x => x.uid), ecart: i === 0 ? diff / 100 : 0 }));
+}
+async function rbMemoriser_(entrees) {
+  if (!entrees.length) return;
+  try {
+    const res = await jsonp("bank.add", { items: JSON.stringify(entrees) });
+    if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
+  } catch (e) { setStatus("Paiements enregistrés, mais virements non mémorisés : " + (e.message || e), "error"); }
+  await rbChargerHist_();
+}
+function rbTrimestre_(iso) { const m = /^(\d{4})-(\d{2})/.exec(iso || ""); return m ? "T" + (Math.floor((Number(m[2]) - 1) / 3) + 1) + " " + m[1] : "?"; }
+function rbCsvCell_(v) { let x = String(v == null ? "" : v).replace(/\s+/g, " ").trim(); if (/^[=+\-@]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; }
+function rbExportCsv_() {
+  const lignes = [["Date virement", "Libellé", "Montant (€)", "Payeur", "Missions", "Écart (€)", "Pointé le"]].concat(
+    RB.hist.map(h => [h.date, h.libelle, String(h.montant).replace(".", ","), RB_CLS_LIB_[h.classe] || h.classe, h.missions, String(h.ecart).replace(".", ","), h.pointe]));
+  const blob = new Blob(["\ufeff" + lignes.map(l => l.map(rbCsvCell_).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "virements-pointes.csv";
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function rbHistHtml_() {
+  if (!RB.histOk) return RB.histErr ? `<div class="rb-note">${escapeHtml(RB.histErr)}</div>` : "";
+  if (!RB.hist.length) return "";
+  const par = {}, cls = new Set();
+  RB.hist.forEach(h => { const q = rbTrimestre_(h.date); par[q] = par[q] || {}; par[q][h.classe] = (par[q][h.classe] || 0) + h.montant; cls.add(h.classe); });
+  const colonnes = ["ligue", "cd", "ffbb", "club", "mixte"].filter(k => cls.has(k));
+  const trim = Object.keys(par).sort((a, b) => b.split(" ")[1] - a.split(" ")[1] || b.localeCompare(a));
+  const ecarts = {}; RB.hist.forEach(h => { if (Math.abs(h.ecart) >= 0.005) { const e = ecarts[h.classe] = ecarts[h.classe] || { n: 0, s: 0 }; e.n++; e.s += h.ecart; } });
+  return `<details class="rb-hist"${RB.histOpen ? " open" : ""}><summary>Historique des virements pointés (${RB.hist.length})</summary>
+    <div class="table-card"><div class="table-wrap"><table class="cf-table mp-table"><thead><tr><th>Trimestre</th>${colonnes.map(k => `<th>${RB_CLS_LIB_[k]}</th>`).join("")}<th>Total</th></tr></thead><tbody>
+      ${trim.map(q => `<tr><td>${escapeHtml(q)}</td>${colonnes.map(k => `<td class="num">${par[q][k] ? formatMoney(par[q][k]) : "—"}</td>`).join("")}<td class="num"><strong>${formatMoney(colonnes.reduce((a, k) => a + (par[q][k] || 0), 0))}</strong></td></tr>`).join("")}
+    </tbody></table></div></div>
+    <div class="rb-note">Encaissements pointés par trimestre (indemnités brutes, hors remboursements EBC et autres revenus).</div>
+    ${Object.keys(ecarts).length ? `<div class="rb-note"><strong>Écarts constatés (virement − dû) :</strong> ${Object.keys(ecarts).map(k => `${RB_CLS_LIB_[k] || k} : ${ecarts[k].n} virement(s), cumul ${(ecarts[k].s > 0 ? "+" : "") + money(ecarts[k].s)}`).join(" · ")}. Un écart récurrent chez un même payeur peut révéler une erreur de barème ou de kilométrage.</div>` : ""}
+    <button type="button" class="rb-part" id="rbExport">Exporter l'historique en CSV</button>
+    <ul class="rb-ms">${RB.hist.slice(0, 60).map(h => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(h.libelle || "(sans libellé)")}</strong><small>${escapeHtml(h.date)} · ${escapeHtml(RB_CLS_LIB_[h.classe] || h.classe)} · ${escapeHtml(h.missions)}</small></span><span class="rb-m-v">${formatMoney(h.montant)}</span><button type="button" class="rb-undo" data-rb-undo="${escapeHtml(h.hash)}">Annuler</button></label></li>`).join("")}</ul>
+  </details>`;
 }
 
 function rbLigneMatch_(uid, coche, fait) {
@@ -2583,6 +2666,7 @@ function rbHtmlProp_(p, i) {
   return `<div class="rb-card rb-${valide ? "ok" : c}" data-rb-card="${i}">
     <div class="rb-head"><span class="rb-d">${escapeHtml(rbFmtDate_(p.t.date))}</span><span class="rb-l" title="${escapeHtml(p.t.libelle)}">${escapeHtml(p.t.libelle || "(sans libellé)")}</span><strong class="rb-v">${formatMoney(p.t.cents / 100)}</strong>
     <span class="rb-b rb-b-${valide ? "ok" : c}">${valide ? "Validé" : lib}</span></div>
+    ${p.warn ? `<div class="rb-warn">${escapeHtml(p.warn)}</div>` : ""}
     ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.uid, p.coches.has(x.uid), p.faits.has(x.uid))).join("")}</ul>` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.uid)}"${p.faits.has(q.uid) ? " disabled" : ""}>${p.faits.has(q.uid) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom)}</button>`).join("")}` : "")}
   </div>`;
 }
@@ -2593,21 +2677,23 @@ function rbHtml_() {
     return `<label class="field rb-f"><span>${lab}</span><select data-rb-col="${k}"><option value="-1">—</option>${h.map((x, j) => `<option value="${j}"${RB.cols[k] === j ? " selected" : ""}>${escapeHtml(String(x || "Col. " + (j + 1)))}</option>`).join("")}</select></label>`;
   };
   const zoneFichier = `
-    <p class="rb-aide">Charge l'export Excel/CSV de tes mouvements bancaires. Le fichier est lu dans ton navigateur : rien n'est envoyé ni enregistré. Seules les missions que tu valides sont marquées « Reçu ».</p>
+    <p class="rb-aide">Charge l'export Excel/CSV de tes mouvements bancaires. Le fichier est lu dans ton navigateur et n'est jamais envoyé. Seuls les virements d'arbitrage que tu valides sont mémorisés (date, montant, libellé tronqué) pour ne pas être reproposés.</p>
     <div class="rb-bar"><label class="btn rb-file"><input type="file" id="rbFile" accept=".xlsx,.xls,.csv,.txt" hidden>Choisir le relevé</label>
     ${RB.fichier ? `<span class="rb-fn">${escapeHtml(RB.fichier)}</span>` : ""}
     <label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label></div>
     ${RB.msg ? `<div class="rb-note">${escapeHtml(RB.msg)}</div>` : ""}`;
-  if (!RB.brut.length) return zoneFichier;
+  if (!RB.brut.length) return zoneFichier + rbHistHtml_();
   const sel = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).length, 0);
   const tot = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).reduce((s, u) => { const r = state.allRows.find(x => get(x, "UID") === u); return s + (r ? r._reste : 0); }, 0), 0);
   const avec = RB.props.filter(p => p.alts.length), sans = RB.props.filter(p => !p.alts.length);
   return `${zoneFichier}
     <div class="rb-cols">${colSel("date", "Date")}${colSel("libelle", "Libellé")}${colSel("credit", "Crédit")}${colSel("montant", "Montant (si pas de colonne Crédit)")}</div>
-    <div class="rb-sum"><strong>${RB.lignes.length}</strong> virement(s) entrant(s) · <strong>${avec.length}</strong> rapproché(s) · <strong>${sans.length}</strong> sans correspondance${RB.ign ? ` · ${RB.ign} ignoré(s) (salaire, épargne, pension…)` : ""}</div>
+    <div class="rb-sum"><strong>${RB.lignes.length}</strong> virement(s) entrant(s) · <strong>${avec.length}</strong> rapproché(s) · <strong>${sans.length}</strong> sans correspondance${RB.dejaN ? ` · ${RB.dejaN} déjà pointé(s)` : ""}${RB.ign ? ` · ${RB.ign} ignoré(s)` : ""}</div>
+    ${Object.keys(RB.autres).length ? `<div class="rb-note">Autres crédits non liés à l'arbitrage : ${Object.keys(RB.autres).map(k => `${escapeHtml(k)} ${formatMoney(RB.autres[k].cents / 100)} (${RB.autres[k].n})`).join(" · ")}</div>` : ""}
     ${avec.map(p => rbHtmlProp_(p, RB.props.indexOf(p))).join("")}
     ${sans.length ? `<details class="rb-sans"><summary>Sans correspondance (${sans.length})</summary>${sans.map(p => rbHtmlProp_(p, RB.props.indexOf(p))).join("")}</details>` : ""}
-    <div class="rb-foot"><button type="button" class="btn rb-go" id="rbValider"${sel && !RB.busy ? "" : " disabled"}>Valider la sélection — ${sel} mission(s), ${formatMoney(tot)}</button></div>`;
+    <div class="rb-foot"><button type="button" class="btn rb-go" id="rbValider"${sel && !RB.busy ? "" : " disabled"}>Valider la sélection — ${sel} mission(s), ${formatMoney(tot)}</button></div>
+    ${rbHistHtml_()}`;
 }
 
 async function rbValider_(zone) {
@@ -2619,13 +2705,18 @@ async function rbValider_(zone) {
     try {
       const pr = RB.props.find(p => p.coches.has(uids[i]));
       const params = { uid: uids[i], marquer_recu: "1" };
-      if (pr && pr.t.date) { params.date_recu_recevant = rbIso_(pr.t.date); params.mode_recevant = rbMode_(pr.t.n); }   // date réelle du virement
+      if (pr && pr.t.date) { params.date_recu_recevant = rbIso_(pr.t.date); params.date_reception = rbIso_(pr.t.date); params.mode_recevant = rbMode_(pr.t.n); }   // date réelle du virement
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
       RB.props.forEach(p => { if (p.coches.has(uids[i])) p.faits.add(uids[i]); });
     } catch (e) { erreurs.push(e.message || String(e)); }
   }
   RB.busy = false;
+  const entrees = [];
+  RB.props.forEach(p => {
+    const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.coches.has(x.uid)) : [];
+    if (items.length && items.every(x => p.faits.has(x.uid)) && !p.memo) { p.memo = true; entrees.push(...rbEntrees_(p, items)); }
+  });
   // Mémoire des payeurs (navigateur uniquement) : libellé validé → classe de payeur + équipes (pour les clubs).
   try {
     const mem = rbMemLire_();
@@ -2634,7 +2725,8 @@ async function rbValider_(zone) {
       const k = rbCle_(p.t.n); const cl = new Set(items.map(x => x.cls));
       if (!items.length || !k || cl.size !== 1 || /^(remise de cheque|espèces|especes)/.test(k)) return;
       const c = [...cl][0];
-      mem[k] = { cls: c, toks: c === "club" ? [...new Set(items.flatMap(x => x.toks))].filter(w => p.t.words && p.t.words.has(w)).slice(0, 12) : [] };
+      const dif = Math.abs(p.t.cents - items.reduce((a, x) => a + x.c, 0));
+      mem[k] = { ecart: dif > 0 && dif <= 500 ? dif : ((mem[k] || {}).ecart || 0), cls: c, toks: c === "club" ? [...new Set(items.flatMap(x => x.toks))].filter(w => p.t.words && p.t.words.has(w)).slice(0, 12) : [] };
     });
     rbMemEcrire_(mem);
   } catch (e) { /* mémoire facultative */ }
@@ -2642,6 +2734,7 @@ async function rbValider_(zone) {
     const frais = await jsonpFrais("matchs");
     if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
   } catch (e) { /* le paiement est déjà enregistré côté serveur */ }
+  await rbMemoriser_(entrees);
   state._lastLoadTs = Date.now(); AN.statsCache = {};
   setStatus(erreurs.length ? `${uids.length - erreurs.length} validé(s), ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${uids.length} paiement(s) marqué(s) reçu(s)`, erreurs.length ? "error" : "ok");
   RB.ouvert = true; renderAll(); loadStats(true);
@@ -2650,7 +2743,10 @@ async function rbValider_(zone) {
 function attachRapprochement_(root) {
   const zone = root.querySelector("#rbZone"); if (!zone) return;
   const fold = zone.closest("details");
-  if (fold) fold.addEventListener("toggle", () => { RB.ouvert = fold.open; });
+  if (fold) fold.addEventListener("toggle", e => { if (e.target === fold) RB.ouvert = fold.open; });
+  zone.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("rb-hist")) RB.histOpen = e.target.open; }, true);
+  const majMois = () => { const mz = document.getElementById("moisZone"); if (mz) mz.innerHTML = renderMoisPaiements_(); };
+  if (!RB.histOk) rbChargerHist_().then(() => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); majMois(); });
   const redessiner = () => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); };
   zone.addEventListener("change", async e => {
     const t = e.target;
@@ -2665,6 +2761,7 @@ function attachRapprochement_(root) {
           RB.brut = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
         }
         RB.entete = Math.max(0, RB.brut.slice(0, 30).findIndex(r => r.filter(x => /date|libell|montant|credit|crédit|debit|débit|operation|opération|intitul/i.test(String(x))).length >= 2));
+        if (!RB.histOk) await rbChargerHist_();
         rbDevinerCols_(); rbExtraire_(); rbRapprocher_();
         if (!RB.lignes.length) RB.msg = "Aucun virement entrant détecté : vérifie les colonnes ci-dessous.";
       } catch (err) { RB.msg = "Lecture impossible : " + err.message; RB.brut = []; RB.props = []; }
@@ -2681,6 +2778,25 @@ function attachRapprochement_(root) {
   });
   zone.addEventListener("click", async e => {
     if (e.target.id === "rbValider") { rbValider_(zone); return; }
+    if (e.target.id === "rbExport") { rbExportCsv_(); return; }
+    const ub = e.target.closest("[data-rb-undo]");
+    if (ub) {
+      const h = RB.hist.find(x => x.hash === ub.dataset.rbUndo); if (!h) return;
+      if (!confirm("Annuler ce pointage ? Les missions liées (" + h.missions + ") repasseront à « à recevoir » (montant reçu remis à 0).")) return;
+      ub.disabled = true;
+      try {
+        for (const uid of h.uids) {
+          const res = await jsonp("payment.update", { uid, recu_recevant: "0.00", recu_visiteur: "0.00", liberer_statut: "1" });
+          if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
+        }
+        const u = await jsonp("bank.undo", { hash: h.hash }); if (!u || u.success === false) throw new Error("annulation non mémorisée");
+        const frais = await jsonpFrais("matchs"); if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
+        await rbChargerHist_(); AN.statsCache = {};
+        if (RB.brut.length) { rbExtraire_(); rbRapprocher_(); }
+        setStatus("Pointage annulé", "ok"); RB.ouvert = true; RB.histOpen = true; renderAll(); loadStats(true);
+      } catch (err) { setStatus("Annulation impossible : " + err.message, "error"); ub.disabled = false; }
+      return;
+    }
     const b = e.target.closest("[data-rb-part]"); if (!b) return;
     const p = RB.props[Number(b.dataset.rbPart)], uid = b.dataset.rbUid2;
     const r = state.allRows.find(x => get(x, "UID") === uid); if (!p || !r) return;
@@ -2691,6 +2807,7 @@ function attachRapprochement_(root) {
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
       p.faits.add(uid);
+      await rbMemoriser_(rbEntrees_(p, [{ uid, c: Math.round((r._amountTheorique || 0) * 100), cls: rbClasse_(r) }]));
       const frais = await jsonpFrais("matchs");
       if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
       AN.statsCache = {}; setStatus("Paiement partiel enregistré", "ok"); RB.ouvert = true; renderAll(); loadStats(true);
