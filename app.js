@@ -1,3 +1,4 @@
+/* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
 /* =====================================================
    REFEREE TRACKER — INTERFACE GITHUB PAGES
    Connectée à Google Apps Script via rt-auth.js (POST authentifié).
@@ -11,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b10";
+const APP_VERSION = "2026-10-05-b11";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -144,6 +145,13 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function bindUi() {
+  // Clic sur le logo : retour à l'accueil, quelle que soit la page.
+  const brandHome = document.getElementById("brandHome");
+  if (brandHome) {
+    const goHome = () => { setActiveTab("accueil"); try { window.scrollTo({ top: 0 }); } catch (e) {} };
+    brandHome.addEventListener("click", goHome);
+    brandHome.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } });
+  }
   document.querySelectorAll(".tab").forEach(btn => {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   });
@@ -339,7 +347,7 @@ function getSeasonsFrom2022ToCurrent() {
 function setupMoreMenu_() {
   const nav = document.querySelector("nav.tabs");
   if (!nav || document.getElementById("tabMoreBtn")) return;
-  const SECONDARY = ["stats", "export", "qcm", "progression", "reglement", "contacts", "elicence", "indispos", "rapports"];
+  const SECONDARY = ["stats", "export", "qcm", "progression", "reglement", "elicence", "indispos", "rapports", "contacts"];
   SECONDARY.forEach(t => {
     const b = nav.querySelector(`.tab[data-tab="${t}"]`);
     if (b) b.classList.add("tab-secondary");
@@ -808,14 +816,14 @@ function renderReglementDocs_() {
   if (!d) return "";
   const body = `<ul class="regl-docs">${d.docs.map(x => `<li><strong>${escapeHtml(x.nom)}</strong> <span class="sub">mis à jour le ${escapeHtml(x.maj)}</span></li>`).join("")}</ul>
     <p class="card-sub">Nouvelle version du règlement ? Remplace ou ajoute le fichier (.txt ou Google Doc) dans <a href="${escapeHtml(d.dossierUrl)}" target="_blank" rel="noopener">le dossier Drive</a>. Pris en compte à la question suivante, sans mise à jour du site.</p>`;
-  return foldable_("Documents lus par l'IA", body, { count: d.docs.length });
+  return `<div class="regl-corpus"><div class="regl-sources-t">Documents lus par l'IA</div>${body}</div>`;
 }
 
 function reglSourcesHtml_(src) {
   if (!src || !src.length) return "";
-  return `<details class="regl-src"><summary>Voir dans le règlement</summary>${src.map(x => `
-    <div class="regl-src-item"><div class="regl-src-doc">${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
-    <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</details>`;
+  return `<div class="regl-sources"><div class="regl-sources-t">Sources</div>${src.map((x, i) => `
+    <div class="regl-src-item"><div class="regl-src-doc"><span class="regl-src-n">${i + 1}</span>${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
+    <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</div>`;
 }
 
 function formatReglementReponse_(txt) {
@@ -987,6 +995,11 @@ function filterRows(rows) {
 
 /* ---------------- 5x5 / 3x3 ---------------- */
 
+/* Examinateur présent sur le match : champ « Observateur » renseigné, ou un rôle mentionnant examinateur / observateur. */
+function isExaminateur_(r) {
+  if (cleanText(get(r, "Observateur"))) return true;
+  return /examinateur|observateur|[ée]valuateur/i.test([get(r, "Collègue rôle"), get(r, "Collègue nom"), get(r, "Mon rôle")].join(" "));
+}
 function renderMatchs() { renderMatchPanel("matchs", "5x5", "5×5"); }
 function renderTroisx3() { renderMatchPanel("troisx3", "3x3", "3×3"); }
 
@@ -1005,7 +1018,8 @@ function renderMatchPanel(rootId, format, label) {
 
   root.innerHTML = `
     <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
-    ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
+    ${upcoming.some(isExaminateur_) ? `<h3 class="section-title exam-title">Examinateur présent <span class="count">${upcoming.filter(isExaminateur_).length}</span></h3>${renderWeekendGroups(upcoming.filter(isExaminateur_), false)}` : ""}
+    ${upcoming.filter(r => !isExaminateur_(r)).length ? renderWeekendGroups(upcoming.filter(r => !isExaminateur_(r)), false) : (upcoming.length ? "" : empty(`Aucun match ${label} à venir pour cette saison.`))}
     ${past.length ? `
       <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
         <summary class="past-summary">
@@ -1333,18 +1347,32 @@ function slugCompetition(row) {
   return codeCompetition(row);
 }
 
+/* Repli en chaîne : GitHub Pages est sensible à la casse et aux extensions.
+   On essaie le nom connu, puis les variantes courantes, puis la pastille texte. */
+function logoSuivant_(img) {
+  const c = (img.dataset.cands || "").split("|").filter(Boolean);
+  const i = Number(img.dataset.i || 0) + 1;
+  if (i < c.length) { img.dataset.i = i; img.src = "img/competitions/" + encodeURIComponent(c[i]); return; }
+  const sp = document.createElement("span");
+  sp.className = "comp-logo comp-logo--txt";
+  sp.textContent = img.dataset.slug || "";
+  img.replaceWith(sp);
+}
+
 function logoCompetition(row) {
   const slug = slugCompetition(row);
-  const fichier = LOGOS_DISPONIBLES[slug];
-  if (!fichier) {
-    // Pas de fichier image pour cette catégorie : pastille avec le code (DM4, DMU18…)
-    return slug ? `<span class="comp-logo comp-logo--txt" title="${escapeHtml(cleanText(get(row, "Libellé compétition")) || slug)}">${escapeHtml(slug)}</span>` : "";
-  }
-
   const alt = cleanText(get(row, "Libellé compétition")) || slug;
-  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(fichier)}"
-               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}"
-               loading="lazy" decoding="async" onerror="this.outerHTML='<span class=\\'comp-logo comp-logo--txt\\'>${escapeHtml(slug)}</span>'">`;
+  const fichier = LOGOS_DISPONIBLES[slug];
+  if (!slug) return "";
+  const cands = [];
+  if (fichier) cands.push(fichier);
+  ["png", "PNG", "webp", "jpg", "jpeg", "svg"].forEach(ext => {
+    [slug, slug.toLowerCase()].forEach(n => { const f = n + "." + ext; if (!cands.includes(f)) cands.push(f); });
+  });
+  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
+               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
+               data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
+               loading="lazy" decoding="async" onerror="logoSuivant_(this)">`;
 }
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.
@@ -1423,6 +1451,7 @@ function renderMatchCard(row) {
         <div>
           <div class="badges">
             <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
+            ${isExaminateur_(row) ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}
             ${reglement ? `<span class="badge badge-reglement" title="${escapeHtml(reglement)}">⚠ ${escapeHtml(reglement)}</span>` : ""}
             ${format && format !== "3x3" ? badge(format, "gray") : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
@@ -1782,9 +1811,6 @@ function renderActions(row) {
   const address = get(row, "Adresse");
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [];
-  if (address && Number(HOME.lat) && Number(HOME.lon)) {
-    links.push(`<a class="action-link" href="https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${HOME.lat}%2C${HOME.lon}%3B${encodeURIComponent(address)}" target="_blank" rel="noopener">Itinéraire</a>`);
-  }
   if (address) links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   if (phone && smsDisponible(row)) {
     const corps = encodeURIComponent(buildSmsCollegue(row));
@@ -2861,12 +2887,14 @@ function renderProgression() {
   root.querySelectorAll("[data-del-eval-lien]").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm("Retirer cette évaluation du suivi ? (le PDF reste dans le Drive)")) return;
+      btn.disabled = true; btn.textContent = "Suppression…";
       try {
         const res = await jsonp("deleteEvaluation", { lien: btn.dataset.delEvalLien, fichier: btn.dataset.delEvalFichier });
         if (!res.success || !res.result || !res.result.ok) throw new Error((res.result && res.result.error) || res.error || "Erreur suppression");
         state.evaluations = null;
         loadEvaluations();
       } catch (err) {
+        btn.disabled = false; btn.textContent = "Supprimer";
         setStatus("Erreur : " + err.message, "error");
       }
     });
@@ -3018,34 +3046,98 @@ function renderChargementErreur_(message, retryId) {
     </div>`;
 }
 
+
+/* Fenêtre de modification générique (engrenage) : champs + Enregistrer, Supprimer tout en bas. */
+const ICONE_ENGRENAGE_ = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+function ouvrirModaleEdition_(cfg) {
+  const ancien = document.getElementById("rtModal"); if (ancien) ancien.remove();
+  const ov = document.createElement("div");
+  ov.id = "rtModal"; ov.className = "rt-modal-ov";
+  const champ = f => {
+    const id = "rtm_" + f.id;
+    const ctrl = f.type === "textarea" ? `<textarea id="${id}" rows="${f.rows || 5}">${escapeHtml(f.value || "")}</textarea>`
+      : f.type === "select" ? `<select id="${id}">${f.options.map(o => `<option${o === f.value ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")}</select>`
+      : `<input id="${id}" type="${f.type || "text"}" value="${escapeHtml(f.value || "")}"${f.required ? " required" : ""} />`;
+    return `<div class="field${f.large ? " rt-modal-large" : ""}"><label for="${id}">${escapeHtml(f.label)}</label>${ctrl}</div>`;
+  };
+  ov.innerHTML = `<div class="rt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.titre)}">
+    <div class="rt-modal-head"><h3>${escapeHtml(cfg.titre)}</h3><button type="button" class="rt-modal-x" aria-label="Fermer">×</button></div>
+    <form class="rt-modal-form">${cfg.champs.map(champ).join("")}
+      <div class="rt-modal-act"><span class="card-sub rt-modal-msg"></span><button type="submit" class="small-btn">Enregistrer</button></div>
+    </form>
+    ${cfg.onDelete ? `<div class="rt-modal-del"><button type="button" class="rt-modal-delbtn">${escapeHtml(cfg.libSuppr || "Supprimer")}</button></div>` : ""}
+  </div>`;
+  document.body.appendChild(ov);
+  const fermer = () => ov.remove();
+  const msg = ov.querySelector(".rt-modal-msg");
+  ov.addEventListener("click", e => { if (e.target === ov) fermer(); });
+  ov.querySelector(".rt-modal-x").addEventListener("click", fermer);
+  document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { fermer(); document.removeEventListener("keydown", esc); } });
+  ov.querySelector("form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const vals = {}; cfg.champs.forEach(f => { vals[f.id] = ov.querySelector("#rtm_" + f.id).value; });
+    msg.textContent = "Enregistrement…";
+    try { await cfg.onSave(vals); fermer(); } catch (err) { msg.textContent = "Erreur : " + err.message; }
+  });
+  const d = ov.querySelector(".rt-modal-delbtn");
+  if (d) d.addEventListener("click", async () => {
+    if (!confirm(cfg.confirmSuppr || "Supprimer définitivement ?")) return;
+    msg.textContent = "Suppression…";
+    try { await cfg.onDelete(); fermer(); } catch (err) { msg.textContent = "Erreur : " + err.message; }
+  });
+  const premier = ov.querySelector("input,textarea,select"); if (premier) premier.focus();
+}
+
+const ICONE_INFO_ = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>';
+function ouvrirModaleInfo_(titre, html) {
+  const ancien = document.getElementById("rtModal"); if (ancien) ancien.remove();
+  const ov = document.createElement("div");
+  ov.id = "rtModal"; ov.className = "rt-modal-ov";
+  ov.innerHTML = `<div class="rt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(titre)}">
+    <div class="rt-modal-head"><h3>${escapeHtml(titre)}</h3><button type="button" class="rt-modal-x" aria-label="Fermer">×</button></div>
+    <div class="stat-note">${html}</div></div>`;
+  document.body.appendChild(ov);
+  const f = () => ov.remove();
+  ov.addEventListener("click", e => { if (e.target === ov) f(); });
+  ov.querySelector(".rt-modal-x").addEventListener("click", f);
+  document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { f(); document.removeEventListener("keydown", esc); } });
+}
+
 function renderContactsPanel_() {
   const contacts = state.contacts || [];
   const q = normaliserRecherche(state.contactsSearch || "");
-  const filtres = q
+  const tri = state.contactsTri || "organisation";
+  const filtres = (q
     ? contacts.filter(c => normaliserRecherche([c.nom, c.role, c.organisation, c.telephone, c.email, c.championnat, c.situation, c.notes].filter(Boolean).join(" ")).indexOf(q) >= 0)
-    : contacts;
-  filtres.sort((a, b) => String(a.organisation || "~").localeCompare(String(b.organisation || "~"), "fr", { sensitivity: "base" }) || String(a.nom || "").localeCompare(String(b.nom || ""), "fr", { sensitivity: "base" }));
+    : contacts).slice();
+  const cle = c => String(tri === "nom" ? c.nom : tri === "role" ? c.role : tri === "championnat" ? c.championnat : c.organisation || "").trim();
+  const cmp = (a, b) => String(cle(a) || "~").localeCompare(String(cle(b) || "~"), "fr", { sensitivity: "base" }) || String(a.nom || "").localeCompare(String(b.nom || ""), "fr", { sensitivity: "base" });
+  filtres.sort(cmp);
+  const carte = c => `<article class="ct-card">
+      <div class="ct-top"><div><strong class="ct-nom">${escapeHtml(c.nom || "—")}</strong>${c.role ? `<span class="ct-role">${escapeHtml(c.role)}</span>` : ""}</div>
+        <button type="button" class="ct-gear" data-edit-contact-id="${c.id}" aria-label="Modifier ${escapeHtml(c.nom || "le contact")}" title="Modifier">${ICONE_ENGRENAGE_}</button></div>
+      ${c.organisation ? `<div class="ct-org">${escapeHtml(c.organisation)}</div>` : ""}
+      ${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : ""}
+      <div class="ct-liens">${c.telephone ? `<a href="tel:${escapeHtml(c.telephone)}">${escapeHtml(c.telephone)}</a>` : ""}${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : ""}</div>
+      ${c.situation ? `<div class="ct-note"><strong>Quand :</strong> ${escapeHtml(c.situation)}</div>` : ""}
+      ${c.notes ? `<div class="ct-note">${escapeHtml(c.notes)}</div>` : ""}
+    </article>`;
+  let liste = "";
+  if (filtres.length) {
+    if (tri === "nom") liste = `<div class="ct-grid">${filtres.map(carte).join("")}</div>`;
+    else {
+      const groupes = [];
+      filtres.forEach(c => { const g = String(cle(c) || "Sans " + (tri === "role" ? "rôle" : tri === "championnat" ? "championnat" : "organisation")); const last = groupes[groupes.length - 1]; if (last && last.t === g) last.l.push(c); else groupes.push({ t: g, l: [c] }); });
+      liste = groupes.map(g => `<h3 class="ct-group">${escapeHtml(g.t)} <span class="count">${g.l.length}</span></h3><div class="ct-grid">${g.l.map(carte).join("")}</div>`).join("");
+    }
+  } else liste = empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.");
 
   return `
-    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px); margin-top:12px">
+    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px) 200px; margin-top:12px">
       <div class="field"><label for="contactsSearchInput">Recherche</label><input id="contactsSearchInput" type="text" placeholder="Nom, club, téléphone…" value="${escapeHtml(state.contactsSearch || "")}" /></div>
+      <div class="field"><label for="contactsTriSel">Trier par</label><select id="contactsTriSel">${[["organisation", "Organisation"], ["nom", "Nom"], ["role", "Rôle"], ["championnat", "Championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select></div>
     </div>
-
-    ${filtres.length ? `
-    <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Nom</th><th>Rôle</th><th>Organisation / Club</th><th>Championnat / Astreinte</th><th>Situation</th><th>Téléphone</th><th>Email</th><th>Notes</th><th></th></tr></thead>
-      <tbody>${filtres.map(c => `<tr>
-        <td>${escapeHtml(c.nom || "—")}</td>
-        <td>${escapeHtml(c.role || "—")}</td>
-        <td>${escapeHtml(c.organisation || "—")}</td>
-        <td>${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : "—"}</td>
-        <td>${escapeHtml(c.situation || "—")}</td>
-        <td>${c.telephone ? `<a href="tel:${escapeHtml(c.telephone)}">${escapeHtml(c.telephone)}</a>` : "—"}</td>
-        <td>${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : "—"}</td>
-        <td>${escapeHtml(c.notes || "—")}</td>
-        <td><button type="button" class="action-link" data-del-contact-id="${c.id}">Supprimer</button></td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>` : empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.")}
+    ${liste}
 
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un contact</span></span></summary>
@@ -3077,21 +3169,28 @@ function trierProcedures_(procedures) {
 
 function renderProceduresPanel_() {
   const procedures = state.procedures || [];
+  const tri = state.proceduresTri || "categorie";
+  const q = normaliserRecherche(state.proceduresSearch || "");
+  const liste0 = q ? procedures.filter(p => normaliserRecherche([p.titre, p.categorie, p.contenu].join(" ")).indexOf(q) >= 0) : procedures;
+  const item = p => `<div class="pr-item">
+      <details class="pr-det"><summary><span class="pr-titre">${escapeHtml(p.titre || "—")}</span>${p.lien ? `<a class="pr-lien" href="${escapeHtml(p.lien)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Lien</a>` : ""}</summary>
+        <div class="pr-corps">${escapeHtml(p.contenu || "—")}</div></details>
+      <button type="button" class="ct-gear" data-edit-procedure-id="${p.id}" aria-label="Modifier ${escapeHtml(p.titre || "la procédure")}" title="Modifier">${ICONE_ENGRENAGE_}</button>
+    </div>`;
+  let corps;
+  if (!liste0.length) corps = empty(q ? "Aucune procédure ne correspond." : "Aucune procédure enregistrée pour l'instant.");
+  else if (tri === "titre") corps = `<div class="pr-liste">${liste0.slice().sort((a, b) => String(a.titre || "").localeCompare(String(b.titre || ""), "fr", { sensitivity: "base" })).map(item).join("")}</div>`;
+  else {
+    const groupes = {};
+    trierProcedures_(liste0).forEach(p => { const k = p.categorie || "Autre"; (groupes[k] = groupes[k] || []).push(p); });
+    corps = Object.keys(groupes).map(k => `<h3 class="ct-group">${escapeHtml(k)} <span class="count">${groupes[k].length}</span></h3><div class="pr-liste">${groupes[k].map(item).join("")}</div>`).join("");
+  }
   return `
-    ${procedures.length ? `
-    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
-      <thead><tr><th>Titre</th><th>Catégorie</th><th>Contenu</th><th>Lien</th><th></th></tr></thead>
-      <tbody>${trierProcedures_(procedures).map(p => `<tr>
-        <td>${escapeHtml(p.titre || "—")}</td>
-        <td>${p.categorie ? `<span class="badge">${escapeHtml(p.categorie)}</span>` : "—"}</td>
-        <td>${(p.contenu || "").length > 0
-          ? `<details class="rt-details"><summary>Voir la procédure</summary><div style="white-space:pre-wrap">${escapeHtml(p.contenu)}</div></details>`
-          : `<span style="white-space:pre-wrap">${escapeHtml(p.contenu || "—")}</span>`}</td>
-        <td>${p.lien ? `<a href="${escapeHtml(p.lien)}" target="_blank" rel="noopener">Ouvrir</a>` : "—"}</td>
-        <td><button type="button" class="action-link" data-edit-procedure-id="${p.id}">Modifier</button>
-            <button type="button" class="action-link" data-del-procedure-id="${p.id}">Supprimer</button></td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>` : empty("Aucune procédure enregistrée pour l'instant.")}
+    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px) 200px; margin-top:12px">
+      <div class="field"><label for="procSearchInput">Recherche</label><input id="procSearchInput" type="text" placeholder="Titre, contenu…" value="${escapeHtml(state.proceduresSearch || "")}" /></div>
+      <div class="field"><label for="procTriSel">Trier par</label><select id="procTriSel"><option value="categorie"${tri === "categorie" ? " selected" : ""}>Catégorie</option><option value="titre"${tri === "titre" ? " selected" : ""}>Titre</option></select></div>
+    </div>
+    ${corps}
 
     <details class="past-block" id="procedureBlock" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title" id="procedureBlockTitre">Ajouter une procédure</span></span></summary>
@@ -3130,6 +3229,30 @@ function attachContactsPanelListeners_(root) {
       attachContactsPanelListeners_(root);
     });
   }
+
+  const rerPanel = () => { const panel = root.querySelector("#contactsSubPanel"); if (panel) { panel.innerHTML = state.contactsSubView === "contacts" ? renderContactsPanel_() : renderProceduresPanel_(); attachContactsPanelListeners_(root); } };
+  const triSel = root.querySelector("#contactsTriSel");
+  if (triSel) triSel.addEventListener("change", e => { state.contactsTri = e.target.value; rerPanel(); });
+  const procSearch = root.querySelector("#procSearchInput");
+  if (procSearch) procSearch.addEventListener("input", e => { state.proceduresSearch = e.target.value; rerPanel(); const i = root.querySelector("#procSearchInput"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
+  const procTri = root.querySelector("#procTriSel");
+  if (procTri) procTri.addEventListener("change", e => { state.proceduresTri = e.target.value; rerPanel(); });
+  root.querySelectorAll("[data-edit-contact-id]").forEach(btn => btn.addEventListener("click", () => {
+    const c = (state.contacts || []).find(x => String(x.id) === btn.dataset.editContactId);
+    if (!c) return;
+    ouvrirModaleEdition_({
+      titre: "Modifier le contact",
+      champs: [
+        { id: "nom", label: "Nom", value: c.nom, required: true }, { id: "role", label: "Rôle", value: c.role },
+        { id: "organisation", label: "Organisation / Club", value: c.organisation }, { id: "championnat", label: "Championnat / Astreinte", value: c.championnat },
+        { id: "situation", label: "Situation (quand contacter)", value: c.situation, large: true }, { id: "telephone", label: "Téléphone", value: c.telephone, type: "tel" },
+        { id: "email", label: "Email", value: c.email, type: "email" }, { id: "notes", label: "Notes / procédure de contact", value: c.notes, type: "textarea", rows: 3, large: true }
+      ],
+      onSave: async v => { const res = await jsonp("updateContact", Object.assign({ id: c.id }, v)); if (!res.success) throw new Error(res.error || "Erreur"); state.contacts = null; loadContacts(); },
+      onDelete: async () => { const res = await jsonp("deleteContact", { id: c.id }); if (!res.success) throw new Error(res.error || "Erreur"); state.contacts = null; loadContacts(); },
+      libSuppr: "Supprimer ce contact", confirmSuppr: "Supprimer ce contact ?"
+    });
+  }));
 
   const contactForm = root.querySelector("#contactForm");
   if (contactForm) {
@@ -3199,15 +3322,19 @@ function attachContactsPanelListeners_(root) {
   root.querySelectorAll("[data-edit-procedure-id]").forEach(btn => {
     btn.addEventListener("click", () => {
       const p = (state.procedures || []).find(x => String(x.id) === btn.dataset.editProcedureId);
-      if (!p || !procedureForm) return;
-      document.getElementById("procedureTitre").value = p.titre || "";
-      document.getElementById("procedureCategorie").value = p.categorie || "Autre";
-      document.getElementById("procedureContenu").value = p.contenu || "";
-      document.getElementById("procedureLien").value = p.lien || "";
-      procedureForm.dataset.editId = String(p.id);
-      const blk = root.querySelector("#procedureBlock"); if (blk) { blk.open = true; blk.scrollIntoView({ behavior: "smooth", block: "center" }); }
-      const t = root.querySelector("#procedureBlockTitre"); if (t) t.textContent = "Modifier la procédure";
-      const sb = root.querySelector('button[form="procedureForm"]'); if (sb) sb.textContent = "Enregistrer les modifications";
+      if (!p) return;
+      ouvrirModaleEdition_({
+        titre: "Modifier la procédure",
+        champs: [
+          { id: "titre", label: "Titre", value: p.titre, required: true, large: true },
+          { id: "categorie", label: "Catégorie", value: p.categorie || "Autre", type: "select", options: ["Formation", "Observations", "Classement des arbitres", "Contact", "Règlement", "Logistique", "Administratif", "Autre"] },
+          { id: "lien", label: "Lien", value: p.lien, type: "url" },
+          { id: "contenu", label: "Contenu", value: p.contenu, type: "textarea", rows: 10, large: true }
+        ],
+        onSave: async v => { const res = await jsonp("updateProcedure", Object.assign({ id: p.id }, v)); if (!res.success) throw new Error(res.error || "Erreur"); state.procedures = null; loadProcedures(); },
+        onDelete: async () => { const res = await jsonp("deleteProcedure", { id: p.id }); if (!res.success) throw new Error(res.error || "Erreur"); state.procedures = null; loadProcedures(); },
+        libSuppr: "Supprimer cette procédure", confirmSuppr: "Supprimer cette procédure ?"
+      });
     });
   });
 
@@ -3462,16 +3589,16 @@ async function terminerSerieQcm_(auto) {
   const dureeMin = Math.round(((Date.now() - s.debut) / 60000) * 10) / 10;
   s.resultat = { bonnes, total: s.questions.length, details, auto: Boolean(auto), duree: dureeMin, mode: s.mode };
   renderQcm();
-  if (s.mode !== "exam") return;   // l'entraînement n'est pas enregistré
+  const estExam = s.mode === "exam";
   try {
     const faiblesses = JSON.stringify(Object.keys(faib).map(k => ({ theme: k, n: faib[k] })));
-    const res = await jsonp("addQcmSession", { score: bonnes, total: s.questions.length, duree: dureeMin, mode: "exam", faiblesses });
+    const res = await jsonp("addQcmSession", { score: bonnes, total: s.questions.length, duree: dureeMin, mode: estExam ? "exam" : "entrainement", faiblesses });
     if (!res.success) throw new Error(res.error || "Erreur enregistrement");
-    setStatus("Exam enregistré (" + bonnes + "/" + s.questions.length + ")", "ok");
+    setStatus((estExam ? "Exam" : "Entraînement") + " enregistré (" + bonnes + "/" + s.questions.length + ")", "ok");
     state.qcmStats = null;
     loadQcmStats();
   } catch (err) {
-    setStatus("Exam joué mais non enregistré : " + err.message, "error");
+    setStatus("Série jouée mais non enregistrée : " + err.message, "error");
   }
 }
 
@@ -3494,7 +3621,7 @@ function renderQcm() {
     <div class="qz-modes">
       <div class="qz-mode">
         <h3>Entraînement</h3>
-        <p>20 questions, sans chrono. Correction après chaque question avec l'extrait du règlement. Pause, retour et abandon possibles. Non enregistré.</p>
+        <p>20 questions, sans chrono. Correction après chaque question avec l'extrait du règlement. Pause, retour et abandon possibles. Enregistré dans l'historique d'entraînement, sans effet sur ta moyenne.</p>
         <button class="small-btn" id="btnQcmTrain"${pret ? "" : " disabled"}>${pret ? "Commencer l'entraînement" : "Chargement…"}</button>
       </div>
       <div class="qz-mode">
@@ -3522,7 +3649,19 @@ function renderQcm() {
         <td>${r.id ? `<button type="button" class="action-link" data-del-qcm="${r.id}">Supprimer</button>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>`
-    : (s ? empty("Aucune série enregistrée pour l'instant.") : "")}
+    : (s && !(s.entrainements && s.entrainements.length) ? empty("Aucune série enregistrée pour l'instant.") : "")}
+    ${s && s.entrainements && s.entrainements.length ? `
+    <h2 class="section-title">Historique d'entraînement <span class="count">${s.entrainements.length}</span></h2>
+    <div class="table-card"><div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th class="num">Score</th><th class="num">%</th><th class="num">Durée</th><th></th></tr></thead>
+      <tbody>${s.entrainements.map(r => `<tr>
+        <td>${escapeHtml(r.date)}</td>
+        <td class="num">${r.score}/${r.total}</td>
+        <td class="num">${r.pourcentage}%</td>
+        <td class="num">${r.duree ? r.duree + " min" : "—"}</td>
+        <td>${r.id ? `<button type="button" class="action-link" data-del-qcm="${r.id}">Supprimer</button>` : ""}</td>
+      </tr>`).join("")}</tbody>
+    </table></div></div>` : ""}
   `;
 
   const t = document.getElementById("btnQcmTrain"); if (t) t.addEventListener("click", () => demarrerSerieQcm("train"));
@@ -3827,14 +3966,24 @@ function renderAgendaMatchMini_(row) {
 /* Alertes (03/10/2026) : chaque alerte affiche son motif et peut être
    marquée « traitée » (stockage local). Une alerte traitée réapparaît si son
    motif change (ex. nouveau retard, nouveau warning). */
-const ALERTES_TRAITEES_KEY = "rt-alertes-traitees-v1";
+const ALERTES_TRAITEES_KEY = "rt-alertes-traitees-v2";
+let ALERTES_MEM_ = null;   // repli si le stockage du navigateur est indisponible (navigation privée, iOS)
 function alertesTraitees_() {
+  if (ALERTES_MEM_) return ALERTES_MEM_;
   try { return JSON.parse(localStorage.getItem(ALERTES_TRAITEES_KEY) || "{}") || {}; } catch (e) { return {}; }
 }
-function alertesSetTraitee_(id, motif) {
-  const o = alertesTraitees_();
-  if (motif === null) delete o[id]; else o[id] = motif;
-  try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(o)); } catch (e) { /* stockage indisponible */ }
+function alertesSetTraitee_(id, sig) {
+  const o = Object.assign({}, alertesTraitees_());
+  if (sig === null) delete o[id]; else o[id] = sig;
+  ALERTES_MEM_ = o;
+  try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(o)); } catch (e) { /* mémoire seule */ }
+}
+/* Signature stable d'une alerte : ne change pas quand seuls des chiffres variables
+   (jours, montants affichés) bougent, sinon une alerte « traitée » réapparaissait. */
+function sigAlerte_(r) {
+  if (r._format === "Alerte" || hasWarningReel(r)) return "W:" + warningsReels(r).join("|").replace(/\d+/g, "#").slice(0, 200);
+  if (cleanText(get(r, "Statut paiement")) === "À vérifier") return "V";
+  return "R";
 }
 function idAlerte_(r) {
   return get(r, "UID") || (get(r, "Date match") + "|" + (rencontreLabel(r) || ""));
@@ -3862,7 +4011,7 @@ function alertesSplit_(rows) {
   (rows || []).forEach(r => {
     if (!estAlerte_(r)) return;
     const id = idAlerte_(r);
-    if (tr[id] !== undefined && tr[id] === motifAlerte_(r)) traitees.push(r); else actives.push(r);
+    if (tr[id] !== undefined && tr[id] === sigAlerte_(r)) traitees.push(r); else actives.push(r);
   });
   return { actives, traitees };
 }
@@ -3913,7 +4062,7 @@ function renderAlertes() {
   root.querySelectorAll("[data-alerte-traitee]").forEach(b => b.addEventListener("click", () => {
     const id = b.getAttribute("data-alerte-traitee");
     const r = state.filteredRows.find(x => idAlerte_(x) === id);
-    if (r) { alertesSetTraitee_(id, motifAlerte_(r)); maj(); }
+    if (r) { alertesSetTraitee_(id, sigAlerte_(r)); maj(); }
   }));
   root.querySelectorAll("[data-alerte-retablir]").forEach(b => b.addEventListener("click", () => {
     alertesSetTraitee_(b.getAttribute("data-alerte-retablir"), null); maj();
@@ -4015,38 +4164,32 @@ function renderExport() {
   if (toutes || (state.exportMonth && !months.some(m => m.value === state.exportMonth))) state.exportMonth = "";
   if (!state.exportMode) state.exportMode = "season";
 
+  const rng = state.exportMode === "range";
   const rows = exportRows();
   const t = exportTotals(rows);
 
   root.innerHTML = `
     <h2 class="section-title">Export</h2>
 
-    <div class="tabs-mini">
-      <button type="button" class="tabs-mini-btn${state.exportMode === "season" ? " active" : ""}" id="exportModeSeasonBtn">Saison / mois</button>
-      <button type="button" class="tabs-mini-btn${state.exportMode === "range" ? " active" : ""}" id="exportModeRangeBtn">Plage de dates</button>
-    </div>
-
-    ${state.exportMode === "range" ? `
-    <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
-      <div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
-      <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>
-    </section>` : `
     <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
-        <select id="exportSeasonSelect">
+        <select id="exportSeasonSelect"${rng ? " disabled" : ""}>
           <option value="${EXPORT_TOUTES}"${toutes ? " selected" : ""}>${EXPORT_TOUTES}</option>
           ${seasons.map(s => `<option value="${s}"${s === state.exportSeason ? " selected" : ""}>${s}</option>`).join("")}
         </select>
       </div>
       <div class="field">
         <label for="exportMonthSelect">Mois</label>
-        <select id="exportMonthSelect"${toutes ? " disabled" : ""}>
+        <select id="exportMonthSelect"${toutes || rng ? " disabled" : ""}>
           <option value="">${toutes ? "Toutes les saisons" : "Toute la saison"}</option>
           ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
         </select>
       </div>
-    </section>`}
+      <label class="export-check" style="grid-column:1 / -1"><input type="checkbox" id="exportRangeChk"${rng ? " checked" : ""} /> Filtrer par plage de dates</label>
+      ${rng ? `<div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
+      <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>` : ""}
+    </section>
 
     <div class="kpi-grid" style="margin-top:14px">
       <div class="kpi hero">
@@ -4111,22 +4254,13 @@ function renderExport() {
     </details>` : empty("Aucune mission pour cette période.")}
   `;
 
-  document.getElementById("exportModeSeasonBtn").addEventListener("click", () => { state.exportMode = "season"; renderExport(); });
-  document.getElementById("exportModeRangeBtn").addEventListener("click", () => { state.exportMode = "range"; renderExport(); });
-
-  if (state.exportMode === "range") {
+  document.getElementById("exportRangeChk").addEventListener("change", e => { state.exportMode = e.target.checked ? "range" : "season"; renderExport(); });
+  if (rng) {
     document.getElementById("exportFromInput").addEventListener("change", e => { state.exportFrom = e.target.value; renderExport(); });
     document.getElementById("exportToInput").addEventListener("change", e => { state.exportTo = e.target.value; renderExport(); });
   } else {
-    document.getElementById("exportSeasonSelect").addEventListener("change", e => {
-      state.exportSeason = e.target.value;
-      state.exportMonth = ""; // les mois changent avec la saison
-      renderExport();
-    });
-    document.getElementById("exportMonthSelect").addEventListener("change", e => {
-      state.exportMonth = e.target.value;
-      renderExport();
-    });
+    document.getElementById("exportSeasonSelect").addEventListener("change", e => { state.exportSeason = e.target.value; state.exportMonth = ""; renderExport(); });
+    document.getElementById("exportMonthSelect").addEventListener("change", e => { state.exportMonth = e.target.value; renderExport(); });
   }
 
   const pdfBtn = document.getElementById("genPdfBtn");
@@ -5214,7 +5348,7 @@ function renderEstimation() {
   const neg = v => v > 0 ? "−" + F(v) : F(0);
   const hFait = e.hotelsPayes, hPrevu = e.hotelPrevu;
   root.innerHTML = `
-    <h2 class="section-title">Estimation fin de saison <span class="count">${e.Y}/${e.Y + 1}</span></h2>
+    <h2 class="section-title">Estimation fin de saison <span class="count">${e.Y}/${e.Y + 1}</span> <button type="button" class="info-btn" id="estInfoBtn" aria-label="Comment c'est calculé" title="Comment c'est calculé">${ICONE_INFO_}</button></h2>
     <div class="kpi-grid">
       <div class="kpi hero"><label>Net estimé fin de saison</label><strong>${F(e.netC)}</strong>
         <span class="sub">fourchette ${F(e.netB)} (calendrier connu seul) à ${F(e.netH)}</span></div>
@@ -5237,17 +5371,22 @@ function renderEstimation() {
       </tbody>
     </table></div></div>
 
-    <div class="insight">Méthode : ${escapeHtml(e.methode)}. ${e.nbHotelPrevu ? `Hôtels prévus : ${e.nbHotelPrevu} nuit(s) conseillée(s) à ${HOTEL_CFG.budget} € max (économie de carburant correspondante : ${F(e.ecoHotel)}, non déduite des km). ` : ""}La fourchette basse ne compte que les matchs déjà désignés ; la haute ajoute 25 % de matchs supplémentaires. Les matchs "à prévoir" sont valorisés à la moyenne de ta saison (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km).</div>
-    <p class="card-sub">Carburant au prix de ta période (Mon profil), entretien selon ton enveloppe annuelle. Ces chiffres se recalculent à chaque nouvelle désignation.</p>
-    ${foldable_("Comment c'est calculé ?", `<div class="stat-note">
-      <p><strong>Réalisé</strong> : tes matchs passés, valeurs réelles (indemnité, km, carburant, entretien).</p>
-      <p><strong>À venir (désignés)</strong> : les désignations déjà reçues, valorisées exactement (km réels, prix du carburant de la période).</p>
-      <p><strong>À prévoir</strong> : matchs que tu n'as pas encore reçus. Base : les matchs que tu avais arbitrés l'an dernier sur la même période restante, multipliés par ton rythme actuel (ton nombre de matchs à ce jour comparé à l'an dernier, borné entre 0,6 et 1,6). Sans historique N-1 : ton rythme actuel, réduit de 40 %. Ces matchs sont valorisés à ta moyenne par match de la saison (indemnité et km).</p>
-      <p><strong>Fourchette</strong> : bas = uniquement les désignations connues ; haut = estimation centrale + 25 %.</p>
-      <p><strong>Nouvelle désignation</strong> : oui, tout se recalcule. Une désignation remplace un match « à prévoir » (le total attendu est le plus grand des deux : désignés ou estimation), puis elle est comptée exactement. Le net ne bouge donc beaucoup que si tu dépasses l'estimation ; sinon seule la précision augmente.</p>
-      <p>Hôtels : nuits déjà saisies + nuits conseillées à venir, au budget maximum réglé.</p>
-    </div>`)}
+    <p class="card-sub">Carburant au prix de ta période, entretien selon ton enveloppe annuelle. Recalcul à chaque désignation.</p>
   `;
+  const bi = root.querySelector("#estInfoBtn");
+  if (bi) bi.addEventListener("click", () => ouvrirModaleInfo_("Comment c'est calculé", estInfoHtml_(e)));
+}
+
+function estInfoHtml_(e) {
+  const F = v => formatMoney(v);
+  return `<p><strong>Méthode</strong> : ${escapeHtml(e.methode)}.</p>
+    ${e.nbHotelPrevu ? `<p>Hôtels prévus : ${e.nbHotelPrevu} nuit(s) conseillée(s) à ${HOTEL_CFG.budget} € max (économie de carburant correspondante : ${F(e.ecoHotel)}, non déduite des km).</p>` : ""}
+    <p><strong>Réalisé</strong> : matchs passés, valeurs réelles.</p>
+    <p><strong>À venir (désignés)</strong> : désignations reçues, valorisées exactement (km réels, prix du carburant de la période).</p>
+    <p><strong>À prévoir</strong> : matchs pas encore reçus. Base : matchs arbitrés l'an dernier sur la même période restante, multipliés par ton rythme actuel (borné entre 0,6 et 1,6). Sans historique N-1 : rythme actuel réduit de 40 %. Valorisés à ta moyenne saison (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km).</p>
+    <p><strong>Fourchette</strong> : basse = désignations connues seules ; haute = estimation centrale + 25 %.</p>
+    <p><strong>Nouvelle désignation</strong> : tout se recalcule. Elle remplace un match « à prévoir » (le total attendu est le plus grand des deux), puis elle est comptée exactement : le net ne bouge beaucoup que si tu dépasses l'estimation.</p>
+    <p>Hôtels : nuits saisies + nuits conseillées à venir, au budget maximum réglé.</p>`;
 }
 
 function renderStatsAvancees(stats) {
@@ -6353,8 +6492,7 @@ function renderHotel() {
       }).join("")}</tbody>
     </table></div></div>` : ""}
 
-    <h3 class="section-title">Enregistrer une nuit</h3>
-    <form id="hotelForm" class="toolbar form-formation" style="align-items:end">
+    ${foldable_("Ajouter une nuit", `<form id="hotelForm" class="toolbar form-formation" style="align-items:end">
       <div class="field"><label for="hotelDate">Nuit du</label><input id="hotelDate" type="date" required value="${escapeHtml(pre.date || "")}" /></div>
       <div class="field" style="min-width:240px"><label for="hotelMatch">Match lié</label><select id="hotelMatch">${hotelMatchOptions_(pre.date || "", pre.uid || "")}</select></div>
       <div class="field"><label for="hotelLieu">Ville / lieu</label><input id="hotelLieu" type="text" placeholder="Ville du match" value="${escapeHtml(pre.lieu || "")}" /></div>
@@ -6364,7 +6502,7 @@ function renderHotel() {
       <div class="field"><label for="hotelFacture">Facture (PDF/JPG/PNG, Drive)</label><input id="hotelFacture" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" /></div>
       <div class="field"><label for="hotelNotes">Notes</label><input id="hotelNotes" type="text" placeholder="Optionnel" /></div>
       <button class="small-btn secondary" type="submit">Enregistrer</button>
-    </form>
+    </form>`, { open: !!pre.date })}
 
     <h3 class="section-title" style="margin-top:16px">Historique</h3>
     ${hs.length ? `<div class="table-card"><div class="table-wrap"><table>
@@ -6776,14 +6914,14 @@ function renderRapportsPanel_() {
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(r.fichier)}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
   return `
-    <h3 class="section-title" style="margin-top:4px">1 · Modèles vierges</h3>
+    <h3 class="section-title" style="margin-top:4px">Rapport brut</h3>
     <p class="card-sub">Documents vides à voir, imprimer ou envoyer par mail. Modèles génériques : pour utiliser un formulaire officiel, dépose-le plutôt dans la partie 2.</p>
     <div class="rapp-modeles">${RAPP_MODELES_.map(m => `<div class="rapp-modele">
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
       <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
     </div>`).join("")}</div>
 
-    <h3 class="section-title" style="margin-top:24px">2 · Mes rapports de matchs</h3>
+    <h3 class="section-title" style="margin-top:24px">Sauvegarde de rapports</h3>
     <div class="rapp-dossier">
       <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(dos.url)}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
       <form id="rappDossierForm" class="rapp-inline"><input id="rappDossierNom" type="text" placeholder="Renommer le dossier" /><button type="submit" class="small-btn secondary">Renommer</button></form>
