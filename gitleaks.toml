@@ -1,0 +1,48 @@
+# Règles anti-fuite Referee Tracker (en plus des règles standard de gitleaks :
+# clés Google, tokens, mots de passe…).
+title = "Referee Tracker"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "rt-adresse-domicile"
+description = "Adresse ou coordonnées GPS du domicile"
+regex = '''(?i)(faisans|kaltenhouse|48\.82\d*\s*,\s*7\.80\d*|"?lat"?\s*[:=]\s*48\.8|"?lon"?\s*[:=]\s*7\.8)'''
+
+[[rules]]
+id = "rt-telephone"
+description = "Numéro de téléphone français (hors 0600000000 fictif)"
+regex = '''(?:\+33\s?|\b0)[67](?:[ .-]?\d{2}){4}\b'''
+[rules.allowlist]
+regexes = ['''0600000000''', '''600000000''']
+
+[[rules]]
+id = "rt-email"
+description = "Adresse e-mail réelle (hors example.com)"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'''
+[rules.allowlist]
+regexes = ['''@example\.(com|org)''', '''html2canvas@''', '''@\d+\.\d+''']
+
+[[rules]]
+id = "rt-anciennes-cles"
+description = "Clés API Referee Tracker"
+regex = '''(REFEREE_TRACKER_\d{4}_PRIVATE|RTC_[A-Za-z0-9]{20,}|RT_(WRITE|INTERNAL|CLAUDE)_KEY\s*[:=]\s*["'][^"']{8,})'''
+
+[[rules]]
+id = "rt-id-google"
+description = "ID de classeur / dossier Google Drive"
+regex = '''(openById\(\s*["'][A-Za-z0-9_-]{25,}|/d/[A-Za-z0-9_-]{25,}|/folders/[A-Za-z0-9_-]{25,}|1[A-Za-z0-9_-]{32,43}["'])'''
+
+[[rules]]
+id = "rt-url-apps-script"
+description = "URL Apps Script autre que le déploiement actuel"
+regex = '''script\.google\.com/macros/s/AKfyc[A-Za-z0-9_-]+'''
+[rules.allowlist]
+regexes = ['''AKfycbyi-iJfUyRyN39R9vknQTyvgLeCMA3QzLtsD5N4XVwpJTMtsXMsUSsrsrqDXLi8DI1t''']
+
+[allowlist]
+# Noms de clés de stockage du navigateur (ex. REGL_LS_KEY = "rt-reglement-hist-v1") : pas des secrets.
+regexTarget = "line"
+regexes = ['''_KEY\s*=\s*["']rt[-_][a-z0-9_.-]+["']''']
+paths = ['''vendor/''', '''data/questions\.json''', '''\.(png|jpg|jpeg|webp|pdf)$''']

@@ -1,0 +1,17 @@
+{
+  "name": "Referee Tracker",
+  "short_name": "Referee",
+  "description": "Suivi des missions, paiements et statistiques d'arbitrage.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1F3B",
+  "theme_color": "#0B1F3B",
+  "icons": [
+    { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
