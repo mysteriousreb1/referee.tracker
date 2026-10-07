@@ -1,0 +1,58 @@
+# =====================================================================
+# Referee Tracker — .gitignore
+# Tout ce qui ne doit JAMAIS finir sur le dépôt public.
+# =====================================================================
+
+# --- Back-end Apps Script (adresse, e-mails, ID de classeurs) ---------
+*.gs
+*.gs.rtf
+*.rtf
+apps-script/
+CODES/
+
+# --- Données et exports (missions, paiements, relevés) ---------------
+*.xlsx
+*.xls
+*.csv
+*.ods
+DATA BASE/
+exports/
+**/Remboursement_des_frais*.pdf
+**/releve*.pdf
+**/relevé*.pdf
+
+# --- Secrets et configuration locale ----------------------------------
+.env
+.env.*
+*.key
+*.pem
+secrets.*
+config.local.*
+remplacements.txt
+nettoyage-historique/
+
+# --- Livraisons, notes et sauvegardes ---------------------------------
+LIVRAISON*/
+DEPLOIEMENT*.md
+*.bak
+*.old
+*.orig
+*.zip
+sauvegarde*/
+backup*/
+
+# --- Fichiers système et outils ---------------------------------------
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+node_modules/
+npm-debug.log*
+
+# --- À GARDER : rien d'autre n'est exclu --------------------------------
+# index.html, app.js, rt-auth.js, style.css, manifest.json, README.md,
+# img/, docs/rapports/ (formulaires FFBB vierges), data/questions.json,
+# vendor/, .github/, .gitleaks.toml
