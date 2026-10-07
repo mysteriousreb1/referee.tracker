@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-05-b17";
+const APP_VERSION = "2026-10-07-b18";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -139,8 +139,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
   setTimeout(verifierAffichageInitial, 1500);
   setTimeout(verifierAffichageInitial, 5000);
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js").catch(err => console.warn("Mode hors ligne indisponible :", err));
+  /* b18 — sw.js n'existe pas dans le dépôt (404 à chaque visite). Un service
+     worker de cache ferait en plus resservir d'anciennes versions : on
+     désinscrit tout worker resté d'un ancien essai. */
+  if ("serviceWorker" in navigator) {
+    try { navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {}); } catch (e) {}
   }
 });
 
@@ -347,7 +350,9 @@ function getSeasonsFrom2022ToCurrent() {
 function setupMoreMenu_() {
   const nav = document.querySelector("nav.tabs");
   if (!nav || document.getElementById("tabMoreBtn")) return;
-  const SECONDARY = ["stats", "export", "qcm", "progression", "reglement", "elicence", "indispos", "rapports", "contacts"];
+  /* b18 — téléphone : barre du bas à 5 entrées (Accueil, 5×5, 3×3,
+     Paiements, Plus). Hôtel et Alertes rejoignent le panneau « Plus ». */
+  const SECONDARY = ["alertes", "stats", "hotel", "export", "qcm", "progression", "reglement", "elicence", "indispos", "rapports", "contacts"];
   SECONDARY.forEach(t => {
     const b = nav.querySelector(`.tab[data-tab="${t}"]`);
     if (b) b.classList.add("tab-secondary");
@@ -358,7 +363,7 @@ function setupMoreMenu_() {
   more.id = "tabMoreBtn";
   more.className = "tab tab-more";
   more.setAttribute("aria-expanded", "false");
-  more.innerHTML = `<span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="tab-label">Plus</span>`;
+  more.innerHTML = `<span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="tab-label">Plus</span><span class="tab-badge" id="badgePlus" hidden>0</span>`;
   const foot = nav.querySelector(".tabs-foot");
   nav.insertBefore(more, foot || null);
 
@@ -368,11 +373,12 @@ function setupMoreMenu_() {
   panel.hidden = true;
   SECONDARY.forEach(t => {
     const src = nav.querySelector(`.tab[data-tab="${t}"] .tab-label`);
+    const ico = nav.querySelector(`.tab[data-tab="${t}"] .tab-icon`);
     const item = document.createElement("button");
     item.type = "button";
     item.className = "tab-more-item";
     item.dataset.goto = t;
-    item.textContent = src ? src.textContent : t;
+    item.innerHTML = `${ico ? ico.outerHTML : ""}<span>${escapeHtml(src ? src.textContent : t)}</span><span class="tab-badge tab-more-badge" data-badge-for="${t}" hidden>0</span>`;
     panel.appendChild(item);
   });
   // Hors de la grille .tabs pour occuper toute la largeur proprement.
@@ -398,6 +404,10 @@ function setupMoreMenu_() {
 function setActiveTab(tab) {
   state.activeTab = tab;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  const plus = document.getElementById("tabMoreBtn");   // b18 : « Plus » allumé si l'onglet ouvert est dedans
+  if (plus) plus.classList.toggle("is-current", !!document.querySelector(`.tab-secondary[data-tab="${tab}"]`));
+  document.querySelectorAll(".tab-more-item").forEach(i => i.classList.toggle("active", i.dataset.goto === tab));
+  if (window.innerWidth <= 720) { try { window.scrollTo({ top: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, 0); } }
   // iPhone : la barre d'onglets est scrollable ; on ramène l'onglet actif à
   // l'écran pour qu'il ne reste jamais caché hors du champ visible.
   const ongletActif = document.querySelector(".tab.active");
@@ -615,7 +625,7 @@ function indexRecherche_(row) {
   try { morceaux.push(niveauCarte(row).badge); } catch (e) { /* rien */ }
 
   // Le téléphone du collègue remis au format national : chercher
-  // « 0771567486 » doit marcher même si la base stocke « 771567486 ».
+  // « 0600000000 » doit marcher même si la base stocke « 600000000 ».
   morceaux.push(normalizePhoneFr(get(row, "Collègue téléphone")));
 
   // La date sous toutes ses formes lisibles : 12/09/2026, 12 09 2026,
@@ -685,7 +695,8 @@ function normalizeRows(rows) {
     r._kmEff = r._km;   // km à compter (carburant/km parcourus) — ajusté pour les doublés
     r._format = get(r, "Format");
     r._season = normalizeSeason(get(r, "Saison"), r._date);
-    r._isActive = !/annul|alerte/i.test(cleanText(get(r, "Statut"))) && r._format !== "Alerte";
+    r._isActive = !/annul|alerte|ignor/i.test(cleanText(get(r, "Statut"))) && r._format !== "Alerte";
+    r._ignore = /ignor/i.test(cleanText(get(r, "Statut")));
     r._isPast = isPastMission(r);
     r._hay = indexRecherche_(r);
     return r;
@@ -978,6 +989,15 @@ function renderTabBadges_() {
     badgePaiements.textContent = nbPaiements > 99 ? "99+" : String(nbPaiements);
     badgePaiements.hidden = nbPaiements === 0;
   }
+  // b18 — téléphone : les compteurs des onglets repliés remontent sur « Plus ».
+  const parOnglet = { alertes: nbAlertes, indispos: nbInd };
+  let totalPlus = 0;
+  document.querySelectorAll(".tab-more-badge").forEach(b => {
+    const n = parOnglet[b.dataset.badgeFor] || 0;
+    b.textContent = String(n); b.hidden = n === 0; totalPlus += n;
+  });
+  const badgePlus = document.getElementById("badgePlus");
+  if (badgePlus) { badgePlus.textContent = totalPlus > 99 ? "99+" : String(totalPlus); badgePlus.hidden = totalPlus === 0; }
 }
 
 /* Bascule entre les deux vues fusionnées de l'onglet Stats (19/09/2026) :
@@ -1402,16 +1422,19 @@ function logoSuivant_(img) {
   img.replaceWith(sp);
 }
 
+/* b18 — Codes sans logo propre : on réutilise le logo de la famille. */
+const LOGOS_ALIAS_ = { "CMUT": "CPE", "ENCOU": "CPE" };
 function logoCompetition(row) {
   const slug = slugCompetition(row);
   const alt = cleanText(get(row, "Libellé compétition")) || slug;
-  const fichier = LOGOS_DISPONIBLES[slug];
   if (!slug) return "";
-  const cands = [];
-  if (fichier) cands.push(fichier);
-  ["png", "PNG", "webp", "jpg", "jpeg", "svg"].forEach(ext => {
-    [slug, slug.toLowerCase()].forEach(n => { const f = n + "." + ext; if (!cands.includes(f)) cands.push(f); });
-  });
+  const fichier = LOGOS_DISPONIBLES[slug] || LOGOS_DISPONIBLES[LOGOS_ALIAS_[slug]];
+  /* b18 — Logo absent du dépôt (DM4, DMU18, PRM…) : pastille texte directe.
+     Avant, le site essayait 12 variantes de nom à chaque affichage
+     → ~150 erreurs 404 par session. Ajouter le fichier dans
+     img/competitions/ ET dans LOGOS_DISPONIBLES pour qu'il s'affiche. */
+  if (!fichier) return `<span class="comp-logo comp-logo--txt" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
+  const cands = [fichier];
   return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
                alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
                data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
@@ -2170,6 +2193,7 @@ function renderPaiements() {
     <h2 class="section-title">Paiements</h2>
     <p class="mp-line">En attente : <strong>${formatMoney(totalDu)}</strong> · Déjà reçu : <strong>${formatMoney(totalRecu)}</strong>${benevoles.length ? " · Bénévole : <strong>" + benevoles.length + "</strong>" : ""}</p>
     <div id="moisZone">${renderMoisPaiements_()}</div>
+    <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
     ${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}
     ${renderRelance45_(rows)}
     ${order.filter(k => grouped[k]).map(status => {
@@ -2217,6 +2241,153 @@ function renderPaiements() {
   attachContactListeners(root);
   attachPastToggle(root);
   attachRapprochement_(root);
+  attachAnalysePaiements_(root, rows);
+}
+
+/* ===================== b18 — ANALYSE DES PAIEMENTS =====================
+   1) Versements reçus par mois (barres empilées par payeur) + ce qui est
+      encore attendu, au mois de son échéance (barre en pointillés).
+   2) Analyse par catégorie (payeur, niveau, format, mode) : missions, dû,
+      reçu, reste, taux d'encaissement et délai moyen de paiement.
+   Tout est calculé dans le navigateur à partir des lignes déjà chargées :
+   aucun appel serveur en plus. Les filtres du haut (saison, niveau…) s'appliquent. */
+const PA_ORDRE_ = ["ligue", "cd", "ffbb", "club"];
+const PA_AXES_ = { payeur: "Payeur", niveau: "Niveau", format: "Format", mode: "Mode de paiement" };
+function paVersements_(r) {
+  // Chaque encaissement daté d'une mission (un par club en parts égales).
+  if (r._benevole || !(r._encaisse > 0)) return [];
+  const out = [];
+  const rr = toNumber(get(r, "Reçu recevant")), rv = toNumber(get(r, "Reçu visiteur"));
+  const dr = parseFrDate(get(r, "Date reçu recevant")), dv = parseFrDate(get(r, "Date reçu visiteur"));
+  if (rr > 0 && dr) out.push({ d: dr, m: rr });
+  if (rv > 0 && dv) out.push({ d: dv, m: rv });
+  const ventile = out.reduce((t, x) => t + x.m, 0);
+  if (ventile + 0.005 < r._encaisse) {
+    // Ancien format (Montant reçu + Date réception) ou date manquante : on
+    // retombe sur la date de réception, sinon l'échéance (estimée).
+    const d = parseFrDate(get(r, "Date réception")) || parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+    if (d) out.push({ d, m: r._encaisse - ventile, estime: !parseFrDate(get(r, "Date réception")) });
+  }
+  return out;
+}
+function paMoisCles_(rows) {
+  const saison = state.selectedSeason && /^\d{4}\/\d{4}$/.test(state.selectedSeason) ? state.selectedSeason : "";
+  let cles;
+  if (saison) {
+    const y = Number(saison.slice(0, 4));
+    cles = [];
+    for (let i = 0; i < 12; i++) cles.push(monthKeyOf(new Date(y, 8 + i, 1)));   // septembre → août
+  } else {
+    const n = new Date(); cles = [];
+    for (let i = 11; i >= -2; i--) cles.push(monthKeyOf(new Date(n.getFullYear(), n.getMonth() - i, 1)));
+  }
+  return cles;
+}
+function paCategorie_(r, axe) {
+  if (axe === "payeur") return PAYEURS_LIB_[rbClasse_(r)] || "Clubs";
+  if (axe === "format") return r._format === "3x3" ? "3×3" : "5×5";
+  if (axe === "mode") return cleanText(get(r, "Mode recevant") || get(r, "Mode paiement")) || "Non renseigné";
+  const c = codeCompetition(r);
+  return c || cleanText(get(r, "Niveau administratif")) || "Autre";
+}
+function paDonnees_(rows) {
+  const cles = paMoisCles_(rows);
+  const mois = {};
+  cles.forEach(k => { mois[k] = { recu: { ligue: 0, cd: 0, ffbb: 0, club: 0 }, attendu: 0, nb: 0, estime: 0 }; });
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const delais = [];
+  let recuTot = 0, duEchu = 0, recuEchu = 0;
+  rows.forEach(r => {
+    if (r._benevole) return;
+    const cl = rbClasse_(r);
+    paVersements_(r).forEach(v => {
+      recuTot += v.m;
+      const k = monthKeyOf(v.d);
+      if (mois[k]) { mois[k].recu[PA_ORDRE_.indexOf(cl) >= 0 ? cl : "club"] += v.m; mois[k].nb++; if (v.estime) mois[k].estime += v.m; }
+      if (r._date && !v.estime) { const j = Math.round((v.d - r._date) / 86400000); if (j >= 0 && j < 400) delais.push(j); }
+    });
+    const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+    if (r._reste > 0 && att) { const k = monthKeyOf(att); if (mois[k]) mois[k].attendu += r._reste; }
+    if (att && att <= now) { duEchu += r._amount; recuEchu += r._encaisse; }
+  });
+  const liste = cles.map(k => ({ k, ...mois[k], total: PA_ORDRE_.reduce((t, c) => t + mois[k].recu[c], 0) }));
+  const avecVersement = liste.filter(x => x.total > 0);
+  const meilleur = avecVersement.slice().sort((a, b) => b.total - a.total)[0] || null;
+  const moyDelai = delais.length ? Math.round(delais.reduce((a, b) => a + b, 0) / delais.length) : null;
+  return { liste, recuTot, meilleur, moyMois: avecVersement.length ? recuTot / avecVersement.length : 0, nbMoisVerses: avecVersement.length, moyDelai, taux: duEchu > 0 ? recuEchu / duEchu : null };
+}
+function paCategories_(rows, axe) {
+  const g = {};
+  rows.forEach(r => {
+    if (r._benevole) return;
+    const c = paCategorie_(r, axe);
+    const o = g[c] || (g[c] = { c, n: 0, du: 0, recu: 0, reste: 0, delais: [] });
+    o.n++; o.du += r._amount; o.recu += r._encaisse; o.reste += r._reste;
+    paVersements_(r).forEach(v => { if (!v.estime && r._date) { const j = Math.round((v.d - r._date) / 86400000); if (j >= 0 && j < 400) o.delais.push(j); } });
+  });
+  return Object.values(g).sort((a, b) => b.du - a.du);
+}
+function renderAnalysePaiements_(rows) {
+  const valides = (rows || []).filter(r => r._isActive && r._format !== "Alerte");
+  if (!valides.length) return "";
+  const D = paDonnees_(valides);
+  const axe = state.paieAnaAxe || "payeur";
+  const max = Math.max(1, ...D.liste.map(x => x.total + x.attendu));
+  const moisCourant = monthKeyOf(new Date());
+  const lib = k => { const [y, m] = k.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""); };
+  const kEur = v => v >= 1000 ? (v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k€" : Math.round(v) + " €";
+  const barres = D.liste.map(x => {
+    const segs = PA_ORDRE_.filter(c => x.recu[c] > 0).map(c =>
+      `<span class="pa-seg pa-c-${c}" style="height:${(x.recu[c] / max * 100).toFixed(2)}%" title="${escapeHtml(PAYEURS_LIB_[c])} : ${escapeHtml(formatMoney(x.recu[c]))}"></span>`).join("");
+    const att = x.attendu > 0 ? `<span class="pa-seg pa-att" style="height:${(x.attendu / max * 100).toFixed(2)}%" title="Encore attendu : ${escapeHtml(formatMoney(x.attendu))}"></span>` : "";
+    const val = x.total > 0 ? kEur(x.total) : (x.attendu > 0 ? `<em>${kEur(x.attendu)}</em>` : "");
+    return `<div class="pa-col${x.k === moisCourant ? " is-now" : ""}" title="${escapeHtml(monthLabelOf(x.k))} — reçu ${escapeHtml(formatMoney(x.total))}${x.attendu > 0 ? " · attendu " + escapeHtml(formatMoney(x.attendu)) : ""}">
+      <span class="pa-val">${val}</span>
+      <span class="pa-pile">${att}${segs}</span>
+      <span class="pa-mois">${escapeHtml(lib(x.k))}</span></div>`;
+  }).join("");
+  const legende = PA_ORDRE_.map(c => `<span class="pa-leg"><i class="pa-c-${c}"></i>${escapeHtml(PAYEURS_LIB_[c])}</span>`).join("") + `<span class="pa-leg"><i class="pa-att"></i>Encore attendu</span>`;
+  const cats = paCategories_(valides, axe);
+  const maxDu = Math.max(1, ...cats.map(c => c.du));
+  const lignes = cats.map(c => {
+    const pct = c.du > 0 ? Math.round(c.recu / c.du * 100) : 0;
+    const dl = c.delais.length ? Math.round(c.delais.reduce((a, b) => a + b, 0) / c.delais.length) + " j" : "—";
+    return `<tr><td><strong>${escapeHtml(c.c)}</strong></td><td class="num">${c.n}</td><td class="num">${formatMoney(c.du)}</td><td class="num pa-ok">${formatMoney(c.recu)}</td><td class="num${c.reste > 0 ? " pa-reste" : ""}">${c.reste > 0 ? formatMoney(c.reste) : "—"}</td>
+      <td class="pa-taux"><span class="pa-jauge"><span style="width:${pct}%"></span></span><b>${pct} %</b></td><td class="num">${dl}</td></tr>
+      <tr class="pa-part"><td colspan="7"><span style="width:${(c.du / maxDu * 100).toFixed(1)}%"></span></td></tr>`;
+  }).join("");
+  return `
+    <section class="pa-wrap">
+      <h2 class="section-title">Analyse des paiements</h2>
+      <div class="pa-kpis">
+        <div class="pa-kpi"><label>Reçu sur la période</label><strong>${formatMoney(D.recuTot)}</strong><span>${D.nbMoisVerses} mois avec versement</span></div>
+        <div class="pa-kpi"><label>Moyenne par mois versé</label><strong>${formatMoney(D.moyMois)}</strong><span>${D.meilleur ? "record : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
+        <div class="pa-kpi"><label>Délai moyen de paiement</label><strong>${D.moyDelai === null ? "—" : D.moyDelai + " j"}</strong><span>du match au versement</span></div>
+        <div class="pa-kpi"><label>Taux d'encaissement</label><strong>${D.taux === null ? "—" : Math.round(D.taux * 100) + " %"}</strong><span>sur les échéances déjà passées</span></div>
+      </div>
+      <div class="pa-card">
+        <div class="pa-card-head"><h3>Versements reçus par mois</h3><div class="pa-legende">${legende}</div></div>
+        <div class="pa-chart" role="img" aria-label="Versements reçus par mois">${barres}</div>
+        ${D.liste.some(x => x.estime > 0) ? `<p class="pa-note">Certains anciens paiements n'ont pas de date de réception : ils sont placés au mois de leur échéance.</p>` : ""}
+      </div>
+      <div class="pa-card">
+        <div class="pa-card-head"><h3>Analyse par catégorie</h3>
+          <div class="pa-axes" role="tablist">${Object.keys(PA_AXES_).map(a => `<button type="button" class="pa-axe${a === axe ? " active" : ""}" data-pa-axe="${a}">${escapeHtml(PA_AXES_[a])}</button>`).join("")}</div></div>
+        <div class="table-wrap"><table class="pa-table">
+          <thead><tr><th>${escapeHtml(PA_AXES_[axe])}</th><th class="num">Missions</th><th class="num">Dû</th><th class="num">Reçu</th><th class="num">Reste</th><th>Encaissé</th><th class="num">Délai</th></tr></thead>
+          <tbody>${lignes}</tbody></table></div>
+      </div>
+    </section>`;
+}
+function attachAnalysePaiements_(root, rows) {
+  const zone = root.querySelector("#paieAnaZone");
+  if (!zone) return;
+  zone.addEventListener("click", e => {
+    const b = e.target.closest("[data-pa-axe]");
+    if (!b) return;
+    state.paieAnaAxe = b.dataset.paAxe;
+    zone.innerHTML = renderAnalysePaiements_(rows);
+  });
 }
 
 /* MODIFICATION 11 — marquage du contact collègue.
@@ -2932,7 +3103,14 @@ function renderStatsInner_() {
     // sélectionnée : on affiche le calcul local, juste par construction,
     // et on redemande les statistiques serveur pour la bonne période.
     root.innerHTML = renderStatsClient(s && !bonnePeriode ? s.season : null);
+    /* b18 — garde anti-boucle : une saison sans match renvoie des stats
+       vides (totaux = {}). Avant, chaque réponse relançait aussitôt un appel
+       → boucle infinie vers Apps Script. Une seule relance par saison / 60 s. */
+    state._statsTentatives = state._statsTentatives || {};
+    const derniere = state._statsTentatives[periodeAttendue] || 0;
+    if (Date.now() - derniere < 60000) return;
     if (!state._statsEnAttente) {
+      state._statsTentatives[periodeAttendue] = Date.now();
       state._statsEnAttente = true;
       // Mauvaise période en cache : on va rechercher la bonne au serveur,
       // sans repasser par le cache qui redonnerait la même réponse.
@@ -4577,6 +4755,7 @@ function idAlerte_(r) {
   return get(r, "UID") || (get(r, "Date match") + "|" + (rencontreLabel(r) || ""));
 }
 function estAlerte_(r) {
+  if (r._ignore || /annul/i.test(cleanText(get(r, "Statut")))) return false;   // b18
   return (r._format === "Alerte" ||
     hasWarningReel(r) ||
     cleanText(get(r, "Statut paiement")) === "À vérifier" ||
@@ -4625,7 +4804,10 @@ function renderAlertes() {
   ];
   const item = (r, traite) => `<div class="alerte-item">${renderMatchCard(r)}
       <div class="alerte-motif"><span class="alerte-motif-txt">${escapeHtml(motifAlerte_(r))}</span>
-      <button type="button" class="small-btn secondary" data-alerte-${traite ? "retablir" : "traitee"}="${escapeHtml(idAlerte_(r))}">${traite ? "Rétablir" : "Marquer traité"}</button></div></div>`;
+      <span class="alerte-btns">
+      ${r._format === "Alerte" ? `<button type="button" class="small-btn secondary alerte-danger" data-alerte-ignorer="${escapeHtml(get(r, "UID"))}" title="Mail hors sujet : sort définitivement de l'app (rien n'est supprimé du Sheet)">Ignorer définitivement</button>` : ""}
+      ${mission3x3Suspecte_(r) ? `<button type="button" class="small-btn secondary alerte-danger" data-mission-ecarter="${escapeHtml(get(r, "UID"))}" title="Import erroné : passe en Annulé et retire l'événement d'agenda">Écarter (import erroné)</button>` : ""}
+      <button type="button" class="small-btn secondary" data-alerte-${traite ? "retablir" : "traitee"}="${escapeHtml(idAlerte_(r))}">${traite ? "Rétablir" : "Marquer traité"}</button></span></div></div>`;
 
   const vide = !base.length
     ? empty("Aucune alerte active. Rien à corriger, rien à relancer.") : "";
@@ -4655,6 +4837,47 @@ function renderAlertes() {
   root.querySelectorAll("[data-alerte-retablir]").forEach(b => b.addEventListener("click", () => {
     alertesSetTraitee_(b.getAttribute("data-alerte-retablir"), null); maj();
   }));
+  const nettoyer = (b, action, question) => b.addEventListener("click", async () => {
+    const uid = b.getAttribute(action === "alerte.ignorer" ? "data-alerte-ignorer" : "data-mission-ecarter");
+    if (!uid || !confirm(question)) return;
+    b.disabled = true;
+    try {
+      const res = await jsonp(action, { uid });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+      remplacerLigne_(uid, res.row);
+      setStatus(action === "alerte.ignorer" ? "Alerte ignorée" : "Mission écartée", "ok");
+      renderAll();
+    } catch (err) {
+      b.disabled = false;
+      setStatus("Erreur : " + err.message + (/inconnue|unknown/i.test(err.message) ? " (code.gs b18 pas encore déployé)" : ""), "error");
+    }
+  });
+  root.querySelectorAll("[data-alerte-ignorer]").forEach(b => nettoyer(b, "alerte.ignorer", "Ignorer définitivement cette alerte ? Elle sortira de l'app (la ligne reste dans le Sheet, statut « Ignoré »)."));
+  root.querySelectorAll("[data-mission-ecarter]").forEach(b => nettoyer(b, "mission.ecarter", "Écarter cette mission ? Elle passe en « Annulé » et son événement d'agenda est supprimé."));
+}
+
+/* b18 — mission 3x3 créée à partir d'un mail mal lu (ni lieu ni événement). */
+function mission3x3Suspecte_(r) {
+  if (r._format !== "3x3") return false;
+  const ev = cleanText(get(r, "Libellé compétition"));
+  const paie = cleanText(get(r, "Statut paiement"));
+  return !cleanText(get(r, "Adresse")) && (!ev || ev === "Mission 3x3") && paie !== "Reçu" && paie !== "Reçu partiel";
+}
+
+/* b18 — remplace une ligne par la version renvoyée par le serveur (sans
+   retélécharger les ~200 missions). Sans ligne renvoyée : rechargement. */
+function remplacerLigne_(uid, ligne) {
+  if (ligne && get(ligne, "UID")) {
+    const brut = state.allRows.map(rawOf_);
+    const i = brut.findIndex(r => get(r, "UID") === uid);
+    if (i >= 0) {
+      brut[i] = ligne;
+      state.allRows = normalizeRows(brut);
+      try { if (typeof _cacheEcrire === "function") _cacheEcrire(_cacheKey("matchs", {}), { success: true, data: brut }); } catch (e) {}
+      return;
+    }
+  }
+  loadData();
 }
 
 /* ---------------- Export ----------------
@@ -5492,7 +5715,7 @@ const WARNINGS_IGNORES = [
 /* Fausses lignes « Alerte » issues d'e-mails marketing/automatiques parsés à
    tort (ex. « Your Superagent can now make phone calls »). On ne filtre QUE
    les lignes _format === "Alerte" : jamais un vrai match. */
-const SPAM_ALERTE_MARQUEURS = ["superagent", "phone call", "make phone", "unsubscribe", "se désinscrire", "se desinscrire", "newsletter", "no-reply", "noreply", "do not reply", "mailjet", "notification email"];
+const SPAM_ALERTE_MARQUEURS = ["superagent", "phone call", "make phone", "unsubscribe", "se désinscrire", "se desinscrire", "newsletter", "no-reply", "noreply", "do not reply", "mailjet", "notification email", "credits up for grabs", "hidden features", "webinar"];
 function estAlerteParasite_(row) {
   if (row._format !== "Alerte") return false;
   const txt = (String(rencontreLabel(row) || "") + " " + String(get(row, "Warning général") || "") + " " + String(get(row, "Recevant") || "") + " " + String(get(row, "Salle") || "")).toLowerCase();
@@ -7262,8 +7485,9 @@ function elicCarteHtml_(e, grand) {
       <div class="elic-id">
         <strong>${escapeHtml(e.nom || "—")}</strong>
         <span>N° ${escapeHtml(e.numero || "—")}</span>
-        <span>${escapeHtml(e.niveau || "Niveau non renseigné")}</span>
-        <span>${val ? "Valide jusqu'au " + escapeHtml(dmy_(e.validite)) : "Validité non renseignée"}</span>
+        <span>${escapeHtml([e.fonction, e.niveau].filter(Boolean).join(" · ") || "Niveau non renseigné")}</span>
+        ${e.club ? `<span>${escapeHtml(e.club)}</span>` : ""}
+        <span>${val ? "Valide jusqu'au " + escapeHtml(dmy_(e.validite)) : "Validité non renseignée"}${e.saison ? " · saison " + escapeHtml(e.saison) : ""}</span>
       </div>
     </div>
     <div class="elic-qr" data-qr="${escapeHtml(e.qr || e.numero || "")}"></div>
@@ -7283,14 +7507,30 @@ function remplirQr_(root) {
 function renderElicencePanel_() {
   if (state._elicErr) return erreurPerso_(state._elicErr, "retryElic");
   if (state.elicence === undefined) { loadElicence(); return chargementPerso_(); }
-  const e = state.elicence || {};
+  const e = elicAvecDefauts_(state.elicence || {});
+  const aDoc = !!(e.doc || e.docUrl);
   return `
     <div class="elic-wrap">
       ${elicCarteHtml_(e, false)}
       <div class="elic-actions">
         <button type="button" class="small-btn" id="elicPlein">Plein écran (à présenter)</button>
+        ${aDoc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'e-Licence officielle</button>` : ""}
         <p class="card-sub">Copie personnelle pour l'avoir sous la main. Elle ne remplace pas l'e-Licence officielle.</p>
+        ${!e.numero && !e.nom ? `<p class="elic-vide">Ta licence n'est pas encore renseignée : ouvre « Modifier ma licence » ci-dessous, et ajoute la capture de ton e-Licence FFBB.</p>` : ""}
       </div>
+    </div>
+    <div class="elic-doc">
+      <div class="elic-doc-head">
+        <div><h3 class="section-title" style="margin:0">e-Licence officielle</h3>
+        <p class="card-sub" style="margin:4px 0 0">Capture d'écran de l'app FFBB ou PDF de ta licence. ${aDoc ? "Document enregistré : <strong>" + escapeHtml(e.docNom || "e-Licence") + "</strong>." : "Aucun document pour l'instant."}</p></div>
+        <div class="elic-doc-act">
+          <label class="small-btn" style="cursor:pointer">${aDoc ? "Remplacer" : "Ajouter ma licence"}<input type="file" id="elicDocFile" accept="image/*,application/pdf" hidden /></label>
+          ${aDoc ? `<button type="button" class="small-btn secondary" id="elicDocDel">Retirer</button>` : ""}
+        </div>
+      </div>
+      ${e.doc ? `<button type="button" class="elic-doc-mini" id="elicDocMini" title="Agrandir"><img src="${escapeHtml(e.doc)}" alt="e-Licence officielle" /></button>` : ""}
+      ${e.docUrl ? `<p class="card-sub"><a class="action-link" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">Ouvrir le PDF (Google Drive)</a></p>` : ""}
+      <span class="card-sub" id="elicDocMsg"></span>
     </div>
     <details class="past-block" style="margin-top:12px"${(e.nom || e.numero) ? "" : " open"}>
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Modifier ma licence</span></span></summary>
@@ -7299,6 +7539,9 @@ function renderElicencePanel_() {
           <div class="field"><label for="elicNom">Nom</label><input id="elicNom" type="text" value="${escapeHtml(e.nom || "")}" required /></div>
           <div class="field"><label for="elicNumero">N° de licence</label><input id="elicNumero" type="text" value="${escapeHtml(e.numero || "")}" required /></div>
           <div class="field"><label for="elicNiveau">Niveau</label><input id="elicNiveau" type="text" placeholder="Ex. Arbitre régional" value="${escapeHtml(e.niveau || "")}" /></div>
+          <div class="field"><label for="elicFonction">Fonction</label><select id="elicFonction">${["", "Arbitre", "OTM", "Arbitre et OTM", "Observateur"].map(f => `<option value="${escapeHtml(f)}"${f === (e.fonction || "") ? " selected" : ""}>${escapeHtml(f || "—")}</option>`).join("")}</select></div>
+          <div class="field"><label for="elicSaison">Saison</label><input id="elicSaison" type="text" placeholder="2026/2027" value="${escapeHtml(e.saison || "")}" /></div>
+          <div class="field"><label for="elicClub">Club / groupement</label><input id="elicClub" type="text" value="${escapeHtml(e.club || "")}" /></div>
           <div class="field"><label for="elicValidite">Valide jusqu'au</label><input id="elicValidite" type="date" value="${escapeHtml(e.validite || "")}" /></div>
           <div class="field"><label for="elicQr">Contenu du QR (optionnel)</label><input id="elicQr" type="text" placeholder="Par défaut : n° de licence" value="${escapeHtml(e.qr || "")}" /></div>
           <div class="field"><label for="elicPhoto">Photo</label><input id="elicPhoto" type="file" accept="image/*" /></div>
@@ -7335,7 +7578,7 @@ function photoRedim_(file) {
 async function sauverElicence_(extra) {
   const g = id => (document.getElementById(id) || {}).value || "";
   const msg = document.getElementById("elicMsg");
-  const donnees = { nom: g("elicNom"), numero: g("elicNumero"), niveau: g("elicNiveau"), validite: g("elicValidite"), qr: g("elicQr") };
+  const donnees = { nom: g("elicNom"), numero: g("elicNumero"), niveau: g("elicNiveau"), validite: g("elicValidite"), qr: g("elicQr"), fonction: g("elicFonction"), saison: g("elicSaison"), club: g("elicClub") };
   const f = document.getElementById("elicPhoto") && document.getElementById("elicPhoto").files[0];
   try {
     if (f) donnees.photo = await photoRedim_(f);
@@ -7344,8 +7587,73 @@ async function sauverElicence_(extra) {
     const res = await jsonp("elicence.set", donnees);
     if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
     state.elicence = res.data;
-    renderContacts();
+    rerenderPerso_();
   } catch (err) { if (msg) msg.textContent = "Erreur : " + err.message; }
+}
+
+/* b18 — pré-remplissage : nom depuis le profil, niveau depuis Progression,
+   saison en cours. Rien n'est enregistré tant que tu ne cliques pas « Enregistrer ». */
+function elicAvecDefauts_(e) {
+  const o = Object.assign({}, e);
+  try {
+    const pr = (typeof Profil !== "undefined" && Profil.config && Profil.config.profil) || {};
+    if (!o.nom) o.nom = String(pr.nom_ffbb || "").trim();
+    if (!o.niveau) {
+      const actuel = Array.isArray(state.niveaux) && state.niveaux.length ? (state.niveaux.find(n => !n.dateFin) || state.niveaux[0]) : null;
+      o.niveau = (actuel && (actuel.niveau || actuel["Niveau"])) || String(pr.niveau || "").trim();
+    }
+    if (!o.saison) o.saison = getCurrentSeason();
+  } catch (err) { /* pré-remplissage facultatif */ }
+  return o;
+}
+
+/* b18 — dépôt de l'e-Licence officielle (capture compressée ou PDF). */
+function imageCompressee_(file, largeurMax, poidsMax) {
+  return new Promise((ok, ko) => {
+    const u = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, largeurMax / img.width), c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(u);
+      let q = 0.86, out = c.toDataURL("image/jpeg", q);
+      while (out.length > poidsMax && q > 0.35) { q -= 0.08; out = c.toDataURL("image/jpeg", q); }
+      out.length > poidsMax ? ko(new Error("Image trop lourde même compressée")) : ok(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); ko(new Error("Image illisible")); };
+    img.src = u;
+  });
+}
+function fichierBase64_(file) {
+  return new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = () => ko(new Error("Lecture impossible")); fr.readAsDataURL(file); });
+}
+async function deposerDocElicence_(file, effacer) {
+  const msg = document.getElementById("elicDocMsg");
+  try {
+    let corps;
+    if (effacer) corps = { effacer: "1" };
+    else if (/^image\//.test(file.type)) corps = { image: await imageCompressee_(file, 1100, 880000), nom: file.name };
+    else if (file.type === "application/pdf") { if (file.size > 4200000) throw new Error("PDF trop lourd (max 4 Mo)"); corps = { pdf: await fichierBase64_(file), nom: file.name }; }
+    else throw new Error("Format non accepté (image ou PDF)");
+    if (msg) msg.textContent = "Envoi…";
+    const res = await jsonp("elicence.document", corps);
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé");
+    state.elicence = res.data;
+    try { if (typeof _cacheEcrire === "function") _cacheEcrire(_cacheKey("elicence", {}), { success: true, data: res.data }); } catch (e) {}
+    rerenderPerso_();
+    setStatus(effacer ? "Document retiré" : "e-Licence enregistrée", "ok");
+  } catch (err) {
+    if (msg) msg.textContent = "Erreur : " + err.message + (/AUTH|inconnue|unknown/i.test(err.message) ? " (Auth.gs b18 à déployer)" : "");
+  }
+}
+function elicDocPleinEcran_() {
+  const e = state.elicence || {};
+  if (!e.doc) return;
+  const ov = document.createElement("div");
+  ov.className = "elic-overlay";
+  ov.innerHTML = `<img class="elic-doc-grand" src="${escapeHtml(e.doc)}" alt="e-Licence officielle" /><p class="elic-fermer">Touche l'écran pour fermer</p>`;
+  ov.addEventListener("click", () => ov.remove());
+  document.body.appendChild(ov);
 }
 function elicPleinEcran_() {
   const e = state.elicence || {};
@@ -7602,6 +7910,12 @@ function attachPersoListeners_(root) {
   if (ed) ed.addEventListener("click", () => sauverElicence_({ photoEffacer: true }));
   const ep = root.querySelector("#elicPlein");
   if (ep) ep.addEventListener("click", elicPleinEcran_);
+  const dv = root.querySelector("#elicDocVoir"), dm = root.querySelector("#elicDocMini");
+  [dv, dm].forEach(b => { if (b) b.addEventListener("click", () => { const e = state.elicence || {}; if (e.doc) elicDocPleinEcran_(); else if (e.docUrl) window.open(safeUrl_(e.docUrl), "_blank", "noopener"); }); });
+  const edf = root.querySelector("#elicDocFile");
+  if (edf) edf.addEventListener("change", () => { if (edf.files && edf.files[0]) deposerDocElicence_(edf.files[0], false); });
+  const dd = root.querySelector("#elicDocDel");
+  if (dd) dd.addEventListener("click", () => { if (confirm("Retirer le document de licence enregistré ?")) deposerDocElicence_(null, true); });
   remplirQr_(root);
 
   // Indispos (saisie manuelle)
