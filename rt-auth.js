@@ -175,8 +175,9 @@ const ECRITURES = {
   "settings.vehicule.add": 1, "settings.vehicule.del": 1,
   "couts.set": 1,
   addHotel: 1, deleteHotel: 1,
-  "elicence.set": 1, "indispo.add": 1, "indispo.import": 1, "indispo.delete": 1,
-  "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1
+  "elicence.set": 1, "elicence.document": 1, "indispo.add": 1, "indispo.import": 1, "indispo.delete": 1,
+  "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1,
+  "alerte.ignorer": 1, "mission.ecarter": 1   // b18
 };
 
 function _cacheKey(action, extra) {
