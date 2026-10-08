@@ -177,7 +177,7 @@ const ECRITURES = {
   addHotel: 1, deleteHotel: 1,
   "elicence.set": 1, "elicence.document": 1, "indispo.add": 1, "indispo.import": 1, "indispo.delete": 1,
   "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1,
-  "alerte.ignorer": 1, "mission.ecarter": 1   // b18
+  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19
 };
 
 function _cacheKey(action, extra) {
@@ -661,6 +661,21 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
+      <h3>Signaler un problème</h3>
+      <p class="rt-help">Le ticket part dans l'onglet TICKETS du classeur et t'arrive par mail. Un audit complet t'est envoyé chaque lundi matin.</p>
+      <div class="rt-row">
+        <div class="rt-field"><label for="tkCat">Type</label>
+          <select id="tkCat">${["Bug / affichage", "Calcul faux", "Paiement", "Import mail", "Idée d'amélioration", "Autre"].map(x => `<option>${esc(x)}</option>`).join("")}</select></div>
+        <div class="rt-field"><label for="tkGrav">Gravité</label>
+          <select id="tkGrav"><option>Gênant</option><option>Bloquant</option><option>Mineur</option></select></div>
+      </div>
+      <div class="rt-field"><label for="tkDesc">Que se passe-t-il ?</label>
+        <textarea id="tkDesc" rows="3" placeholder="Ex. Paiements : le montant à recevoir d'octobre ne correspond pas à l'échéancier"></textarea></div>
+      <button type="button" class="rt-btn" id="tkEnvoyer">Envoyer le ticket</button>
+      <details class="rt-details" id="tkHist"><summary>Mes tickets</summary><div id="tkListe"><p class="rt-help">Chargement…</p></div></details>
+    </section>
+
+    <section class="rt-sect">
       <h3>Sécurité</h3>
       <details class="rt-details">
         <summary>Changer mon mot de passe</summary>
@@ -685,6 +700,9 @@ function renderProfile() {
     delCout(type, Number(i));
   }));
   document.getElementById("pfChangePwd").addEventListener("click", changePassword);
+  document.getElementById("tkEnvoyer").addEventListener("click", envoyerTicket);
+  const th = document.getElementById("tkHist");
+  if (th) th.addEventListener("toggle", () => { if (th.open) chargerTickets(); });
   const setTheme = t => {
     if (typeof applyTheme === "function") applyTheme(t);
     else document.documentElement.setAttribute("data-theme", t);
@@ -700,6 +718,33 @@ function renderProfile() {
 }
 
 function val(id) { const e = document.getElementById(id); return e ? e.value.trim() : ""; }
+
+/* b19 — tickets : contexte technique joint automatiquement (onglet, écran, version). */
+function envoyerTicket() {
+  const desc = val("tkDesc");
+  if (desc.length < 5) { toast("Décris le problème en quelques mots.", true); return; }
+  const onglet = (typeof state !== "undefined" && state.activeTab) || "";
+  const appareil = [window.innerWidth + "x" + window.innerHeight, (typeof APP_VERSION !== "undefined" ? APP_VERSION : ""), navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 110)].join(" · ");
+  const b = document.getElementById("tkEnvoyer"); if (b) b.disabled = true;
+  jsonp("ticket.add", { categorie: val("tkCat"), gravite: val("tkGrav"), description: desc, onglet: onglet, appareil: appareil }).then(res => {
+    if (!res || !res.success) throw new Error((res && res.error) || "Échec");
+    if (!res.data) throw new Error("Apps Script b19 pas encore déployé");
+    const d = document.getElementById("tkDesc"); if (d) d.value = "";
+    toast("Ticket " + res.data.id + " envoyé.");
+    const th = document.getElementById("tkHist"); if (th && th.open) chargerTickets();
+  }).catch(err => toast(err.message || "Échec", true)).then(() => { if (b) b.disabled = false; });
+}
+function chargerTickets() {
+  const box = document.getElementById("tkListe");
+  if (!box) return;
+  jsonp("ticket.list", {}).then(res => {
+    if (!res || !res.success || !Array.isArray(res.data)) throw new Error((res && res.error) || "Apps Script b19 pas encore déployé");
+    box.innerHTML = res.data.length ? '<ul class="rt-plist">' + res.data.map(t =>
+      '<li><span><b>' + esc(t.id) + '</b> · ' + esc(t.categorie) + ' · ' + esc(t.gravite) + ' — ' + esc(t.description.slice(0, 120)) +
+      (t.reponse ? '<br><i>' + esc(t.reponse) + '</i>' : '') + '</span><span class="rt-tag">' + esc(t.statut) + '</span></li>').join("") + '</ul>'
+      : '<p class="rt-help">Aucun ticket.</p>';
+  }).catch(err => { box.innerHTML = '<p class="rt-help">' + esc(err.message) + '</p>'; });
+}
 
 function envoyer(action, corps, succes) {
   return jsonp(action, corps).then(res => {
