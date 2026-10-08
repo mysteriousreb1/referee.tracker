@@ -12,9 +12,9 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-08-b19";
+const APP_VERSION = window.RT_VERSION || "2026-10-08-b21";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
-const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
+const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
 let state = {
   allRows: [],
@@ -78,31 +78,7 @@ function toggleTheme() {
 }
 
 
-/* Bloc 9 — Décoration retry du transport jsonp (défini dans rt-auth.js).
-   Ne réessaie QUE les actions de lecture (jamais une écriture, pour éviter
-   tout double envoi). Transparent : même Promise en retour. Guardé : si
-   jsonp n'est pas décorable, aucun effet. */
-function rtInstallRetry_() {
-  const wrap = name => {
-    const raw = window[name];
-    if (typeof raw !== "function" || raw._rtWrapped) return;
-    const MAX = 3, BASE = 800, sleep = ms => new Promise(r => setTimeout(r, ms));
-    const wrapped = function (action) {
-      const args = arguments, self = this;
-      if (RT_ACTIONS_LECTURE.indexOf(String(action)) === -1) return raw.apply(self, args);
-      let essai = 0;
-      const tenter = () => raw.apply(self, args).then(r => r, err => {
-        essai++; RT_NET.retries++;
-        if (essai >= MAX) { RT_NET.echecs++; throw err; }
-        return sleep(BASE * essai).then(tenter);
-      });
-      return tenter();
-    };
-    wrapped._rtWrapped = true;
-    try { window[name] = wrapped; } catch (e) {}
-  };
-  wrap("jsonp"); wrap("jsonpFrais");
-}
+/* b21 — le retry réseau vit uniquement dans rt-auth.js (apiCall). */
 
 /* Keep-warm : ping léger tant que l'onglet est visible, pour éviter le cold
    start d'Apps Script (~1 min d'écran blanc au premier appel). */
@@ -133,7 +109,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   bindUi();
   buildSeasonSelect();
-  rtInstallRetry_();
   rtStartKeepWarm_();
   console.log("%cReferee Tracker " + APP_VERSION, "font-weight:bold");
   // loadData() est déclenché par rt-auth.js une fois l'utilisateur authentifié.
@@ -420,6 +395,10 @@ document.addEventListener("click", e => {
   if (k === "procedures" || k === "contacts") { state.contactsSubView = k; state.meLast = k; setActiveTab("contacts"); }
   else { state.meLast = k; setActiveTab(k); }
 });
+/* b20 — infobulle sur les onglets (utile en mode rail d'icônes sur iPad). */
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".tabs .tab").forEach(t => { const l = t.querySelector(".tab-label"); if (l && !t.title) t.title = l.textContent.trim(); });
+});
 function setActiveTab(tab) {
   if (tab === "monespace") {
     const d = state.meLast || "elicence";
@@ -431,7 +410,7 @@ function setActiveTab(tab) {
   const plus = document.getElementById("tabMoreBtn");   // b18 : « Plus » allumé si l'onglet ouvert est dedans
   if (plus) plus.classList.toggle("is-current", !!document.querySelector(`.tab-secondary[data-tab="${tab}"]`));
   document.querySelectorAll(".tab-more-item").forEach(i => i.classList.toggle("active", i.dataset.goto === tab));
-  if (window.innerWidth <= 720) { try { window.scrollTo({ top: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, 0); } }
+  if (window.innerWidth <= 767) { try { window.scrollTo({ top: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, 0); } }
   // iPhone : la barre d'onglets est scrollable ; on ramène l'onglet actif à
   // l'écran pour qu'il ne reste jamais caché hors du champ visible.
   const ongletActif = document.querySelector(".tab.active");
@@ -830,7 +809,7 @@ function renderReglement() {
   root.innerHTML = `
     <h2 class="section-title">Règlement & situations <span class="count">IA</span>${hist.length ? ` <button type="button" class="small-btn secondary" id="reglClear" style="margin-left:auto">Effacer l'historique</button>` : ""}</h2>
     <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => `
-      <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
+      <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : reglReponseHtml_(m)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
     <form class="regl-form" id="reglForm">
       <textarea id="reglInput" rows="2" placeholder="Ta question de règlement ou ta situation…"></textarea>
       <button type="submit" class="rt-btn regl-send" id="reglSend">Demander</button>
@@ -864,46 +843,115 @@ function renderReglementDocs_() {
   return `<div class="regl-corpus"><div class="regl-sources-t">Documents lus par l'IA</div>${body}</div>`;
 }
 
+/* b20 — réponse structurée : décision mise en avant, explication, articles,
+   sources repliées (elles prenaient tout l'écran). */
+function reglReponseHtml_(m) {
+  if (String(m.text || "").indexOf("⚠") === 0) return `<div class="regl-err">${escapeHtml(m.text)}</div>`;
+  if (m.precisions && m.precisions.length) {
+    var prec = `<div class="regl-prec">${m.precisions.map(x => `<span>${escapeHtml(x.q)} → <b>${escapeHtml(x.r)}</b></span>`).join("")}</div>`;
+  }
+  if (!m.decision && !m.explication) return (prec || "") + formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources);
+  return `${prec || ""}
+    ${m.decision ? `<div class="regl-decision"><span>Décision</span>${formatReglementReponse_(m.decision)}</div>` : ""}
+    ${m.explication ? `<div class="regl-expl">${formatReglementReponse_(m.explication)}</div>` : ""}
+    ${m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(a => `<span class="regl-art">${escapeHtml(a)}</span>`).join("")}</div>` : ""}
+    ${reglSourcesHtml_(m.sources)}`;
+}
 function reglSourcesHtml_(src) {
   if (!src || !src.length) return "";
-  return `<div class="regl-sources"><div class="regl-sources-t">Sources</div>${src.map((x, i) => `
+  return `<details class="regl-sources"><summary class="regl-sources-t">Voir les sources (${src.length})</summary>${src.map((x, i) => `
     <div class="regl-src-item"><div class="regl-src-doc"><span class="regl-src-n">${i + 1}</span>${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
-    <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</div>`;
+    <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</details>`;
 }
 
 function formatReglementReponse_(txt) {
-  let h = escapeHtml(String(txt || ""));
+  let h = escapeHtml(String(txt || "")).trim();
   h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  return h.replace(/\n/g, "<br>");
+  // listes « - » ou « • » → vraies puces
+  const lignes = h.split(/\n/);
+  let out = "", ul = false;
+  lignes.forEach(l => {
+    const m = l.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)$/);
+    if (m) { if (!ul) { out += "<ul>"; ul = true; } out += "<li>" + m[1] + "</li>"; }
+    else { if (ul) { out += "</ul>"; ul = false; } if (l.trim()) out += "<p>" + l + "</p>"; }
+  });
+  return out + (ul ? "</ul>" : "");
 }
 
-async function askReglement_(question) {
+async function askReglement_(question, precisions) {
   reglHistLoad_();
   const cle = normaliserRecherche(question);
   const h0 = state._reglementHist;
-  // Même question déjà posée : réponse instantanée depuis l'historique.
-  for (let i = 0; i < h0.length - 1; i++) {
-    if (h0[i].role === "user" && normaliserRecherche(h0[i].text) === cle && h0[i + 1].role === "ia" && h0[i + 1].text.indexOf("⚠") !== 0) {
-      h0.push({ role: "user", text: question }, { role: "ia", text: h0[i + 1].text, sources: h0[i + 1].sources });
+  // Même question déjà posée (sans précision) : réponse instantanée depuis l'historique.
+  if (!precisions) for (let i = 0; i < h0.length - 1; i++) {
+    if (h0[i].role === "user" && normaliserRecherche(h0[i].text) === cle && h0[i + 1].role === "ia" && String(h0[i + 1].text || "").indexOf("⚠") !== 0 && (h0[i + 1].decision || h0[i + 1].text)) {
+      h0.push({ role: "user", text: question }, Object.assign({}, h0[i + 1]));
       reglHistSave_(); renderReglement(); return;
     }
   }
-  state._reglementHist.push({ role: "user", text: question });
+  if (!precisions) state._reglementHist.push({ role: "user", text: question });
   reglHistSave_();
   renderReglement();
   const status = document.getElementById("reglStatus");
-  if (status) status.textContent = "L'IA cherche dans le règlement… (quelques secondes)";
+  if (status) status.innerHTML = `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…`;
   const btn = document.getElementById("reglSend"); if (btn) btn.disabled = true;
+  // Contexte : la dernière réponse, pour les questions de suivi (« et si… »).
+  const derniere = h0.slice().reverse().find(m => m.role === "ia" && m.decision);
   try {
-    const res = await jsonp("reglement.ask", { question });
+    const res = await jsonp("reglement.ask", { question, precisions: precisions ? JSON.stringify(precisions) : "", contexte: derniere ? (derniere.decision + " " + (derniere.explication || "")).slice(0, 1200) : "" });
     const r = res && res.result;
     if (!res || !res.success || !r || !r.ok) throw new Error((r && r.error) || (res && res.error) || "Erreur inconnue");
-    state._reglementHist.push({ role: "ia", text: r.reponse, sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })) });
+    if (r.type === "questions" && r.questions && r.questions.length) {
+      if (status) status.textContent = "";
+      if (btn) btn.disabled = false;
+      reglQuestions_(question, r);
+      return;
+    }
+    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", explication: r.explication || "", articles: r.articles || [], precisions: precisions || null,
+      sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })) });
   } catch (err) {
-    state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") });
+    state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") + " — renvoie ta question, elle sera retentée.", q: question });
   }
   reglHistSave_();
   renderReglement();
+}
+
+/* b20 — fenêtre de précisions (comme Claude) : l'IA pose 1 à 3 questions à
+   choix ; tu coches, ou tu écris ta réponse, puis elle répond. */
+function reglQuestions_(question, r) {
+  const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
+  const ov = document.createElement("div");
+  ov.id = "rtmDialog"; ov.className = "rtm-ov";
+  ov.innerHTML = `<div class="rtm regl-q" role="dialog" aria-modal="true" aria-label="Précisions">
+    <div class="rtm-head"><h3>Quelques précisions</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
+    <p class="card-sub">${escapeHtml(r.intro || "Pour donner la bonne décision, l'IA a besoin d'en savoir un peu plus.")}</p>
+    <form class="regl-q-form">${r.questions.map((x, i) => `
+      <fieldset class="regl-q-item"><legend>${escapeHtml(x.q)}</legend>
+        <div class="regl-q-opts">${x.options.map(o => `<label class="regl-q-opt"><input type="radio" name="rq${i}" value="${escapeHtml(o)}" /><span>${escapeHtml(o)}</span></label>`).join("")}
+          <label class="regl-q-opt regl-q-autre"><input type="radio" name="rq${i}" value="__autre" /><span>Autre…</span></label></div>
+        <input type="text" class="regl-q-libre" data-i="${i}" placeholder="Ta réponse" hidden />
+      </fieldset>`).join("")}
+      <div class="rtm-act"><button type="button" class="small-btn secondary" data-sans>Répondre sans préciser</button><button type="submit" class="small-btn">Envoyer</button></div>
+    </form></div>`;
+  document.body.appendChild(ov);
+  const fermer = () => ov.remove();
+  ov.querySelector(".rtm-x").addEventListener("click", fermer);
+  ov.addEventListener("click", e => { if (e.target === ov) fermer(); });
+  ov.querySelectorAll("input[type=radio]").forEach(rb => rb.addEventListener("change", () => {
+    const fs = rb.closest("fieldset"), libre = fs.querySelector(".regl-q-libre");
+    libre.hidden = rb.value !== "__autre"; if (!libre.hidden) libre.focus();
+  }));
+  ov.querySelector("[data-sans]").addEventListener("click", () => { fermer(); askReglement_(question, [{ q: "Précisions", r: "aucune, réponds avec l'hypothèse la plus courante et indique-la" }]); });
+  ov.querySelector("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const rep = r.questions.map((x, i) => {
+      const c = ov.querySelector(`input[name=rq${i}]:checked`);
+      const v = !c ? "" : c.value === "__autre" ? ov.querySelector(`.regl-q-libre[data-i="${i}"]`).value.trim() : c.value;
+      return { q: x.q, r: v || "non précisé" };
+    });
+    fermer();
+    askReglement_(question, rep);
+  });
 }
 
 function attachReglementListeners_(root) {
@@ -947,7 +995,6 @@ const TAB_RENDERERS_ = {
   progression: [function () { renderProgression(); }, "Progression"],
   contacts:    [function () { renderContacts(); },    "Procédures"],
   elicence:    [function () { renderPersoTab_("elicence", "e-Licence", renderElicencePanel_); }, "e-Licence"],
-  indispos:    [function () { renderPersoTab_("indispos", "Indispos", renderIndisposPanel_); }, "Indispos"],
   rapports:    [function () { renderPersoTab_("rapports", "Rapports", renderRapportsPanel_); }, "Rapports"],
   hotel:       [function () { renderHotel(); },       "Hôtel"]
 };
@@ -999,6 +1046,7 @@ function renderAllSoon_() {
    cohérent avec le contenu réel des onglets ; masqué (hidden) si le
    compteur est à 0 pour ne pas alourdir la barre de navigation inutile. */
 function renderTabBadges_() {
+  try { alertesSync_(); } catch (e) {}
   const rows = state.filteredRows || [];
   const sessEl = document.querySelector(".tabs-foot span:last-child");
   if (sessEl && typeof Session !== "undefined" && Session && Session.email) {
@@ -1013,9 +1061,6 @@ function renderTabBadges_() {
     badgeAlertes.hidden = nbAlertes === 0;
   }
 
-  const nbInd = 0;   // b19 : Indispos supprimé
-  const badgeInd = document.getElementById("badgeIndispos");
-  if (badgeInd) { badgeInd.textContent = String(nbInd); badgeInd.hidden = nbInd === 0; }
 
   const nbPaiements = rows.filter(paiementEnRetard).length;
   const badgePaiements = document.getElementById("badgePaiements");
@@ -1024,7 +1069,7 @@ function renderTabBadges_() {
     badgePaiements.hidden = nbPaiements === 0;
   }
   // b18 — téléphone : les compteurs des onglets repliés remontent sur « Plus ».
-  const parOnglet = { alertes: nbAlertes, indispos: nbInd };
+  const parOnglet = { alertes: nbAlertes };
   let totalPlus = 0;
   document.querySelectorAll(".tab-more-badge").forEach(b => {
     const n = parOnglet[b.dataset.badgeFor] || 0;
@@ -1070,7 +1115,11 @@ function filterRows(rows) {
 
 /* Examinateur présent sur le match : champ « Observateur » renseigné, ou un rôle mentionnant examinateur / observateur. */
 function isExaminateur_(r) {
-  if (cleanText(get(r, "Observateur"))) return true;
+  if (r._exam !== undefined) return r._exam;
+  // b20 — l'examinateur peut être lu dans n'importe quelle colonne selon la
+  // convocation (Observateur, rôle, warning, notes…) : on regarde toute la ligne.
+  r._exam = !!cleanText(get(r, "Observateur")) || Object.keys(r).some(k => k.charAt(0) !== "_" && typeof r[k] === "string" && /examinat|observat(eur|rice)|[ée]valuat(eur|rice)/i.test(r[k]));
+  if (r._exam) return true;
   return /examinateur|observateur|[ée]valuateur/i.test([get(r, "Collègue rôle"), get(r, "Collègue nom"), get(r, "Mon rôle")].join(" "));
 }
 function renderMatchs() { renderMatchPanel("matchs", "5x5", "5×5"); }
@@ -1242,30 +1291,45 @@ function renderAccueil() {
   weRows.forEach(r => { const k = ymd_(r._date); (parJour[k] = parJour[k] || []).push(r); });
   const jours = Object.keys(parJour).map(k => parJour[k]).sort((a, b) => a[0]._date - b[0]._date);
   const nextUid = prochain ? get(prochain, "UID") : "";
+  /* b20 — week-end en « timeline » : un bloc par jour, une carte par match
+     (heure + RDV, logo, les deux équipes sans troncature, salle, km, €). */
   const ligne = r => {
     const uid = get(r, "UID");
-    const s = startDT_(r).getTime();
-    const fini = s + DUREE_MATCH_MIN_ * 60000 <= Date.now();
-    const etat = fini ? "Terminé" : (uid === nextUid ? (s <= Date.now() ? "En cours" : "Prochain") : "À venir");
-    const cls = fini ? "is-fini" : (uid === nextUid ? "is-next" : "");
-    const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif"));
-    const lieu = cleanText(get(r, "Ville") || get(r, "Salle"));
-    return `<button type="button" class="acc-m ${cls} acc-vers-match" data-uid="${escapeHtml(uid)}">
-      <span class="acc-m-h">${escapeHtml(fmtHeure(heureDe_(r)) || "—")}</span>
-      <span class="acc-m-body"><strong>${escapeHtml(oppDe(r))}</strong><small>${escapeHtml([comp, lieu].filter(Boolean).join(" · "))}</small></span>
-      <span class="acc-m-side"><span class="acc-m-eur">${formatMoney(r._amount)}</span><span class="acc-m-etat">${etat}</span></span>
+    const st = startDT_(r).getTime();
+    const fini = st + DUREE_MATCH_MIN_ * 60000 <= Date.now();
+    const enCours = !fini && st <= Date.now();
+    const etat = fini ? "Terminé" : enCours ? "En cours" : (uid === nextUid ? "Prochain" : "À venir");
+    const cls = fini ? "is-fini" : (uid === nextUid || enCours ? "is-next" : "");
+    const niv = niveauCarte(r);
+    const rec = cleanText(get(r, "Recevant")), vis = cleanText(get(r, "Visiteur / événement"));
+    const rdv = cleanText(get(r, "Heure RDV") || get(r, "RDV"));
+    const salle = cleanText(get(r, "Salle")), ville = cleanText(get(r, "Ville"));
+    const km = r._kmEff || r._km || 0;
+    return `<button type="button" class="we-m ${niv.classe} ${cls}${isExaminateur_(r) ? " is-exam" : ""} acc-vers-match" data-uid="${escapeHtml(uid)}">
+      <span class="we-h"><strong>${escapeHtml(fmtHeure(heureDe_(r)) || "—")}</strong>${rdv ? `<small>RDV ${escapeHtml(fmtHeure(rdv) || rdv)}</small>` : ""}</span>
+      <span class="we-logo">${logoCompetition(r)}</span>
+      <span class="we-body">
+        <span class="we-eq">${escapeHtml(rec || "—")}</span>
+        ${vis ? `<span class="we-eq we-eq--vis">${r._format === "3x3" ? "" : "vs "}${escapeHtml(vis)}</span>` : ""}
+        <span class="we-meta"><span class="badge-niveau">${escapeHtml(niv.badge)}</span>${isExaminateur_(r) ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}<span>${escapeHtml([salle, ville].filter(Boolean).join(" · "))}</span></span>
+      </span>
+      <span class="we-side"><span class="we-eur">${formatMoney(r._amount)}</span>${km ? `<span class="we-km">${formatNumber(km, " km")}</span>` : ""}<span class="we-etat">${etat}</span></span>
     </button>`;
   };
   const carteJour = rows => {
     const d = rows[0]._date;
-    const titre = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     const tot = rows.reduce((t, r) => t + (r._amount || 0), 0);
-    return `<div class="acc-day">
-      <div class="acc-day-head"><h3>${escapeHtml(titre)}</h3><span>${rows.length} match${rows.length > 1 ? "s" : ""} · ${formatMoney(tot)}</span></div>
-      ${rows.map(ligne).join("")}
+    const kmJ = rows.reduce((t, r) => t + (r._kmEff || 0), 0);
+    const auj = ymd_(d) === ymd_(new Date());
+    return `<div class="we-day${auj ? " is-today" : ""}">
+      <div class="we-day-head">
+        <span class="we-day-cal"><b>${escapeHtml(d.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", ""))}</b><strong>${d.getDate()}</strong><i>${escapeHtml(d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""))}</i></span>
+        <span class="we-day-t"><strong>${auj ? "Aujourd'hui" : escapeHtml(d.toLocaleDateString("fr-FR", { weekday: "long" }))}</strong><small>${rows.length} match${rows.length > 1 ? "s" : ""} · ${formatNumber(kmJ, " km")} · ${formatMoney(tot)}</small></span>
+      </div>
+      <div class="we-list">${rows.map(ligne).join("")}</div>
     </div>`;
   };
-  const matchsHtml = jours.length ? `<div class="acc-days">${jours.map(carteJour).join("")}</div>` : empty("Aucun match ce week-end. Repos mérité.");
+  const matchsHtml = jours.length ? `<div class="we-days">${jours.map(carteJour).join("")}</div>` : empty("Aucun match ce week-end. Repos mérité.");
 
   // --- Bandeau saison (style tableau de bord) ---
   const saison = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
@@ -1278,16 +1342,6 @@ function renderAccueil() {
     <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoney(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span></div>
     <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoney(attS)}</span><span class="acc-s-lbl">En attente</span></div>
   </div>`;
-  // --- Prochains matchs (hors week-end en cours) ---
-  const idsWE = new Set(weRows.map(r => get(r, "UID")));
-  const suivants = aVenir.filter(r => !idsWE.has(get(r, "UID"))).sort(sortByDateAsc).slice(0, 5);
-  const suivantsHtml = suivants.length ? `<section class="acc-bloc"><h2 class="section-title">Prochains matchs</h2><div class="acc-days"><div class="acc-day">${suivants.map(r => `<button type="button" class="acc-m acc-m--date acc-vers-match" data-uid="${escapeHtml(get(r, "UID"))}">
-      <span class="acc-m-h acc-m-h--date">${escapeHtml(formatDateShort(r._date))}</span>
-      <span class="acc-m-body"><strong>${escapeHtml(oppDe(r))}</strong><small>${escapeHtml([cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")), cleanText(get(r, "Ville") || get(r, "Salle"))].filter(Boolean).join(" · "))}</small></span>
-      <span class="acc-m-side"><span class="acc-m-eur">${formatMoney(r._amount)}</span><span class="acc-m-etat">${escapeHtml(fmtHeure(heureDe_(r)) || "")}</span></span>
-    </button>`).join("")}</div></div></section>` : "";
-
-  void suivantsHtml;   // b19 : bloc « Prochains matchs » retiré de l'accueil
   root.innerHTML = `
     ${bienvenue}
     ${saisonHtml}
@@ -1319,44 +1373,10 @@ function lundiDeLaSemaine(date) {
   return d;
 }
 
-function cleSemaine(date) {
-  const l = lundiDeLaSemaine(date);
-  return l.getFullYear() + "-" + String(l.getMonth() + 1).padStart(2, "0") + "-" + String(l.getDate()).padStart(2, "0");
-}
-
 function jourEtMois(date) {
   const mois = date.toLocaleDateString("fr-FR", { month: "long" });
   const jour = date.getDate();
   return (jour === 1 ? "1er" : String(jour)) + " " + mois;
-}
-
-/* Intitulé du groupe : « Week-end du 6 & 7 septembre », « Samedi 6 septembre »
-   ou « Semaine du 2 au 8 septembre » si des matchs tombent en semaine. */
-function libelleGroupe(dates) {
-  const uniques = [];
-  dates.forEach(d => {
-    const c = d.toDateString();
-    if (!uniques.some(u => u.toDateString() === c)) uniques.push(d);
-  });
-  uniques.sort((a, b) => a - b);
-
-  const tousWeekEnd = uniques.every(d => d.getDay() === 0 || d.getDay() === 6);
-
-  if (tousWeekEnd && uniques.length === 1) {
-    const d = uniques[0];
-    return JOURS_SEMAINE[d.getDay()].charAt(0).toUpperCase() + JOURS_SEMAINE[d.getDay()].slice(1) + " " + jourEtMois(d);
-  }
-  if (tousWeekEnd && uniques.length === 2) {
-    const a = uniques[0], b = uniques[1];
-    const memeMois = a.getMonth() === b.getMonth();
-    return "Week-end du " + (memeMois ? a.getDate() : jourEtMois(a)) + " & " + jourEtMois(b);
-  }
-  if (tousWeekEnd) return "Week-end du " + jourEtMois(uniques[0]);
-
-  const lundi = lundiDeLaSemaine(uniques[0]);
-  const dimanche = new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + 6);
-  return "Semaine du " + (lundi.getMonth() === dimanche.getMonth() ? lundi.getDate() : jourEtMois(lundi)) +
-         " au " + jourEtMois(dimanche);
 }
 
 function renderWeekendGroups(rows, decroissant) {
@@ -1422,6 +1442,12 @@ const LOGOS_DISPONIBLES = {
 const RE_CODE_FFBB = /\b(?:3X3|CPE|CMUT|ENCOU|FD|OPEN|(?:PN|PR)[MF]|[NRD][MF](?:U\d{2}|\d))\b/;
 
 function codeCompetition(row) {
+  if (row && row._code !== undefined) return row._code;   // b21 : mémoïsé (appelé ~10× par carte à chaque rendu)
+  const c = codeCompetitionCalc_(row);
+  if (row && typeof row === "object") row._code = c;
+  return c;
+}
+function codeCompetitionCalc_(row) {
   if (cleanText(get(row, "Format")) === "3x3") return "3X3";
 
   const brut = cleanText(get(row, "Code compétition")).toUpperCase();
@@ -1451,6 +1477,36 @@ function logoSuivant_(img) {
   sp.textContent = img.dataset.slug || "";
   img.replaceWith(sp);
 }
+
+/* b20 — DÉCOUVERTE AUTOMATIQUE des logos : la liste du dossier
+   img/competitions/ est lue sur GitHub (API publique, 1 fois par jour, mise
+   en cache). Déposer « DMU18.png » dans le dossier suffit : plus besoin de
+   toucher au code. Le nom du fichier = le code de compétition. */
+(function logosDecouvrir_() {
+  const CLE = "rt_logos_v1";
+  const appliquer = noms => {
+    let ajout = 0;
+    (noms || []).forEach(n => {
+      const m = String(n).match(/^([A-Za-z0-9]+)\.(png|jpe?g|webp|svg)$/i);
+      if (m && !LOGOS_DISPONIBLES[m[1].toUpperCase()]) { LOGOS_DISPONIBLES[m[1].toUpperCase()] = n; ajout++; }
+    });
+    return ajout;
+  };
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(CLE) || "null"); } catch (e) {}
+  if (cache && cache.noms) appliquer(cache.noms);
+  if (cache && Date.now() - cache.t < 86400000) return;
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const depot = m ? m[1] + "/" + (location.pathname.split("/")[1] || "") : "mysteriousreb1/referee.tracker";
+  fetch("https://api.github.com/repos/" + depot + "/contents/img/competitions", { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if (!Array.isArray(j)) return;
+      const noms = j.filter(x => x.type === "file").map(x => x.name);
+      try { localStorage.setItem(CLE, JSON.stringify({ t: Date.now(), noms })); } catch (e) {}
+      if (appliquer(noms) && typeof renderAllSoon_ === "function") renderAllSoon_();
+    }).catch(() => {});
+})();
 
 /* b18 — Codes sans logo propre : on réutilise le logo de la famille. */
 const LOGOS_ALIAS_ = { "CMUT": "CPE", "ENCOU": "CPE" };
@@ -1543,7 +1599,7 @@ function renderMatchCard(row) {
 
   /* b19 — 1 ligne = 1 match : date | logo | rencontre | étiquettes | montant.
      Examinateur : surbrillance + étiquette seulement en Championnat de France. */
-  const examCF = isExaminateur_(row) && niv.classe === "niv-france";
+  const examCF = isExaminateur_(row);   // b20 : tag + surbrillance dès qu'un examinateur est présent, quel que soit le niveau
   const jourCourt = row._date ? row._date.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "") : "";
   const sous = format === "3x3"
     ? [get(row, "Ville")].filter(Boolean).join(" · ")
@@ -1835,13 +1891,6 @@ function formatHeureFr(t) {
   return t ? String(t.h).padStart(2, "0") + "h" + String(t.m).padStart(2, "0") : "";
 }
 
-function reculerHeure(t, minutes) {
-  if (!t) return null;
-  let total = t.h * 60 + t.m - minutes;
-  while (total < 0) total += 1440;
-  return { h: Math.floor(total / 60), m: total % 60 };
-}
-
 function formatDelai(minutes) {
   if (minutes % 60 === 0) return (minutes / 60) + "h00";
   return minutes < 60 ? minutes + " min" : Math.floor(minutes / 60) + "h" + String(minutes % 60).padStart(2, "0");
@@ -1944,19 +1993,11 @@ function renderActions(row) {
   if (t && Math.abs(t - Date.now()) < 3 * 86400000 && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
     links.push(`<button type="button" class="action-link secondary alerte-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé (dernière minute)</button>`);
   }
+  // b20 — 3x3 : supprimer une mission créée par erreur (passe en « Annulé », agenda nettoyé).
+  if (row._format === "3x3" && paie !== "Reçu" && paie !== "Reçu partiel") {
+    links.push(`<button type="button" class="action-link secondary alerte-danger" data-supprimer-mission="${escapeHtml(get(row, "UID"))}">Supprimer</button>`);
+  }
   return links.length ? `<div class="actions">${links.join("")}</div>` : "";
-}
-
-/* Mercredi de la semaine qui suit une date donnée (JJ/MM/AAAA) — sert au
-   pointage des virements CF Jeunes (vérif à J+1 semaine, le mercredi). */
-function mercrediSemaineSuivante_(dateStr) {
-  const d = parseFrDate(dateStr);
-  if (!d) return "";
-  const jour = d.getDay(); // 0=dim ... 3=mer ... 6=sam
-  const decalageVersMercrediCourant = (3 - jour + 7) % 7;
-  const cible = new Date(d);
-  cible.setDate(d.getDate() + decalageVersMercrediCourant + 7);
-  return formatDateShort(cible);
 }
 
 function paiementRegime_(row) {
@@ -2122,25 +2163,6 @@ function attachCardListeners(root) {
 
 /* ---------------- Paiements ---------------- */
 
-/* Warnings de paiement : aucune relance n'est envoyée automatiquement.
-   L'écran signale seulement les dossiers à traiter manuellement. */
-function renderRelance45_(rows) {
-  const aRelancer = rows.filter(paiementEnRetard)
-    .map(r => {
-      const d = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
-      return { r, j: d ? Math.max(1, Math.floor((Date.now() - d.getTime()) / 86400000)) : 0 };
-    })
-    .sort((a, b) => b.j - a.j);
-  if (!aRelancer.length) return "";
-  const total = aRelancer.reduce((t, x) => t + (x.r._reste || x.r._amount), 0);
-  return `
-    <div class="relance-box">
-      <h2 class="section-title relance-title">Warnings à gérer manuellement <span class="count">${aRelancer.length}</span></h2>
-      <div class="relance-sub">${formatMoney(total)} non soldés après l'échéance. Aucune relance n'a été envoyée automatiquement.</div>
-      <div class="cards">${aRelancer.map(x => renderMatchCard(x.r)).join("")}</div>
-    </div>`;
-}
-
 /* ---- Page Paiements : vue du mois et suivi par payeur ----
    Dû = reste à percevoir de chaque mission (hors bénévolat/annulé), classé par échéance
    (« Date attendue ») : en retard (avant ce mois), ce mois-ci, mois suivant, ensuite, sans date.
@@ -2164,7 +2186,7 @@ function moisPaiementsData_() {
   const det = { mois: [], ret: [], ancien: [] };
   let ancien = 0;
   (RB.hist || []).forEach(h => {   // délais réels : date du virement − date du match
-    const ds = h.uids.map(u => state.allRows.find(r => get(r, "UID") === u)).filter(r => r && r._date).map(r => new Date(String(h.date).slice(0, 10) + "T12:00:00") - r._date);
+    const ds = h.uids.map(u => rowByUid_(u)).filter(r => r && r._date).map(r => new Date(String(h.date).slice(0, 10) + "T12:00:00") - r._date);
     const j = ds.length ? Math.round(Math.max(...ds) / 86400000) : -1;
     if (j >= 0 && j < 400 && par[h.classe]) { par[h.classe].delais.push(j); tot.delais.push(j); }
   });
@@ -2192,10 +2214,6 @@ function moisPaiementsData_() {
   const tri = (a, b) => (a.att || 0) - (b.att || 0);
   det.mois.sort(tri); det.ret.sort(tri);
   return { predMois, predOk, par, tot, det, ancien, saison, mois: now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }), fin: new Date(d1 - 86400000) };
-}
-function moisDetailHtml_(titre, liste, avecAtt) {
-  if (!liste.length) return "";
-  return `<details class="mp-det"><summary>${escapeHtml(titre)} (${liste.length})</summary><ul class="rb-ms">${liste.map(x => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(rbEquipes_(x.r))}</strong><small>Match ${escapeHtml(rbFmtDate_(x.r._date))} · ${escapeHtml(PAYEURS_LIB_[x.cl])}${avecAtt && x.att ? " · échéance " + escapeHtml(rbFmtDate_(x.att)) : ""} · ${escapeHtml(get(x.r, "Statut paiement") || "À recevoir")} · ${escapeHtml(codeCompetition(x.r) || "")}</small></span><span class="rb-m-v">${formatMoney(x.r._reste)}</span></label></li>`).join("")}</ul></details>`;
 }
 /* b19 — Haut de la page Paiements.
    « À recevoir ce mois-ci » = reste dû des missions dont l'ÉCHÉANCE (colonne
@@ -2241,18 +2259,6 @@ function renderPaiements() {
   const totalRecu = rows.reduce((t, r) => t + (r._encaisse || 0), 0);
   const benevoles = rows.filter(r => statutDe(r) === BENEVOLE);
 
-  /* Un statut (surtout « Reçu ») accumule vite des dizaines de missions
-     passées. On garde à l'écran ce qui reste actionnable (à venir, ou
-     traité récemment) et on replie le reste sous un même principe que
-     les onglets 5×5 / 3×3. Seuil : 8 lignes récentes visibles, le reste
-     replié — au-delà la liste devient illisible. */
-  const RECENTS_VISIBLES = Infinity;
-  // MODIFICATION 19/09/2026 — ce qui est déjà soldé (Reçu, Bénévole) ne
-  // doit plus encombrer l'écran : replié par défaut dans un menu déroulant,
-  // même en dessous du seuil de 8. Ce qui reste à pointer (À recevoir,
-  // Écart/À vérifier) reste affiché en clair comme avant.
-  const TOUJOURS_REPLIES = ["Reçu", BENEVOLE];
-
   /* b19 — chaque statut est replié dans un menu déroulant (lignes 1 match),
      le rapprochement bancaire n'est proposé que sur PC. */
   const bloc = (status, liste, ouvertParDefaut) => {
@@ -2277,7 +2283,6 @@ function renderPaiements() {
     <div class="rb-pc-only">${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}</div>
     <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
   `;
-  void TOUJOURS_REPLIES; void RECENTS_VISIBLES;
   attachCardListeners(root);
   attachPaymentListeners(root);
   attachContactListeners(root);
@@ -2335,7 +2340,8 @@ function paCategorie_(r, axe) {
 function paDonnees_(rows) {
   const cles = paMoisCles_(rows);
   const mois = {};
-  cles.forEach(k => { mois[k] = { recu: { cd: 0, ligue: 0, ffbb: 0, cfj: 0, club: 0 }, attendu: 0, nb: 0, estime: 0 }; });
+  cles.forEach(k => { mois[k] = { recu: { cd: 0, ligue: 0, ffbb: 0, cfj: 0, club: 0 }, attendu: 0, retard: 0, nb: 0, estime: 0 }; });
+  const kNow = monthKeyOf(new Date());
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const delais = [];
   let recuTot = 0, duEchu = 0, recuEchu = 0, resteTot = 0;
@@ -2349,7 +2355,12 @@ function paDonnees_(rows) {
       if (r._date && !v.estime) { const j = Math.round((v.d - r._date) / 86400000); if (j >= 0 && j < 400) delais.push(j); }
     });
     const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
-    if (r._reste > 0 && att) { const k = monthKeyOf(att); if (mois[k]) mois[k].attendu += r._reste; }
+    // b20 — un reste dont l'échéance est passée n'est plus « attendu » dans un
+    // mois révolu : il est compté EN RETARD dans le mois en cours.
+    if (r._reste > 0 && att) {
+      if (att < now) { if (mois[kNow]) mois[kNow].retard += r._reste; }
+      else { const k = monthKeyOf(att); if (mois[k]) mois[k].attendu += r._reste; }
+    }
     if (att && att <= now) { duEchu += r._amount; recuEchu += r._encaisse; }
     resteTot += r._reste || 0;
   });
@@ -2375,7 +2386,7 @@ function renderAnalysePaiements_(rows) {
   if (!valides.length) return "";
   const D = paDonnees_(valides);
   const axe = state.paieAnaAxe || "payeur";
-  const max = Math.max(1, ...D.liste.map(x => x.total + x.attendu));
+  const max = Math.max(1, ...D.liste.map(x => x.total + x.attendu + x.retard));
   const moisCourant = monthKeyOf(new Date());
   const lib = k => { const [y, m] = k.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""); };
   const kEur = v => v >= 1000 ? (v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k€" : Math.round(v) + " €";
@@ -2383,13 +2394,15 @@ function renderAnalysePaiements_(rows) {
     const segs = PA_ORDRE_.filter(c => x.recu[c] > 0).map(c =>
       `<span class="pa-seg pa-c-${c}" style="height:${(x.recu[c] / max * 100).toFixed(2)}%" title="${escapeHtml(PAYEURS_LIB_[c])} : ${escapeHtml(formatMoney(x.recu[c]))}"></span>`).join("");
     const att = x.attendu > 0 ? `<span class="pa-seg pa-att" style="height:${(x.attendu / max * 100).toFixed(2)}%" title="Encore attendu : ${escapeHtml(formatMoney(x.attendu))}"></span>` : "";
-    const val = x.total > 0 ? kEur(x.total) : (x.attendu > 0 ? `<em>${kEur(x.attendu)}</em>` : "");
-    return `<div class="pa-col${x.k === moisCourant ? " is-now" : ""}" title="${escapeHtml(monthLabelOf(x.k))} — reçu ${escapeHtml(formatMoney(x.total))}${x.attendu > 0 ? " · attendu " + escapeHtml(formatMoney(x.attendu)) : ""}">
+    const ret = x.retard > 0 ? `<span class="pa-seg pa-ret" style="height:${(x.retard / max * 100).toFixed(2)}%" title="En retard : ${escapeHtml(formatMoney(x.retard))}"></span>` : "";
+    const ouvert = x.attendu + x.retard;
+    const val = x.total > 0 ? kEur(x.total) + (ouvert > 0 ? `<em> +${kEur(ouvert)}</em>` : "") : (ouvert > 0 ? `<em>${kEur(ouvert)}</em>` : "");
+    return `<div class="pa-col${x.k === moisCourant ? " is-now" : ""}" title="${escapeHtml(monthLabelOf(x.k))} — reçu ${escapeHtml(formatMoney(x.total))}${x.attendu > 0 ? " · attendu " + escapeHtml(formatMoney(x.attendu)) : ""}${x.retard > 0 ? " · en retard " + escapeHtml(formatMoney(x.retard)) : ""}">
       <span class="pa-val">${val}</span>
-      <span class="pa-pile">${att}${segs}</span>
+      <span class="pa-pile">${att}${ret}${segs}</span>
       <span class="pa-mois">${escapeHtml(lib(x.k))}</span></div>`;
   }).join("");
-  const legende = PA_ORDRE_.map(c => `<span class="pa-leg"><i class="pa-c-${c}"></i>${escapeHtml(PAYEURS_LIB_[c])}</span>`).join("") + `<span class="pa-leg"><i class="pa-att"></i>Encore attendu</span>`;
+  const legende = PA_ORDRE_.map(c => `<span class="pa-leg"><i class="pa-c-${c}"></i>${escapeHtml(PAYEURS_LIB_[c])}</span>`).join("") + `<span class="pa-leg"><i class="pa-att"></i>Encore attendu</span><span class="pa-leg"><i class="pa-ret"></i>En retard</span>`;
   const cats = paCategories_(valides, axe);
   const maxDu = Math.max(1, ...cats.map(c => c.du));
   const lignes = cats.map(c => {
@@ -2440,7 +2453,7 @@ function attachAnalysePaiements_(root, rows) {
 async function marquerContact(uid, valeur) {
   const res = await jsonp("setContact", { uid, value: valeur ? "1" : "" });
   if (!res || res.success === false) throw new Error((res && res.error) || "Erreur contact");
-  const row = state.allRows.find(r => get(r, "UID") === uid);
+  const row = rowByUid_(uid);
   if (row) row["Contact collègue"] = valeur ? new Date().toLocaleDateString("fr-FR") : "";
   return res;
 }
@@ -2450,7 +2463,7 @@ function attachContactListeners(root) {
   root.querySelectorAll(".contact-sms").forEach(lien => {
     lien.addEventListener("click", () => {
       const uid = lien.dataset.uid;
-      const row = state.allRows.find(r => get(r, "UID") === uid);
+      const row = rowByUid_(uid);
       if (row && get(row, "Contact collègue")) return;   // déjà marqué
       marquerContact(uid, true).catch(() => { /* silencieux : le SMS prime */ });
     });
@@ -2536,7 +2549,7 @@ function attachPaymentListeners(root) {
   root.querySelectorAll(".payment-all").forEach(button => {
     button.addEventListener("click", () => {
       const form = button.closest(".payment-form");
-      const row = state.allRows.find(r => get(r, "UID") === form.dataset.uid);
+      const row = rowByUid_(form.dataset.uid);
       if (!row) return;
       const total = toNumber(get(row, "Indemnité totale"));
       const cote = button.dataset.side;
@@ -3062,19 +3075,37 @@ function renderCashFlow_(cf) {
       <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
       <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
     </div>
+    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+4 pour les clubs). « En retard » = date prévue dépassée sans versement.</p>
     ${spark}
-    ${(cf.echeances && cf.echeances.length) ? `
-    <div class="table-card"><div class="table-wrap"><table class="cf-table">
-      <thead><tr><th>Échéance</th><th>Dans</th><th>Missions</th><th>Montant</th><th>Cumulé</th></tr></thead>
-      <tbody>${cf.echeances.map(e => `<tr>
-        <td>${escapeHtml(e.date)}</td>
-        <td>${e.jours <= 0 ? "auj." : "J+" + e.jours}</td>
-        <td>${e.nb}</td>
-        <td>${money(e.montant)}</td>
-        <td class="cf-cumul">${money(e.cumul)}</td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>` : ""}
-    <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
+    ${cfTableau_()}
+        <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
+}
+
+/* b20 — tableau calculé côté site à partir des dates attendues : on voit
+   QUI paie, QUAND, et dans combien de jours. */
+function cfTableau_() {
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  const groupes = {};
+  (state.filteredRows || []).forEach(r => {
+    if (!r._isActive || r._format === "Alerte" || r._benevole || !(r._reste > 0)) return;
+    const d = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
+    if (!d || d < auj) return;
+    const k = d.getTime();
+    const g = groupes[k] = groupes[k] || { d, nb: 0, montant: 0, payeurs: {} };
+    g.nb++; g.montant += r._reste;
+    const p = PAYEURS_LIB_[payeurAffiche_(r)] || "Autre"; g.payeurs[p] = (g.payeurs[p] || 0) + 1;
+  });
+  const l = Object.values(groupes).sort((a, b) => a.d - b.d);
+  if (!l.length) return "";
+  let cumul = 0;
+  const dans = d => { const j = Math.round((d - auj) / 86400000); return j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " jours"; };
+  return `<div class="table-card"><div class="table-wrap"><table class="cf-table">
+    <thead><tr><th>Versement prévu</th><th>Quand</th><th>Payeur</th><th class="num">Missions</th><th class="num">Montant</th><th class="num">Cumulé</th></tr></thead>
+    <tbody>${l.map(g => { cumul += g.montant; return `<tr>
+      <td>${escapeHtml(g.d.toLocaleDateString("fr-FR"))}</td><td>${dans(g.d)}</td>
+      <td>${escapeHtml(Object.keys(g.payeurs).join(", "))}</td>
+      <td class="num">${g.nb}</td><td class="num">${money(g.montant)}</td><td class="num cf-cumul">${money(cumul)}</td></tr>`; }).join("")}</tbody>
+  </table></div></div>`;
 }
 
 /* Courbe cumulée des encaissements à venir — SVG maison, aucun canvas :
@@ -3689,7 +3720,7 @@ function renderProgression() {
           <div class="field"><label for="niveauRecyclage">Recyclage</label><input id="niveauRecyclage" type="date" /></div>
           <div class="field"><label for="niveauDateDebut">Date de début</label><input id="niveauDateDebut" type="date" required /></div>
           <div class="field"><label for="niveauDateFin">Date de fin</label><input id="niveauDateFin" type="date" /></div>
-          <div class="field"><label for="niveauGroupement">Groupement</label><input id="niveauGroupement" type="text" placeholder="Ex. GES0067070 - WEITBRUCH A.S.C.G" /></div>
+          <div class="field"><label for="niveauGroupement">Groupement</label><input id="niveauGroupement" type="text" placeholder="Ex. GES0000000 - NOM DU CLUB" /></div>
           <div class="field"><label for="niveauSaisiPar">Saisi par</label><input id="niveauSaisiPar" type="text" placeholder="Ex. GES - LIGUE REGIONALE GRAND EST" /></div>
         </form>
         <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="niveauForm">Enregistrer</button></div>
@@ -3840,11 +3871,6 @@ function loadProcedures() {
     });
 }
 
-function setContactsSubView_(view) {
-  state.contactsSubView = view;
-  renderContacts();
-}
-
 function renderContacts() {
   const root = document.getElementById("contacts");
   if (!root) return;
@@ -3876,9 +3902,7 @@ function renderContacts() {
   if (state.procedures === null && !state._proceduresErreur) loadProcedures();
 
   const vue = state.contactsSubView;
-  const btn = (v, id, lib) => `<button type="button" class="tabs-mini-btn${vue === v ? " active" : ""}" id="${id}">${lib}</button>`;
   const panneau = vue === "contacts" ? renderContactsPanel_() : renderProceduresPanel_();
-  void btn;
   root.innerHTML = `
     ${monEspaceBar_(vue)}
     <div id="contactsSubPanel">${panneau}</div>
@@ -3919,11 +3943,12 @@ function ouvrirModaleEdition_(cfg) {
     ${cfg.onDelete ? `<div class="rtm-del"><button type="button" class="rtm-delbtn">${escapeHtml(cfg.libSuppr || "Supprimer")}</button></div>` : ""}
   </div>`;
   document.body.appendChild(ov);
-  const fermer = () => ov.remove();
+  const esc = e => { if (e.key === "Escape") fermer(); };
+  const fermer = () => { ov.remove(); document.removeEventListener("keydown", esc); };
   const msg = ov.querySelector(".rtm-msg");
   ov.addEventListener("click", e => { if (e.target === ov) fermer(); });
   ov.querySelector(".rtm-x").addEventListener("click", fermer);
-  document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { fermer(); document.removeEventListener("keydown", esc); } });
+  document.addEventListener("keydown", esc);
   ov.querySelector("form").addEventListener("submit", async e => {
     e.preventDefault();
     const vals = {}; cfg.champs.forEach(f => { vals[f.id] = ov.querySelector("#rtm_" + f.id).value; });
@@ -3948,15 +3973,24 @@ function ouvrirModaleInfo_(titre, html) {
     <div class="rtm-head"><h3>${escapeHtml(titre)}</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
     <div class="stat-note">${html}</div></div>`;
   document.body.appendChild(ov);
-  const f = () => ov.remove();
+  const esc = e => { if (e.key === "Escape") f(); };
+  const f = () => { ov.remove(); document.removeEventListener("keydown", esc); };
   ov.addEventListener("click", e => { if (e.target === ov) f(); });
   ov.querySelector(".rtm-x").addEventListener("click", f);
-  document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { f(); document.removeEventListener("keydown", esc); } });
+  document.addEventListener("keydown", esc);
 }
 
 /* b19 — Contacts & Procédures : même design. Cartes compactes, boutons ✉ (mail)
    et ☎ (appel) au lieu de liens texte, engrenage = fenêtre de modification,
    « + Ajouter » ouvre la même fenêtre vide. */
+const ICONE_LOUPE_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-cc-loupe]");
+  if (!b) return;
+  state.ccFiltreOuvert = !state.ccFiltreOuvert;
+  const f = b.closest(".cc-bar") && b.closest(".cc-bar").nextElementSibling;
+  if (f && f.classList.contains("cc-filtres")) { f.hidden = !state.ccFiltreOuvert; b.classList.toggle("is-on", state.ccFiltreOuvert); if (state.ccFiltreOuvert) { const i = f.querySelector("input"); if (i) i.focus(); } }
+});
 const ICONE_MAIL_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
 const ICONE_TEL_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
 const ICONE_LIEN_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
@@ -4006,20 +4040,14 @@ function renderContactsPanel_() {
   } else liste = empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.");
   return `
     <div class="cc-bar">
-      <input id="contactsSearchInput" type="search" placeholder="Rechercher un nom, un club, un numéro…" value="${escapeHtml(state.contactsSearch || "")}" aria-label="Rechercher" />
-      <select id="contactsTriSel" aria-label="Trier par">${[["organisation", "Par organisation"], ["nom", "Par nom"], ["role", "Par rôle"], ["championnat", "Par championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select>
+      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.contactsSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
       <button type="button" class="small-btn" id="contactAjouter">+ Ajouter</button>
     </div>
+    <div class="cc-filtres"${state.ccFiltreOuvert || state.contactsSearch ? "" : " hidden"}>
+      <input id="contactsSearchInput" type="search" placeholder="Rechercher un nom, un club, un numéro…" value="${escapeHtml(state.contactsSearch || "")}" aria-label="Rechercher" />
+      <select id="contactsTriSel" aria-label="Trier par">${[["organisation", "Par organisation"], ["nom", "Par nom"], ["role", "Par rôle"], ["championnat", "Par championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select>
+    </div>
     ${liste}`;
-}
-
-/* Tri des procédures : Contact d'abord (le plus actionnable en situation),
-   puis par catégorie, puis par titre. */
-function trierProcedures_(procedures) {
-  const ordre = ["Formation", "Observations", "Classement des arbitres", "Contact", "Règlement", "Logistique", "Administratif", "Autre"];
-  const rang = c => { const i = ordre.indexOf(c || "Autre"); return i < 0 ? 99 : i; };
-  return procedures.slice().sort((a, b) =>
-    rang(a.categorie) - rang(b.categorie) || String(a.titre || "").localeCompare(String(b.titre || "")));
 }
 
 function mailsDe_(t) { const r = String(t || "").match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []; return r.filter((m, i) => r.indexOf(m) === i).slice(0, 3); }
@@ -4070,9 +4098,12 @@ function renderProceduresPanel_() {
   }
   return `
     <div class="cc-bar">
+      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.proceduresSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
+      <button type="button" class="small-btn" id="procAjouter">+ Ajouter</button>
+    </div>
+    <div class="cc-filtres"${state.ccFiltreOuvert || state.proceduresSearch ? "" : " hidden"}>
       <input id="procSearchInput" type="search" placeholder="Rechercher une procédure, une personne…" value="${escapeHtml(state.proceduresSearch || "")}" aria-label="Rechercher" />
       <select id="procTriSel" aria-label="Trier par"><option value="categorie"${tri === "categorie" ? " selected" : ""}>Par catégorie</option><option value="importance"${tri === "importance" ? " selected" : ""}>Par importance</option><option value="titre"${tri === "titre" ? " selected" : ""}>Par titre</option></select>
-      <button type="button" class="small-btn" id="procAjouter">+ Ajouter</button>
     </div>
     ${corps}`;
 }
@@ -4346,29 +4377,33 @@ const QCM_DUREE_SEC = 600; // exam : 10 minutes
 const QCM_LETTRES = ["A", "B", "C", "D", "E", "F"];
 
 function loadQcmStats() {
+  if (state._qcmStatsEnCours) return;
+  state._qcmStatsEnCours = true;
   jsonp("qcmStats")
     .then(res => {
+      state._qcmStatsEnCours = false;
       if (res && res.success) {
         state.qcmStats = res.stats;
         if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
         if (state.activeTab === "progression") renderAllSoon_();
       }
     })
-    .catch(err => console.warn("Stats QCM indisponibles :", err && err.message));
+    .catch(err => { state._qcmStatsEnCours = false; console.warn("Stats QCM indisponibles :", err && err.message); });
 }
 
 function loadQcmBank() {
   if (state.qcmBank || state._qcmBankEnCours) return;
+  if (state._qcmBankErreur && Date.now() - state._qcmBankErreur < 60000) return;   // pas de boucle de 404
   state._qcmBankEnCours = true;
   fetch("./data/questions.json")
-    .then(r => r.json())
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(d => {
       state.qcmBank = (d && d.questions) || [];
       state._qcmBankEnCours = false;
       if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
     })
     .catch(err => {
-      state._qcmBankEnCours = false;
+      state._qcmBankEnCours = false; state._qcmBankErreur = Date.now();
       console.warn("Banque QCM indisponible :", err && err.message);
     });
 }
@@ -4844,6 +4879,26 @@ function alertesSetTraitee_(id, sig) {
   if (sig === null) delete o[id]; else o[id] = sig;
   ALERTES_MEM_ = o;
   try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(o)); } catch (e) { /* mémoire seule */ }
+  // b20 — synchronisé sur le serveur : l'état suit sur tous tes appareils.
+  jsonp("alerte.traiter", { id, sig: sig === null ? "" : sig }).then(res => {
+    if (!res || res.success === false || !res.data) throw new Error((res && res.error) || "Apps Script b20 pas encore déployé");
+    ALERTES_MEM_ = res.data;
+    try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(res.data)); } catch (e) {}
+    renderTabBadges_ && renderTabBadges_();
+  }).catch(err => setStatus("Alerte non synchronisée : " + err.message, "error"));
+}
+/* Charge l'état serveur une fois par session (puis à chaque ouverture d'Alertes). */
+let ALERTES_SYNC_ = 0;
+function alertesSync_(force) {
+  if (!force && Date.now() - ALERTES_SYNC_ < 60000) return;
+  ALERTES_SYNC_ = Date.now();
+  jsonp("alertes.traitees", {}).then(res => {
+    if (!res || res.success === false || !res.data || typeof res.data !== "object") return;
+    const avant = JSON.stringify(alertesTraitees_());
+    ALERTES_MEM_ = res.data;
+    try { localStorage.setItem(ALERTES_TRAITEES_KEY, JSON.stringify(res.data)); } catch (e) {}
+    if (JSON.stringify(res.data) !== avant) { try { renderTabBadges_(); } catch (e) {} if (state.activeTab === "alertes") renderAllSoon_(); }
+  }).catch(() => {});
 }
 /* Signature stable d'une alerte : ne change pas quand seuls des chiffres variables
    (jours, montants affichés) bougent, sinon une alerte « traitée » réapparaissait. */
@@ -4885,6 +4940,7 @@ function alertesSplit_(rows) {
 }
 
 function renderAlertes() {
+  alertesSync_();
   const root = document.getElementById("alertes");
   const { actives, traitees } = alertesSplit_(state.filteredRows);
   const base = actives;
@@ -4958,6 +5014,23 @@ function renderAlertes() {
   root.querySelectorAll("[data-mission-ecarter]").forEach(b => nettoyer(b, "mission.ecarter", "Écarter cette mission ? Elle passe en « Annulé » et son événement d'agenda est supprimé."));
 }
 
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-supprimer-mission]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const uid = b.getAttribute("data-supprimer-mission");
+  if (!uid || !confirm("Supprimer cette mission 3x3 ?\nElle disparaît de l'app et de l'agenda (la ligne reste dans le Sheet, statut « Annulé »).")) return;
+  b.disabled = true; b.textContent = "Suppression…";
+  try {
+    const res = await jsonp("mission.ecarter", { uid });
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+    if (!res.result) throw new Error("Apps Script pas à jour");
+    remplacerLigne_(uid, res.row);
+    setStatus("Mission supprimée", "ok");
+    renderAll();
+  } catch (err) { b.disabled = false; b.textContent = "Supprimer"; setStatus("Erreur : " + err.message, "error"); }
+});
+
 /* b19 — annulation de dernière minute : statut Annulé, indemnité et km
    retirés des calculs, événement d'agenda supprimé. Rien n'est effacé du Sheet. */
 document.addEventListener("click", async e => {
@@ -4990,6 +5063,14 @@ function mission3x3Suspecte_(r) {
 
 /* b18 — remplace une ligne par la version renvoyée par le serveur (sans
    retélécharger les ~200 missions). Sans ligne renvoyée : rechargement. */
+/* b21 — index UID → ligne (reconstruit quand state.allRows change). */
+function rowByUid_(uid) {
+  const rows = state.allRows || [];
+  if (!state._byUid || state._byUidSrc !== rows) {
+    state._byUid = new Map(rows.map(r => [get(r, "UID"), r])); state._byUidSrc = rows;
+  }
+  return state._byUid.get(String(uid)) || null;
+}
 function remplacerLigne_(uid, ligne) {
   if (ligne && get(ligne, "UID")) {
     const brut = state.allRows.map(rawOf_);
@@ -5312,26 +5393,6 @@ function ensureHtml2Canvas_() {
   });
 }
 
-/* Export PNG de la carte des salles. Tuiles en crossOrigin + useCORS :
-   capture le fond de carte sans "tainted canvas". */
-async function exporterCarteImage_() {
-  const conteneur = document.getElementById("exportMap");
-  if (!conteneur) return;
-  try {
-    setStatus("Génération de l'image…", "");
-    const h2c = await ensureHtml2Canvas_();
-    const canvas = await h2c(conteneur, { useCORS: true, backgroundColor: "#ffffff", scale: 2 });
-    const a = document.createElement("a");
-    a.href = canvas.toDataURL("image/png");
-    a.download = `carte-salles-${new Date().toISOString().slice(0, 10)}.png`;
-    a.click();
-    setStatus("Image de la carte exportée", "ok");
-  } catch (e) {
-    console.error("Export carte image :", e);
-    setStatus("Export image impossible — réessaie une fois la carte entièrement affichée.", "error");
-  }
-}
-
 /* Récap par ville : clubs, salles, nombre de matchs, km A/R réellement parcourus
    (_kmEff = km partagés entre matchs d'un même doublé, donc pas de double compte). */
 function recapVilles_(rows) {
@@ -5430,28 +5491,6 @@ function downloadExportCsv() {
   a.remove();
   URL.revokeObjectURL(url);
   setStatus("CSV téléchargé", "ok");
-}
-
-function buildExportText() {
-  const rows = exportRows();
-  const t = exportTotals(rows);
-  return [
-    `REFEREE TRACKER — EXPORT`,
-    `Saison : ${state.exportSeason}`,
-    `Période : ${exportPeriodLabel()}`,
-    ``,
-    `Indemnités brutes : ${formatMoney(t.gross)}`,
-    `Coût carburant réel : ${formatMoney(t.cost)}`,
-    `REVENU NET RÉEL : ${formatMoney(t.net)}`,
-    `KM total A/R : ${formatNumber(t.km, " km")}`,
-    `Matchs 5×5 : ${t.five} · Tournois 3×3 : ${t.three}`,
-    ``,
-    `Détail :`,
-    ...rows.map(r => {
-      const c = realFuelCostClient(r._kmEff, r._date);
-      return `- ${get(r, "Date match")} ${get(r, "Heure/RDV")} | ${r._format} | ${get(r, "Niveau administratif")} | ${rencontreLabel(r)} | ind ${formatMoney(r._amount)} | carb ${formatMoney(c)} | net ${formatMoney(r._amount - c)} | ${formatNumber(r._kmEff, " km")}`;
-    })
-  ].join("\n");
 }
 
 /* ---------------- Génération du PDF ----------------
@@ -5817,8 +5856,6 @@ function realFuelCostClient(km, date) {
 
 function get(row, key) { return row && row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : ""; }
 function firstValue(row, keys) { for (const k of keys) { const v = get(row, k); if (v) return v; } return ""; }
-function hasWarning(row) { return Boolean(get(row, "Warning général") || get(row, "Warning finance") || get(row, "Warning FBI")); }
-
 /* « Paiement club à vérifier » n'est pas une anomalie : c'est un mode de
    règlement, vrai dès l'import et pour toujours. Posé en warning, il
    remplissait l'onglet Alertes en permanence. Il est signalé sur la carte
@@ -5870,11 +5907,6 @@ function paiementEnRetard(row) {
   return Date.now() > prevu.getTime() && recu < du;
 }
 
-/* Compatibilité avec les anciens appels : retourne uniquement un warning,
-   sans déclencher ni envoyer de relance. */
-function paiementARelancer(row) {
-  return paiementEnRetard(row);
-}
 function normalizePhoneFr(v) {
   let d = String(v || "").replace(/[^\d+]/g, "");
   if (d.startsWith("+33")) d = "0" + d.slice(3);
@@ -6169,7 +6201,6 @@ document.addEventListener("click", function (e) {
     state.serverStats = null;
     setStatus("Recalcul des statistiques…", "");
     loadStats(true);
-    setTimeout(renderStats, 1200);
   }
 });
 
@@ -6296,7 +6327,7 @@ function renderEstimation() {
       <div class="kpi"><label>Déjà encaissé cette saison</label><strong>${F(e.recuSaison)}</strong></div>
       <div class="kpi"><label>Km prévus (saison)</label><strong>${N(e.totC.km)}</strong><span class="sub">${N(e.rA.km + e.rC.km)} restants</span></div>
       <div class="kpi"><label>Carburant + entretien prévus</label><strong>−${F(e.totC.carb + e.totC.ent)}</strong><span class="sub">carburant ${F(e.totC.carb)} · entretien ${F(e.totC.ent)}</span></div>
-      <div class="kpi"><label>Matchs attendus</label><strong>${e.totC.n}</strong><span class="sub">${e.rF.n} faits · ${e.rA.n} désignés · ${e.rC.n} à prévoir</span></div>
+      <div class="kpi"><label>Matchs attendus</label><strong>${e.totC.n}</strong><span class="sub">${e.rF.n} faits · ${e.rA.n} désignés · ${e.rC.n} à prévoir${e.prevN ? " · saison N-1 : " + e.prevN : ""}</span></div>
     </div>
 
     <div class="table-card"><div class="table-wrap"><table>
@@ -6324,6 +6355,7 @@ function estInfoHtml_(e) {
     <p><strong>Réalisé</strong> : matchs passés, valeurs réelles.</p>
     <p><strong>À venir (désignés)</strong> : désignations reçues, valorisées exactement (km réels, prix du carburant de la période).</p>
     <p><strong>À prévoir</strong> : matchs pas encore reçus. Base : matchs arbitrés l'an dernier sur la même période restante, multipliés par ton rythme actuel (borné entre 0,6 et 1,6). Sans historique N-1 : rythme actuel réduit de 40 %. Valorisés à ta moyenne saison (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km).</p>
+    <p><strong>Fiabilité</strong> : la partie sûre est « Réalisé » + « À venir » (${F(round2(e.rF.ind + e.rA.ind))} d'indemnités). « À prévoir » est une projection : elle suppose que tu seras désigné autant que la saison dernière (${e.prevN} matchs en N-1) au rythme actuel. Plus la saison avance, plus elle devient fiable ; en octobre, compte une marge de ±25 %.</p>
     <p><strong>Fourchette</strong> : basse = désignations connues seules ; haute = estimation centrale + 25 %.</p>
     <p><strong>Nouvelle désignation</strong> : tout se recalcule. Elle remplace un match « à prévoir » (le total attendu est le plus grand des deux), puis elle est comptée exactement : le net ne bouge beaucoup que si tu dépasses l'estimation.</p>
     <p>Hôtels : nuits saisies + nuits conseillées à venir, au budget maximum réglé.</p>`;
@@ -7010,17 +7042,17 @@ function renderClassementRentabilite(rows) {
     .slice(0, 25);
   if (!groupes.length) return "";
   const maxNet = Math.max(...groupes.map(g => g.net));
-  const chip = (grp, v, l) => `<button type="button" class="pa-axe${v === "" ? " active" : ""}" data-renta-${grp}="${v}">${l}</button>`;
+  const chip = (grp, v, l) => `<button type="button" class="pa-axe" data-renta-${grp}="${v || "tous"}">${l}</button>`;
   return `
     <div class="chart-card renta-card">
       <h3>Clubs les plus rentables (5×5)</h3>
-      <p class="hint">Net réel cumulé par club recevant (indemnités − carburant), nombre de missions. Filtre par âge et par niveau.</p>
+      <p class="hint">Net réel cumulé par club recevant (indemnités − carburant), nombre de missions. Choisis une catégorie ou un niveau pour afficher le classement.</p>
       <div class="renta-filtres">
         <div class="pa-axes">${chip("age", "", "Tous")}${chip("age", "seniors", "Séniors")}${chip("age", "jeunes", "Jeunes")}</div>
         <div class="pa-axes">${chip("niv", "", "Tous niveaux")}${chip("niv", "cd67", "CD67")}${chip("niv", "ligue", "LRGEB")}${chip("niv", "cf", "Champ. de France")}</div>
       </div>
       ${groupes.map(g => { const [club, age, niv] = g.label.split("||"); return `
-        <div class="rank-row" data-age="${age}" data-niv="${niv}">
+        <div class="rank-row" data-age="${age}" data-niv="${niv}" style="display:none">
           <div class="rank-name">
             <div class="label">${escapeHtml(club)} <span class="badge ${age === "jeunes" ? "gold" : "gray"}">${age === "jeunes" ? "Jeunes" : "Séniors"}</span> <span class="badge">${NIV[niv]}</span></div>
             <div class="meter"><i style="width:${maxNet > 0 ? Math.max(0, g.net / maxNet) * 100 : 0}%"></i></div>
@@ -7028,6 +7060,7 @@ function renderClassementRentabilite(rows) {
           <div class="rank-count">${g.count}×</div>
           <div class="rank-value ${g.net < 0 ? "neg" : ""}">${formatMoney(g.net)}</div>
         </div>`; }).join("")}
+      <p class="card-sub renta-vide">Aucun filtre choisi.</p>
     </div>
   `;
 }
@@ -7039,7 +7072,13 @@ document.addEventListener("click", e => {
   carte.querySelectorAll(`[data-renta-${grp}]`).forEach(x => x.classList.toggle("active", x === b));
   const age = (carte.querySelector("[data-renta-age].active") || {}).dataset?.rentaAge || "";
   const niv = (carte.querySelector("[data-renta-niv].active") || {}).dataset?.rentaNiv || "";
-  carte.querySelectorAll(".rank-row").forEach(r => { r.style.display = (!age || r.dataset.age === age) && (!niv || r.dataset.niv === niv) ? "" : "none"; });
+  let n = 0;
+  carte.querySelectorAll(".rank-row").forEach(r => {
+    const ok = (age || niv) && (!age || age === "tous" || r.dataset.age === age) && (!niv || niv === "tous" || r.dataset.niv === niv);
+    r.style.display = ok ? "" : "none"; if (ok) n++;
+  });
+  const v = carte.querySelector(".renta-vide");
+  if (v) { v.hidden = n > 0; v.textContent = (age || niv) ? "Aucun club pour ce filtre." : "Aucun filtre choisi."; }
 });
 
 /* ---------------- Lectures écrites sous les graphiques ---------------- */
@@ -7475,7 +7514,7 @@ function renderHotel() {
         const w = d ? hotelWeekend_(d) : { n: 0, brut: 0, carb: 0 };
         const net = round2(w.brut - w.carb - h.prix - h.repas);
         return `<tr>
-          <td>${escapeHtml(h.date)}</td><td>${(() => { const m = h.matchUid && state.allRows.find(r => get(r, "UID") === h.matchUid); return m ? `<a href="#" class="action-link" data-open-match="${escapeHtml(h.matchUid)}">${escapeHtml(cleanText(get(m, "Recevant")) || "Match")}</a>` : "—"; })()}</td><td>${escapeHtml(h.lieu || "—")}</td><td>${escapeHtml(h.hotel || "—")}</td>
+          <td>${escapeHtml(h.date)}</td><td>${(() => { const m = h.matchUid && rowByUid_(h.matchUid); return m ? `<a href="#" class="action-link" data-open-match="${escapeHtml(h.matchUid)}">${escapeHtml(cleanText(get(m, "Recevant")) || "Match")}</a>` : "—"; })()}</td><td>${escapeHtml(h.lieu || "—")}</td><td>${escapeHtml(h.hotel || "—")}</td>
           <td class="num">${formatMoney(h.prix)}</td><td class="num">${formatMoney(h.repas)}</td>
           <td class="num">${w.n ? formatMoney(w.brut) : "—"}</td><td class="num">${w.n ? "−" + formatMoney(w.carb) : "—"}</td>
           <td class="num">${w.n ? formatMoney(net) : "—"}</td>
@@ -7537,42 +7576,6 @@ document.addEventListener("click", ev => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-/* ---- Stats : suivi des hôtels ---- */
-function renderHotelsStats_() {
-  if (state.hotels === undefined || state.hotels === null) { loadHotels(); return ""; }
-  const saison = state.selectedSeason && state.selectedSeason !== "Toutes les saisons" ? state.selectedSeason : "";
-  const hs = state.hotels.filter(h => {
-    if (!saison) return true;
-    const d = parseFrDate(h.date);
-    return d && normalizeSeason("", d) === saison;
-  });
-  if (!hs.length) return foldable_("Hôtels & repas", empty("Aucune nuit d'hôtel enregistrée sur cette période."));
-  let tH = 0, tR = 0, net = 0;
-  const parSaison = {}, vusWE_ = new Set();
-  hs.slice().sort((a, b) => ((parseFrDate(a.date) || 0) - (parseFrDate(b.date) || 0))).forEach(h => {
-    const d = parseFrDate(h.date);
-    const w = d ? hotelWeekend_(d, vusWE_) : { n: 0, brut: 0, carb: 0 };
-    const nWE = round2(w.brut - w.carb - h.prix - h.repas);
-    tH += h.prix; tR += h.repas; net += nWE;
-    const k = d ? normalizeSeason("", d) : "Sans date";
-    const o = parSaison[k] = parSaison[k] || { n: 0, h: 0, r: 0, net: 0 };
-    o.n++; o.h += h.prix; o.r += h.repas; o.net += nWE;
-  });
-  return foldable_("Hôtels & repas", `
-    <div class="kpi-grid">
-      <div class="kpi"><label>Nuits</label><strong>${hs.length}</strong></div>
-      <div class="kpi"><label>Hôtels</label><strong>${formatMoney(tH)}</strong><span class="sub">${formatMoney(tH / hs.length)} par nuit</span></div>
-      <div class="kpi"><label>Repas</label><strong>${formatMoney(tR)}</strong></div>
-      <div class="kpi"><label>Dépense totale</label><strong>${formatMoney(tH + tR)}</strong><span class="sub">${formatMoney((tH + tR) / hs.length)} par week-end</span></div>
-      <div class="kpi"><label>Net des week-ends</label><strong>${formatMoney(net)}</strong><span class="sub">après carburant, hôtel et repas</span></div>
-    </div>
-    <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Saison</th><th class="num">Nuits</th><th class="num">Hôtels</th><th class="num">Repas</th><th class="num">Net WE</th></tr></thead>
-      <tbody>${Object.keys(parSaison).sort().reverse().map(k => `<tr><td>${escapeHtml(k)}</td><td class="num">${parSaison[k].n}</td><td class="num">${formatMoney(parSaison[k].h)}</td><td class="num">${formatMoney(parSaison[k].r)}</td><td class="num">${formatMoney(parSaison[k].net)}</td></tr>`).join("")}</tbody>
-    </table></div></div>`, { count: hs.length });
-}
-
-
 /* =====================================================================
    MODULES PERSO (05/10/2026) — e-Licence, Indispos FBI, Rapports.
    Sous-vues de l'onglet « Procédures » (state.contactsSubView).
@@ -7604,56 +7607,22 @@ function persoCharger_(cle, action, assign) {
 function rerenderPerso_() {
   const t = state.activeTab;
   if (t === "contacts") renderContacts();
-  else if (t === "elicence" || t === "indispos" || t === "rapports") renderTab_(t);
+  else if (t === "elicence" || t === "rapports") renderTab_(t);
 }
 function renderPersoTab_(id, titre, fn) {
   const root = document.getElementById(id);
   if (!root) return;
-  if (state.contacts === null && !state._contactsErreur && (id === "indispos" || id === "rapports")) loadContacts();
+  if (state.contacts === null && !state._contactsErreur && id === "rapports") loadContacts();
   root.innerHTML = `${monEspaceBar_(id)}${fn()}`;
   attachPersoListeners_(root);
 }
 function loadElicence() { persoCharger_("elic", "elicence", r => { state.elicence = r.data || {}; }); }
-function loadIndispos() { persoCharger_("indis", "indispos", r => { state.indispos = r.data || []; }); }
 function loadRapports() { persoCharger_("rapp", "rapports", r => { state.rapports = (r.data && r.data.rapports) || []; state.rapportsDossier = (r.data && r.data.dossier) || {}; }); }
 function erreurPerso_(msg, id) {
   return `<div class="table-card" style="padding:16px;text-align:center;margin-top:12px"><p class="card-sub" style="margin:0 0 10px">Chargement impossible (${escapeHtml(msg)}).</p><button type="button" class="small-btn secondary" id="${id}">Réessayer</button></div>`;
 }
 function chargementPerso_() { return `<p class="card-sub" style="margin-top:12px">Chargement…</p>`; }
 
-/* ---------- e-Licence ---------- */
-function elicCarteHtml_(e, grand) {
-  const val = e.validite ? new Date(e.validite + "T12:00:00") : null;
-  const jr = val ? Math.ceil((val - new Date()) / 86400000) : null;
-  const badge = val ? (jr < 0 ? `<span class="elic-badge is-bad">Expirée depuis ${-jr} j</span>`
-    : jr <= 60 ? `<span class="elic-badge is-warn">Renouvellement dans ${jr} j</span>`
-    : `<span class="elic-badge is-ok">Valide · ${jr} j</span>`) : "";
-  return `<div class="elic-card${grand ? " elic-grand" : ""}">
-    <div class="elic-top"><span class="elic-brand">Ma licence</span>${badge}</div>
-    <div class="elic-main">
-      <div class="elic-photo">${e.photo ? `<img src="${escapeHtml(e.photo)}" alt="Photo" />` : `<span>Photo</span>`}</div>
-      <div class="elic-id">
-        <strong>${escapeHtml(e.nom || "—")}</strong>
-        <span>N° ${escapeHtml(e.numero || "—")}</span>
-        <span>${escapeHtml([e.fonction, e.niveau].filter(Boolean).join(" · ") || "Niveau non renseigné")}</span>
-        ${e.club ? `<span>${escapeHtml(e.club)}</span>` : ""}
-        <span>${val ? "Valide jusqu'au " + escapeHtml(dmy_(e.validite)) : "Validité non renseignée"}${e.saison ? " · saison " + escapeHtml(e.saison) : ""}</span>
-      </div>
-    </div>
-    <div class="elic-qr" data-qr="${escapeHtml(e.qr || e.numero || "")}"></div>
-  </div>`;
-}
-function remplirQr_(root) {
-  root.querySelectorAll(".elic-qr").forEach(el => {
-    const t = el.getAttribute("data-qr") || "";
-    if (!t) { el.innerHTML = `<small>QR : renseigne un n° de licence</small>`; return; }
-    try {
-      if (typeof qrcode !== "function") throw new Error("lib");
-      const q = qrcode(0, "M"); q.addData(t); q.make();
-      el.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
-    } catch (err) { el.innerHTML = `<small>${escapeHtml(t)}</small>`; }
-  });
-}
 /* b19 — e-Licence = le VRAI document officiel (PDF ou capture), rien d'inventé.
    Une licence vaut pour une saison : au 30/07, l'ancienne est retirée
    automatiquement (Apps Script) et l'app demande la nouvelle. */
@@ -7665,6 +7634,7 @@ function renderElicencePanel_() {
   const aDoc = !!(e.doc || e.docUrl);
   const ancienne = e.ancienneSaison ? `<p class="elic-vide">Nouvelle saison ${escapeHtml(saison)} : ta licence ${escapeHtml(e.ancienneSaison)} a été retirée. Dépose la licence de cette saison.</p>` : "";
   const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel FFBB ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
+    : e.carte && (e.carte.nom || e.carte.numero_licence) ? licCarteBloc_(e)
     : `<div class="elic-officiel">
         <div class="elic-officiel-head">
           <div><strong>Licence ${escapeHtml(e.docSaison || saison)}</strong><span class="card-sub">${escapeHtml(e.docNom || "Document officiel")}${e.docDate ? " · déposée le " + escapeHtml(e.docDate) : ""}</span></div>
@@ -7672,6 +7642,7 @@ function renderElicencePanel_() {
             ${e.doc ? `<button type="button" class="small-btn" id="elicDocVoir">Plein écran</button>` : ""}
             ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF original</a>` : ""}
             <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+            ${e.doc ? `<button type="button" class="small-btn secondary" id="licRelire">Créer la carte numérique</button>` : ""}
             <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
           </div>
         </div>
@@ -7679,6 +7650,101 @@ function renderElicencePanel_() {
           : `<p class="card-sub">Aperçu indisponible pour ce PDF : remplace-le une fois pour générer l'aperçu hors ligne.</p>`}
       </div>`;
   return `<div class="elic-zone">${doc}<span class="card-sub" id="elicDocMsg"></span></div>${renderEmarque_()}`;
+}
+
+/* b20 — CARTE NUMÉRIQUE : les champs sont lus sur TA licence par l'IA
+   (Gemini vision, côté serveur) et la photo est découpée dans l'image
+   officielle. Rien n'est inventé ; chaque champ reste corrigeable. */
+const LIC_CHAMPS_ = [["nom", "Nom"], ["prenom", "Prénom"], ["numero_licence", "N° licence"], ["numero_long", "N° complet"], ["qualification", "Qualification le"], ["categorie", "Catégorie"], ["sexe", "Sexe"], ["assurance", "Assurance"], ["type_licence", "Type de licence"], ["fonctions", "Fonction(s)"], ["numero_association", "N° association"], ["club", "Club"], ["saison", "Saison"]];
+function licCarteHtml_(e, grand) {
+  const c = e.carte || {};
+  const saison = c.saison || e.docSaison || "";
+  const [a1, a2] = String(saison).split("/");
+  const champ = (k, l) => c[k] ? `<div class="lic-f"><span>${l}</span><strong>${escapeHtml(c[k])}</strong></div>` : "";
+  return `<div class="lic-card${grand ? " lic-card--grand" : ""}" role="img" aria-label="Licence ${escapeHtml(saison)} de ${escapeHtml([c.prenom, c.nom].filter(Boolean).join(" "))}">
+    <div class="lic-shine" aria-hidden="true"></div>
+    <div class="lic-top">
+      <span class="lic-fed">FFBB</span>
+      <div class="lic-club"><small>N° association ${escapeHtml(c.numero_association || "—")}</small><strong>${escapeHtml(c.club || "")}</strong></div>
+      <div class="lic-saison"><b>${escapeHtml(a1 || "")}</b><b>${escapeHtml(a2 || "")}</b></div>
+    </div>
+    <div class="lic-main">
+      <div class="lic-photo" data-lic-photo>${e.photo ? `<img src="${escapeHtml(e.photo)}" alt="" />` : ""}</div>
+      <div class="lic-id">
+        <div class="lic-nom"><strong>${escapeHtml(c.nom || "")}</strong> ${escapeHtml(c.prenom || "")}</div>
+        <div class="lic-num">${escapeHtml(c.numero_licence || "")}</div>
+        <div class="lic-fs">${champ("qualification", "Qualifié le")}${champ("categorie", "Catégorie")}${champ("sexe", "Sexe")}${champ("type_licence", "Licence")}${champ("assurance", "Assurance")}</div>
+        ${c.fonctions ? `<div class="lic-fonction">${escapeHtml(c.fonctions)}</div>` : ""}
+      </div>
+    </div>
+    ${c.numero_long ? `<div class="lic-long">${escapeHtml(c.numero_long)}</div>` : ""}
+  </div>`;
+}
+function licCarteBloc_(e) {
+  return `<div class="lic-zone">
+    ${licCarteHtml_(e, false)}
+    <div class="elic-doc-act lic-act">
+      <button type="button" class="small-btn" id="licPlein">Présenter (plein écran)</button>
+      ${e.doc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'original</button>` : ""}
+      ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF</a>` : ""}
+      <button type="button" class="small-btn secondary" id="licCorriger">Corriger</button>
+      <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+      <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
+    </div>
+    <p class="card-sub">Lue sur ta licence ${escapeHtml(e.docSaison || "")}${e.carte.lu_le ? " le " + escapeHtml(e.carte.lu_le) : ""}. Vérifie les champs ; « Corriger » si besoin.</p>
+  </div>`;
+}
+/* Découpe la photo d'identité dans l'image officielle (cadre donné par l'IA). */
+const LIC_PHOTO_CACHE_ = {};
+function licRemplirPhoto_(root, e) {
+  const c = e.carte || {}, box = c.photo_box || [];
+  if (e.photo || !e.doc || box.length !== 4) return;
+  const cle = (e.docDate || "") + box.join(",");
+  const poser = url => root.querySelectorAll("[data-lic-photo]").forEach(el => { el.innerHTML = `<img src="${url}" alt="" />`; });
+  if (LIC_PHOTO_CACHE_[cle]) return poser(LIC_PHOTO_CACHE_[cle]);
+  const img = new Image();
+  img.onload = () => {
+    const [y0, x0, y1, x1] = box.map(v => v / 1000);
+    const sx = x0 * img.width, sy = y0 * img.height, sw = (x1 - x0) * img.width, sh = (y1 - y0) * img.height;
+    if (sw < 10 || sh < 10) return;
+    const cv = document.createElement("canvas"); cv.width = 300; cv.height = Math.round(300 * sh / sw);
+    cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    LIC_PHOTO_CACHE_[cle] = cv.toDataURL("image/jpeg", 0.88);
+    poser(LIC_PHOTO_CACHE_[cle]);
+  };
+  img.src = e.doc;
+}
+function licPleinEcran_() {
+  const e = state.elicence || {};
+  const ov = document.createElement("div");
+  ov.className = "elic-overlay";
+  ov.innerHTML = `${licCarteHtml_(e, true)}<p class="elic-fermer">Touche l'écran pour fermer · tourne le téléphone pour l'agrandir</p>`;
+  ov.addEventListener("click", () => ov.remove());
+  document.body.appendChild(ov);
+  licRemplirPhoto_(ov, e);
+}
+function attachLicCarte_(root) {
+  const e = state.elicence || {};
+  licRemplirPhoto_(root, e);
+  const q = id => root.querySelector("#" + id);
+  if (q("licPlein")) q("licPlein").addEventListener("click", licPleinEcran_);
+  if (q("licCorriger")) q("licCorriger").addEventListener("click", () => ouvrirModaleEdition_({
+    titre: "Corriger ma licence",
+    champs: LIC_CHAMPS_.map(([k, l]) => ({ id: k, label: l, value: (e.carte || {})[k] || "" })),
+    onSave: async v => {
+      const res = await jsonp("elicence.carte", v);
+      if (!res || res.success === false || !res.data) throw new Error((res && res.error) || "Apps Script b20 pas encore déployé");
+      state.elicence = res.data; rerenderPerso_(); setStatus("Licence mise à jour", "ok");
+    }
+  }));
+  if (q("licRelire")) q("licRelire").addEventListener("click", async ev => {
+    const b = ev.currentTarget; b.disabled = true; b.textContent = "Lecture de ta licence…";
+    try {
+      const res = await jsonp("elicence.carte", { relire: "1" });
+      if (!res || res.success === false || !res.data) throw new Error((res && res.error) || "Apps Script b20 pas encore déployé");
+      state.elicence = res.data; rerenderPerso_(); setStatus("Carte numérique créée", "ok");
+    } catch (err) { b.disabled = false; b.textContent = "Créer la carte numérique"; setStatus("Erreur : " + err.message, "error"); }
+  });
 }
 
 /* Clé e-Marque V2 : jamais dans le code ni le cache. Lue sur demande, affichée 30 s. */
@@ -7767,6 +7833,7 @@ function chargerPdfJs_() {
   _pdfjsP = new Promise((ok, ko) => {
     const sc = document.createElement("script");
     sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    sc.integrity = "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"; sc.crossOrigin = "anonymous";
     sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
     sc.onerror = () => { _pdfjsP = null; ko(new Error("Lecteur PDF indisponible")); };
     document.head.appendChild(sc);
@@ -7787,59 +7854,6 @@ async function pdfEnImage_(file, largeur, poidsMax) {
   if (out.length > poidsMax) throw new Error("Aperçu trop lourd");
   return out;
 }
-function photoRedim_(file) {
-  return new Promise((ok, ko) => {
-    const u = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const W = 220, H = 280, c = document.createElement("canvas");
-      c.width = W; c.height = H;
-      const k = Math.max(W / img.width, H / img.height);
-      const w = img.width * k, h = img.height * k;
-      const g = c.getContext("2d");
-      g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
-      g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-      URL.revokeObjectURL(u);
-      let q = 0.85, out = c.toDataURL("image/jpeg", q);
-      while (out.length > 44000 && q > 0.3) { q -= 0.1; out = c.toDataURL("image/jpeg", q); }
-      out.length > 46000 ? ko(new Error("Photo trop lourde")) : ok(out);
-    };
-    img.onerror = () => { URL.revokeObjectURL(u); ko(new Error("Image illisible")); };
-    img.src = u;
-  });
-}
-async function sauverElicence_(extra) {
-  const g = id => (document.getElementById(id) || {}).value || "";
-  const msg = document.getElementById("elicMsg");
-  const donnees = { nom: g("elicNom"), numero: g("elicNumero"), niveau: g("elicNiveau"), validite: g("elicValidite"), qr: g("elicQr"), fonction: g("elicFonction"), saison: g("elicSaison"), club: g("elicClub") };
-  const f = document.getElementById("elicPhoto") && document.getElementById("elicPhoto").files[0];
-  try {
-    if (f) donnees.photo = await photoRedim_(f);
-    if (extra && extra.photoEffacer) donnees.photoEffacer = "1";
-    if (msg) msg.textContent = "Enregistrement…";
-    const res = await jsonp("elicence.set", donnees);
-    if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
-    state.elicence = res.data;
-    rerenderPerso_();
-  } catch (err) { if (msg) msg.textContent = "Erreur : " + err.message; }
-}
-
-/* b18 — pré-remplissage : nom depuis le profil, niveau depuis Progression,
-   saison en cours. Rien n'est enregistré tant que tu ne cliques pas « Enregistrer ». */
-function elicAvecDefauts_(e) {
-  const o = Object.assign({}, e);
-  try {
-    const pr = (typeof Profil !== "undefined" && Profil.config && Profil.config.profil) || {};
-    if (!o.nom) o.nom = String(pr.nom_ffbb || "").trim();
-    if (!o.niveau) {
-      const actuel = Array.isArray(state.niveaux) && state.niveaux.length ? (state.niveaux.find(n => !n.dateFin) || state.niveaux[0]) : null;
-      o.niveau = (actuel && (actuel.niveau || actuel["Niveau"])) || String(pr.niveau || "").trim();
-    }
-    if (!o.saison) o.saison = getCurrentSeason();
-  } catch (err) { /* pré-remplissage facultatif */ }
-  return o;
-}
-
 /* b18 — dépôt de l'e-Licence officielle (capture compressée ou PDF). */
 function imageCompressee_(file, largeurMax, poidsMax) {
   return new Promise((ok, ko) => {
@@ -7895,114 +7909,14 @@ function elicDocPleinEcran_() {
   ov.addEventListener("click", () => ov.remove());
   document.body.appendChild(ov);
 }
-function elicPleinEcran_() {
-  const e = state.elicence || {};
-  const ov = document.createElement("div");
-  ov.className = "elic-overlay";
-  ov.innerHTML = `${elicCarteHtml_(e, true)}<p class="elic-fermer">Touche l'écran pour fermer</p>`;
-  ov.addEventListener("click", () => ov.remove());
-  document.body.appendChild(ov);
-  remplirQr_(ov);
-}
-
-/* ---------- Indispos ---------- */
-function weekendsAVenir_(n) {
-  const t = new Date(); t.setHours(12, 0, 0, 0);
-  const sam = new Date(t), dow = t.getDay();
-  sam.setDate(sam.getDate() + (dow === 0 ? -1 : 6 - dow));
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const s = new Date(sam); s.setDate(sam.getDate() + 7 * i);
-    const d = new Date(s); d.setDate(s.getDate() + 1);
-    out.push({ sam: s, dim: d });
-  }
-  return out;
-}
-function statutWeekends_() {
-  const ind = state.indispos || [];
-  const couvert = iso => ind.some(x => x.debut <= iso && iso <= x.fin);
-  const actifs = (state.allRows || []).filter(r => r._isActive && r._date);
-  const auj = new Date(); auj.setHours(0, 0, 0, 0);
-  return weekendsAVenir_(10).map(w => {
-    const s = isoL_(w.sam), d = isoL_(w.dim);
-    const ms = actifs.filter(r => { const k = isoL_(r._date); return k === s || k === d; });
-    const cs = couvert(s), cd = couvert(d);
-    const statut = ms.length ? "designe" : (cs && cd ? "indispo" : (cs || cd ? "partiel" : "dispo"));
-    const conflit = false;
-    const jours = Math.round((w.sam - auj) / 86400000);
-    return { w, s, d, ms, statut, conflit, alerte: (statut === "dispo" || statut === "partiel") && jours <= 14 && w.dim >= auj };
-  });
-}
 function libelleWeekend_(w) {
   const o = { day: "numeric", month: "long" };
   return w.sam.toLocaleDateString("fr-FR", o) + " – " + w.dim.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 }
-function mailRepartiteurs_(wk) {
-  const dest = (state.contacts || []).filter(c => c.email && /r[ée]partiteur|d[ée]signat/i.test((c.role || "") + " " + (c.situation || ""))).map(c => c.email);
-  const sujet = "Disponibilité — week-end du " + libelleWeekend_(wk.w);
-  const corps = "Bonjour,\n\nJe suis disponible le week-end du " + libelleWeekend_(wk.w) + " et je n'ai pas de désignation à ce jour. Pouvez-vous me proposer des matchs si besoin ?\n\nCordialement,\nClément";
-  return "mailto:" + dest.join(",") + "?subject=" + encodeURIComponent(sujet) + "&body=" + encodeURIComponent(corps);
-}
-function nbAlertesIndispos_() {
-  return state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0;
-}
-function indispoBanner_() {
-  const n = state.indispos ? statutWeekends_().filter(x => x.alerte).length : 0;
-  return n ? `<button type="button" class="acc-alerte-indispo" onclick="allerIndispos_()">${n} week-end${n > 1 ? "s" : ""} où tu es dispo sans désignation · voir et écrire aux répartiteurs</button>` : "";
-}
-function allerIndispos_() { setActiveTab("indispos"); }
-function renderIndisposPanel_() {
-  if (state._indisErr) return erreurPerso_(state._indisErr, "retryIndis");
-  if (state.indispos === undefined) { loadIndispos(); return chargementPerso_(); }
-  if (state.contacts === null && !state._contactsErreur) loadContacts();
-  const wk = statutWeekends_();
-  const lib = { designe: ["Désigné", "is-ok"], indispo: ["Indisponible", ""], partiel: ["Partiellement indisponible, rien de désigné", "is-warn"], dispo: ["Dispo, aucune désignation", "is-warn"] };
-  const ind = state.indispos;
-  return `
-    <p class="card-sub" style="margin-top:12px">Saisis ici tes indispos (ou colle-les en bloc depuis FBI). Alerte quand un week-end à moins de 14 jours n'a ni désignation ni indispo.</p>
-    <div class="table-card" style="margin-top:8px"><div class="table-wrap"><table>
-      <thead><tr><th>Week-end</th><th>Statut</th><th></th></tr></thead>
-      <tbody>${wk.map(x => `<tr>
-        <td>${escapeHtml(libelleWeekend_(x.w))}</td>
-        <td><span class="indis-st ${lib[x.statut][1]}">${lib[x.statut][0]}</span>${x.ms.length ? ` · ${x.ms.length} match${x.ms.length > 1 ? "s" : ""}` : ""}${x.conflit ? ` <span class="indis-st is-bad">match sur créneau indispo</span>` : ""}</td>
-        <td>${x.alerte ? `<a class="action-link" href="${escapeHtml(mailRepartiteurs_(x))}">Écrire aux répartiteurs</a>` : ""}</td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>
-    ${(state.contacts || []).some(c => c.email && /r[ée]partiteur|d[ée]signat/i.test((c.role || "") + " " + (c.situation || ""))) ? "" : `<p class="card-sub">Aucun contact « répartiteur » avec e-mail dans Contacts : le mail s'ouvrira sans destinataire.</p>`}
-    <details class="past-block" style="margin-top:12px">
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter / importer des indispos</span></span></summary>
-      <div class="past-body">
-        <form id="indisForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
-          <div class="field"><label for="indisDebut">Du</label><input id="indisDebut" type="date" required /></div>
-          <div class="field"><label for="indisFin">Au (vide = 1 jour)</label><input id="indisFin" type="date" /></div>
-          <div class="field"><label for="indisNote">Note</label><input id="indisNote" type="text" /></div>
-          <div style="grid-column:1 / -1"><button type="submit" class="small-btn">Ajouter</button> <span class="card-sub" id="indisMsg"></span></div>
-        </form>
-        <div class="field" style="margin-top:14px"><label for="indisColle">Coller depuis FBI (une période par ligne : 12/10/2026 ou 12/10/2026 - 18/10/2026)</label>
-          <textarea id="indisColle" rows="4" style="width:100%"></textarea></div>
-        <button type="button" class="small-btn secondary" id="indisImport" style="margin-top:8px">Importer</button>
-      </div>
-    </details>
-    ${ind.length ? `<div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
-      <thead><tr><th>Du</th><th>Au</th><th>Note</th><th></th></tr></thead>
-      <tbody>${ind.map(x => `<tr><td>${escapeHtml(dmy_(x.debut))}</td><td>${escapeHtml(dmy_(x.fin))}</td><td>${escapeHtml(x.note || "—")}</td><td><button type="button" class="action-link" data-del-indis="${escapeHtml(x.id)}">Supprimer</button></td></tr>`).join("")}</tbody>
-    </table></div></div>` : empty("Aucune indispo enregistrée.")}`;
-}
-
 /* ---------- Rapports ---------- */
 const RAPP_ROLES_ = ["Table de marque", "Responsable de salle", "Coach", "Capitaine"];
 const RAPP_48H_ = ["Table de marque", "Responsable de salle"];
 const RAPP_CRITERES_ = ["Autorité et maîtrise du match", "Communication (table, coachs, capitaines)", "Cohérence des décisions", "Gestion des comportements", "Placement et condition physique"];
-function rapportsRetard_() {
-  const now = Date.now();
-  return (state.rapports || []).filter(r => r.statut === "Demandé" && r.echeance && new Date(r.echeance).getTime() < now);
-}
-function rapportMailto_(r) {
-  const delai = RAPP_48H_.indexOf(r.role) >= 0 ? "\n\nMerci de me le retourner sous 48 h." : "";
-  const sujet = "Rapport — " + r.role + " — " + r.match;
-  const corps = "Bonjour" + (r.contactNom ? " " + r.contactNom : "") + ",\n\nPourriez-vous remplir le rapport (" + r.role + ") concernant : " + r.match + "." + (r.notes ? "\n\n" + r.notes : "") + delai + "\n\nMerci,\nClément";
-  return "mailto:" + (r.contactEmail || "") + "?subject=" + encodeURIComponent(sujet) + "&body=" + encodeURIComponent(corps);
-}
 function matchsPourRapports_() {
   return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte")
     .sort((a, b) => b._date - a._date).slice(0, 40);
@@ -8062,10 +7976,10 @@ function renderRapportsPanel_() {
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
-  const vue = state.rappVue || "sauvegarde";
+  const vue = state.rappVue || "formulaires";
   const sous = `<div class="tabs-mini rapp-seg" role="tablist">
-    <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
     <button type="button" class="tabs-mini-btn${vue === "formulaires" ? " active" : ""}" data-rapp-vue="formulaires">Formulaires vierges</button>
+    <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
   </div>`;
   if (vue === "formulaires") return sous + `<div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
@@ -8098,27 +8012,6 @@ function renderRapportsPanel_() {
       <thead><tr><th>Date</th><th>Match</th><th>Rôle</th><th>Statut</th><th></th></tr></thead>
       <tbody>${anciens.map(r => `<tr><td>${escapeHtml(dmy_(r.cree))}</td><td>${escapeHtml(r.match)}</td><td>${escapeHtml(r.role)}</td><td>${escapeHtml(r.statut)}</td><td class="rapp-act">${actions(r)}</td></tr>`).join("")}</tbody>
     </table></div></div>`, { count: anciens.length }) : ""}`;
-}
-function rapportPdfDepuisForm_(match, role) {
-  const note = i => (document.getElementById("rappC" + i) || {}).value || "";
-  const par = (document.getElementById("rappPar") || {}).value || "";
-  const com = (document.getElementById("rappCom") || {}).value || "";
-  const cv = document.getElementById("rappSign");
-  const veutPdf = par || com || RAPP_CRITERES_.some((c, i) => note(i));
-  if (!veutPdf) return null;
-  const J = window.jspdf && window.jspdf.jsPDF;
-  if (!J) throw new Error("Générateur PDF indisponible");
-  const doc = new J({ unit: "mm", format: "a4" });
-  let y = 20;
-  doc.setFontSize(16); doc.text(pdfSafe("Rapport — " + role), 15, y); y += 8;
-  doc.setFontSize(11); doc.text(pdfSafe(match), 15, y); y += 6;
-  doc.text(pdfSafe("Rempli par : " + (par || "—") + "   le " + new Date().toLocaleDateString("fr-FR")), 15, y); y += 10;
-  RAPP_CRITERES_.forEach((c, i) => { doc.text(pdfSafe(c) + " : " + (note(i) || "—") + " / 5", 15, y); y += 7; });
-  y += 4; doc.text("Commentaire :", 15, y); y += 6;
-  doc.splitTextToSize(pdfSafe(com || "—"), 180).forEach(l => { if (y > 250) { doc.addPage(); y = 20; } doc.text(l, 15, y); y += 5.5; });
-  if (cv && cv.dataset.signe === "1") { y = Math.min(y + 8, 262); doc.text("Signature :", 15, y); doc.addImage(cv.toDataURL("image/png"), "PNG", 15, y + 2, 60, 20); }
-  const uri = doc.output("datauristring");
-  return uri.split(",")[1];
 }
 function initSignature_(root) {
   const cv = root.querySelector("#rappSign");
@@ -8181,51 +8074,18 @@ function scanDepuisImage_(file) {
 function attachPersoListeners_(root) {
   const clic = (sel, fn) => root.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
   const retry = (id, cle, fn) => { const b = root.querySelector("#" + id); if (b) b.addEventListener("click", () => { state[cle] = ""; fn(); rerenderPerso_(); }); };
-  retry("retryElic", "_elicErr", loadElicence); retry("retryIndis", "_indisErr", loadIndispos); retry("retryRapp", "_rappErr", loadRapports);
+  retry("retryElic", "_elicErr", loadElicence); retry("retryRapp", "_rappErr", loadRapports);
 
   // e-Licence
-  const ef = root.querySelector("#elicForm");
-  if (ef) ef.addEventListener("submit", e => { e.preventDefault(); sauverElicence_(); });
-  const ed = root.querySelector("#elicPhotoDel");
-  if (ed) ed.addEventListener("click", () => sauverElicence_({ photoEffacer: true }));
-  const ep = root.querySelector("#elicPlein");
-  if (ep) ep.addEventListener("click", elicPleinEcran_);
   const dv = root.querySelector("#elicDocVoir"), dm = root.querySelector("#elicDocMini");
   [dv, dm].forEach(b => { if (b) b.addEventListener("click", () => { const e = state.elicence || {}; if (e.doc) elicDocPleinEcran_(); else if (e.docUrl) window.open(safeUrl_(e.docUrl), "_blank", "noopener"); }); });
   const edf = root.querySelector("#elicDocFile");
   if (edf) edf.addEventListener("change", () => { const f = fichierDe_(edf); if (f) deposerDocElicence_(f, false); });
   attachDropZones_(root);
   attachEmarque_(root);
+  attachLicCarte_(root);
   const dd = root.querySelector("#elicDocDel");
   if (dd) dd.addEventListener("click", () => { if (confirm("Retirer le document de licence enregistré ?")) deposerDocElicence_(null, true); });
-
-  // Indispos (saisie manuelle)
-  const nf = root.querySelector("#indisForm");
-  if (nf) nf.addEventListener("submit", async e => {
-    e.preventDefault();
-    const m = root.querySelector("#indisMsg");
-    try {
-      const res = await jsonp("indispo.add", { debut: root.querySelector("#indisDebut").value, fin: root.querySelector("#indisFin").value, note: root.querySelector("#indisNote").value });
-      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
-      state.indispos = undefined; loadIndispos(); rerenderPerso_();
-    } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
-  });
-  const ni = root.querySelector("#indisImport");
-  if (ni) ni.addEventListener("click", async () => {
-    const t = root.querySelector("#indisColle").value;
-    if (!t.trim()) return;
-    try {
-      const res = await jsonp("indispo.import", { texte: t });
-      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
-      const r = res.result || {};
-      setStatus(`Import : ${r.ajoutes || 0} ajoutée(s), ${r.doublons || 0} déjà présente(s), ${r.ignores || 0} ligne(s) ignorée(s)`, "ok");
-      state.indispos = undefined; loadIndispos(); rerenderPerso_();
-    } catch (err) { setStatus("Erreur import : " + err.message, "error"); }
-  });
-  clic("[data-del-indis]", async e => {
-    try { await jsonp("indispo.delete", { id: e.currentTarget.getAttribute("data-del-indis") }); state.indispos = undefined; loadIndispos(); rerenderPerso_(); }
-    catch (err) { setStatus("Erreur : " + err.message, "error"); }
-  });
 
   // Rapports
   initSignature_(root);
