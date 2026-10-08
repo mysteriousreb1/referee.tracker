@@ -53,7 +53,7 @@ const Session = {
       localStorage.removeItem(SINCE_KEY);
       localStorage.removeItem(CFG_KEY);
       Object.keys(localStorage)
-        .filter(k => k.indexOf("rt_c_") === 0)
+        .filter(k => k.indexOf("rt_c_") === 0 || k === "rt-reglement-hist-v1" || k === "rt_logos_v1" || k === "rt-alertes-traitees-v2")
         .forEach(k => localStorage.removeItem(k));
     } catch (e) {}
   }
@@ -84,13 +84,49 @@ function buildApiUrl(action, extra = {}) {
    preflight OPTIONS (qu'Apps Script ne sait pas traiter). Le jeton
    voyage dans le corps, jamais dans l'URL. */
 
+/* b20 — TRANSPORT FIABILISÉ.
+   Mesuré le 08/10/2026 : ~1 appel sur 8 reçoit un 404 de
+   script.googleusercontent.com (page de réponse perdue par Google) alors que
+   l'action a été exécutée. Chaque appel est donc retenté jusqu'à 3 fois
+   (404, 5xx, coupure réseau / « Load failed » Safari). Les écritures portent
+   un identifiant unique (rid) : le serveur ne les exécute qu'une seule fois. */
+const API_RETRY_PAUSES = [700, 1800];
+const API_TIMEOUTS = { "reglement.ask": 150000, "elicence.document": 120000, "elicence.carte": 90000, "rapport.add": 120000, "rapport.file": 120000, "evaluation.upload": 120000 };
+function _rid() {
+  try { if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ""); } catch (e) {}
+  return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+function _retentable(err) {
+  if (!err) return false;
+  const st = err.httpStatus;
+  if (st === 404 || st === 408 || st === 429 || st >= 500) return true;
+  if (err.name === "TypeError" || /load failed|failed to fetch|network|réseau/i.test(err.message || "")) return true;
+  return /page HTML|Réponse vide|illisible/i.test(err.message || "");
+}
 function apiCall(action, extra = {}, withToken = true) {
+  const ecriture = withToken && !(typeof LECTURES !== "undefined" && LECTURES[action]);
+  const corps = ecriture ? Object.assign({ rid: _rid() }, extra) : extra;
+  // Une action longue (IA) peut encore tourner côté serveur quand le rejeu
+  // arrive : on patiente (jusqu'à ~2 min) au lieu d'afficher une erreur.
+  let attentes = 0;
+  const essai = n => _apiCallUnique(action, corps, withToken).then(res => {
+    if (res && res.success === false && /toujours en cours/i.test(res.error || "") && attentes++ < 25) {
+      return new Promise(ok => setTimeout(ok, 4000)).then(() => essai(n));
+    }
+    return res;
+  }, err => {
+    if (n >= API_RETRY_PAUSES.length || !_retentable(err)) throw err;
+    return new Promise(ok => setTimeout(ok, API_RETRY_PAUSES[n])).then(() => essai(n + 1));
+  });
+  return essai(0);
+}
+function _apiCallUnique(action, extra = {}, withToken = true) {
   const body = { action, ...extra };
   if (withToken) body.token = Session.token;
 
   const hasAbort = typeof AbortController === "function";
   const controller = hasAbort ? new AbortController() : null;
-  const timer = setTimeout(() => { if (controller) controller.abort(); }, API_TIMEOUT_MS);
+  const timer = setTimeout(() => { if (controller) controller.abort(); }, API_TIMEOUTS[action] || API_TIMEOUT_MS);
 
   const options = {
     method: "POST",
@@ -123,7 +159,7 @@ function apiCall(action, extra = {}, withToken = true) {
     .catch(err => {
       if (err && (err.name === "AbortError" || /aborted/i.test(err.message || ""))) {
         throw apiError(
-          "Pas de réponse du serveur après 60 s.",
+          "Pas de réponse du serveur (délai dépassé).",
           "Ouvre les outils développeur (⌥⌘I) → onglet Réseau, retente, et regarde la ligne script.google.com : " +
           "statut « (pending) » = Apps Script ne répond pas ; « CORS error » = problème de déploiement ; " +
           "302 sans suite = redirection bloquée."
@@ -144,10 +180,20 @@ function apiCall(action, extra = {}, withToken = true) {
    Seules les lectures sont concernées. Les écritures (updatePaymentStatus,
    settings.*, password.*) ne passent jamais par le cache, et invalident tout. */
 
-const CACHE_PREFIX  = "rt_c_";
-const CACHE_MAX_AGE = 365 * 24 * 3600 * 1000; // dernier état connu conservé durablement
+/* b21 — cache versionné : la clé porte la version du site, donc une nouvelle
+   version repart toujours sur des données au bon format (les anciens préfixes
+   sont purgés au démarrage). 7 jours maximum : au-delà, les données perso
+   (licence, téléphones des collègues) ne traînent plus dans le navigateur. */
+const CACHE_VERSION = String(window.RT_VERSION || "x").replace(/[^\w-]/g, "");
+const CACHE_PREFIX  = "rt_c_" + CACHE_VERSION + "_";
+const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;
+(function purgerAnciensCaches_() {
+  try {
+    Object.keys(localStorage).filter(k => k.indexOf("rt_c_") === 0 && k.indexOf(CACHE_PREFIX) !== 0 || k === "rt_last_matchs").forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+})();
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
-const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1, enjeux: 1, elicence: 1, indispos: 1, rapports: 1 };
+const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1, enjeux: 1, elicence: 1, rapports: 1 };
 
 /* Une réponse « matchs » vide est presque toujours un hoquet serveur
    (démarrage à froid, lecture du Sheet ratée), jamais une vraie base vide.
@@ -175,9 +221,9 @@ const ECRITURES = {
   "settings.vehicule.add": 1, "settings.vehicule.del": 1,
   "couts.set": 1,
   addHotel: 1, deleteHotel: 1,
-  "elicence.set": 1, "elicence.document": 1, "indispo.add": 1, "indispo.import": 1, "indispo.delete": 1,
+  "elicence.set": 1, "elicence.document": 1, "elicence.carte": 1, 
   "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1,
-  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19
+  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
 };
 
 function _cacheKey(action, extra) {
@@ -313,7 +359,7 @@ function _jsonpReseau(action, extra = {}) {
     return res;
   }).catch(err => {
     if (err && err.name === "AbortError") {
-      throw apiError("Délai dépassé (60 s) sans réponse de l'API",
+      throw apiError("Délai dépassé sans réponse de l'API",
         "Relance, puis vérifie Apps Script → Exécutions.");
     }
     const status = err && err.httpStatus;
