@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = "2026-10-07-b18";
+const APP_VERSION = "2026-10-08-b19";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "indispos", "rapports"];
 
@@ -192,6 +192,7 @@ function bindUi() {
   const appliquerRecherche = () => {
     state.search = normaliserRecherche(searchEl.value);
     state.searchTokens = state.search ? state.search.split(" ") : [];
+    updateFilterBadge_();
     renderAll();
   };
   searchEl.addEventListener("input", () => { clearTimeout(rechercheTimer); rechercheTimer = setTimeout(appliquerRecherche, 180); });
@@ -277,6 +278,8 @@ function updateFilterBadge_() {
   const n = [state.filterNiveau, state.filterStatut, state.filterFormat].filter(Boolean).length;
   badge.textContent = String(n);
   badge.hidden = n === 0;
+  const dot = document.getElementById("loupeDot");   // b19 : rappel sur la loupe
+  if (dot) dot.hidden = !(n || state.search);
 }
 
 /* Remplit les 3 <select> de filtre rapide à partir des valeurs réellement
@@ -352,7 +355,8 @@ function setupMoreMenu_() {
   if (!nav || document.getElementById("tabMoreBtn")) return;
   /* b18 — téléphone : barre du bas à 5 entrées (Accueil, 5×5, 3×3,
      Paiements, Plus). Hôtel et Alertes rejoignent le panneau « Plus ». */
-  const SECONDARY = ["alertes", "stats", "hotel", "export", "qcm", "progression", "reglement", "elicence", "indispos", "rapports", "contacts"];
+  /* b19 — iPhone : Alertes et Export ne sont pas proposés (voir CSS). */
+  const SECONDARY = ["stats", "hotel", "qcm", "progression", "reglement", "monespace", "alertes", "export"];
   SECONDARY.forEach(t => {
     const b = nav.querySelector(`.tab[data-tab="${t}"]`);
     if (b) b.classList.add("tab-secondary");
@@ -376,7 +380,7 @@ function setupMoreMenu_() {
     const ico = nav.querySelector(`.tab[data-tab="${t}"] .tab-icon`);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "tab-more-item";
+    item.className = "tab-more-item" + (t === "alertes" || t === "export" ? " tab-more-pc" : "");
     item.dataset.goto = t;
     item.innerHTML = `${ico ? ico.outerHTML : ""}<span>${escapeHtml(src ? src.textContent : t)}</span><span class="tab-badge tab-more-badge" data-badge-for="${t}" hidden>0</span>`;
     panel.appendChild(item);
@@ -401,9 +405,29 @@ function setupMoreMenu_() {
   document.addEventListener("click", () => { if (!panel.hidden) close(); });
 }
 
+/* b19 — « Mon espace » regroupe e-Licence, Rapports, Procédures, Contacts
+   (sous-onglets, comme Stats). Indispos supprimé. */
+const MON_ESPACE_ = [["elicence", "e-Licence"], ["rapports", "Rapports"], ["procedures", "Procédures"], ["contacts", "Contacts"]];
+const ONGLETS_MON_ESPACE_ = ["elicence", "rapports", "contacts"];
+function monEspaceBar_(actif) {
+  return `<h2 class="section-title">Mon espace</h2><div class="tabs-mini me-tabs">${MON_ESPACE_.map(([k, l]) =>
+    `<button type="button" class="tabs-mini-btn${k === actif ? " active" : ""}" data-me="${k}">${l}</button>`).join("")}</div>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-me]");
+  if (!b) return;
+  const k = b.dataset.me;
+  if (k === "procedures" || k === "contacts") { state.contactsSubView = k; state.meLast = k; setActiveTab("contacts"); }
+  else { state.meLast = k; setActiveTab(k); }
+});
 function setActiveTab(tab) {
+  if (tab === "monespace") {
+    const d = state.meLast || "elicence";
+    if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
+  }
+  if (tab === "indispos") tab = "accueil";
   state.activeTab = tab;
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab || (b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
   const plus = document.getElementById("tabMoreBtn");   // b18 : « Plus » allumé si l'onglet ouvert est dedans
   if (plus) plus.classList.toggle("is-current", !!document.querySelector(`.tab-secondary[data-tab="${tab}"]`));
   document.querySelectorAll(".tab-more-item").forEach(i => i.classList.toggle("active", i.dataset.goto === tab));
@@ -458,7 +482,7 @@ function loadData() {
       _plus(loadPrixCarburant, "Prix carburant", 1200);
       _plus(loadClassements, "Classements FFBB", 2200);
       _plus(loadEnjeux, "Enjeux FFBB", 3500);
-      _plus(loadIndispos, "Indispos", 4500);
+      // b19 : page Indispos supprimée (pas de connexion FBI possible).
     })
     .catch(showApiError);
 }
@@ -625,7 +649,7 @@ function indexRecherche_(row) {
   try { morceaux.push(niveauCarte(row).badge); } catch (e) { /* rien */ }
 
   // Le téléphone du collègue remis au format national : chercher
-  // « 0600000000 » doit marcher même si la base stocke « 600000000 ».
+  // « 0771567486 » doit marcher même si la base stocke « 771567486 ».
   morceaux.push(normalizePhoneFr(get(row, "Collègue téléphone")));
 
   // La date sous toutes ses formes lisibles : 12/09/2026, 12 09 2026,
@@ -736,8 +760,13 @@ function appliquerDoubles_(rows) {
 }
 /* Lieu normalisé pour détecter un doublé : salle en priorité, sinon adresse,
    sinon ville. */
+/* b19 — Lieu d'un doublé = la VILLE (puis salle/adresse en repli). Les
+   convocations d'un même jour écrivent souvent la salle différemment
+   (« Espace sportif de l'Union » / « ESPACE SPORTIF … - Furdenheim ») :
+   la ville est stable. Pas de doublé en 3x3 (retour à la maison entre deux). */
 function lieuDouble_(r) {
-  const base = cleanText(get(r, "Salle")) || cleanText(get(r, "Adresse")) || cleanText(get(r, "Ville"));
+  if (r._format === "3x3") return "";
+  const base = cleanText(get(r, "Ville")) || cleanText(get(r, "Salle")) || cleanText(get(r, "Adresse"));
   return base ? normaliserRecherche(base) : "";
 }
 function ymd_(d) {
@@ -751,10 +780,13 @@ function normalizeSeason(value, date) {
   return "";
 }
 
+/* b19 — Un match passe dans « passés » 2 h après son coup d'envoi
+   (avant : seulement à minuit). Sans heure connue : fin de journée. */
 function isPastMission(row) {
   if (!row._date) return false;
-  const eod = new Date(row._date); eod.setHours(23, 59, 59, 999);
-  return eod < new Date();
+  const s = startDT_(row);
+  const fin = s ? s.getTime() + (parseHeure(heureDe_(row)) ? DUREE_MATCH_MIN_ * 60000 : 60000) : row._date.getTime() + 86400000;
+  return fin < Date.now();
 }
 
 /* ---------------- Render global ---------------- */
@@ -823,6 +855,8 @@ function renderReglementDocs_() {
     });
     return "";
   }
+  return "";   // b19 : la liste des documents lus par l'IA n'est plus affichée
+  // eslint-disable-next-line no-unreachable
   const d = state._reglDocs;
   if (!d) return "";
   const body = `<ul class="regl-docs">${d.docs.map(x => `<li><strong>${escapeHtml(x.nom)}</strong> <span class="sub">mis à jour le ${escapeHtml(x.maj)}</span></li>`).join("")}</ul>
@@ -979,7 +1013,7 @@ function renderTabBadges_() {
     badgeAlertes.hidden = nbAlertes === 0;
   }
 
-  const nbInd = nbAlertesIndispos_();
+  const nbInd = 0;   // b19 : Indispos supprimé
   const badgeInd = document.getElementById("badgeIndispos");
   if (badgeInd) { badgeInd.textContent = String(nbInd); badgeInd.hidden = nbInd === 0; }
 
@@ -1057,8 +1091,7 @@ function renderMatchPanel(rootId, format, label) {
 
   root.innerHTML = `
     <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
-    ${upcoming.some(isExaminateur_) ? `<h3 class="section-title exam-title">Examinateur présent <span class="count">${upcoming.filter(isExaminateur_).length}</span></h3>${renderWeekendGroups(upcoming.filter(isExaminateur_), false)}` : ""}
-    ${upcoming.filter(r => !isExaminateur_(r)).length ? renderWeekendGroups(upcoming.filter(r => !isExaminateur_(r)), false) : (upcoming.length ? "" : empty(`Aucun match ${label} à venir pour cette saison.`))}
+    ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
     ${past.length ? `
       <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
         <summary class="past-summary">
@@ -1254,21 +1287,18 @@ function renderAccueil() {
       <span class="acc-m-side"><span class="acc-m-eur">${formatMoney(r._amount)}</span><span class="acc-m-etat">${escapeHtml(fmtHeure(heureDe_(r)) || "")}</span></span>
     </button>`).join("")}</div></div></section>` : "";
 
+  void suivantsHtml;   // b19 : bloc « Prochains matchs » retiré de l'accueil
   root.innerHTML = `
     ${bienvenue}
-    ${indispoBanner_()}
     ${saisonHtml}
     <div class="acc-grid">
       ${hero}
       ${compteurs}
     </div>
-    <div class="acc-cols">
-      <section class="acc-bloc">
-        <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
-        ${matchsHtml}
-      </section>
-      ${suivantsHtml}
-    </div>
+    <section class="acc-bloc acc-we">
+      <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
+      ${matchsHtml}
+    </section>
   `;
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
@@ -1511,29 +1541,32 @@ function renderMatchCard(row) {
   const enjeu = renderEnjeuClassement_(row);   // MODIFICATION 19/09/2026
 
 
+  /* b19 — 1 ligne = 1 match : date | logo | rencontre | étiquettes | montant.
+     Examinateur : surbrillance + étiquette seulement en Championnat de France. */
+  const examCF = isExaminateur_(row) && niv.classe === "niv-france";
+  const jourCourt = row._date ? row._date.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "") : "";
+  const sous = format === "3x3"
+    ? [get(row, "Ville")].filter(Boolean).join(" · ")
+    : [get(row, "Visiteur / événement"), get(row, "Ville")].filter(Boolean).join(" · ");
+  const etatPaie = isBenevole ? ["Bénévole", "gray"] : isPaid ? ["Payé", "green"] : [paiement, paiement === "À recevoir" ? "gold" : "orange"];
   return `
-    <article class="match-card match-card--niveau ${niv.classe}${reglement ? " match-card--reglement" : ""}" data-uid="${uid}">
-      <div class="card-head" role="button" tabindex="0">
-        <div>
+    <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}" data-uid="${uid}">
+      <div class="card-head mrow" role="button" tabindex="0" aria-expanded="false">
+        <div class="mrow-date"><strong>${escapeHtml(date)}</strong><span>${escapeHtml([jourCourt, time].filter(Boolean).join(" · "))}</span></div>
+        <div class="mrow-logo">${logoCompetition(row)}</div>
+        <div class="mrow-main">
+          <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
+          <p class="card-sub">${escapeHtml(sous || get(row, "Libellé compétition") || "")}</p>
           <div class="badges">
             <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
-            ${isExaminateur_(row) ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}
+            ${examCF ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}
             ${reglement ? `<span class="badge badge-reglement" title="${escapeHtml(reglement)}">⚠ ${escapeHtml(reglement)}</span>` : ""}
-            ${format && format !== "3x3" ? badge(format, "gray") : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
-            ${row._isPast ? badge("Passé", "gray") : ""}
             ${renderHotelBadge_(row)}
-            ${isBenevole ? badge("Bénévole", "gray")
-              : isPaid ? badge("Payé", "green")
-              : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
           </div>
-          <div class="title-row">
-            ${logoCompetition(row)}
-            <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
-          </div>
-          <p class="card-sub">${escapeHtml(get(row, "Visiteur / événement") || get(row, "Libellé compétition") || "")}</p>
         </div>
-        <div class="date-pill"><strong>${escapeHtml(date)}</strong><span>${escapeHtml(time)}</span></div>
+        <div class="mrow-side"><strong>${formatMoney(row._amount)}</strong>${badge(etatPaie[0], etatPaie[1])}</div>
+        <span class="mrow-chev" aria-hidden="true"></span>
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
@@ -1904,6 +1937,13 @@ function renderActions(row) {
   if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
     links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
   }
+  /* b19 — événement annulé à la dernière minute (sur place, 3x3 ou 5x5) :
+     disponible 3 jours autour du match tant que rien n'a été payé. */
+  const paie = cleanText(get(row, "Statut paiement"));
+  const t = row._date ? row._date.getTime() : 0;
+  if (t && Math.abs(t - Date.now()) < 3 * 86400000 && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
+    links.push(`<button type="button" class="action-link secondary alerte-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé (dernière minute)</button>`);
+  }
   return links.length ? `<div class="actions">${links.join("")}</div>` : "";
 }
 
@@ -2105,13 +2145,22 @@ function renderRelance45_(rows) {
    Dû = reste à percevoir de chaque mission (hors bénévolat/annulé), classé par échéance
    (« Date attendue ») : en retard (avant ce mois), ce mois-ci, mois suivant, ensuite, sans date.
    Payeur : Ligue / Comité / FFBB / Clubs (mêmes règles que le rapprochement bancaire). */
-const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67", ffbb: "FFBB", club: "Clubs" };
+/* b19 — 5 payeurs affichés. Clés internes inchangées pour le rapprochement
+   bancaire (ffbb = CF séniors, club = clubs) ; « cfj » = CF jeunes, payés
+   à parts égales par les 2 clubs (NMU15, NMU18, NFU15, NFU18). */
+const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67 (CD67)", ffbb: "CF Séniors (FFBB)", cfj: "CF Jeunes (2 clubs)", club: "Clubs (coupes, amicaux)" };
+const PAYEURS_ORDRE_ = ["cd", "ligue", "ffbb", "cfj", "club"];
+function payeurAffiche_(r) {
+  const c = rbClasse_(r);
+  if (c === "club" && /^N[MF]U\d{2}/.test(codeCompetition(r))) return "cfj";
+  return c;
+}
 function moisPaiementsData_() {
   const now = new Date();
   const d0 = new Date(now.getFullYear(), now.getMonth(), 1), d1 = new Date(now.getFullYear(), now.getMonth() + 1, 1), d2 = new Date(now.getFullYear(), now.getMonth() + 2, 1);
   const sy = now >= new Date(now.getFullYear(), 6, 30) ? now.getFullYear() : now.getFullYear() - 1, saison = `${sy}/${sy + 1}`;
   const z = () => ({ ret: 0, mois: 0, suiv: 0, plus: 0, sans: 0, nbMois: 0, nbRet: 0, recu: 0, delais: [] });
-  const par = { ligue: z(), cd: z(), ffbb: z(), club: z() }, tot = z();
+  const par = { cd: z(), ligue: z(), ffbb: z(), cfj: z(), club: z() }, tot = z();
   const det = { mois: [], ret: [], ancien: [] };
   let ancien = 0;
   (RB.hist || []).forEach(h => {   // délais réels : date du virement − date du match
@@ -2123,7 +2172,7 @@ function moisPaiementsData_() {
   let predMois = 0, predOk = false;
   state.allRows.forEach(r => {
     if (!r._isActive || r._format === "Alerte" || r._benevole) return;
-    const cl = rbClasse_(r), c = par[cl] || par.club;
+    const cl = payeurAffiche_(r), c = par[cl] || par.club;
     if (r._season !== saison) { if (r._reste > 0) { ancien += r._reste; det.ancien.push({ r, cl }); } return; }   // saisons passées : à part
     if (r._encaisse > 0) { c.recu += r._encaisse; tot.recu += r._encaisse; }
     if (!(r._reste > 0)) return;
@@ -2148,17 +2197,32 @@ function moisDetailHtml_(titre, liste, avecAtt) {
   if (!liste.length) return "";
   return `<details class="mp-det"><summary>${escapeHtml(titre)} (${liste.length})</summary><ul class="rb-ms">${liste.map(x => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(rbEquipes_(x.r))}</strong><small>Match ${escapeHtml(rbFmtDate_(x.r._date))} · ${escapeHtml(PAYEURS_LIB_[x.cl])}${avecAtt && x.att ? " · échéance " + escapeHtml(rbFmtDate_(x.att)) : ""} · ${escapeHtml(get(x.r, "Statut paiement") || "À recevoir")} · ${escapeHtml(codeCompetition(x.r) || "")}</small></span><span class="rb-m-v">${formatMoney(x.r._reste)}</span></label></li>`).join("")}</ul></details>`;
 }
+/* b19 — Haut de la page Paiements.
+   « À recevoir ce mois-ci » = reste dû des missions dont l'ÉCHÉANCE (colonne
+   « Date attendue », sinon « Date paiement ») tombe dans le mois en cours.
+   Cliquer sur une tuile déplie la liste des missions concernées.
+   La tuile « En retard » n'apparaît que s'il y a vraiment du retard.
+   Le tableau par payeur reste toujours affiché. */
 function renderMoisPaiements_() {
   const m = moisPaiementsData_(), t = m.tot;
   const moy = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) + " j" : "—";
-  const lignes = Object.keys(m.par).map(k => { const c = m.par[k]; const du = c.ret + c.mois + c.suiv + c.plus + c.sans; return du || c.recu ? `<tr><td>${PAYEURS_LIB_[k]}</td><td class="num${c.ret ? " mp-ret" : ""}">${c.ret ? formatMoney(c.ret) : "—"}</td><td class="num"><strong>${c.mois ? formatMoney(c.mois) : "—"}</strong></td><td class="num">${c.suiv ? formatMoney(c.suiv) : "—"}</td><td class="num">${(c.plus + c.sans) ? formatMoney(c.plus + c.sans) : "—"}</td><td class="num">${formatMoney(c.recu)}</td><td class="num">${moy(c.delais)}</td></tr>` : ""; }).join("");
+  const lignes = PAYEURS_ORDRE_.filter(k => m.par[k]).map(k => { const c = m.par[k]; const du = c.ret + c.mois + c.suiv + c.plus + c.sans; return `<tr><td>${PAYEURS_LIB_[k]}</td><td class="num${c.ret ? " mp-ret" : ""}">${c.ret ? formatMoney(c.ret) : "—"}</td><td class="num"><strong>${c.mois ? formatMoney(c.mois) : "—"}</strong></td><td class="num">${c.suiv ? formatMoney(c.suiv) : "—"}</td><td class="num">${(c.plus + c.sans) ? formatMoney(c.plus + c.sans) : "—"}</td><td class="num">${du ? formatMoney(du) : "—"}</td><td class="num">${formatMoney(c.recu)}</td><td class="num">${moy(c.delais)}</td></tr>`; }).join("");
+  const liste = (rows, avecAtt) => rows.length ? `<ul class="rb-ms mp-liste">${rows.map(x => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(rbEquipes_(x.r))}</strong><small>Match ${escapeHtml(rbFmtDate_(x.r._date))} · ${escapeHtml(PAYEURS_LIB_[x.cl] || "")}${avecAtt && x.att ? " · échéance " + escapeHtml(rbFmtDate_(x.att)) : ""} · ${escapeHtml(codeCompetition(x.r) || "")}</small></span><span class="rb-m-v">${formatMoney(x.r._reste)}</span></label></li>`).join("")}</ul>` : `<p class="card-sub">Aucune mission.</p>`;
   return `
-    <div class="kpi-grid mp-kpis">
-      <div class="kpi hero"><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) · échéance au plus tard le ${m.fin.toLocaleDateString("fr-FR")}</span></div>
-      <div class="kpi${t.ret > 0 ? " kpi-alert" : ""}"><label>En retard (saison ${escapeHtml(m.saison)})</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s)</span></div>
-      ${m.predOk ? `<div class="kpi"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">selon le délai moyen constaté de chaque payeur</span></div>` : ""}
+    <div class="mp-tuiles">
+      <details class="mp-tuile mp-tuile--mois">
+        <summary><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) dont l'échéance tombe ce mois-ci · voir le détail</span></summary>
+        ${liste(m.det.mois, true)}
+      </details>
+      ${t.ret > 0 ? `<details class="mp-tuile mp-tuile--retard">
+        <summary><label>En retard</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s) dont l'échéance est dépassée · voir le détail</span></summary>
+        ${liste(m.det.ret, true)}
+      </details>` : ""}
+      ${m.predOk ? `<div class="mp-tuile mp-tuile--fixe"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">d'après le délai moyen constaté de chaque payeur</span></div>` : ""}
     </div>
-    ${foldable_("Détail par payeur et missions", `${moisDetailHtml_("À recevoir ce mois-ci", m.det.mois, true)}${moisDetailHtml_("En retard (saison " + m.saison + ")", m.det.ret, true)}${m.ancien > 0 ? moisDetailHtml_("Saisons précédentes non soldées : " + formatMoney(m.ancien), m.det.ancien, false) : ""}${lignes ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table"><thead><tr><th>Payeur</th><th>Retard</th><th>Ce mois</th><th>Suivant</th><th>Plus tard</th><th>Reçu</th><th>Délai</th></tr></thead><tbody>${lignes}</tbody></table></div></div>` : ""}`)}`;
+    <div class="table-card mp-wrap"><div class="table-wrap"><table class="cf-table mp-table">
+      <thead><tr><th>Payeur</th><th>Retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Reste dû</th><th>Reçu</th><th>Délai moyen</th></tr></thead>
+      <tbody>${lignes}</tbody></table></div></div>`;
 }
 
 function renderPaiements() {
@@ -2189,53 +2253,31 @@ function renderPaiements() {
   // Écart/À vérifier) reste affiché en clair comme avant.
   const TOUJOURS_REPLIES = ["Reçu", BENEVOLE];
 
+  /* b19 — chaque statut est replié dans un menu déroulant (lignes 1 match),
+     le rapprochement bancaire n'est proposé que sur PC. */
+  const bloc = (status, liste, ouvertParDefaut) => {
+    const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    const ouvert = PASSES_OUVERTS[panelId] !== undefined ? PASSES_OUVERTS[panelId] : ouvertParDefaut;
+    const tot = liste.reduce((t, r) => t + (status === "Reçu" ? (r._encaisse || 0) : (r._reste || 0)), 0);
+    return `<details class="past-block pay-bloc" data-panel="${panelId}"${ouvert ? " open" : ""}>
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span>
+        <span class="past-title">${escapeHtml(status)}</span><span class="count">${liste.length}</span>
+        ${status !== BENEVOLE ? `<span class="pay-bloc-tot">${formatMoney(tot)}</span>` : ""}</span></summary>
+      <div class="past-body"><div class="cards">${liste.slice().sort(status === "Reçu" ? sortByDateDesc : sortByDateAsc).map(renderMatchCard).join("")}</div></div>
+    </details>`;
+  };
+  const retards = rows.filter(paiementEnRetard);
   root.innerHTML = `
     <h2 class="section-title">Paiements</h2>
-    <p class="mp-line">En attente : <strong>${formatMoney(totalDu)}</strong> · Déjà reçu : <strong>${formatMoney(totalRecu)}</strong>${benevoles.length ? " · Bénévole : <strong>" + benevoles.length + "</strong>" : ""}</p>
+    <p class="mp-line">Reste dû : <strong>${formatMoney(totalDu)}</strong> · Déjà reçu : <strong>${formatMoney(totalRecu)}</strong>${benevoles.length ? " · Bénévole : <strong>" + benevoles.length + "</strong>" : ""}</p>
     <div id="moisZone">${renderMoisPaiements_()}</div>
+    <h2 class="section-title">Missions par statut</h2>
+    ${retards.length ? bloc("En retard (échéance dépassée)", retards, false) : ""}
+    ${order.filter(k => grouped[k]).map(status => bloc(status, grouped[status], false)).join("")}
+    <div class="rb-pc-only">${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}</div>
     <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
-    ${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}
-    ${renderRelance45_(rows)}
-    ${order.filter(k => grouped[k]).map(status => {
-      const liste = grouped[status].slice().sort(sortByDateAsc);
-      const panelId = "paiements-" + status.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-      const ouvert = PASSES_OUVERTS[panelId] === true;
-
-      if (TOUJOURS_REPLIES.includes(status)) {
-        return `
-      <h2 class="section-title">${escapeHtml(status)} <span class="count">${liste.length}</span></h2>
-      <details class="past-block" data-panel="${panelId}"${ouvert ? " open" : ""}>
-        <summary class="past-summary">
-          <span class="past-summary-inner">
-            <span class="past-chevron" aria-hidden="true"></span>
-            <span class="past-title">Afficher — ${escapeHtml(status)}</span>
-            <span class="count">${liste.length}</span>
-          </span>
-        </summary>
-        <div class="past-body"><div class="cards">${liste.map(renderMatchCard).join("")}</div></div>
-      </details>
-    `;
-      }
-
-      const visibles = liste.slice(0, RECENTS_VISIBLES);
-      const repliees = liste.slice(RECENTS_VISIBLES);
-      return `
-      <h2 class="section-title">${escapeHtml(status)} <span class="count">${liste.length}</span></h2>
-      <div class="cards">${visibles.map(renderMatchCard).join("")}</div>
-      ${repliees.length ? `
-        <details class="past-block" data-panel="${panelId}"${ouvert ? " open" : ""}>
-          <summary class="past-summary">
-            <span class="past-summary-inner">
-              <span class="past-chevron" aria-hidden="true"></span>
-              <span class="past-title">Voir les ${repliees.length} de plus — ${escapeHtml(status)}</span>
-              <span class="count">${repliees.length}</span>
-            </span>
-          </summary>
-          <div class="past-body"><div class="cards">${repliees.map(renderMatchCard).join("")}</div></div>
-        </details>` : ""}
-    `;
-    }).join("")}
   `;
+  void TOUJOURS_REPLIES; void RECENTS_VISIBLES;
   attachCardListeners(root);
   attachPaymentListeners(root);
   attachContactListeners(root);
@@ -2251,8 +2293,8 @@ function renderPaiements() {
       reçu, reste, taux d'encaissement et délai moyen de paiement.
    Tout est calculé dans le navigateur à partir des lignes déjà chargées :
    aucun appel serveur en plus. Les filtres du haut (saison, niveau…) s'appliquent. */
-const PA_ORDRE_ = ["ligue", "cd", "ffbb", "club"];
-const PA_AXES_ = { payeur: "Payeur", niveau: "Niveau", format: "Format", mode: "Mode de paiement" };
+const PA_ORDRE_ = ["cd", "ligue", "ffbb", "cfj", "club"];
+const PA_AXES_ = { payeur: "Payeur", niveau: "Niveau", format: "Format", mode: "Mode de règlement" };
 function paVersements_(r) {
   // Chaque encaissement daté d'une mission (un par club en parts égales).
   if (r._benevole || !(r._encaisse > 0)) return [];
@@ -2284,22 +2326,22 @@ function paMoisCles_(rows) {
   return cles;
 }
 function paCategorie_(r, axe) {
-  if (axe === "payeur") return PAYEURS_LIB_[rbClasse_(r)] || "Clubs";
+  if (axe === "payeur") return PAYEURS_LIB_[payeurAffiche_(r)] || PAYEURS_LIB_.club;
   if (axe === "format") return r._format === "3x3" ? "3×3" : "5×5";
-  if (axe === "mode") return cleanText(get(r, "Mode recevant") || get(r, "Mode paiement")) || "Non renseigné";
+  if (axe === "mode") return cleanText(get(r, "Mode recevant") || get(r, "Mode paiement")) || "Mode non saisi";
   const c = codeCompetition(r);
   return c || cleanText(get(r, "Niveau administratif")) || "Autre";
 }
 function paDonnees_(rows) {
   const cles = paMoisCles_(rows);
   const mois = {};
-  cles.forEach(k => { mois[k] = { recu: { ligue: 0, cd: 0, ffbb: 0, club: 0 }, attendu: 0, nb: 0, estime: 0 }; });
+  cles.forEach(k => { mois[k] = { recu: { cd: 0, ligue: 0, ffbb: 0, cfj: 0, club: 0 }, attendu: 0, nb: 0, estime: 0 }; });
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const delais = [];
-  let recuTot = 0, duEchu = 0, recuEchu = 0;
+  let recuTot = 0, duEchu = 0, recuEchu = 0, resteTot = 0;
   rows.forEach(r => {
     if (r._benevole) return;
-    const cl = rbClasse_(r);
+    const cl = payeurAffiche_(r);
     paVersements_(r).forEach(v => {
       recuTot += v.m;
       const k = monthKeyOf(v.d);
@@ -2309,12 +2351,13 @@ function paDonnees_(rows) {
     const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
     if (r._reste > 0 && att) { const k = monthKeyOf(att); if (mois[k]) mois[k].attendu += r._reste; }
     if (att && att <= now) { duEchu += r._amount; recuEchu += r._encaisse; }
+    resteTot += r._reste || 0;
   });
   const liste = cles.map(k => ({ k, ...mois[k], total: PA_ORDRE_.reduce((t, c) => t + mois[k].recu[c], 0) }));
   const avecVersement = liste.filter(x => x.total > 0);
   const meilleur = avecVersement.slice().sort((a, b) => b.total - a.total)[0] || null;
   const moyDelai = delais.length ? Math.round(delais.reduce((a, b) => a + b, 0) / delais.length) : null;
-  return { liste, recuTot, meilleur, moyMois: avecVersement.length ? recuTot / avecVersement.length : 0, nbMoisVerses: avecVersement.length, moyDelai, taux: duEchu > 0 ? recuEchu / duEchu : null };
+  return { liste, recuTot, resteTot, meilleur, moyMois: avecVersement.length ? recuTot / avecVersement.length : 0, nbMoisVerses: avecVersement.length, moyDelai, taux: duEchu > 0 ? recuEchu / duEchu : null };
 }
 function paCategories_(rows, axe) {
   const g = {};
@@ -2359,9 +2402,10 @@ function renderAnalysePaiements_(rows) {
   return `
     <section class="pa-wrap">
       <h2 class="section-title">Analyse des paiements</h2>
+      <p class="pa-intro">Calculé sur la saison sélectionnée (filtres du haut appliqués). « Reçu » = montants réellement encaissés, datés au jour du versement. « Attendu » = reste dû, placé au mois de son échéance. Bénévolat exclu.</p>
       <div class="pa-kpis">
-        <div class="pa-kpi"><label>Reçu sur la période</label><strong>${formatMoney(D.recuTot)}</strong><span>${D.nbMoisVerses} mois avec versement</span></div>
-        <div class="pa-kpi"><label>Moyenne par mois versé</label><strong>${formatMoney(D.moyMois)}</strong><span>${D.meilleur ? "record : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
+        <div class="pa-kpi"><label>Reçu sur la saison</label><strong>${formatMoney(D.recuTot)}</strong><span>${D.meilleur ? "meilleur mois : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
+        <div class="pa-kpi"><label>Reste à percevoir</label><strong>${formatMoney(D.resteTot)}</strong><span>missions jouées ou à venir, non soldées</span></div>
         <div class="pa-kpi"><label>Délai moyen de paiement</label><strong>${D.moyDelai === null ? "—" : D.moyDelai + " j"}</strong><span>du match au versement</span></div>
         <div class="pa-kpi"><label>Taux d'encaissement</label><strong>${D.taux === null ? "—" : Math.round(D.taux * 100) + " %"}</strong><span>sur les échéances déjà passées</span></div>
       </div>
@@ -3156,8 +3200,9 @@ function renderStatsInner_() {
       ${renderAggTable("Par saison", s.par_saison, "Saison")}
       ${renderAggTable("Par mois", s.par_mois, "Mois")}
       ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}`,
-    km: `${efficacite}
+    km: `${renderKmTrajets_()}
       ${renderKmParMois_()}
+      ${efficacite}
       ${renderRecords(rec)}`,
     lieux: `${renderTop("Top 3 clubs (5×5)", s.top_clubs)}
       ${renderTop("Top 3 salles (5×5)", s.top_salles)}
@@ -3175,6 +3220,49 @@ function renderStatsInner_() {
   `;
   root.querySelectorAll("[data-stheme]").forEach(btn => btn.addEventListener("click", () => { state.statsTheme = btn.dataset.stheme; renderStats(); }));
   attachFormationsListeners_(root);
+}
+
+/* b19 — KM & trajets : chiffres calculés ici, sur les km RÉELLEMENT parcourus
+   (un doublé = un seul aller-retour), saison/filtres du haut appliqués.
+   Un « trajet » = un déplacement aller-retour (doublé compté une fois). */
+function renderKmTrajets_() {
+  const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte" && r._date);
+  if (!rows.length) return "";
+  const km = r => (r._kmEff != null ? r._kmEff : (r._km || 0));
+  const trajets = {};
+  rows.forEach(r => { const k = r._double ? ymd_(r._date) + "|" + lieuDouble_(r) : get(r, "UID"); (trajets[k] = trajets[k] || []).push(r); });
+  const T = Object.values(trajets).map(g => ({ km: g.reduce((t, r) => t + km(r), 0), d: g[0]._date, ville: get(g[0], "Ville") || get(g[0], "Salle") || "—", n: g.length, passe: g.every(r => r._isPast) }));
+  const faits = T.filter(t => t.passe), venir = T.filter(t => !t.passe);
+  const somme = a => a.reduce((t, x) => t + x.km, 0);
+  const kmFaits = somme(faits), kmVenir = somme(venir);
+  const carb = rows.reduce((t, r) => t + realFuelCostClient(km(r), r._date), 0);
+  const ent = rows.reduce((t, r) => t + km(r) * entretienKmClient_(r._date), 0);
+  const plusLong = T.slice().sort((a, b) => b.km - a.km)[0];
+  const parNiv = {};
+  rows.forEach(r => { const c = PAYEURS_LIB_[payeurAffiche_(r)] || "Autre"; const o = parNiv[c] = parNiv[c] || { n: 0, km: 0 }; o.n++; o.km += km(r); });
+  const parVille = {};
+  T.forEach(t => { const o = parVille[t.ville] = parVille[t.ville] || { n: 0, km: 0 }; o.n++; o.km += t.km; });
+  const villes = Object.entries(parVille).sort((a, b) => b[1].km - a[1].km).slice(0, 8);
+  return `<h2 class="section-title">KM &amp; trajets</h2>
+    <div class="kpi-grid">
+      <div class="kpi hero"><label>Km parcourus (aller-retour)</label><strong>${formatNumber(Math.round(kmFaits), " km")}</strong><span class="sub">${faits.length} trajet(s) effectué(s) · ${formatNumber(Math.round(kmVenir), " km")} encore prévus (${venir.length} trajet(s))</span></div>
+      <div class="kpi"><label>Km moyen par trajet</label><strong>${formatNumber(T.length ? Math.round((kmFaits + kmVenir) / T.length) : 0, " km")}</strong></div>
+      <div class="kpi"><label>Carburant</label><strong>${formatMoney(carb)}</strong><span class="sub">prix réel du litre à la date</span></div>
+      <div class="kpi"><label>Entretien</label><strong>${formatMoney(ent)}</strong><span class="sub">enveloppe annuelle / km</span></div>
+      <div class="kpi"><label>Coût réel aux 100 km</label><strong>${money((kmFaits + kmVenir) ? (carb + ent) / (kmFaits + kmVenir) * 100 : 0)}</strong></div>
+      ${plusLong ? `<div class="kpi"><label>Plus long trajet</label><strong>${formatNumber(Math.round(plusLong.km), " km")}</strong><span class="sub">${escapeHtml(plusLong.ville)} · ${escapeHtml(plusLong.d.toLocaleDateString("fr-FR"))}</span></div>` : ""}
+    </div>
+    <div class="km-cols">
+      <div class="table-card"><div class="table-wrap"><table>
+        <thead><tr><th>Payeur / niveau</th><th class="num">Matchs</th><th class="num">Km</th></tr></thead>
+        <tbody>${Object.entries(parNiv).sort((a, b) => b[1].km - a[1].km).map(([k, o]) => `<tr><td>${escapeHtml(k)}</td><td class="num">${o.n}</td><td class="num">${formatNumber(Math.round(o.km), " km")}</td></tr>`).join("")}</tbody>
+      </table></div></div>
+      <div class="table-card"><div class="table-wrap"><table>
+        <thead><tr><th>Destination</th><th class="num">Trajets</th><th class="num">Km</th></tr></thead>
+        <tbody>${villes.map(([k, o]) => `<tr><td>${escapeHtml(k)}</td><td class="num">${o.n}</td><td class="num">${formatNumber(Math.round(o.km), " km")}</td></tr>`).join("")}</tbody>
+      </table></div></div>
+    </div>
+    <p class="card-sub">Km A/R = distance domicile → salle × 2, calculée par itinéraire routier (OpenStreetMap) à l'import de la convocation. Un doublé (2 matchs le même jour dans la même ville, hors 3×3) ne compte qu'un aller-retour.</p>`;
 }
 
 /* Km, carburant et entretien par mois (calcul local, doublés partagés). */
@@ -3570,7 +3658,9 @@ function renderProgression() {
       </td></tr>` : ""}`).join("")}</tbody>
     </table></div></div>` : ""}
 
-    <h2 class="section-title">Historique du niveau</h2>
+    <details class="past-block" style="margin-top:18px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Historique du niveau</span><span class="count">${niveaux.length}</span></span></summary>
+      <div class="past-body">
     ${niveaux.length ? `
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Type d'officiel</th><th>Niveau</th><th>Couleur</th><th>Début</th><th>Fin</th><th>Groupement</th><th>Saisi par</th><th></th></tr></thead>
@@ -3585,6 +3675,8 @@ function renderProgression() {
         <td><button type="button" class="action-link" data-del-niveau-id="${n.id}">Supprimer</button></td>
       </tr>`).join("")}</tbody>
     </table></div></div>` : empty("Aucun niveau enregistré pour l'instant.")}
+      </div>
+    </details>
 
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un niveau</span></span></summary>
@@ -3786,17 +3878,11 @@ function renderContacts() {
   const vue = state.contactsSubView;
   const btn = (v, id, lib) => `<button type="button" class="tabs-mini-btn${vue === v ? " active" : ""}" id="${id}">${lib}</button>`;
   const panneau = vue === "contacts" ? renderContactsPanel_() : renderProceduresPanel_();
+  void btn;
   root.innerHTML = `
-    <h2 class="section-title">Procédures &amp; contacts</h2>
-    <div class="tabs-mini">
-      ${btn("procedures", "contactsSubProceduresBtn", "Procédures")}
-      ${btn("contacts", "contactsSubContactsBtn", "Contacts")}
-    </div>
+    ${monEspaceBar_(vue)}
     <div id="contactsSubPanel">${panneau}</div>
   `;
-
-  root.querySelector("#contactsSubContactsBtn").addEventListener("click", () => setContactsSubView_("contacts"));
-  root.querySelector("#contactsSubProceduresBtn").addEventListener("click", () => setContactsSubView_("procedures"));
 
   attachContactsPanelListeners_(root);
   attachPersoListeners_(root);
@@ -3868,6 +3954,27 @@ function ouvrirModaleInfo_(titre, html) {
   document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { f(); document.removeEventListener("keydown", esc); } });
 }
 
+/* b19 — Contacts & Procédures : même design. Cartes compactes, boutons ✉ (mail)
+   et ☎ (appel) au lieu de liens texte, engrenage = fenêtre de modification,
+   « + Ajouter » ouvre la même fenêtre vide. */
+const ICONE_MAIL_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+const ICONE_TEL_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+const ICONE_LIEN_ = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+function telsDe_(t) { const r = String(t || "").match(/(?:\+33\s?|0)[1-9](?:[\s.\-]?\d{2}){4}/g) || []; return r.map(x => x.replace(/[^\d+]/g, "")).filter((m, i, a) => a.indexOf(m) === i).slice(0, 2); }
+function telAffiche_(t) { const d = String(t || "").replace(/[^\d+]/g, ""); return /^0\d{9}$/.test(d) ? d.replace(/(\d{2})(?=\d)/g, "$1 ").trim() : String(t || ""); }
+function boutonsContact_(mail, tel, sujet, lien) {
+  return `<div class="cc-btns">
+    ${mail ? `<a class="cc-btn" href="mailto:${escapeHtml(mail)}${sujet ? "?subject=" + encodeURIComponent(sujet) : ""}" title="Écrire à ${escapeHtml(mail)}" aria-label="Écrire à ${escapeHtml(mail)}">${ICONE_MAIL_}</a>` : ""}
+    ${tel ? `<a class="cc-btn cc-tel" href="tel:${escapeHtml(String(tel).replace(/[^\d+]/g, ""))}" title="Appeler ${escapeHtml(telAffiche_(tel))}" aria-label="Appeler ${escapeHtml(telAffiche_(tel))}">${ICONE_TEL_}</a>` : ""}
+    ${lien && /^https?:/i.test(lien) ? `<a class="cc-btn" href="${escapeHtml(safeUrl_(lien))}" target="_blank" rel="noopener" title="Ouvrir le lien" aria-label="Ouvrir le lien">${ICONE_LIEN_}</a>` : ""}
+  </div>`;
+}
+const CONTACT_CHAMPS_ = c => [
+  { id: "nom", label: "Nom", value: c.nom, required: true }, { id: "role", label: "Rôle", value: c.role },
+  { id: "organisation", label: "Organisation / Club", value: c.organisation }, { id: "championnat", label: "Championnat / Astreinte", value: c.championnat },
+  { id: "telephone", label: "Téléphone", value: c.telephone, type: "tel" }, { id: "email", label: "Mail", value: c.email, type: "email" },
+  { id: "situation", label: "Quand le contacter", value: c.situation, large: true }, { id: "notes", label: "Notes", value: c.notes, type: "textarea", rows: 3, large: true }
+];
 function renderContactsPanel_() {
   const contacts = state.contacts || [];
   const q = normaliserRecherche(state.contactsSearch || "");
@@ -3878,49 +3985,32 @@ function renderContactsPanel_() {
   const cle = c => String(tri === "nom" ? c.nom : tri === "role" ? c.role : tri === "championnat" ? c.championnat : c.organisation || "").trim();
   const cmp = (a, b) => String(cle(a) || "~").localeCompare(String(cle(b) || "~"), "fr", { sensitivity: "base" }) || String(a.nom || "").localeCompare(String(b.nom || ""), "fr", { sensitivity: "base" });
   filtres.sort(cmp);
-  const carte = c => `<article class="ct-card">
-      <div class="ct-top"><div><strong class="ct-nom">${escapeHtml(c.nom || "—")}</strong>${c.role ? `<span class="ct-role">${escapeHtml(c.role)}</span>` : ""}</div>
+  const carte = c => `<article class="cc-card">
+      <div class="cc-main">
+        <div class="cc-titre"><strong>${escapeHtml(c.nom || "—")}</strong>${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : ""}</div>
+        <div class="cc-sub">${escapeHtml([c.role, c.organisation].filter(Boolean).join(" · ") || "—")}</div>
+        ${c.situation ? `<div class="cc-note"><strong>Quand :</strong> ${escapeHtml(c.situation)}</div>` : ""}
+        ${c.notes ? `<div class="cc-note">${escapeHtml(c.notes)}</div>` : ""}
+      </div>
+      <div class="cc-side">${boutonsContact_(c.email, c.telephone, "")}
         <button type="button" class="ct-gear" data-edit-contact-id="${c.id}" aria-label="Modifier ${escapeHtml(c.nom || "le contact")}" title="Modifier">${ICONE_ENGRENAGE_}</button></div>
-      ${c.organisation ? `<div class="ct-org">${escapeHtml(c.organisation)}</div>` : ""}
-      ${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : ""}
-      <div class="ct-liens">${c.telephone ? `<a href="tel:${escapeHtml(c.telephone)}">${escapeHtml(c.telephone)}</a>` : ""}${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : ""}</div>
-      ${c.situation ? `<div class="ct-note"><strong>Quand :</strong> ${escapeHtml(c.situation)}</div>` : ""}
-      ${c.notes ? `<div class="ct-note">${escapeHtml(c.notes)}</div>` : ""}
     </article>`;
   let liste = "";
   if (filtres.length) {
-    if (tri === "nom") liste = `<div class="ct-grid">${filtres.map(carte).join("")}</div>`;
+    if (tri === "nom") liste = `<div class="cc-grid">${filtres.map(carte).join("")}</div>`;
     else {
       const groupes = [];
       filtres.forEach(c => { const g = String(cle(c) || "Sans " + (tri === "role" ? "rôle" : tri === "championnat" ? "championnat" : "organisation")); const last = groupes[groupes.length - 1]; if (last && last.t === g) last.l.push(c); else groupes.push({ t: g, l: [c] }); });
-      liste = groupes.map(g => `<h3 class="ct-group">${escapeHtml(g.t)} <span class="count">${g.l.length}</span></h3><div class="ct-grid">${g.l.map(carte).join("")}</div>`).join("");
+      liste = groupes.map(g => `<h3 class="ct-group">${escapeHtml(g.t)} <span class="count">${g.l.length}</span></h3><div class="cc-grid">${g.l.map(carte).join("")}</div>`).join("");
     }
   } else liste = empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.");
-
   return `
-    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px) 200px; margin-top:12px">
-      <div class="field"><label for="contactsSearchInput">Recherche</label><input id="contactsSearchInput" type="text" placeholder="Nom, club, téléphone…" value="${escapeHtml(state.contactsSearch || "")}" /></div>
-      <div class="field"><label for="contactsTriSel">Trier par</label><select id="contactsTriSel">${[["organisation", "Organisation"], ["nom", "Nom"], ["role", "Rôle"], ["championnat", "Championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select></div>
+    <div class="cc-bar">
+      <input id="contactsSearchInput" type="search" placeholder="Rechercher un nom, un club, un numéro…" value="${escapeHtml(state.contactsSearch || "")}" aria-label="Rechercher" />
+      <select id="contactsTriSel" aria-label="Trier par">${[["organisation", "Par organisation"], ["nom", "Par nom"], ["role", "Par rôle"], ["championnat", "Par championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select>
+      <button type="button" class="small-btn" id="contactAjouter">+ Ajouter</button>
     </div>
-    ${liste}
-
-    <details class="past-block" style="margin-top:12px">
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un contact</span></span></summary>
-      <div class="past-body">
-        <form id="contactForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
-          <div class="field"><label for="contactNom">Nom</label><input id="contactNom" type="text" required /></div>
-          <div class="field"><label for="contactRole">Rôle</label><input id="contactRole" type="text" placeholder="Ex. Répartiteur, CRA, Responsable ligue…" /></div>
-          <div class="field"><label for="contactOrganisation">Organisation / Club</label><input id="contactOrganisation" type="text" /></div>
-          <div class="field"><label for="contactChampionnat">Championnat / Astreinte</label><input id="contactChampionnat" type="text" placeholder="Ex. Régional, CF Jeunes, Départemental…" /></div>
-          <div class="field"><label for="contactSituation">Situation (quand contacter)</label><input id="contactSituation" type="text" placeholder="Ex. Annulation, blessure, litige paiement…" /></div>
-          <div class="field"><label for="contactTelephone">Téléphone</label><input id="contactTelephone" type="tel" /></div>
-          <div class="field"><label for="contactEmail">Email</label><input id="contactEmail" type="email" /></div>
-          <div class="field"><label for="contactNotes">Notes / procédure de contact</label><input id="contactNotes" type="text" /></div>
-        </form>
-        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="contactForm">Enregistrer</button></div>
-      </div>
-    </details>
-  `;
+    ${liste}`;
 }
 
 /* Tri des procédures : Contact d'abord (le plus actionnable en situation),
@@ -3933,56 +4023,58 @@ function trierProcedures_(procedures) {
 }
 
 function mailsDe_(t) { const r = String(t || "").match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []; return r.filter((m, i) => r.indexOf(m) === i).slice(0, 3); }
+const PROC_CATEGORIES_ = ["Contact", "Administratif", "Règlement", "Formation", "Observations", "Classement des arbitres", "Logistique", "Autre"];
+const PROC_IMPORTANCES_ = ["Critique", "Importante", "Utile", "Info"];
+const procCls_ = imp => ({ "Critique": "imp-1", "Importante": "imp-2", "Utile": "imp-3", "Info": "imp-4" })[imp] || "imp-3";
+const PROC_CHAMPS_ = p => [
+  { id: "titre", label: "Titre", value: p.titre, required: true, large: true },
+  { id: "categorie", label: "Catégorie", value: p.categorie || "Autre", type: "select", options: PROC_CATEGORIES_ },
+  { id: "importance", label: "Importance", value: p.importance || "Utile", type: "select", options: PROC_IMPORTANCES_ },
+  { id: "personne", label: "Personne concernée", value: p.personne },
+  { id: "mail", label: "Mail", value: p.mail, type: "email" },
+  { id: "telephone", label: "Téléphone", value: p.telephone, type: "tel" },
+  { id: "lien", label: "Lien (optionnel)", value: /^https?:/i.test(p.lien || "") ? p.lien : "", type: "url" },
+  { id: "contenu", label: "Contenu", value: p.contenu, type: "textarea", rows: 8, large: true }
+];
+function procEnrichie_(p) {
+  const txt = String(p.contenu || "") + " " + String(p.lien || "");
+  const mail = p.mail || (String(p.lien || "").match(/^mailto:([^?]+)/i) || [])[1] || mailsDe_(txt)[0] || "";
+  const tel = p.telephone || telsDe_(txt)[0] || "";
+  return Object.assign({}, p, { _mail: mail, _tel: tel });
+}
 function renderProceduresPanel_() {
-  const procedures = state.procedures || [];
+  const procedures = (state.procedures || []).map(procEnrichie_);
   const tri = state.proceduresTri || "categorie";
   const q = normaliserRecherche(state.proceduresSearch || "");
-  const liste0 = q ? procedures.filter(p => normaliserRecherche([p.titre, p.categorie, p.contenu].join(" ")).indexOf(q) >= 0) : procedures;
-  const item = p => `<div class="pr-item">
-      <details class="pr-det"><summary><span class="pr-titre">${escapeHtml(p.titre || "—")}</span>${p.lien ? `<a class="pr-lien" href="${escapeHtml(safeUrl_(p.lien))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Lien</a>` : ""}</summary>
-        <div class="pr-corps">${escapeHtml(p.contenu || "—")}</div>${mailsDe_(p.contenu + " " + (p.lien || "")).map(m => `<a class="pr-cta" href="mailto:${escapeHtml(m)}?subject=${encodeURIComponent(p.titre || "")}">Écrire à ${escapeHtml(m)}</a>`).join("")}</details>
-      <button type="button" class="ct-gear" data-edit-procedure-id="${p.id}" aria-label="Modifier ${escapeHtml(p.titre || "la procédure")}" title="Modifier">${ICONE_ENGRENAGE_}</button>
-    </div>`;
+  const liste0 = q ? procedures.filter(p => normaliserRecherche([p.titre, p.categorie, p.contenu, p.personne, p._mail, p._tel].join(" ")).indexOf(q) >= 0) : procedures;
+  const rangImp = p => { const i = PROC_IMPORTANCES_.indexOf(p.importance || "Utile"); return i < 0 ? 2 : i; };
+  const item = p => `<article class="cc-card pr-card ${procCls_(p.importance)}">
+      <div class="cc-main">
+        <div class="cc-titre"><strong>${escapeHtml(p.titre || "—")}</strong><span class="imp-chip ${procCls_(p.importance)}">${escapeHtml(p.importance || "Utile")}</span></div>
+        ${p.personne || p._tel ? `<div class="cc-sub">${escapeHtml([p.personne, p._tel ? telAffiche_(p._tel) : ""].filter(Boolean).join(" · "))}</div>` : ""}
+        <details class="pr-det"><summary>Voir la procédure</summary><div class="pr-corps">${escapeHtml(p.contenu || "—")}</div></details>
+      </div>
+      <div class="cc-side">${boutonsContact_(p._mail, p._tel, p.titre, p.lien)}
+        <button type="button" class="ct-gear" data-edit-procedure-id="${p.id}" aria-label="Modifier ${escapeHtml(p.titre || "la procédure")}" title="Modifier">${ICONE_ENGRENAGE_}</button></div>
+    </article>`;
   let corps;
   if (!liste0.length) corps = empty(q ? "Aucune procédure ne correspond." : "Aucune procédure enregistrée pour l'instant.");
-  else if (tri === "titre") corps = `<div class="pr-liste">${liste0.slice().sort((a, b) => String(a.titre || "").localeCompare(String(b.titre || ""), "fr", { sensitivity: "base" })).map(item).join("")}</div>`;
-  else {
+  else if (tri !== "categorie") {
+    const l = liste0.slice().sort(tri === "importance" ? (a, b) => rangImp(a) - rangImp(b) || String(a.titre || "").localeCompare(String(b.titre || ""), "fr") : (a, b) => String(a.titre || "").localeCompare(String(b.titre || ""), "fr", { sensitivity: "base" }));
+    corps = `<div class="cc-grid">${l.map(item).join("")}</div>`;
+  } else {
     const groupes = {};
-    trierProcedures_(liste0).forEach(p => { const k = p.categorie || "Autre"; (groupes[k] = groupes[k] || []).push(p); });
-    corps = Object.keys(groupes).map(k => `<h3 class="ct-group">${escapeHtml(k)} <span class="count">${groupes[k].length}</span></h3><div class="pr-liste">${groupes[k].map(item).join("")}</div>`).join("");
+    liste0.slice().sort((a, b) => rangImp(a) - rangImp(b) || String(a.titre || "").localeCompare(String(b.titre || ""), "fr")).forEach(p => { const k = p.categorie || "Autre"; (groupes[k] = groupes[k] || []).push(p); });
+    const ordre = Object.keys(groupes).sort((a, b) => { const ia = PROC_CATEGORIES_.indexOf(a), ib = PROC_CATEGORIES_.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+    corps = ordre.map(k => `<h3 class="ct-group">${escapeHtml(k)} <span class="count">${groupes[k].length}</span></h3><div class="cc-grid">${groupes[k].map(item).join("")}</div>`).join("");
   }
   return `
-    <div class="toolbar" style="grid-template-columns: minmax(220px, 360px) 200px; margin-top:12px">
-      <div class="field"><label for="procSearchInput">Recherche</label><input id="procSearchInput" type="text" placeholder="Titre, contenu…" value="${escapeHtml(state.proceduresSearch || "")}" /></div>
-      <div class="field"><label for="procTriSel">Trier par</label><select id="procTriSel"><option value="categorie"${tri === "categorie" ? " selected" : ""}>Catégorie</option><option value="titre"${tri === "titre" ? " selected" : ""}>Titre</option></select></div>
+    <div class="cc-bar">
+      <input id="procSearchInput" type="search" placeholder="Rechercher une procédure, une personne…" value="${escapeHtml(state.proceduresSearch || "")}" aria-label="Rechercher" />
+      <select id="procTriSel" aria-label="Trier par"><option value="categorie"${tri === "categorie" ? " selected" : ""}>Par catégorie</option><option value="importance"${tri === "importance" ? " selected" : ""}>Par importance</option><option value="titre"${tri === "titre" ? " selected" : ""}>Par titre</option></select>
+      <button type="button" class="small-btn" id="procAjouter">+ Ajouter</button>
     </div>
-    ${corps}
-
-    <details class="past-block" id="procedureBlock" style="margin-top:12px">
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title" id="procedureBlockTitre">Ajouter une procédure</span></span></summary>
-      <div class="past-body">
-        <form id="procedureForm" class="toolbar" style="grid-template-columns: 1fr 1fr; align-items:end; margin-top:10px; row-gap:12px">
-          <div class="field"><label for="procedureTitre">Titre</label><input id="procedureTitre" type="text" required /></div>
-          <div class="field">
-            <label for="procedureCategorie">Catégorie</label>
-            <select id="procedureCategorie">
-              <option value="Formation">Formation</option>
-              <option value="Observations">Observations</option>
-              <option value="Classement des arbitres">Classement des arbitres</option>
-              <option value="Contact">Contact</option>
-              <option value="Règlement">Règlement</option>
-              <option value="Logistique">Logistique</option>
-              <option value="Administratif">Administratif</option>
-              <option value="Autre">Autre</option>
-            </select>
-          </div>
-          <div class="field" style="grid-column: 1 / -1"><label for="procedureContenu">Contenu</label><textarea id="procedureContenu" rows="4" style="width:100%; font-family:inherit; padding:10px; border-radius:var(--radius-md); border:1px solid var(--line); background:var(--surface); color:var(--text)"></textarea></div>
-          <div class="field"><label for="procedureLien">Lien (optionnel)</label><input id="procedureLien" type="url" placeholder="https://…" /></div>
-        </form>
-        <div class="actions" style="margin-top:10px"><button class="small-btn secondary" type="submit" form="procedureForm">Enregistrer</button></div>
-      </div>
-    </details>
-  `;
+    ${corps}`;
 }
 
 function attachContactsPanelListeners_(root) {
@@ -3993,6 +4085,7 @@ function attachContactsPanelListeners_(root) {
       const panel = root.querySelector("#contactsSubPanel");
       if (panel) panel.innerHTML = renderContactsPanel_();
       attachContactsPanelListeners_(root);
+      const i = root.querySelector("#contactsSearchInput"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
     });
   }
 
@@ -4008,18 +4101,23 @@ function attachContactsPanelListeners_(root) {
     if (!c) return;
     ouvrirModaleEdition_({
       titre: "Modifier le contact",
-      champs: [
-        { id: "nom", label: "Nom", value: c.nom, required: true }, { id: "role", label: "Rôle", value: c.role },
-        { id: "organisation", label: "Organisation / Club", value: c.organisation }, { id: "championnat", label: "Championnat / Astreinte", value: c.championnat },
-        { id: "situation", label: "Situation (quand contacter)", value: c.situation, large: true }, { id: "telephone", label: "Téléphone", value: c.telephone, type: "tel" },
-        { id: "email", label: "Email", value: c.email, type: "email" }, { id: "notes", label: "Notes / procédure de contact", value: c.notes, type: "textarea", rows: 3, large: true }
-      ],
+      champs: CONTACT_CHAMPS_(c),
       onSave: async v => { const res = await jsonp("updateContact", Object.assign({ id: c.id }, v)); if (!res.success) throw new Error(res.error || "Erreur"); state.contacts = null; loadContacts(); },
       onDelete: async () => { const res = await jsonp("deleteContact", { id: c.id }); if (!res.success) throw new Error(res.error || "Erreur"); state.contacts = null; loadContacts(); },
       libSuppr: "Supprimer ce contact", confirmSuppr: "Supprimer ce contact ?"
     });
   }));
 
+  const ca = root.querySelector("#contactAjouter");
+  if (ca) ca.addEventListener("click", () => ouvrirModaleEdition_({
+    titre: "Nouveau contact", champs: CONTACT_CHAMPS_({}),
+    onSave: async v => { const res = await jsonp("addContact", v); if (!res || !res.success) throw new Error((res && res.error) || "Erreur"); state.contacts = null; loadContacts(); setStatus("Contact enregistré", "ok"); }
+  }));
+  const pa = root.querySelector("#procAjouter");
+  if (pa) pa.addEventListener("click", () => ouvrirModaleEdition_({
+    titre: "Nouvelle procédure", champs: PROC_CHAMPS_({}),
+    onSave: async v => { const res = await jsonp("addProcedure", v); if (!res || !res.success) throw new Error((res && res.error) || "Erreur"); state.procedures = null; loadProcedures(); setStatus("Procédure enregistrée", "ok"); }
+  }));
   const contactForm = root.querySelector("#contactForm");
   if (contactForm) {
     contactForm.addEventListener("submit", async e => {
@@ -4091,13 +4189,8 @@ function attachContactsPanelListeners_(root) {
       if (!p) return;
       ouvrirModaleEdition_({
         titre: "Modifier la procédure",
-        champs: [
-          { id: "titre", label: "Titre", value: p.titre, required: true, large: true },
-          { id: "categorie", label: "Catégorie", value: p.categorie || "Autre", type: "select", options: ["Formation", "Observations", "Classement des arbitres", "Contact", "Règlement", "Logistique", "Administratif", "Autre"] },
-          { id: "lien", label: "Lien", value: p.lien, type: "url" },
-          { id: "contenu", label: "Contenu", value: p.contenu, type: "textarea", rows: 10, large: true }
-        ],
-        onSave: async v => { const res = await jsonp("updateProcedure", Object.assign({ id: p.id }, v)); if (!res.success) throw new Error(res.error || "Erreur"); state.procedures = null; loadProcedures(); },
+        champs: PROC_CHAMPS_(procEnrichie_(p)),
+        onSave: async v => { const res = await jsonp("updateProcedure", Object.assign({ id: p.id }, v)); if (!res || !res.success) throw new Error((res && res.error) || "Erreur"); if (!res.result) throw new Error("Apps Script pas à jour"); state.procedures = null; loadProcedures(); setStatus("Procédure mise à jour", "ok"); },
         onDelete: async () => { const res = await jsonp("deleteProcedure", { id: p.id }); if (!res.success) throw new Error(res.error || "Erreur"); state.procedures = null; loadProcedures(); },
         libSuppr: "Supprimer cette procédure", confirmSuppr: "Supprimer cette procédure ?"
       });
@@ -4155,7 +4248,7 @@ function renderDoublesStats_() {
     </table></div></div>
     <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
       <thead><tr><th>Date</th><th>Lieu</th><th class="num">Matchs</th><th class="num">KM A/R trajet</th><th class="num">KM éco.</th><th class="num">Indemnités</th><th class="num">Net</th></tr></thead>
-      <tbody>${liste.map(x => `<tr><td>${escapeHtml(x.date.toLocaleDateString("fr-FR"))}</td><td>${escapeHtml(x.lieu)}</td><td class="num">${x.n}</td><td class="num">${formatNumber(x.kmTrajet, "")}</td><td class="num">${formatNumber(x.kmEco, "")}</td><td class="num">${money(x.indem)}</td><td class="num">${money(x.net)}</td></tr>`).join("")}</tbody>
+      <tbody>${liste.map(x => `<tr><td>${escapeHtml(x.date.toLocaleDateString("fr-FR"))}${x.date > new Date() ? ` <span class="badge gold">à venir</span>` : ""}</td><td>${escapeHtml(x.lieu)}</td><td class="num">${x.n}</td><td class="num">${formatNumber(x.kmTrajet, "")}</td><td class="num">${formatNumber(x.kmEco, "")}</td><td class="num">${money(x.indem)}</td><td class="num">${money(x.net)}</td></tr>`).join("")}</tbody>
     </table></div></div>`;
   return foldable_("Doublés", body, { count: tot.n });
 }
@@ -4432,13 +4525,21 @@ function renderQcm() {
 
   const t = document.getElementById("btnQcmTrain"); if (t) t.addEventListener("click", () => demarrerSerieQcm("train"));
   const e = document.getElementById("btnQcmExam"); if (e) e.addEventListener("click", () => demarrerSerieQcm("exam"));
+  /* b19 — suppression fiable : la ligne disparaît tout de suite, le serveur
+     confirme (deleted:true), puis on relit les stats sans passer par le cache. */
   root.querySelectorAll("[data-del-qcm]").forEach(btn => btn.addEventListener("click", async () => {
     if (!confirm("Supprimer ce résultat ?")) return;
+    const id = btn.dataset.delQcm, tr = btn.closest("tr");
+    btn.disabled = true; if (tr) tr.style.opacity = ".35";
     try {
-      const res = await jsonp("deleteQcmSession", { id: btn.dataset.delQcm });
-      if (!res.success) throw new Error(res.error || "Erreur suppression");
-      state.qcmStats = null; loadQcmStats();
-    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+      const res = await jsonp("deleteQcmSession", { id });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur suppression");
+      if (!res.result || res.result.deleted !== true) throw new Error("le serveur n'a rien supprimé (ligne introuvable ou version Apps Script ancienne)");
+      if (tr) tr.remove();
+      setStatus("Résultat supprimé", "ok");
+      const frais = await jsonpFrais("qcmStats");
+      if (frais && frais.success) { state.qcmStats = frais.stats; if (state.activeTab === "qcm" && !state.qcmSession) renderQcm(); }
+    } catch (err) { btn.disabled = false; if (tr) tr.style.opacity = ""; setStatus("Erreur : " + err.message, "error"); }
   }));
 }
 
@@ -4844,6 +4945,7 @@ function renderAlertes() {
     try {
       const res = await jsonp(action, { uid });
       if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+      if (!res.result) throw new Error("Apps Script b19 pas encore déployé");
       remplacerLigne_(uid, res.row);
       setStatus(action === "alerte.ignorer" ? "Alerte ignorée" : "Mission écartée", "ok");
       renderAll();
@@ -4855,6 +4957,28 @@ function renderAlertes() {
   root.querySelectorAll("[data-alerte-ignorer]").forEach(b => nettoyer(b, "alerte.ignorer", "Ignorer définitivement cette alerte ? Elle sortira de l'app (la ligne reste dans le Sheet, statut « Ignoré »)."));
   root.querySelectorAll("[data-mission-ecarter]").forEach(b => nettoyer(b, "mission.ecarter", "Écarter cette mission ? Elle passe en « Annulé » et son événement d'agenda est supprimé."));
 }
+
+/* b19 — annulation de dernière minute : statut Annulé, indemnité et km
+   retirés des calculs, événement d'agenda supprimé. Rien n'est effacé du Sheet. */
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-annuler-mission]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const uid = b.getAttribute("data-annuler-mission");
+  if (!uid || !confirm("Marquer ce match comme annulé à la dernière minute ?\nIl sort des revenus, des km et des paiements attendus. Si une indemnité de déplacement t'est quand même due, laisse-le et note-le dans le Sheet.")) return;
+  b.disabled = true;
+  try {
+    const res = await jsonp("mission.annuler", { uid });
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+    if (!res.result) throw new Error("Apps Script b19 pas encore déployé");
+    remplacerLigne_(uid, res.row);
+    setStatus("Match annulé", "ok");
+    renderAll();
+  } catch (err) {
+    b.disabled = false;
+    setStatus("Erreur : " + err.message, "error");
+  }
+});
 
 /* b18 — mission 3x3 créée à partir d'un mail mal lu (ni lieu ni événement). */
 function mission3x3Suspecte_(r) {
@@ -6119,7 +6243,11 @@ function calculerEstimation_() {
   const extraC = Math.max(0, restantCentral - avenir.length);
   const extraH = Math.max(0, restantHaut - avenir.length);
 
-  const base = (faits.length + avenir.length) ? faits.concat(avenir) : prev;
+  /* b19 — valeur d'un match « à prévoir » plus fiable : bénévolat exclu,
+     et tant que la saison compte moins de 12 missions, on complète avec
+     la saison précédente (sinon 3 matchs de début de saison faussent tout). */
+  const payants = faits.concat(avenir).filter(r => !r._benevole);
+  const base = payants.length >= 12 ? payants : payants.concat(prev.filter(r => !r._benevole));
   const moy = agregEstim_(base);
   const m = { ind: base.length ? moy.ind / base.length : 0, km: base.length ? moy.km / base.length : 0 };
   const carbMoy = realFuelCostClient(m.km, auj), entMoy = m.km * entretienKmClient_(auj);
@@ -6863,34 +6991,56 @@ function buildChartPaiements(rows) {
 
 /* ---------------- Classement rentabilité ---------------- */
 
+/* b19 — Clubs les plus rentables, avec distinction Séniors / Jeunes et
+   niveau (CD67, Ligue LRGEB, Championnat de France). Filtres instantanés. */
+function segmentAge_(r) {
+  const cat = cleanText(get(r, "Catégorie d'âge"));
+  return (/U\d{2}/i.test(cat) || /U\d{2}/.test(codeCompetition(r))) ? "jeunes" : "seniors";
+}
+function segmentNiveau_(r) {
+  const c = payeurAffiche_(r);
+  return c === "cd" ? "cd67" : c === "ligue" ? "ligue" : (c === "ffbb" || c === "cfj") ? "cf" : "autre";
+}
 function renderClassementRentabilite(rows) {
   const five = rows.filter(r => r._format === "5x5");
-  const parClub = groupBySimple(five, r => get(r, "Recevant"))
+  const NIV = { cd67: "CD67", ligue: "LRGEB", cf: "CF", autre: "Autre" };
+  const groupes = groupBySimple(five, r => get(r, "Recevant") + "||" + segmentAge_(r) + "||" + segmentNiveau_(r))
     .filter(g => g.count > 0)
     .sort((a, b) => b.net - a.net)
-    .slice(0, 10);
-
-  if (!parClub.length) return "";
-
-  const maxNet = Math.max(...parClub.map(g => g.net));
-
+    .slice(0, 25);
+  if (!groupes.length) return "";
+  const maxNet = Math.max(...groupes.map(g => g.net));
+  const chip = (grp, v, l) => `<button type="button" class="pa-axe${v === "" ? " active" : ""}" data-renta-${grp}="${v}">${l}</button>`;
   return `
-    <div class="chart-card">
+    <div class="chart-card renta-card">
       <h3>Clubs les plus rentables (5×5)</h3>
-      <p class="hint">Net réel cumulé par club recevant, nombre de missions et gain net par heure.</p>
-      ${parClub.map(g => `
-        <div class="rank-row">
+      <p class="hint">Net réel cumulé par club recevant (indemnités − carburant), nombre de missions. Filtre par âge et par niveau.</p>
+      <div class="renta-filtres">
+        <div class="pa-axes">${chip("age", "", "Tous")}${chip("age", "seniors", "Séniors")}${chip("age", "jeunes", "Jeunes")}</div>
+        <div class="pa-axes">${chip("niv", "", "Tous niveaux")}${chip("niv", "cd67", "CD67")}${chip("niv", "ligue", "LRGEB")}${chip("niv", "cf", "Champ. de France")}</div>
+      </div>
+      ${groupes.map(g => { const [club, age, niv] = g.label.split("||"); return `
+        <div class="rank-row" data-age="${age}" data-niv="${niv}">
           <div class="rank-name">
-            <div class="label">${escapeHtml(g.label)}</div>
-            <div class="meter"><i style="width:${maxNet > 0 ? (g.net / maxNet) * 100 : 0}%"></i></div>
+            <div class="label">${escapeHtml(club)} <span class="badge ${age === "jeunes" ? "gold" : "gray"}">${age === "jeunes" ? "Jeunes" : "Séniors"}</span> <span class="badge">${NIV[niv]}</span></div>
+            <div class="meter"><i style="width:${maxNet > 0 ? Math.max(0, g.net / maxNet) * 100 : 0}%"></i></div>
           </div>
           <div class="rank-count">${g.count}×</div>
           <div class="rank-value ${g.net < 0 ? "neg" : ""}">${formatMoney(g.net)}</div>
-        </div>
-      `).join("")}
+        </div>`; }).join("")}
     </div>
   `;
 }
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-renta-age],[data-renta-niv]");
+  if (!b) return;
+  const carte = b.closest(".renta-card");
+  const grp = b.hasAttribute("data-renta-age") ? "age" : "niv";
+  carte.querySelectorAll(`[data-renta-${grp}]`).forEach(x => x.classList.toggle("active", x === b));
+  const age = (carte.querySelector("[data-renta-age].active") || {}).dataset?.rentaAge || "";
+  const niv = (carte.querySelector("[data-renta-niv].active") || {}).dataset?.rentaNiv || "";
+  carte.querySelectorAll(".rank-row").forEach(r => { r.style.display = (!age || r.dataset.age === age) && (!niv || r.dataset.niv === niv) ? "" : "none"; });
+});
 
 /* ---------------- Lectures écrites sous les graphiques ---------------- */
 
@@ -7460,7 +7610,7 @@ function renderPersoTab_(id, titre, fn) {
   const root = document.getElementById(id);
   if (!root) return;
   if (state.contacts === null && !state._contactsErreur && (id === "indispos" || id === "rapports")) loadContacts();
-  root.innerHTML = `<h2 class="section-title">${escapeHtml(titre)}</h2>${fn()}`;
+  root.innerHTML = `${monEspaceBar_(id)}${fn()}`;
   attachPersoListeners_(root);
 }
 function loadElicence() { persoCharger_("elic", "elicence", r => { state.elicence = r.data || {}; }); }
@@ -7504,55 +7654,138 @@ function remplirQr_(root) {
     } catch (err) { el.innerHTML = `<small>${escapeHtml(t)}</small>`; }
   });
 }
+/* b19 — e-Licence = le VRAI document officiel (PDF ou capture), rien d'inventé.
+   Une licence vaut pour une saison : au 30/07, l'ancienne est retirée
+   automatiquement (Apps Script) et l'app demande la nouvelle. */
 function renderElicencePanel_() {
   if (state._elicErr) return erreurPerso_(state._elicErr, "retryElic");
   if (state.elicence === undefined) { loadElicence(); return chargementPerso_(); }
-  const e = elicAvecDefauts_(state.elicence || {});
+  const e = state.elicence || {};
+  const saison = e.saisonCourante || getCurrentSeason();
   const aDoc = !!(e.doc || e.docUrl);
-  return `
-    <div class="elic-wrap">
-      ${elicCarteHtml_(e, false)}
-      <div class="elic-actions">
-        <button type="button" class="small-btn" id="elicPlein">Plein écran (à présenter)</button>
-        ${aDoc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'e-Licence officielle</button>` : ""}
-        <p class="card-sub">Copie personnelle pour l'avoir sous la main. Elle ne remplace pas l'e-Licence officielle.</p>
-        ${!e.numero && !e.nom ? `<p class="elic-vide">Ta licence n'est pas encore renseignée : ouvre « Modifier ma licence » ci-dessous, et ajoute la capture de ton e-Licence FFBB.</p>` : ""}
-      </div>
-    </div>
-    <div class="elic-doc">
-      <div class="elic-doc-head">
-        <div><h3 class="section-title" style="margin:0">e-Licence officielle</h3>
-        <p class="card-sub" style="margin:4px 0 0">Capture d'écran de l'app FFBB ou PDF de ta licence. ${aDoc ? "Document enregistré : <strong>" + escapeHtml(e.docNom || "e-Licence") + "</strong>." : "Aucun document pour l'instant."}</p></div>
-        <div class="elic-doc-act">
-          <label class="small-btn" style="cursor:pointer">${aDoc ? "Remplacer" : "Ajouter ma licence"}<input type="file" id="elicDocFile" accept="image/*,application/pdf" hidden /></label>
-          ${aDoc ? `<button type="button" class="small-btn secondary" id="elicDocDel">Retirer</button>` : ""}
-        </div>
-      </div>
-      ${e.doc ? `<button type="button" class="elic-doc-mini" id="elicDocMini" title="Agrandir"><img src="${escapeHtml(e.doc)}" alt="e-Licence officielle" /></button>` : ""}
-      ${e.docUrl ? `<p class="card-sub"><a class="action-link" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">Ouvrir le PDF (Google Drive)</a></p>` : ""}
-      <span class="card-sub" id="elicDocMsg"></span>
-    </div>
-    <details class="past-block" style="margin-top:12px"${(e.nom || e.numero) ? "" : " open"}>
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Modifier ma licence</span></span></summary>
-      <div class="past-body">
-        <form id="elicForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
-          <div class="field"><label for="elicNom">Nom</label><input id="elicNom" type="text" value="${escapeHtml(e.nom || "")}" required /></div>
-          <div class="field"><label for="elicNumero">N° de licence</label><input id="elicNumero" type="text" value="${escapeHtml(e.numero || "")}" required /></div>
-          <div class="field"><label for="elicNiveau">Niveau</label><input id="elicNiveau" type="text" placeholder="Ex. Arbitre régional" value="${escapeHtml(e.niveau || "")}" /></div>
-          <div class="field"><label for="elicFonction">Fonction</label><select id="elicFonction">${["", "Arbitre", "OTM", "Arbitre et OTM", "Observateur"].map(f => `<option value="${escapeHtml(f)}"${f === (e.fonction || "") ? " selected" : ""}>${escapeHtml(f || "—")}</option>`).join("")}</select></div>
-          <div class="field"><label for="elicSaison">Saison</label><input id="elicSaison" type="text" placeholder="2026/2027" value="${escapeHtml(e.saison || "")}" /></div>
-          <div class="field"><label for="elicClub">Club / groupement</label><input id="elicClub" type="text" value="${escapeHtml(e.club || "")}" /></div>
-          <div class="field"><label for="elicValidite">Valide jusqu'au</label><input id="elicValidite" type="date" value="${escapeHtml(e.validite || "")}" /></div>
-          <div class="field"><label for="elicQr">Contenu du QR (optionnel)</label><input id="elicQr" type="text" placeholder="Par défaut : n° de licence" value="${escapeHtml(e.qr || "")}" /></div>
-          <div class="field"><label for="elicPhoto">Photo</label><input id="elicPhoto" type="file" accept="image/*" /></div>
-          <div style="grid-column: 1 / -1; display:flex; gap:8px; flex-wrap:wrap">
-            <button type="submit" class="small-btn">Enregistrer</button>
-            ${e.photo ? `<button type="button" class="small-btn secondary" id="elicPhotoDel">Retirer la photo</button>` : ""}
-            <span class="card-sub" id="elicMsg"></span>
+  const ancienne = e.ancienneSaison ? `<p class="elic-vide">Nouvelle saison ${escapeHtml(saison)} : ta licence ${escapeHtml(e.ancienneSaison)} a été retirée. Dépose la licence de cette saison.</p>` : "";
+  const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel FFBB ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
+    : `<div class="elic-officiel">
+        <div class="elic-officiel-head">
+          <div><strong>Licence ${escapeHtml(e.docSaison || saison)}</strong><span class="card-sub">${escapeHtml(e.docNom || "Document officiel")}${e.docDate ? " · déposée le " + escapeHtml(e.docDate) : ""}</span></div>
+          <div class="elic-doc-act">
+            ${e.doc ? `<button type="button" class="small-btn" id="elicDocVoir">Plein écran</button>` : ""}
+            ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF original</a>` : ""}
+            <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+            <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
           </div>
-        </form>
-      </div>
-    </details>`;
+        </div>
+        ${e.doc ? `<button type="button" class="elic-doc-view" id="elicDocMini" title="Agrandir"><img src="${escapeHtml(e.doc)}" alt="Licence officielle" /></button>`
+          : `<p class="card-sub">Aperçu indisponible pour ce PDF : remplace-le une fois pour générer l'aperçu hors ligne.</p>`}
+      </div>`;
+  return `<div class="elic-zone">${doc}<span class="card-sub" id="elicDocMsg"></span></div>${renderEmarque_()}`;
+}
+
+/* Clé e-Marque V2 : jamais dans le code ni le cache. Lue sur demande, affichée 30 s. */
+function renderEmarque_() {
+  const m = state.emarque;
+  if (m === undefined) { chargerEmarque_(); }
+  const etat = !m ? `<span class="card-sub">Chargement…</span>`
+    : m.erreur ? `<span class="card-sub">${escapeHtml(m.erreur)}</span>`
+    : m.defini ? `<code class="emq-cle" id="emqCle">${escapeHtml(m.clair || m.masque)}</code>`
+    : `<span class="card-sub">Aucune clé enregistrée.</span>`;
+  return `<div class="emq">
+    <div class="emq-head"><div><strong>Clé e-Marque V2</strong><span class="card-sub">Code de signature des feuilles de match</span></div>
+      <div class="elic-doc-act">
+        ${m && m.defini ? `<button type="button" class="small-btn secondary" id="emqVoir">${m.clair ? "Masquer" : "Afficher"}</button><button type="button" class="small-btn" id="emqCopier">Copier</button>` : ""}
+        <button type="button" class="small-btn secondary" id="emqModif">${m && m.defini ? "Modifier" : "Enregistrer ma clé"}</button>
+      </div></div>
+    <div class="emq-val">${etat}</div>
+    <form id="emqForm" class="emq-form" hidden><input id="emqInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ta clé e-Marque" /><button type="submit" class="small-btn">Enregistrer</button>${m && m.defini ? `<button type="button" class="small-btn secondary alerte-danger" id="emqDel">Supprimer</button>` : ""}</form>
+    <p class="card-sub emq-note">Stockée uniquement côté serveur (Apps Script), jamais dans le site, le cache du navigateur ni GitHub.</p>
+  </div>`;
+}
+async function chargerEmarque_(reveler) {
+  try {
+    const res = await jsonp("emarque.get", reveler ? { reveler: "1" } : {});
+    if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+    if (!res.data) throw new Error("Apps Script b19 pas encore déployé");
+    state.emarque = { defini: res.data.defini, masque: res.data.masque, clair: reveler ? res.data.cle : "" };
+    if (reveler) { clearTimeout(state._emqT); state._emqT = setTimeout(() => { if (state.emarque) { state.emarque.clair = ""; if (state.activeTab === "elicence") rerenderPerso_(); } }, 30000); }
+  } catch (err) { state.emarque = { erreur: err.message }; }
+  if (state.activeTab === "elicence") rerenderPerso_();
+}
+function attachEmarque_(root) {
+  const q = id => root.querySelector("#" + id);
+  if (q("emqVoir")) q("emqVoir").addEventListener("click", () => { if (state.emarque.clair) { state.emarque.clair = ""; rerenderPerso_(); } else chargerEmarque_(true); });
+  if (q("emqCopier")) q("emqCopier").addEventListener("click", async () => {
+    try {
+      let k = state.emarque.clair;
+      if (!k) { const r = await jsonp("emarque.get", { reveler: "1" }); k = r && r.data && r.data.cle; }
+      if (!k) throw new Error("clé indisponible");
+      await navigator.clipboard.writeText(k);
+      setStatus("Clé copiée", "ok");
+    } catch (err) { setStatus("Copie impossible : " + err.message, "error"); }
+  });
+  if (q("emqModif")) q("emqModif").addEventListener("click", () => { const f = q("emqForm"); f.hidden = !f.hidden; if (!f.hidden) q("emqInput").focus(); });
+  const env = async corps => {
+    try {
+      const res = await jsonp("emarque.set", corps);
+      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+      if (!res.data) throw new Error("Apps Script b19 pas encore déployé");
+      state.emarque = { defini: res.data.defini, masque: res.data.masque, clair: "" };
+      setStatus(corps.effacer ? "Clé supprimée" : "Clé enregistrée", "ok"); rerenderPerso_();
+    } catch (err) { setStatus("Erreur : " + err.message, "error"); }
+  };
+  if (q("emqForm")) q("emqForm").addEventListener("submit", e => { e.preventDefault(); const v = q("emqInput").value.trim(); q("emqInput").value = ""; if (v) env({ cle: v }); });
+  if (q("emqDel")) q("emqDel").addEventListener("click", () => { if (confirm("Supprimer la clé e-Marque enregistrée ?")) env({ effacer: "1" }); });
+}
+
+/* b19 — zone de dépôt réutilisable (glisser-déposer + clic). */
+function dropZone_(inputId, accept, titre, sous, extra) {
+  return `<label class="dropz" data-dropz="${inputId}">
+    <input type="file" id="${inputId}" accept="${accept}" hidden />
+    <span class="dropz-ico" aria-hidden="true">⇪</span>
+    <strong>${escapeHtml(titre)}</strong><span class="card-sub">${escapeHtml(sous)}</span>${extra || ""}
+  </label>`;
+}
+function attachDropZones_(root) {
+  root.querySelectorAll("[data-dropz]").forEach(z => {
+    const inp = z.querySelector("input[type=file]");
+    ["dragenter", "dragover"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add("is-over"); }));
+    ["dragleave", "drop"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove("is-over"); }));
+    z.addEventListener("drop", e => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f || !inp) return;
+      try { const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files; } catch (err) { inp._fichier = f; }
+      inp.dispatchEvent(new Event("change"));
+    });
+  });
+}
+function fichierDe_(inp) { return (inp && ((inp.files && inp.files[0]) || inp._fichier)) || null; }
+
+/* b19 — PDF → image (page 1) via pdf.js chargé à la demande (cdnjs, version figée). */
+let _pdfjsP = null;
+function chargerPdfJs_() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (_pdfjsP) return _pdfjsP;
+  _pdfjsP = new Promise((ok, ko) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
+    sc.onerror = () => { _pdfjsP = null; ko(new Error("Lecteur PDF indisponible")); };
+    document.head.appendChild(sc);
+  });
+  return _pdfjsP;
+}
+async function pdfEnImage_(file, largeur, poidsMax) {
+  const lib = await chargerPdfJs_();
+  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const page = await pdf.getPage(1);
+  const v0 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: largeur / v0.width });
+  const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: g, viewport: vp }).promise;
+  let q = 0.88, out = c.toDataURL("image/jpeg", q);
+  while (out.length > poidsMax && q > 0.4) { q -= 0.08; out = c.toDataURL("image/jpeg", q); }
+  if (out.length > poidsMax) throw new Error("Aperçu trop lourd");
+  return out;
 }
 function photoRedim_(file) {
   return new Promise((ok, ko) => {
@@ -7633,17 +7866,24 @@ async function deposerDocElicence_(file, effacer) {
     let corps;
     if (effacer) corps = { effacer: "1" };
     else if (/^image\//.test(file.type)) corps = { image: await imageCompressee_(file, 1100, 880000), nom: file.name };
-    else if (file.type === "application/pdf") { if (file.size > 4200000) throw new Error("PDF trop lourd (max 4 Mo)"); corps = { pdf: await fichierBase64_(file), nom: file.name }; }
+    else if (file.type === "application/pdf") {
+      if (file.size > 4200000) throw new Error("PDF trop lourd (max 4 Mo)");
+      if (msg) msg.textContent = "Préparation de l'aperçu…";
+      let image = "";
+      try { image = await pdfEnImage_(file, 1240, 880000); } catch (err) { image = ""; }
+      corps = image ? { pdf: await fichierBase64_(file), image, nom: file.name } : { pdf: await fichierBase64_(file), nom: file.name };
+    }
     else throw new Error("Format non accepté (image ou PDF)");
     if (msg) msg.textContent = "Envoi…";
     const res = await jsonp("elicence.document", corps);
     if (!res || res.success === false) throw new Error((res && res.error) || "Refusé");
+    if (!res.data) throw new Error("Apps Script b19 pas encore déployé");
     state.elicence = res.data;
     try { if (typeof _cacheEcrire === "function") _cacheEcrire(_cacheKey("elicence", {}), { success: true, data: res.data }); } catch (e) {}
     rerenderPerso_();
     setStatus(effacer ? "Document retiré" : "e-Licence enregistrée", "ok");
   } catch (err) {
-    if (msg) msg.textContent = "Erreur : " + err.message + (/AUTH|inconnue|unknown/i.test(err.message) ? " (Auth.gs b18 à déployer)" : "");
+    if (msg) msg.textContent = "Erreur : " + err.message + (/AUTH|inconnue|unknown/i.test(err.message) ? " (Apps Script b19 à déployer)" : "");
   }
 }
 function elicDocPleinEcran_() {
@@ -7822,31 +8062,34 @@ function renderRapportsPanel_() {
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
-  return `
-    <h3 class="section-title" style="margin-top:4px">Rapport brut</h3>
-    <p class="card-sub">Formulaires officiels vierges : voir, imprimer ou envoyer par mail.</p>
-    <div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
+  const vue = state.rappVue || "sauvegarde";
+  const sous = `<div class="tabs-mini rapp-seg" role="tablist">
+    <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
+    <button type="button" class="tabs-mini-btn${vue === "formulaires" ? " active" : ""}" data-rapp-vue="formulaires">Formulaires vierges</button>
+  </div>`;
+  if (vue === "formulaires") return sous + `<div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
       <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
-    </div>`).join("")}</div>
-
-    <h3 class="section-title" style="margin-top:24px">Sauvegarde de rapports</h3>
+    </div>`).join("")}</div>`;
+  return sous + `
     <div class="rapp-dossier">
       <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(safeUrl_(dos.url))}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
       <form id="rappDossierForm" class="rapp-inline"><input id="rappDossierNom" type="text" placeholder="Renommer le dossier" /><button type="submit" class="small-btn secondary">Renommer</button></form>
     </div>
-    <details class="past-block" style="margin-top:12px" ${mes.length ? "" : "open"}>
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un rapport</span></span></summary>
-      <div class="past-body">
-        <form id="rappForm" class="toolbar" style="grid-template-columns: repeat(3, 1fr); align-items:end; margin-top:10px; row-gap:12px">
-          <div class="field" style="grid-column: span 2"><label for="rappMatch">Match</label><select id="rappMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
-          <div class="field"><label for="rappRole">Type</label><select id="rappRole">${RAPP_TYPES_SAISIE_.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></div>
-          <div class="field" style="grid-column: span 2"><label for="rappNotes">Notes (optionnel)</label><input id="rappNotes" type="text" /></div>
-          <div class="field"><label for="rappFichier">Fichier (PDF / photo, 4 Mo max)</label><input id="rappFichier" type="file" accept="application/pdf,image/*" required /></div>
-          <div style="grid-column:1 / -1"><button type="submit" class="small-btn">Enregistrer</button> <span class="card-sub" id="rappMsg"></span></div>
-        </form>
+    <form id="rappForm" class="rapp-form">
+      <div class="rapp-form-grid">
+        <div class="field rapp-f-match"><label for="rappMatch">Match</label><select id="rappMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
+        <div class="field"><label for="rappRole">Type</label><select id="rappRole">${RAPP_TYPES_SAISIE_.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></div>
+        <div class="field rapp-f-notes"><label for="rappNotes">Notes (optionnel)</label><input id="rappNotes" type="text" /></div>
       </div>
-    </details>
+      <div class="rapp-src">
+        ${dropZone_("rappFichier", "application/pdf,image/png,image/jpeg", "Glisse le rapport ici", "PDF, PNG ou JPEG · 4 Mo max · ou touche pour choisir")}
+        <label class="rapp-photo"><input type="file" id="rappPhoto" accept="image/*" capture="environment" hidden /><span class="dropz-ico" aria-hidden="true">◉</span><strong>Prendre une photo</strong><span class="card-sub">Convertie en scan PDF</span></label>
+      </div>
+      <div class="rapp-apercu" id="rappApercu" hidden></div>
+      <label class="rapp-scan-opt"><input type="checkbox" id="rappScan" checked /> Convertir les photos en scan (noir et blanc, PDF A4)</label>
+      <div><button type="submit" class="small-btn">Enregistrer</button> <span class="card-sub" id="rappMsg"></span></div>
+    </form>
     ${mes.length ? `<div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
       <thead><tr><th>Date</th><th>Match</th><th>Type</th><th>Notes</th><th></th></tr></thead>
       <tbody>${mes.map(r => `<tr><td>${escapeHtml(dmy_(r.cree))}</td><td>${escapeHtml(r.match)}</td><td>${escapeHtml(r.role)}</td><td>${escapeHtml(r.notes || "—")}</td><td class="rapp-act">${actions(r)}</td></tr>`).join("")}</tbody>
@@ -7898,6 +8141,43 @@ async function fichierRapport_(f) {
   return { fNom: f.name, fMime: mime, fData: await fichierEnBase64_(f) };
 }
 
+/* b19 — photo → « scan » : niveaux de gris, fond blanchi, contraste étiré,
+   puis PDF A4 (jsPDF). Tout se fait dans le navigateur. */
+function scanDepuisImage_(file) {
+  return new Promise((ok, ko) => {
+    const J = window.jspdf && window.jspdf.jsPDF;
+    if (!J) return ko(new Error("Générateur PDF indisponible"));
+    const u = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1800 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(u);
+      const d = g.getImageData(0, 0, c.width, c.height), px = d.data, hist = new Uint32Array(256);
+      for (let i = 0; i < px.length; i += 4) { const y = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000 | 0; px[i] = y; hist[y]++; }
+      const n = px.length / 4; let acc = 0, lo = 0, hi = 255;
+      for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.02) { lo = v; break; } }
+      acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.25) { hi = v; break; } }   // le papier occupe l'essentiel de l'image
+      const span = Math.max(hi - lo, 30);
+      for (let i = 0; i < px.length; i += 4) {
+        let t = (px[i] - lo) / span; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const v = t > 0.82 ? 255 : Math.round(255 * Math.pow(t, 1.5));
+        px[i] = px[i + 1] = px[i + 2] = v;
+      }
+      g.putImageData(d, 0, 0);
+      const doc = new J({ unit: "mm", format: "a4", orientation: c.width > c.height ? "landscape" : "portrait" });
+      const W = doc.internal.pageSize.getWidth() - 16, H = doc.internal.pageSize.getHeight() - 16;
+      const r = Math.min(W / c.width, H / c.height);
+      doc.addImage(c.toDataURL("image/jpeg", 0.72), "JPEG", 8 + (W - c.width * r) / 2, 8 + (H - c.height * r) / 2, c.width * r, c.height * r);
+      const b64 = doc.output("datauristring").split(",")[1];
+      if (b64.length > 5600000) return ko(new Error("Scan trop lourd"));
+      ok({ fNom: (file.name || "photo").replace(/\.[a-z0-9]+$/i, "") + "-scan.pdf", fMime: "application/pdf", fData: b64, apercu: c.toDataURL("image/jpeg", 0.5) });
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); ko(new Error("Image illisible")); };
+    img.src = u;
+  });
+}
+
 function attachPersoListeners_(root) {
   const clic = (sel, fn) => root.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
   const retry = (id, cle, fn) => { const b = root.querySelector("#" + id); if (b) b.addEventListener("click", () => { state[cle] = ""; fn(); rerenderPerso_(); }); };
@@ -7913,10 +8193,11 @@ function attachPersoListeners_(root) {
   const dv = root.querySelector("#elicDocVoir"), dm = root.querySelector("#elicDocMini");
   [dv, dm].forEach(b => { if (b) b.addEventListener("click", () => { const e = state.elicence || {}; if (e.doc) elicDocPleinEcran_(); else if (e.docUrl) window.open(safeUrl_(e.docUrl), "_blank", "noopener"); }); });
   const edf = root.querySelector("#elicDocFile");
-  if (edf) edf.addEventListener("change", () => { if (edf.files && edf.files[0]) deposerDocElicence_(edf.files[0], false); });
+  if (edf) edf.addEventListener("change", () => { const f = fichierDe_(edf); if (f) deposerDocElicence_(f, false); });
+  attachDropZones_(root);
+  attachEmarque_(root);
   const dd = root.querySelector("#elicDocDel");
   if (dd) dd.addEventListener("click", () => { if (confirm("Retirer le document de licence enregistré ?")) deposerDocElicence_(null, true); });
-  remplirQr_(root);
 
   // Indispos (saisie manuelle)
   const nf = root.querySelector("#indisForm");
@@ -7957,21 +8238,43 @@ function attachPersoListeners_(root) {
       state.rapportsDossier = res.result; rerenderPerso_();
     } catch (err) { setStatus("Erreur : " + err.message, "error"); }
   });
+  root.querySelectorAll("[data-rapp-vue]").forEach(b => b.addEventListener("click", () => { state.rappVue = b.dataset.rappVue; rerenderPerso_(); }));
+  attachDropZones_(root);
   const rf = root.querySelector("#rappForm");
-  if (rf) rf.addEventListener("submit", async e => {
-    e.preventDefault();
-    const m = root.querySelector("#rappMsg");
-    const sel = root.querySelector("#rappMatch");
-    try {
-      if (!sel.value) throw new Error("Choisis un match");
-      const f = await fichierRapport_(root.querySelector("#rappFichier").files[0]);
-      if (!f) throw new Error("Choisis un fichier");
-      if (m) m.textContent = "Enregistrement…";
-      const res = await jsonp("rapport.add", Object.assign({ matchUid: sel.value, match: sel.options[sel.selectedIndex].text, role: root.querySelector("#rappRole").value, notes: root.querySelector("#rappNotes").value }, f));
-      if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
-      state.rapports = undefined; loadRapports(); rerenderPerso_();
-    } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
-  });
+  if (rf) {
+    let choisi = null, photo = false;
+    const ap = root.querySelector("#rappApercu");
+    const montrer = (f, estPhoto) => {
+      choisi = f; photo = estPhoto;
+      if (!ap) return;
+      ap.hidden = false;
+      const url = /^image\//.test(f.type) ? URL.createObjectURL(f) : "";
+      ap.innerHTML = `${url ? `<img src="${url}" alt="" />` : `<span class="rapp-apercu-pdf">PDF</span>`}<span><strong>${escapeHtml(f.name || "photo")}</strong><span class="card-sub">${(f.size / 1024 / 1024).toFixed(2).replace(".", ",")} Mo${/^image\//.test(f.type) ? " · sera converti en scan PDF si l'option est cochée" : ""}</span></span><button type="button" class="small-btn secondary" id="rappRetirer">Retirer</button>`;
+      const rr = ap.querySelector("#rappRetirer");
+      if (rr) rr.addEventListener("click", () => { choisi = null; ap.hidden = true; ap.innerHTML = ""; });
+    };
+    const fi = root.querySelector("#rappFichier"), ph = root.querySelector("#rappPhoto");
+    if (fi) fi.addEventListener("change", () => { const f = fichierDe_(fi); if (f) montrer(f, false); });
+    if (ph) ph.addEventListener("change", () => { const f = fichierDe_(ph); if (f) montrer(f, true); });
+    rf.addEventListener("submit", async e => {
+      e.preventDefault();
+      const m = root.querySelector("#rappMsg");
+      const sel = root.querySelector("#rappMatch");
+      try {
+        if (!sel || !sel.value) throw new Error("Choisis un match");
+        if (!choisi) throw new Error("Ajoute un fichier ou une photo");
+        const scan = /^image\//.test(choisi.type) && (photo || (root.querySelector("#rappScan") || {}).checked);
+        if (m) m.textContent = scan ? "Conversion en scan…" : "Préparation…";
+        const f = scan ? await scanDepuisImage_(choisi) : await fichierRapport_(choisi);
+        delete f.apercu;
+        if (m) m.textContent = "Enregistrement…";
+        const res = await jsonp("rapport.add", Object.assign({ matchUid: sel.value, match: sel.options[sel.selectedIndex].text, role: root.querySelector("#rappRole").value, notes: root.querySelector("#rappNotes").value }, f));
+        if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+        state.rapports = undefined; loadRapports(); rerenderPerso_();
+        setStatus("Rapport enregistré", "ok");
+      } catch (err) { if (m) m.textContent = "Erreur : " + err.message; }
+    });
+  }
   const modele = id => RAPP_OFFICIELS_.concat(RAPP_MODELES_).find(x => x.id === id);
   const pdfB64_ = async mo => {
     if (!mo.fichier) return modeleBase64_(modelePdf_(mo));
