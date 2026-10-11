@@ -47,6 +47,7 @@ const Session = {
   },
   clear() {
     window.__rtToken = ""; window.__rtEmail = "";
+    try { SB.clear(); } catch (e) {}
     try {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(EMAIL_KEY);
@@ -226,6 +227,105 @@ const ECRITURES = {
   "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
 };
 
+
+/* ======================================================================
+   b25 — Supabase (étape 1b) : LECTURES depuis Postgres (≈150 ms) au lieu
+   d'Apps Script (1,5-3 s). Les écritures passent encore par Apps Script, qui
+   resynchronise la table touchée vers Supabase après chaque écriture.
+   Clé « publiable » : publique par conception ; la sécurité repose sur
+   l'authentification (Supabase Auth) et les politiques RLS de la base.
+   ====================================================================== */
+const SB_URL = "https://jlstedchnmdteazuqbly.supabase.co";
+const SB_KEY = "sb_publishable_B1w244FrkzbIn-SZ-T_z8w_4HVg9stb";
+const SB_STORE = "rt_sb_session";
+const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, procedures: 1, hotels: 1, formations: 1 };
+const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court"};
+const SB_DATES = { date_match: 1, date_paiement: 1, date_reception: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_attendue: 1 };
+const SB = {
+  get session() { try { return JSON.parse(localStorage.getItem(SB_STORE) || "null"); } catch (e) { return null; } },
+  save(s) { try { localStorage.setItem(SB_STORE, JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at || (Math.floor(Date.now() / 1000) + (s.expires_in || 3600)) })); } catch (e) {} },
+  clear() { try { localStorage.removeItem(SB_STORE); } catch (e) {} },
+  get actif() { return !!(this.session && this.session.refresh_token); },
+  async _auth(grant, body) {
+    const r = await fetch(SB_URL + "/auth/v1/token?grant_type=" + grant, { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.msg || j.error_description || j.error || ("Supabase HTTP " + r.status));
+    this.save(j);
+    return j;
+  },
+  login(email, password) { return this._auth("password", { email, password }); },
+  async token() {
+    const s = this.session;
+    if (!s) throw new Error("Session Supabase absente");
+    if (s.expires_at - Math.floor(Date.now() / 1000) > 60) return s.access_token;
+    const j = await this._auth("refresh_token", { refresh_token: s.refresh_token });
+    return j.access_token;
+  },
+  async get(path, tentative = 0) {
+    const t = await this.token();
+    const r = await fetch(SB_URL + "/rest/v1/" + path, { headers: { apikey: SB_KEY, Authorization: "Bearer " + t, Accept: "application/json" }, cache: "no-store" });
+    if (r.status === 401 && tentative === 0) { try { await this._auth("refresh_token", { refresh_token: this.session.refresh_token }); } catch (e) { this.clear(); throw new Error("AUTH_REQUIRED"); } return this.get(path, 1); }
+    if (!r.ok) throw new Error("Supabase HTTP " + r.status + " (" + path.split("?")[0] + ")");
+    return r.json();
+  }
+};
+function sb_dateFr_(v) { if (!v) return ""; const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : String(v); }
+function sb_num_(v) { return v === null || v === undefined ? "" : String(v); }
+function sb_txt_(v) { return v === null || v === undefined ? "" : String(v); }
+/* Ligne Postgres → objet clé = en-tête du Sheet (format attendu par app.js). */
+function sb_matchVersSheet_(r) {
+  const o = {};
+  Object.keys(SB_MATCH_COLS).forEach(h => {
+    const c = SB_MATCH_COLS[h], v = r[c];
+    if (SB_DATES[c]) o[h] = sb_dateFr_(v);
+    else if (c === "derniere_maj") o[h] = v ? sb_dateFr_(v) + " " + String(v).slice(11, 16) : "";
+    else if (typeof v === "number") o[h] = sb_num_(v);
+    else o[h] = sb_txt_(v);
+  });
+  return o;
+}
+const SB_SELECT_MATCHS = Object.values(SB_MATCH_COLS).join(",");
+async function sb_lire_(action) {
+  const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
+  switch (action) {
+    case "matchs": {
+      const rows = await SB.get("matchs?select=" + SB_SELECT_MATCHS + "&order=date_match.desc.nullslast&limit=5000");
+      return { success: true, data: rows.map(sb_matchVersSheet_) };
+    }
+    case "evaluations": {
+      const rows = await SB.get("evaluations?select=*&order=date_depot.desc&limit=2000");
+      return { success: true, data: rows.map(r => ({
+        id: r.sheet_row, dateDepot: sb_dateFr_(r.date_depot), uidMatch: sb_txt_(r.uid_match_lie), dateMatch: sb_dateFr_(r.date_match_liee), rencontre: sb_txt_(r.rencontre),
+        fichier: sb_txt_(r.nom_fichier), lien: sb_txt_(r.lien_drive), statut: sb_txt_(r.statut_analyse_ia), synthese: sb_txt_(r.synthese_ia), axe1: sb_txt_(r.axe_travail_1), axe2: sb_txt_(r.axe_travail_2),
+        type: r.type || "Observation de match", instance: sb_txt_(r.instance), observateur: sb_txt_(r.observateur), championnat: sb_txt_(r.championnat), dateEval: sb_dateFr_(r.date_evaluation),
+        note20: n(r.note_20), familles: { calls: n(r.calls), controle: n(r.controle), mecanique: n(r.mecanique), communication: n(r.communication), physique: n(r.physique) },
+        grille: Array.isArray(r.grille_d_origine) ? r.grille_d_origine : [], pointsForts: sb_txt_(r.points_forts).split(" | ").filter(String), plan: sb_txt_(r.plan_de_travail).split(" | ").filter(String),
+        saison: sb_txt_(r.saison), noteBrute: sb_txt_(r.note_brute), noteEstimee: r.note_estimee === "oui" })) };
+    }
+    case "niveaux": {
+      const rows = await SB.get("niveaux?select=*&order=date_de_debut.desc.nullslast");
+      return { success: true, data: rows.map(r => ({ id: r.sheet_row, typeOfficiel: sb_txt_(r.type_d_officiel), niveau: sb_txt_(r.niveau), couleur: sb_txt_(r.couleur), recyclage: sb_dateFr_(r.recyclage), dateDebut: sb_dateFr_(r.date_de_debut), dateFin: sb_dateFr_(r.date_de_fin), groupement: sb_txt_(r.groupement), saisiPar: sb_txt_(r.saisi_par) })) };
+    }
+    case "contacts": {
+      const rows = await SB.get("contacts?select=*&order=sheet_row");
+      return { success: true, data: rows.map(r => ({ id: r.sheet_row, nom: sb_txt_(r.nom), role: sb_txt_(r.role), organisation: sb_txt_(r.organisation_club), telephone: sb_txt_(r.telephone), email: sb_txt_(r.email), notes: sb_txt_(r.notes), championnat: sb_txt_(r.championnat), situation: sb_txt_(r.situation) })) };
+    }
+    case "procedures": {
+      const rows = await SB.get("procedures?select=*&order=sheet_row");
+      return { success: true, data: rows.map(r => ({ id: r.sheet_row, titre: sb_txt_(r.titre), categorie: sb_txt_(r.categorie), contenu: sb_txt_(r.contenu), lien: sb_txt_(r.lien), mail: sb_txt_(r.mail), telephone: sb_txt_(r.telephone), personne: sb_txt_(r.personne), importance: sb_txt_(r.importance) })) };
+    }
+    case "hotels": {
+      const rows = await SB.get("hotels?select=*&order=date_nuit.desc.nullslast");
+      return { success: true, data: rows.map(r => ({ id: sb_txt_(r.id_ref), date: sb_dateFr_(r.date_nuit), lieu: sb_txt_(r.lieu), hotel: sb_txt_(r.hotel), prix: Number(r.prix_nuit) || 0, repas: Number(r.repas) || 0, notes: sb_txt_(r.notes), matchUid: sb_txt_(r.match_uid), facture: sb_txt_(r.facture_url) })) };
+    }
+    case "formations": {
+      const rows = await SB.get("formations?select=*&order=date.desc.nullslast");
+      return { success: true, data: rows.map(r => ({ date: sb_dateFr_(r.date), intitule: sb_txt_(r.intitule), lieu: sb_txt_(r.lieu), km: Number(r.km_a_r) || 0, notes: sb_txt_(r.notes) })) };
+    }
+  }
+  throw new Error("Lecture Supabase inconnue : " + action);
+}
+
 function _cacheKey(action, extra) {
   return CACHE_PREFIX + action + ":" + JSON.stringify(extra || {});
 }
@@ -306,6 +406,23 @@ function jsonpFrais(action, extra = {}) {
    le transport n'est plus du JSONP, qui exposait le jeton à n'importe
    quel script tiers. */
 function jsonp(action, extra = {}) {
+  // b25 — lecture Supabase : rapide, pas de revalidation différée ; le cache
+  // local n'est qu'un repli hors ligne.
+  if (SB_LECTURES[action] && SB.actif) {
+    const cle = _cacheKey(action, extra);
+    const t0 = performance.now();
+    return sb_lire_(action).then(res => {
+      window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
+      window.RT_CACHE_INFO[action] = { timestamp: Date.now(), age: 0, stale: false, ms: Math.round(performance.now() - t0), source: "supabase" };
+      if (!_reponseVide(action, res)) _cacheEcrire(cle, res);
+      return res;
+    }).catch(err => {
+      if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
+      const hit = _cacheLire(cle);
+      if (hit) { console.warn("[Supabase] " + action + " : " + err.message + " — cache local utilisé"); return hit.d; }
+      throw err;
+    });
+  }
   if (LECTURES[action]) {
     const cle = _cacheKey(action, extra);
     const hit = _cacheLire(cle);
@@ -428,13 +545,17 @@ function buildLoginOverlay() {
     msg.textContent = "Vérification…";
     msg.className = "rt-login-msg";
 
-    apiCall("login", { email, password: pwd }, false)
+    // b25 — 1) Supabase (lectures, auth principale) 2) Apps Script (écritures).
+    // Même email + même mot de passe des deux côtés pendant la transition.
+    SB.login(email, pwd)
+      .then(() => apiCall("login", { email, password: pwd }, false).catch(err => ({ success: false, error: err.message })))
       .then(res => {
-        if (!res || !res.success) throw new Error((res && res.error) || "Connexion refusée");
-        Session.save(res.token, res.email);
+        if (res && res.success) Session.save(res.token, res.email);
+        else { Session.save("", email); console.warn("[RefereeTracker] Apps Script refuse la connexion (écritures indisponibles) : " + (res && res.error)); }
         document.getElementById("rtPwd").value = "";
         hideLogin();
         startApp();
+        if (!(res && res.success)) setTimeout(() => { try { setStatus("Lecture OK (Supabase) · écritures indisponibles : mot de passe Apps Script différent", "error"); } catch (e) {} }, 1500);
       })
       .catch(err => {
         msg.textContent = err.message || "Connexion impossible";
@@ -991,6 +1112,7 @@ function startApp() {
     if (typeof loadData === "function") loadData();
   }, 0);
 
+  if (!Session.token) return;   // b25 : session Supabase seule (écritures Apps Script indisponibles)
   jsonp("me")
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
@@ -1007,7 +1129,7 @@ function startApp() {
 
 document.addEventListener("DOMContentLoaded", () => {
   buildLoginOverlay();
-  if (Session.token) startApp();
+  if (Session.token || SB.actif) startApp();
   else showLogin("");
 
   const btn = document.getElementById("rtProfileBtn");
