@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b22";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b23";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -1927,7 +1927,9 @@ function buildSmsCollegue(row) {
 
   const date = formatDateLongue(row._date) || cleanText(get(row, "Date match"));
   const heure = fmtHeure(cleanText(get(row, "Heure/RDV")));
-  const club = cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
+  // b23 — "Nom court" du référentiel (colonne "Recevant court") en priorité,
+  // sinon nom officiel, sinon ville / salle.
+  const club = cleanText(get(row, "Recevant court")) || cleanText(get(row, "Recevant")) || cleanText(get(row, "Ville")) || cleanText(get(row, "Salle"));
 
   const lignes = [
     "Hello" + (prenom ? " " + prenom : "") + ",",
