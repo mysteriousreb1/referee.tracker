@@ -194,7 +194,7 @@ const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;
   } catch (e) {}
 })();
 const CACHE_FRESH   = 45 * 1000;          // en deçà, inutile de revalider
-const LECTURES = { matchs: 1, stats: 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1, enjeux: 1, elicence: 1, rapports: 1 };
+const LECTURES = { matchs: 1, stats: 1, "stats.env": 1, config: 1, classements: 1, qcmStats: 1, formations: 1, niveaux: 1, evaluations: 1, contacts: 1, procedures: 1, "couts.get": 1, hotels: 1, enjeux: 1, elicence: 1, rapports: 1 };
 
 /* Une réponse « matchs » vide est presque toujours un hoquet serveur
    (démarrage à froid, lecture du Sheet ratée), jamais une vraie base vide.
@@ -484,6 +484,7 @@ function _rafraichirEcran(action) {
    sa clé est correcte, c'est son contenu qui ne l'est pas. */
 function jsonpFrais(action, extra = {}) {
   if (SB_LECTURES[action] && SB.actif) return jsonp(action, extra);   // b27 : Supabase est toujours frais
+  if (action === "stats") { _statsEnv = null; const local = _statsLocal(extra); if (local) return local; }   // b29
   return _jsonpReseau(action, extra).then(res => {
     if (LECTURES[action] && res && res.success !== false && !_reponseVide(action, res)) {
       _cacheEcrire(_cacheKey(action, extra), res);
@@ -496,7 +497,24 @@ function jsonpFrais(action, extra = {}) {
    Le nom `jsonp` est conservé pour ne rien casser dans app.js —
    le transport n'est plus du JSONP, qui exposait le jeton à n'importe
    quel script tiers. */
+/* b29 — statistiques avancées calculées dans le navigateur (rt-stats.js = même
+   moteur que le serveur) à partir des lignes déjà en mémoire : 0 aller-retour.
+   Les réglages serveur (prix carburant, périodes) arrivent via « stats.env »,
+   lecture cachée 7 j et revalidée en arrière-plan. */
+let _statsEnv = null;
+function _statsLocal(extra) {
+  if (typeof RT_STATS === "undefined" || typeof state === "undefined" || !state.allRows || !state.allRows.length || typeof rawOf_ !== "function") return null;
+  const envP = _statsEnv ? Promise.resolve(_statsEnv) : jsonp("stats.env").then(r => { if (r && r.success && r.env) _statsEnv = r.env; return _statsEnv; }).catch(() => null);
+  return envP.then(env => {
+    const t0 = performance.now();
+    const stats = RT_STATS.calculer(state.allRows.map(rawOf_), (extra && extra.season) || "", env || undefined, (typeof Profil !== "undefined" && Profil.config) || null);
+    window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
+    window.RT_CACHE_INFO.stats = { timestamp: Date.now(), age: 0, stale: false, ms: Math.round(performance.now() - t0), source: "local" + (env ? "" : " (réglages par défaut)") };
+    return { success: true, stats };
+  });
+}
 function jsonp(action, extra = {}) {
+  if (action === "stats") { const local = _statsLocal(extra); if (local) return local; }
   // b25 — lecture Supabase : rapide, pas de revalidation différée ; le cache
   // local n'est qu'un repli hors ligne.
   if (SB_LECTURES[action] && SB.actif) {

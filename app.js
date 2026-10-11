@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b28";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b29";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -1853,13 +1853,24 @@ function reglementSpecial(row) {
 /* Délai de RDV devant la salle selon le niveau de la rencontre :
    Championnat de France 1h00 · Région (dont pré-national / pré-région) 45 min ·
    Départemental 35 min. Tout niveau 5x5 non identifié retombe sur le régime Région. */
-const RDV_MINUTES = { france: 60, region: 60, departement: 35 };
-/* b28 — délai de RDV : France 1h00 · Région (RM2, PNM, PRM…) 1h00 · Département 35 min.
-   Cas particulier : examinateur présent sur un match de RM2 → 55 min. */
+const RDV_MINUTES = { france: 60, region: 45, departement: 35 };
+/* b28 — délai de RDV par compétition (règles Clément, 11/10/2026) :
+   NM2 NM3 NF2 NF3 (CF séniors) 1h00 · NMU15 NMU18 NFU15 NFU18 (CF jeunes) 45 min ·
+   PNM 1h00 (avec ou sans examinateur) · RM2 45 min, RM2 + examinateur 55 min ·
+   PNF / RF2 45 min · DMU11…DMU21, DM4 DM3 DM2, PRM 35 min.
+   Code inconnu : repli sur le niveau (France 1h00, Région 45, Département 35). */
 function rdvMinutes_(row) {
+  const c = String(codeCompetition(row) || "").toUpperCase();
+  const lib = cleanText(get(row, "Libellé compétition")).toUpperCase();
+  const exam = isExaminateur_(row);
+  if (/^N[MF]U\d/.test(c) || (/^N[MF]/.test(c) && /\bU\d{2}\b/.test(lib))) return 45;   // CF jeunes
+  if (/^N[MF]\d/.test(c)) return 60;                                                      // CF séniors
+  if (/^PNM/.test(c)) return 60;
+  if (/^RM2/.test(c)) return exam ? 55 : 45;
+  if (/^(PNF|R[MF]\d)/.test(c)) return 45;
+  if (/^(D[MF]|PR[MF])/.test(c)) return 35;
   const niveau = niveauRencontre(row);
-  const rm2 = /^RM2\b/i.test(codeCompetition(row) || "") || /\bRM2\b/i.test(cleanText(get(row, "Libellé compétition")));
-  if (niveau === "region" && rm2 && isExaminateur_(row)) return 55;
+  if (niveau === "france" && /\bU\d{2}\b/.test(lib)) return 45;
   return RDV_MINUTES[niveau];
 }
 
