@@ -513,8 +513,62 @@ function _statsLocal(extra) {
     return { success: true, stats };
   });
 }
+/* b30 — moteur de paiement local (rt-paiements.js = Paiement.gs + Echeancier.gs).
+   1) calcul sur la ligne en mémoire, 2) écriture Supabase (≈ 150 ms), réponse
+   immédiate au même format qu'Apps Script (res.row), 3) en arrière-plan, la
+   même mise à jour est envoyée à Apps Script (double écriture pendant la
+   transition : le Sheet reste identique ; tout écart est journalisé). */
+const SB_PAIEMENT_COLS_DATE = { date_attendue: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_reception: 1, date_paiement: 1 };
+function sb_valeurColonne_(col, v) {
+  if (v instanceof Date) return isNaN(v) ? null : (col === "derniere_maj" ? v.toISOString() : v.toISOString().slice(0, 10));
+  if (v === "" || v === null || v === undefined) return null;
+  if (SB_PAIEMENT_COLS_DATE[col]) return sb_iso_(v);
+  if (col === "derniere_maj") { const d = new Date(v); return isNaN(d) ? null : d.toISOString(); }
+  if (typeof v === "number") return v;
+  if (/^(attendu|recu)_(recevant|visiteur)$|^montant_recu$|^indemnite|^km_/.test(col)) { const n = Number(String(v).replace(/\s/g, "").replace(",", ".")); return isNaN(n) ? null : n; }
+  return String(v);
+}
+function _paiementLocal(extra) {
+  if (typeof RT_PAIEMENTS === "undefined" || !SB.actif || typeof state === "undefined" || typeof rawOf_ !== "function" || !extra || !extra.uid) return null;
+  const i = (state.allRows || []).findIndex(r => String(r && r.UID !== undefined ? r.UID : (r && r._raw ? r._raw.UID : "")) === String(extra.uid) || (typeof get === "function" && get(r, "UID") === String(extra.uid)));
+  if (i < 0) return null;
+  const avant = rawOf_(state.allRows[i]);
+  let local;
+  try { local = RT_PAIEMENTS.mettreAJour(Object.assign({}, avant), extra); } catch (e) { return Promise.resolve({ success: false, error: e.message }); }
+  const patch = {};
+  Object.keys(SB_MATCH_COLS).forEach(h => {
+    const a = avant[h], b = local.row[h];
+    if (String(a == null ? "" : a) !== String(b == null ? "" : b)) patch[SB_MATCH_COLS[h]] = sb_valeurColonne_(SB_MATCH_COLS[h], b);
+  });
+  const rowSortie = Object.assign({}, local.row);
+  if (rowSortie["Dernière MAJ"] instanceof Date) rowSortie["Dernière MAJ"] = rowSortie["Dernière MAJ"].toLocaleString("fr-FR");
+  const t0 = performance.now();
+  return SB.write("PATCH", "matchs?uid=eq." + encodeURIComponent(String(extra.uid)), patch).then(() => {
+    window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
+    window.RT_CACHE_INFO["payment.update"] = { timestamp: Date.now(), ms: Math.round(performance.now() - t0), source: "local+supabase" };
+    // Double écriture Apps Script (arrière-plan) + contrôle d'écart.
+    _jsonpReseau("payment.update", extra).then(res => {
+      const srv = res && res.row;
+      if (!srv) return;
+      const ecarts = ["Statut paiement", "Montant reçu", "Date attendue", "Régime", "Reçu recevant", "Reçu visiteur"].filter(k => String(srv[k] == null ? "" : srv[k]).replace(/,/g, ".") !== String(local.row[k] == null ? "" : local.row[k]).replace(/,/g, "."));
+      if (ecarts.length) {
+        console.warn("[Paiement] écart moteur local / Apps Script sur " + extra.uid + " :", ecarts.map(k => k + " local=" + local.row[k] + " serveur=" + srv[k]).join(" ; "));
+        try { const j = JSON.parse(localStorage.getItem("rt_pay_ecarts") || "[]"); j.push({ t: new Date().toISOString(), uid: extra.uid, ecarts: ecarts.map(k => [k, local.row[k], srv[k]]) }); localStorage.setItem("rt_pay_ecarts", JSON.stringify(j.slice(-50))); } catch (e) {}
+      }
+    }).catch(err => console.warn("[Paiement] double écriture Apps Script échouée (Supabase à jour) :", err && err.message));
+    return { success: true, result: local.result, row: rowSortie, source: "local" };
+  }).catch(err => {
+    if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
+    console.warn("[Paiement] écriture Supabase échouée, repli Apps Script :", err.message);
+    return null;
+  });
+}
 function jsonp(action, extra = {}) {
   if (action === "stats") { const local = _statsLocal(extra); if (local) return local; }
+  if (action === "payment.update") {
+    const local = _paiementLocal(extra);
+    if (local) return local.then(res => res || _jsonpReseau(action, extra).then(r => { if (r && r.success !== false) { cacheVider(); sbSyncArrierePlan("matchs"); } return r; }));
+  }
   // b25 — lecture Supabase : rapide, pas de revalidation différée ; le cache
   // local n'est qu'un repli hors ligne.
   if (SB_LECTURES[action] && SB.actif) {
