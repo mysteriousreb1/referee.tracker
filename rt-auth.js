@@ -91,7 +91,7 @@ function buildApiUrl(action, extra = {}) {
    (404, 5xx, coupure réseau / « Load failed » Safari). Les écritures portent
    un identifiant unique (rid) : le serveur ne les exécute qu'une seule fois. */
 const API_RETRY_PAUSES = [700, 1800];
-const API_TIMEOUTS = { "reglement.ask": 150000, "elicence.document": 120000, "elicence.carte": 90000, "rapport.add": 120000, "rapport.file": 120000, "evaluation.upload": 120000 };
+const API_TIMEOUTS = { "reglement.ask": 150000, "elicence.document": 120000, "elicence.carte": 90000, "rapport.add": 120000, "rapport.file": 120000, "evaluation.upload": 180000, "evaluation.reanalyse": 180000 };
 function _rid() {
   try { if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ""); } catch (e) {}
   return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -211,7 +211,7 @@ const ECRITURES = {
   updatePaymentStatus: 1,
   "payment.update": 1, "bank.add": 1, "bank.undo": 1,
   setContact: 1,
-  deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1, "evaluation.update": 1,
+  deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1, "evaluation.update": 1, "evaluation.reanalyse": 1,
   addFormation: 1, deleteFormation: 1,
   addNiveau: 1, deleteNiveau: 1,
   addContact: 1, deleteContact: 1,
