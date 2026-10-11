@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b27";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b28";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -1853,7 +1853,15 @@ function reglementSpecial(row) {
 /* Délai de RDV devant la salle selon le niveau de la rencontre :
    Championnat de France 1h00 · Région (dont pré-national / pré-région) 45 min ·
    Départemental 35 min. Tout niveau 5x5 non identifié retombe sur le régime Région. */
-const RDV_MINUTES = { france: 60, region: 45, departement: 35 };
+const RDV_MINUTES = { france: 60, region: 60, departement: 35 };
+/* b28 — délai de RDV : France 1h00 · Région (RM2, PNM, PRM…) 1h00 · Département 35 min.
+   Cas particulier : examinateur présent sur un match de RM2 → 55 min. */
+function rdvMinutes_(row) {
+  const niveau = niveauRencontre(row);
+  const rm2 = /^RM2\b/i.test(codeCompetition(row) || "") || /\bRM2\b/i.test(cleanText(get(row, "Libellé compétition")));
+  if (niveau === "region" && rm2 && isExaminateur_(row)) return 55;
+  return RDV_MINUTES[niveau];
+}
 
 /* Pas de message type en 3x3 : le bouton SMS n'est pas proposé sur ces missions. */
 function smsDisponible(row) {
@@ -1922,7 +1930,7 @@ function prenomCollegue(row) {
    à 25-30 km de mon domicile" reste à juger par toi avant d'envoyer. */
 function buildSmsCollegue(row) {
   const niveau = niveauRencontre(row);           // "france" | "region" | "departement"
-  const minutes = RDV_MINUTES[niveau];
+  const minutes = rdvMinutes_(row);
   const prenom = prenomCollegue(row) || "";
 
   const date = formatDateLongue(row._date) || cleanText(get(row, "Date match"));
