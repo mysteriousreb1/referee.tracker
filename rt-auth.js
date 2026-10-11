@@ -238,7 +238,11 @@ const ECRITURES = {
 const SB_URL = "https://jlstedchnmdteazuqbly.supabase.co";
 const SB_KEY = "sb_publishable_B1w244FrkzbIn-SZ-T_z8w_4HVg9stb";
 const SB_STORE = "rt_sb_session";
-const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, procedures: 1, hotels: 1, formations: 1 };
+const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, procedures: 1, hotels: 1, formations: 1, qcmStats: 1 };
+/* b27 — écritures directes Supabase (tables possédées par Supabase ; le Sheet
+   n'est plus la référence pour celles-ci). Hôtels (facture Drive), paiements,
+   évaluations (IA) restent sur Apps Script. */
+const SB_ECRITURES = { addContact: 1, updateContact: 1, deleteContact: 1, addProcedure: 1, updateProcedure: 1, deleteProcedure: 1, addNiveau: 1, deleteNiveau: 1, addFormation: 1, deleteFormation: 1, addQcmSession: 1, deleteQcmSession: 1 };
 const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court"};
 const SB_DATES = { date_match: 1, date_paiement: 1, date_reception: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_attendue: 1 };
 const SB = {
@@ -260,6 +264,14 @@ const SB = {
     if (s.expires_at - Math.floor(Date.now() / 1000) > 60) return s.access_token;
     const j = await this._auth("refresh_token", { refresh_token: s.refresh_token });
     return j.access_token;
+  },
+  async write(method, path, body, tentative = 0) {
+    const t = await this.token();
+    const r = await fetch(SB_URL + "/rest/v1/" + path, { method, headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json", Accept: "application/json", Prefer: "return=representation" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (r.status === 401 && tentative === 0) { try { await this._auth("refresh_token", { refresh_token: this.session.refresh_token }); } catch (e) { this.clear(); throw new Error("AUTH_REQUIRED"); } return this.write(method, path, body, 1); }
+    if (!r.ok) { let m = ""; try { m = (await r.json()).message || ""; } catch (e) {} throw new Error("Supabase HTTP " + r.status + (m ? " : " + m : "")); }
+    const txt = await r.text();
+    return txt ? JSON.parse(txt) : [];
   },
   async get(path, tentative = 0) {
     const t = await this.token();
@@ -304,15 +316,15 @@ async function sb_lire_(action) {
     }
     case "niveaux": {
       const rows = await SB.get("niveaux?select=*&order=date_de_debut.desc.nullslast");
-      return { success: true, data: rows.map(r => ({ id: r.sheet_row, typeOfficiel: sb_txt_(r.type_d_officiel), niveau: sb_txt_(r.niveau), couleur: sb_txt_(r.couleur), recyclage: sb_dateFr_(r.recyclage), dateDebut: sb_dateFr_(r.date_de_debut), dateFin: sb_dateFr_(r.date_de_fin), groupement: sb_txt_(r.groupement), saisiPar: sb_txt_(r.saisi_par) })) };
+      return { success: true, data: rows.map(r => ({ id: r.id, typeOfficiel: sb_txt_(r.type_d_officiel), niveau: sb_txt_(r.niveau), couleur: sb_txt_(r.couleur), recyclage: sb_dateFr_(r.recyclage), dateDebut: sb_dateFr_(r.date_de_debut), dateFin: sb_dateFr_(r.date_de_fin), groupement: sb_txt_(r.groupement), saisiPar: sb_txt_(r.saisi_par) })) };
     }
     case "contacts": {
-      const rows = await SB.get("contacts?select=*&order=sheet_row");
-      return { success: true, data: rows.map(r => ({ id: r.sheet_row, nom: sb_txt_(r.nom), role: sb_txt_(r.role), organisation: sb_txt_(r.organisation_club), telephone: sb_txt_(r.telephone), email: sb_txt_(r.email), notes: sb_txt_(r.notes), championnat: sb_txt_(r.championnat), situation: sb_txt_(r.situation) })) };
+      const rows = await SB.get("contacts?select=*&order=id");
+      return { success: true, data: rows.map(r => ({ id: r.id, nom: sb_txt_(r.nom), role: sb_txt_(r.role), organisation: sb_txt_(r.organisation_club), telephone: sb_txt_(r.telephone), email: sb_txt_(r.email), notes: sb_txt_(r.notes), championnat: sb_txt_(r.championnat), situation: sb_txt_(r.situation) })) };
     }
     case "procedures": {
-      const rows = await SB.get("procedures?select=*&order=sheet_row");
-      return { success: true, data: rows.map(r => ({ id: r.sheet_row, titre: sb_txt_(r.titre), categorie: sb_txt_(r.categorie), contenu: sb_txt_(r.contenu), lien: sb_txt_(r.lien), mail: sb_txt_(r.mail), telephone: sb_txt_(r.telephone), personne: sb_txt_(r.personne), importance: sb_txt_(r.importance) })) };
+      const rows = await SB.get("procedures?select=*&order=id");
+      return { success: true, data: rows.map(r => ({ id: r.id, titre: sb_txt_(r.titre), categorie: sb_txt_(r.categorie), contenu: sb_txt_(r.contenu), lien: sb_txt_(r.lien), mail: sb_txt_(r.mail), telephone: sb_txt_(r.telephone), personne: sb_txt_(r.personne), importance: sb_txt_(r.importance) })) };
     }
     case "hotels": {
       const rows = await SB.get("hotels?select=*&order=date_nuit.desc.nullslast");
@@ -322,8 +334,71 @@ async function sb_lire_(action) {
       const rows = await SB.get("formations?select=*&order=date.desc.nullslast");
       return { success: true, data: rows.map(r => ({ date: sb_dateFr_(r.date), intitule: sb_txt_(r.intitule), lieu: sb_txt_(r.lieu), km: Number(r.km_a_r) || 0, notes: sb_txt_(r.notes) })) };
     }
+    case "qcmStats": {
+      const rows = await SB.get("qcm?select=*&order=id.desc&limit=500");
+      const faib = {};
+      const toutes = rows.map(r => {
+        if (r.mode === "exam" && r.faiblesses) { try { JSON.parse(r.faiblesses).forEach(f => { faib[f.theme] = (faib[f.theme] || 0) + (Number(f.n) || 1); }); } catch (e) {} }
+        return { id: r.id, date: sb_dateFr_(r.date), score: Number(r.score) || 0, total: Number(r.total) || 0, pourcentage: Number(r.pourcentage) || 0, duree: r.duree_min === null ? "" : Number(r.duree_min), mode: r.mode || "manuel" };
+      });
+      const entrainements = toutes.filter(x => x.mode === "entrainement").slice(0, 30);
+      const sessions = toutes.filter(x => x.mode !== "entrainement");
+      const moy = arr => arr.reduce((t, x) => t + x.pourcentage, 0) / arr.length;
+      let tendance = "";
+      if (sessions.length >= 4 && sessions.slice(5, 10).length) { const e = Math.round(moy(sessions.slice(0, 5)) - moy(sessions.slice(5, 10))); tendance = e > 1 ? "En progression (+" + e + " pts)" : e < -1 ? "En baisse (" + e + " pts)" : "Stable"; }
+      return { success: true, stats: { nb: sessions.length, sessions: sessions.slice(0, 20), entrainements, faiblesses_top: Object.keys(faib).map(k => ({ theme: k, n: faib[k] })).sort((a, b) => b.n - a.n).slice(0, 8), moyenne_pct: sessions.length ? Math.round(moy(sessions) * 10) / 10 : 0, meilleur_score: sessions.reduce((b, x) => (!b || x.pourcentage > b.pourcentage) ? x : b, null), tendance } };
+    }
   }
   throw new Error("Lecture Supabase inconnue : " + action);
+}
+/* b27 — écritures directes. Réponses au même format qu'Apps Script. */
+const sb_iso_ = v => { if (!v) return null; const s = String(v).trim(); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : null; };
+const sb_clean_ = v => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+const sb_id_ = v => { const n = Number(v); if (!n) throw new Error("Identifiant manquant"); return n; };
+async function sb_ecrire_(action, p = {}) {
+  const ok = result => ({ success: true, result });
+  switch (action) {
+    case "addContact": case "updateContact": {
+      if (!sb_clean_(p.nom)) throw new Error("Nom requis");
+      const row = { nom: sb_clean_(p.nom), role: sb_clean_(p.role), organisation_club: sb_clean_(p.organisation), telephone: sb_clean_(p.telephone), email: sb_clean_(p.email), notes: sb_clean_(p.notes), championnat: sb_clean_(p.championnat), situation: sb_clean_(p.situation) };
+      const r = action === "addContact" ? await SB.write("POST", "contacts", row) : await SB.write("PATCH", "contacts?id=eq." + sb_id_(p.id), row);
+      return ok({ id: r[0] && r[0].id, updated: true });
+    }
+    case "deleteContact": await SB.write("DELETE", "contacts?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
+    case "addProcedure": case "updateProcedure": {
+      if (!sb_clean_(p.titre)) throw new Error("Titre requis");
+      const row = { titre: sb_clean_(p.titre), categorie: sb_clean_(p.categorie), contenu: String(p.contenu == null ? "" : p.contenu).trim(), lien: sb_clean_(p.lien), mail: sb_clean_(p.mail), telephone: sb_clean_(p.telephone), personne: sb_clean_(p.personne), importance: sb_clean_(p.importance) };
+      const r = action === "addProcedure" ? await SB.write("POST", "procedures", row) : await SB.write("PATCH", "procedures?id=eq." + sb_id_(p.id), row);
+      return ok({ id: r[0] && r[0].id, updated: true });
+    }
+    case "deleteProcedure": await SB.write("DELETE", "procedures?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
+    case "addNiveau": {
+      if (!sb_clean_(p.niveau)) throw new Error("Niveau requis");
+      const r = await SB.write("POST", "niveaux", { type_d_officiel: sb_clean_(p.typeOfficiel) || "Arbitre", niveau: sb_clean_(p.niveau), couleur: sb_clean_(p.couleur), recyclage: sb_iso_(p.recyclage), date_de_debut: sb_iso_(p.dateDebut) || new Date().toISOString().slice(0, 10), date_de_fin: sb_iso_(p.dateFin), groupement: sb_clean_(p.groupement), saisi_par: sb_clean_(p.saisiPar) });
+      return ok({ id: r[0] && r[0].id });
+    }
+    case "deleteNiveau": await SB.write("DELETE", "niveaux?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
+    case "addFormation": {
+      if (!sb_clean_(p.intitule)) throw new Error("Intitulé requis");
+      const r = await SB.write("POST", "formations", { date: sb_iso_(p.date) || new Date().toISOString().slice(0, 10), intitule: sb_clean_(p.intitule), lieu: sb_clean_(p.lieu), km_a_r: Number(String(p.km || "0").replace(",", ".")) || 0, notes: sb_clean_(p.notes) });
+      return ok({ id: r[0] && r[0].id });
+    }
+    case "deleteFormation": {
+      const d = sb_iso_(p.date); if (!d) throw new Error("Date invalide");
+      const r = await SB.write("DELETE", "formations?date=eq." + d + "&intitule=eq." + encodeURIComponent(sb_clean_(p.intitule)));
+      return ok({ deleted: Array.isArray(r) ? r.length > 0 : true });
+    }
+    case "addQcmSession": {
+      const sc = Number(p.score), tot = Number(p.total) || 20;
+      if (isNaN(sc) || sc < 0 || sc > tot) throw new Error("Score invalide");
+      const pct = tot > 0 ? Math.round(sc / tot * 1000) / 10 : 0;
+      let fb = ""; try { fb = p.faiblesses ? JSON.stringify(JSON.parse(String(p.faiblesses)).slice(0, 40)) : ""; } catch (e) { fb = ""; }
+      const r = await SB.write("POST", "qcm", { date: new Date().toISOString().slice(0, 10), score: sc, total: tot, pourcentage: pct, duree_min: Number(p.duree) || null, mode: p.mode === "exam" ? "exam" : (p.mode === "entrainement" ? "entrainement" : "manuel"), faiblesses: fb });
+      return ok({ id: r[0] && r[0].id, score: sc, total: tot, pourcentage: pct });
+    }
+    case "deleteQcmSession": await SB.write("DELETE", "qcm?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
+  }
+  throw new Error("Écriture Supabase inconnue : " + action);
 }
 
 function _cacheKey(action, extra) {
@@ -408,6 +483,7 @@ function _rafraichirEcran(action) {
    que celle demandée. Le cache normal ne peut pas s'en apercevoir tout seul :
    sa clé est correcte, c'est son contenu qui ne l'est pas. */
 function jsonpFrais(action, extra = {}) {
+  if (SB_LECTURES[action] && SB.actif) return jsonp(action, extra);   // b27 : Supabase est toujours frais
   return _jsonpReseau(action, extra).then(res => {
     if (LECTURES[action] && res && res.success !== false && !_reponseVide(action, res)) {
       _cacheEcrire(_cacheKey(action, extra), res);
@@ -473,6 +549,12 @@ function jsonp(action, extra = {}) {
     });
   }
 
+  if (SB_ECRITURES[action] && SB.actif) {
+    return sb_ecrire_(action, extra).then(res => { cacheVider(); return res; }).catch(err => {
+      if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
+      return { success: false, error: err.message };
+    });
+  }
   // Écriture : jamais de cache, et on invalide ce qui devient périmé.
   // Les autres actions passent au travers sans rien toucher.
   return _jsonpReseau(action, extra).then(res => {
