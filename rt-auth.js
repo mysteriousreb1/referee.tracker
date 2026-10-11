@@ -335,6 +335,7 @@ function _cacheLire(cle) {
     const brut = localStorage.getItem(cle);
     if (!brut) return null;
     const o = JSON.parse(brut);
+    if (o && o.t === 1 && o.d) return o;   // b26 : périmé volontairement, à revalider
     return (o && o.t && Date.now() - o.t < CACHE_MAX_AGE) ? o : null;
   } catch (e) { return null; }
 }
@@ -360,8 +361,22 @@ function cacheVider() {
       // On garde le dernier instantané des matchs. Une écriture déclenche un
       // rafraîchissement réseau, mais un échec ne doit jamais vider l'écran.
       .filter(k => k.indexOf(CACHE_PREFIX) === 0 && k.indexOf(CACHE_PREFIX + "matchs:") !== 0)
-      .forEach(k => localStorage.removeItem(k));
+      .forEach(k => {
+        // b26 — les lectures calculées côté Apps Script (stats, QCM, enjeux,
+        // classements) ne sont plus effacées mais marquées périmées : l'onglet
+        // s'affiche tout de suite depuis le cache et se revalide en arrière-plan.
+        if (/_(stats|qcmStats|enjeux|classements|config):/.test(k)) {
+          try { const o = JSON.parse(localStorage.getItem(k)); if (o && o.d) { o.t = 1; localStorage.setItem(k, JSON.stringify(o)); return; } } catch (e) {}
+        }
+        localStorage.removeItem(k);
+      });
   } catch (e) {}
+}
+/* b26 — resynchronisation Supabase en arrière-plan après une écriture sur les
+   matchs (le serveur ne la fait plus dans la réponse, pour répondre plus vite). */
+function sbSyncArrierePlan(tables) {
+  if (!SB.actif) return;
+  try { apiCall("sb.sync", { tables: tables || "matchs" }).catch(() => {}); } catch (e) {}
 }
 
 /* Redemande le rendu après l'arrivée de données fraîches. Les appels
@@ -461,7 +476,10 @@ function jsonp(action, extra = {}) {
   // Écriture : jamais de cache, et on invalide ce qui devient périmé.
   // Les autres actions passent au travers sans rien toucher.
   return _jsonpReseau(action, extra).then(res => {
-    if (ECRITURES[action] && res && res.success !== false) cacheVider();
+    if (ECRITURES[action] && res && res.success !== false) {
+      cacheVider();
+      if (/^(payment\.|updatePaymentStatus|mission\.|setContact|bank\.|alerte\.ignorer|couts\.set|settings\.)/.test(action)) sbSyncArrierePlan("matchs");
+    }
     return res;
   });
 }
@@ -1112,6 +1130,11 @@ function startApp() {
     if (typeof loadData === "function") loadData();
   }, 0);
 
+  // b26 — préchargement discret des lectures Apps Script lentes (QCM, enjeux,
+  // classements, config) : les onglets s'ouvrent ensuite sans attente.
+  setTimeout(function () {
+    ["qcmStats", "enjeux", "classements", "config"].forEach((a, i) => setTimeout(() => { try { jsonp(a).catch(() => {}); } catch (e) {} }, i * 1500));
+  }, 4000);
   if (!Session.token) return;   // b25 : session Supabase seule (écritures Apps Script indisponibles)
   jsonp("me")
     .then(res => {

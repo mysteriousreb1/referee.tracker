@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b25";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b26";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -2492,6 +2492,19 @@ function attachPaymentListeners(root) {
   const envoyer = async (params, button) => {
     if (button) button.disabled = true;
     setStatus("Enregistrement du paiement…", "");
+    // b26 — affichage optimiste : la carte passe tout de suite en « Reçu »
+    // (le serveur renvoie ensuite la ligne exacte, ou on restaure en cas d'erreur).
+    let sauvegarde = null;
+    if (params && params.marquer_recu === "1" && params.uid) {
+      const brut = state.allRows.map(rawOf_);
+      const i = brut.findIndex(r => get(r, "UID") === params.uid);
+      if (i >= 0) {
+        sauvegarde = { i, row: brut[i] };
+        brut[i] = Object.assign({}, brut[i], { "Statut paiement": "Reçu", "Montant reçu": get(brut[i], "Indemnité totale"), "Date réception": formatDateShort(new Date()) });
+        state.allRows = normalizeRows(brut);
+        try { renderAll(); } catch (e) {}
+      }
+    }
     try {
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "Mise à jour refusée");
@@ -2524,6 +2537,8 @@ function attachPaymentListeners(root) {
       renderAll();
       loadStats(true);
     } catch (err) {
+      if (sauvegarde) { try { const brut = state.allRows.map(rawOf_); brut[sauvegarde.i] = sauvegarde.row; state.allRows = normalizeRows(brut); renderAll(); } catch (e) {} }
+
       setStatus("Erreur paiement : " + err.message, "error");
       if (button) button.disabled = false;
     }
