@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-08-b21";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b22";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -3548,22 +3548,108 @@ function fileToBase64_(file) {
   });
 }
 
-async function uploaderEvaluation_(file) {
-  if (!file) return;
-  if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
-    setStatus("Seuls les PDF sont acceptés", "error");
+/* b22 — dépôt multiple : file d'attente, un fichier à la fois (OCR + IA ≈ 20 s
+   chacun), avancement affiché, résumé à la fin. Les stages / TIC ne sont pas
+   rattachés à un match : c'est normal, pas une erreur. */
+const EVAL_QUEUE_ = { files: [], en_cours: false, faits: [], erreurs: [] };
+function evalFileOk_(f) { return f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name)); }
+function uploaderEvaluations_(files) {
+  const ok = Array.from(files || []).filter(evalFileOk_);
+  const refus = (files ? files.length : 0) - ok.length;
+  if (refus) setStatus(refus + " fichier(s) ignoré(s) : seuls les PDF sont acceptés", "error");
+  if (!ok.length) return;
+  EVAL_QUEUE_.files.push(...ok);
+  evalQueueAvance_();
+}
+function evalQueueAfficher_(msg) {
+  const el = document.getElementById("evalProgress");
+  if (!el) return;
+  const total = EVAL_QUEUE_.faits.length + EVAL_QUEUE_.erreurs.length + EVAL_QUEUE_.files.length + (EVAL_QUEUE_.en_cours ? 1 : 0);
+  const fait = EVAL_QUEUE_.faits.length + EVAL_QUEUE_.erreurs.length;
+  el.hidden = !total;
+  el.innerHTML = total ? `<div class="eval-prog-bar"><i style="width:${Math.round(fait / total * 100)}%"></i></div><span>${escapeHtml(msg || "")} · ${fait}/${total}</span>` : "";
+}
+async function evalQueueAvance_() {
+  if (EVAL_QUEUE_.en_cours) return;
+  const f = EVAL_QUEUE_.files.shift();
+  if (!f) {
+    const n = EVAL_QUEUE_.faits.length, e = EVAL_QUEUE_.erreurs;
+    if (n || e.length) {
+      setStatus(n + " évaluation(s) analysée(s)" + (e.length ? " · " + e.length + " échec(s) : " + e.map(x => x.nom).join(", ") : ""), e.length ? "error" : "ok");
+      EVAL_QUEUE_.faits = []; EVAL_QUEUE_.erreurs = [];
+      state.evaluations = null; loadEvaluations();
+    }
+    evalQueueAfficher_("");
     return;
   }
-  setStatus("Envoi de " + file.name + "…", "");
+  EVAL_QUEUE_.en_cours = true;
+  evalQueueAfficher_("Analyse de " + f.name + "…");
   try {
-    const base64 = await fileToBase64_(file);
-    const res = await jsonp("evaluation.upload", { filename: file.name, mimeType: file.type || "application/pdf", base64 });
-    if (!res.success) throw new Error(res.error || "Erreur d'envoi");
-    setStatus(res.matched ? "Évaluation classée : " + res.matchLabel : "Évaluation déposée (match non identifié)", "ok");
-    state.evaluations = null;
-    loadEvaluations();
+    const base64 = await fileToBase64_(f);
+    const res = await jsonp("evaluation.upload", { filename: f.name, mimeType: f.type || "application/pdf", base64 });
+    if (!res || !res.success) throw new Error((res && res.error) || "Erreur d'envoi");
+    EVAL_QUEUE_.faits.push({ nom: f.name, type: res.type, note: res.note20, match: res.matchLabel });
   } catch (err) {
-    setStatus("Erreur : " + err.message, "error");
+    EVAL_QUEUE_.erreurs.push({ nom: f.name, err: err.message });
+  }
+  EVAL_QUEUE_.en_cours = false;
+  evalQueueAvance_();
+}
+function uploaderEvaluation_(file) { uploaderEvaluations_([file]); }
+
+/* b22 — Progression : courbe des notes /20 (observations de match vs stages),
+   radar des 5 familles LRGEB, axes de travail récurrents. */
+const EVAL_FAM_ = [["calls", "Calls"], ["controle", "Contrôle"], ["mecanique", "Mécanique"], ["communication", "Communication"], ["physique", "Physique"]];
+const EVAL_TYPE_CLS_ = { "Observation de match": "gold", "Stage": "blue", "TIC": "green", "Bilan de saison": "gray", "Autre": "gray" };
+function evalDate_(ev) { return parseFrDate(ev.dateEval || ev.dateMatch || ev.dateDepot); }
+function renderEvalSynthese_(evals) {
+  const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
+  const derniere = notees.length ? notees[notees.length - 1] : null;
+  const moy = arr => arr.length ? Math.round(arr.reduce((t, v) => t + v, 0) / arr.length * 10) / 10 : null;
+  const matchs = notees.filter(ev => ev.type === "Observation de match" || !ev.type);
+  const moyMatch = moy(matchs.map(ev => ev.note20)), moy3 = moy(matchs.slice(-3).map(ev => ev.note20));
+  // familles : moyenne des 3 dernières évaluations qui les renseignent
+  const fam = EVAL_FAM_.map(([k, l]) => { const v = evals.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return { k, l, v: moy(v.slice(-3)), n: v.length }; });
+  const famOk = fam.filter(f => f.v !== null);
+  const pire = famOk.length ? famOk.slice().sort((a, b) => a.v - b.v)[0] : null;
+  // axes récurrents : un mot-clé significatif présent dans ≥ 2 évaluations différentes
+  const STOP = /^(ameliorer|retravailler|travailler|gestion|meilleur|meilleure|niveau|match|matchs|plus|moins|avec|sans|dans|pour|etre|faire|avoir|tous|toutes|situations?|notamment|davantage)$/;
+  const axes = {};
+  evals.forEach((ev, idx) => { const vus = {}; [ev.axe1, ev.axe2].filter(Boolean).forEach(a => normaliserRecherche(a).split(/[^a-z0-9]+/).filter(w => w.length > 4 && !STOP.test(w)).forEach(w => { if (vus[w]) return; vus[w] = 1; const o = axes[w] = axes[w] || { n: 0, ex: a, evs: {} }; if (!o.evs[idx]) { o.evs[idx] = 1; o.n++; } })); });
+  const recurrents = Object.keys(axes).map(w => Object.assign({ w }, axes[w])).filter(x => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 4);
+  return `
+    <div class="kpi-grid">
+      <div class="kpi hero"><label>Dernière note</label><strong>${derniere ? derniere.note20.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${derniere ? escapeHtml((derniere.type || "") + " · " + (derniere.championnat || derniere.rencontre || "") + " · " + (derniere.dateEval || derniere.dateMatch || "")) : "aucune évaluation notée"}</span></div>
+      <div class="kpi"><label>Moyenne matchs</label><strong>${moyMatch !== null ? moyMatch.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${matchs.length} observation${matchs.length > 1 ? "s" : ""}${moy3 !== null && matchs.length > 3 ? " · 3 dernières : " + moy3.toLocaleString("fr-FR") : ""}</span></div>
+      <div class="kpi"><label>Point faible</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? pire.v.toLocaleString("fr-FR") + " / 20 sur les dernières évaluations" : "familles non renseignées"}</span></div>
+      <div class="kpi"><label>Évaluations</label><strong>${evals.length}</strong><span class="sub">${["Observation de match", "Stage", "TIC"].map(t => { const n = evals.filter(e => (e.type || "Observation de match") === t).length; return n ? n + " " + t.toLowerCase().replace("observation de match", "match" + (n > 1 ? "s" : "")) : ""; }).filter(Boolean).join(" · ")}</span></div>
+    </div>
+    ${notees.length >= 2 || famOk.length ? `<div class="charts-2 eval-charts">
+      ${notees.length >= 2 ? `<div class="chart-card"><h3>Notes dans le temps</h3><p class="hint">Observations de match en jaune, stages et TIC en bleu. Sur 20.</p><div class="chart-box small"><canvas id="chartEvalNotes"></canvas></div></div>` : ""}
+      ${famOk.length >= 3 ? `<div class="chart-card"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations qui notent chaque famille.</p><div class="chart-box small"><canvas id="chartEvalRadar"></canvas></div></div>` : ""}
+    </div>` : ""}
+    ${recurrents.length ? `<div class="table-card eval-recur"><h3 class="section-title sub-title" style="margin-top:0">Axes qui reviennent</h3><ul>${recurrents.map(r => `<li><span class="badge gold">${r.n} éval.</span> <b>${escapeHtml(r.w)}</b> <span class="card-sub">— ex. ${escapeHtml(r.ex)}</span></li>`).join("")}</ul></div>` : ""}`;
+}
+function buildEvalCharts_(evals) {
+  if (typeof Chart === "undefined") return;
+  const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
+  const c1 = ctx("chartEvalNotes");
+  if (c1 && notees.length >= 2) {
+    const estMatch = ev => ev.type === "Observation de match" || !ev.type;
+    AN.charts.evalNotes = new Chart(c1, { type: "line", data: {
+      labels: notees.map(ev => evalDate_(ev).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" })),
+      datasets: [
+        { label: "Matchs", data: notees.map(ev => estMatch(ev) ? ev.note20 : null), borderColor: "#f5b400", backgroundColor: "#f5b400", spanGaps: true, tension: .3, pointRadius: 5 },
+        { label: "Stages / TIC", data: notees.map(ev => estMatch(ev) ? null : ev.note20), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", spanGaps: true, tension: .3, pointRadius: 5, pointStyle: "rectRot" }
+      ] }, options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 20 } },
+      plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.championnat || ev.rencontre || "") + (ev.observateur ? " · " + ev.observateur : ""); } } } } } });
+  }
+  const c2 = ctx("chartEvalRadar");
+  if (c2) {
+    const moy = arr => arr.length ? arr.reduce((t, v) => t + v, 0) / arr.length : null;
+    const vals = EVAL_FAM_.map(([k]) => { const v = evals.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return moy(v.slice(-3)); });
+    AN.charts.evalRadar = new Chart(c2, { type: "radar", data: { labels: EVAL_FAM_.map(x => x[1]), datasets: [{ label: "Sur 20", data: vals, borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.2)", pointBackgroundColor: "#f5b400" }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { r: { min: 0, max: 20, ticks: { stepSize: 5, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
 }
 
@@ -3638,56 +3724,54 @@ function renderProgression() {
       </div>
     </div>
 
-    <h2 class="section-title">Plan de travail (IA)</h2>
-    ${planTravail.length ? `
-    <div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Match</th><th>Date</th><th>Point à travailler 1</th><th>Point à travailler 2</th></tr></thead>
-      <tbody>${planTravail.map(ev => `<tr>
-        <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
-        <td>${escapeHtml(ev.dateMatch || ev.dateDepot)}</td>
-        <td>${escapeHtml(ev.axe1 || "—")}</td>
-        <td>${escapeHtml(ev.axe2 || "—")}</td>
-      </tr>`).join("")}</tbody>
-    </table></div></div>` : empty("Dépose une évaluation ci-dessous pour générer ton plan de travail IA, match par match.")}
+    <h2 class="section-title">Évaluations</h2>
+    ${renderEvalSynthese_(evaluations)}
+
+    <div class="table-card" style="padding:16px; margin-top:12px">
+      <div id="evalDropzone" class="eval-dropzone">
+        <span class="eval-dropzone-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14a2 2 0 0 0 2-2v-5"/><path d="M3 14v5a2 2 0 0 0 2 2h1"/></svg>
+        </span>
+        <p class="eval-dropzone-text">Glisse un ou plusieurs PDF ici, ou <label for="evalFileInput" class="eval-dropzone-link">choisis des fichiers</label></p>
+        <p class="eval-dropzone-sub">Fiches CD67, Ligue, stages, TIC : le type est reconnu, les notes ramenées sur 20, et un match est rattaché quand il s'agit d'une observation. Environ 20 s par fichier.</p>
+        <input id="evalFileInput" type="file" accept="application/pdf" multiple hidden />
+      </div>
+      <div id="evalProgress" class="eval-progress" hidden></div>
+      <div class="actions" style="margin-top:10px">
+        <button class="small-btn secondary" type="button" id="importAllEvalsBtn">Importer les PDF déjà dans le Drive</button>
+      </div>
+    </div>
+
+    ${evaluations.length ? `<div class="eval-list">${evaluations.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0)).map(ev => { const t = ev.type || "Observation de match"; const estMatch = t === "Observation de match"; return `
+      <article class="eval-card">
+        <div class="eval-head">
+          <div class="eval-note${ev.note20 === null || ev.note20 === undefined ? " is-vide" : ""}">${ev.note20 !== null && ev.note20 !== undefined ? ev.note20.toLocaleString("fr-FR") : "—"}<small>/20</small></div>
+          <div class="eval-main">
+            <div class="eval-titre"><span class="badge ${EVAL_TYPE_CLS_[t] || "gray"}">${escapeHtml(t)}</span>${ev.instance ? `<span class="badge">${escapeHtml(ev.instance)}</span>` : ""}${ev.championnat ? `<span class="badge gray">${escapeHtml(ev.championnat)}</span>` : ""}</div>
+            <strong>${escapeHtml(estMatch ? (ev.rencontre || "Match non rattaché") : (ev.rencontre || ev.championnat || t))}</strong>
+            <span class="card-sub">${escapeHtml([ev.dateEval || ev.dateMatch, ev.observateur ? "Observateur : " + ev.observateur : ""].filter(Boolean).join(" · "))}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}</span>
+          </div>
+          <div class="eval-side">
+            <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">PDF</a>
+            <button type="button" class="ct-gear" data-eval-edit="${ev.id}" title="Corriger le type ou la note" aria-label="Corriger">${ICONE_ENGRENAGE_}</button>
+          </div>
+        </div>
+        ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${ev.familles[k].toLocaleString("fr-FR")}</em></span>`).join("")}</div>` : ""}
+        ${ev.axe1 || ev.axe2 ? `<div class="eval-axes">${[ev.axe1, ev.axe2].filter(Boolean).map(a => `<span>→ ${escapeHtml(a)}</span>`).join("")}</div>` : ""}
+        ${ev.synthese ? `<details class="pr-det"><summary>Synthèse complète${ev.grille && ev.grille.length ? " et grille d'origine" : ""}</summary>
+          <div class="pr-corps">${escapeHtml(ev.synthese)}</div>
+          ${ev.grille && ev.grille.length ? `<table class="eval-grille"><tbody>${ev.grille.map(g => `<tr><td>${escapeHtml(g.critere)}</td><td>${escapeHtml(g.valeur)}</td></tr>`).join("")}</tbody></table>` : ""}
+          <button type="button" class="action-link alerte-danger" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Retirer du suivi (le PDF reste dans le Drive)</button>
+        </details>` : ""}
+      </article>`; }).join("")}</div>` : ""}
 
     <h2 class="section-title">Plan de travail (exams QCM)</h2>
     ${(state.qcmStats && state.qcmStats.faiblesses_top && state.qcmStats.faiblesses_top.length) ? `
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Thème du règlement</th><th class="num">Erreurs cumulées (exams)</th></tr></thead>
       <tbody>${state.qcmStats.faiblesses_top.map(f => `<tr><td>${escapeHtml(f.theme)}</td><td class="num">${f.n}</td></tr>`).join("")}</tbody>
-    </table></div></div>
-    <p class="card-sub">Classement des thèmes où tu te trompes le plus sur l'ensemble de tes exams. Sert de base de travail avec les axes issus des évaluations.</p>`
+    </table></div></div>`
     : empty("Passe un exam dans l'onglet QCM : tes thèmes faibles apparaîtront ici.")}
-
-    <h2 class="section-title">Évaluations</h2>
-    <div class="table-card" style="padding:16px">
-      <div id="evalDropzone" class="eval-dropzone">
-        <span class="eval-dropzone-icon" aria-hidden="true">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14a2 2 0 0 0 2-2v-5"/><path d="M3 14v5a2 2 0 0 0 2 2h1"/></svg>
-        </span>
-        <p class="eval-dropzone-text">Glisse un PDF d'évaluation ici, ou <label for="evalFileInput" class="eval-dropzone-link">choisis un fichier</label></p>
-        <p class="eval-dropzone-sub">Le match correspondant est identifié automatiquement (date + club), le fichier est classé dans le Drive dédié, et l'IA en tire 2 points de travail prioritaires.</p>
-        <input id="evalFileInput" type="file" accept="application/pdf" hidden />
-      </div>
-      <div class="actions" style="margin-top:10px">
-        <button class="small-btn secondary" type="button" id="importAllEvalsBtn">Importer toutes les évals du Drive</button>
-      </div>
-    </div>
-
-    ${evaluations.length ? `
-    <div class="table-card" style="margin-top:12px"><div class="table-wrap"><table>
-      <thead><tr><th>Déposé le</th><th>Match lié</th><th>Fichier</th><th>Statut IA</th><th></th></tr></thead>
-      <tbody>${evaluations.map(ev => `<tr>
-        <td>${escapeHtml(ev.dateDepot)}</td>
-        <td>${escapeHtml(ev.rencontre || "Non identifié")}</td>
-        <td><a href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">${escapeHtml(ev.fichier)}</a></td>
-        <td>${escapeHtml(ev.statut || "—")}</td>
-        <td><button type="button" class="action-link" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Supprimer</button></td>
-      </tr>${ev.synthese ? `<tr><td colspan="5" style="padding-top:0">
-        <details class="past-block"><summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Voir la synthèse IA</span></span></summary>
-        <div class="past-body" style="white-space:pre-wrap; font-size:13px; line-height:1.5">${escapeHtml(ev.synthese)}</div></details>
-      </td></tr>` : ""}`).join("")}</tbody>
-    </table></div></div>` : ""}
 
     <details class="past-block" style="margin-top:18px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Historique du niveau</span><span class="count">${niveaux.length}</span></span></summary>
@@ -3814,7 +3898,7 @@ function renderProgression() {
   const fileInput = root.querySelector("#evalFileInput");
   if (dz && fileInput) {
     fileInput.addEventListener("change", () => {
-      if (fileInput.files && fileInput.files[0]) uploaderEvaluation_(fileInput.files[0]);
+      if (fileInput.files && fileInput.files.length) uploaderEvaluations_(fileInput.files);
       fileInput.value = "";
     });
     ["dragenter", "dragover"].forEach(evt => {
@@ -3824,10 +3908,33 @@ function renderProgression() {
       dz.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dz.classList.remove("is-dragover"); });
     });
     dz.addEventListener("drop", e => {
-      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (file) uploaderEvaluation_(file);
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) uploaderEvaluations_(files);
     });
   }
+  evalQueueAfficher_(EVAL_QUEUE_.en_cours ? "Analyse en cours…" : "");
+  ["evalNotes", "evalRadar"].forEach(k => { if (AN.charts[k]) { try { AN.charts[k].destroy(); } catch (e) {} delete AN.charts[k]; } });
+  try { buildEvalCharts_(state.evaluations || []); } catch (e) { console.warn("Graphiques évaluations :", e); }
+  // b22 — corriger type / note, rattacher à un match
+  const majEval = async (id, corps, msg) => {
+    const res = await jsonp("evaluation.update", Object.assign({ id }, corps));
+    if (!res || !res.success || !res.result) throw new Error((res && res.error) || "Apps Script b22 pas encore déployé");
+    state.evaluations = null; loadEvaluations(); setStatus(msg, "ok");
+  };
+  root.querySelectorAll("[data-eval-edit]").forEach(b => b.addEventListener("click", () => {
+    const ev = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalEdit); if (!ev) return;
+    ouvrirModaleEdition_({ titre: "Corriger l'évaluation", champs: [
+      { id: "type", label: "Type", value: ev.type || "Observation de match", type: "select", options: ["Observation de match", "Stage", "TIC", "Bilan de saison", "Autre"] },
+      { id: "note20", label: "Note / 20", value: ev.note20 === null || ev.note20 === undefined ? "" : String(ev.note20), type: "number" }
+    ], onSave: v => majEval(ev.id, { type: v.type, note20: v.note20 }, "Évaluation corrigée") });
+  }));
+  root.querySelectorAll("[data-eval-lier]").forEach(b => b.addEventListener("click", () => {
+    const ev = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalLier); if (!ev) return;
+    const d = evalDate_(ev);
+    const cands = (state.allRows || []).filter(r => r._isActive && r._format !== "Alerte" && r._date && (!d || Math.abs(r._date - d) < 45 * 86400000)).sort((a, b) => b._date - a._date).slice(0, 40);
+    ouvrirModaleEdition_({ titre: "Rattacher à un match", champs: [{ id: "uid", label: "Match", type: "select", value: "", options: [""].concat(cands.map(r => get(r, "UID") + " · " + hotelMatchLabel_(r))) }],
+      onSave: v => majEval(ev.id, { uid: String(v.uid || "").split(" · ")[0] }, "Match rattaché") });
+  }));
 }
 
 /* Onglet Contacts & Procédures (19/09/2026) — carnet de contacts (clubs,
