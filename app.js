@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b23";
+const APP_VERSION = window.RT_VERSION || "2026-10-11-b24";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -3553,7 +3553,7 @@ function fileToBase64_(file) {
 /* b22 — dépôt multiple : file d'attente, un fichier à la fois (OCR + IA ≈ 20 s
    chacun), avancement affiché, résumé à la fin. Les stages / TIC ne sont pas
    rattachés à un match : c'est normal, pas une erreur. */
-const EVAL_QUEUE_ = { files: [], en_cours: false, faits: [], erreurs: [] };
+const EVAL_QUEUE_ = { files: [], en_cours: false, faits: [], erreurs: [], doublons: [], lents: [] };
 function evalFileOk_(f) { return f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name)); }
 function uploaderEvaluations_(files) {
   const ok = Array.from(files || []).filter(evalFileOk_);
@@ -3575,11 +3575,17 @@ async function evalQueueAvance_() {
   if (EVAL_QUEUE_.en_cours) return;
   const f = EVAL_QUEUE_.files.shift();
   if (!f) {
-    const n = EVAL_QUEUE_.faits.length, e = EVAL_QUEUE_.erreurs;
-    if (n || e.length) {
-      setStatus(n + " évaluation(s) analysée(s)" + (e.length ? " · " + e.length + " échec(s) : " + e.map(x => x.nom).join(", ") : ""), e.length ? "error" : "ok");
-      EVAL_QUEUE_.faits = []; EVAL_QUEUE_.erreurs = [];
+    const n = EVAL_QUEUE_.faits.length, e = EVAL_QUEUE_.erreurs, d = EVAL_QUEUE_.doublons, l = EVAL_QUEUE_.lents;
+    if (n || e.length || d.length || l.length) {
+      const parts = [];
+      if (n) parts.push(n + " évaluation(s) analysée(s)");
+      if (d.length) parts.push(d.length + " déjà présente(s)");
+      if (l.length) parts.push(l.length + " encore en analyse (apparaîtra dans ~1 min)");
+      if (e.length) parts.push(e.length + " échec(s) : " + e.map(x => x.nom + " — " + x.err).join(" ; "));
+      setStatus(parts.join(" · "), e.length ? "error" : "ok");
+      EVAL_QUEUE_.faits = []; EVAL_QUEUE_.erreurs = []; EVAL_QUEUE_.doublons = []; EVAL_QUEUE_.lents = [];
       state.evaluations = null; loadEvaluations();
+      if (l.length) setTimeout(() => { state.evaluations = null; loadEvaluations(); }, 60000);
     }
     evalQueueAfficher_("");
     return;
@@ -3590,9 +3596,14 @@ async function evalQueueAvance_() {
     const base64 = await fileToBase64_(f);
     const res = await jsonp("evaluation.upload", { filename: f.name, mimeType: f.type || "application/pdf", base64 });
     if (!res || !res.success) throw new Error((res && res.error) || "Erreur d'envoi");
-    EVAL_QUEUE_.faits.push({ nom: f.name, type: res.type, note: res.note20, match: res.matchLabel });
+    const r = res.result || res;
+    if (r.doublon) EVAL_QUEUE_.doublons.push(f.name);
+    else EVAL_QUEUE_.faits.push({ nom: f.name, type: r.type, note: r.note20, match: r.matchLabel });
   } catch (err) {
-    EVAL_QUEUE_.erreurs.push({ nom: f.name, err: err.message });
+    // b24 — délai dépassé ≠ échec : l'analyse continue côté serveur, la ligne
+    // apparaîtra au rechargement. On ne crée pas de doublon en réessayant.
+    if (/délai dépassé/i.test(err.message || "")) EVAL_QUEUE_.lents.push(f.name);
+    else EVAL_QUEUE_.erreurs.push({ nom: f.name, err: err.message });
   }
   EVAL_QUEUE_.en_cours = false;
   evalQueueAvance_();
@@ -3604,55 +3615,173 @@ function uploaderEvaluation_(file) { uploaderEvaluations_([file]); }
 const EVAL_FAM_ = [["calls", "Calls"], ["controle", "Contrôle"], ["mecanique", "Mécanique"], ["communication", "Communication"], ["physique", "Physique"]];
 const EVAL_TYPE_CLS_ = { "Observation de match": "gold", "Stage": "blue", "TIC": "green", "Bilan de saison": "gray", "Autre": "gray" };
 function evalDate_(ev) { return parseFrDate(ev.dateEval || ev.dateMatch || ev.dateDepot); }
+/* b24 — famille d'un axe / d'une action de plan, par mots-clés ("[Mécanique] …" prime). */
+const EVAL_FAM_RX_ = {
+  calls: /\b(call|calls|faute|fautes|violation|contact|jugement|sifflet|siffl|marcher|reprise|cylindre|verticalit|avantage|incident de jeu|jeu interieur|jeu intérieur|non.?porteur|ecran|écran)/i,
+  controle: /\b(controle|contrôle|gestion|antisportif|technique|protocole|temps.?mort|reclamation|réclamation|rapport|feuille|chrono|administratif|debut|début|discipline|autorit)/i,
+  mecanique: /\b(mecanique|mécanique|placement|deplacement|déplacement|travers|signal|signaux|position|rotation|angle|fenetre|fenêtre|\bAT\b|\bAC\b|arbitre de tete|arbitre de tête|arbitre de queue|couverture|distance)/i,
+  communication: /\b(communication|communiqu|joueur|coach|entraineur|entraîneur|collegue|collègue|table|explication|relation|dialogue|parole|justifi|echange|échange|binome|binôme|pre.?match|prématch)/i,
+  physique: /\b(physique|condition|attitude|presentation|présentation|tenue|prestance|body|serenit|sérénit|confiance|course|vitesse|endurance|posture)/i
+};
+function evalFamilleDe_(txt) {
+  const t = String(txt || "");
+  const m = t.match(/^\s*\[([^\]]+)\]/);
+  if (m) { const k = normaliserRecherche(m[1]); const f = EVAL_FAM_.find(([key, l]) => normaliserRecherche(l) === k || key === k); if (f) return f[0]; }
+  for (const [k] of EVAL_FAM_) if (EVAL_FAM_RX_[k].test(t)) return k;
+  return "";
+}
+function evalSansPrefixe_(txt) { return String(txt || "").replace(/^\s*\[[^\]]+\]\s*/, ""); }
+function evalNoteHtml_(ev, grand) {
+  if (ev.note20 === null || ev.note20 === undefined) return `<span class="ev-n is-vide">—</span>`;
+  const brute = String(ev.noteBrute || "").replace(/\s+/g, "");
+  const m = brute.match(/^([\d.,]+)\/(\d+)$/);
+  if (m && m[2] !== "20") return `<span class="ev-n">${escapeHtml(m[1])}<small>/${escapeHtml(m[2])}</small></span><span class="ev-n20">${ev.note20.toLocaleString("fr-FR")} / 20</span>`;
+  return `<span class="ev-n">${ev.note20.toLocaleString("fr-FR")}<small>/20</small></span>${ev.noteEstimee ? `<span class="ev-n20">estimée</span>` : ""}`;
+}
+function evalEstMatch_(ev) { return ev.type === "Observation de match" || !ev.type; }
+function evalDateCourte_(ev) { const d = evalDate_(ev); return d ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }) : ""; }
+function evalFamillesMoy_(evals) {
+  const moy = arr => arr.length ? Math.round(arr.reduce((t, v) => t + v, 0) / arr.length * 10) / 10 : null;
+  const tri = evals.slice().sort((a, b) => (evalDate_(a) || 0) - (evalDate_(b) || 0));
+  return EVAL_FAM_.map(([k, l]) => { const v = tri.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return { k, l, v: moy(v.slice(-3)), n: v.length }; });
+}
 function renderEvalSynthese_(evals) {
   const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
-  const derniere = notees.length ? notees[notees.length - 1] : null;
+  const obs = notees.filter(evalEstMatch_), stages = notees.filter(ev => !evalEstMatch_(ev));
+  const dObs = obs[obs.length - 1] || null, dStage = stages[stages.length - 1] || null;
   const moy = arr => arr.length ? Math.round(arr.reduce((t, v) => t + v, 0) / arr.length * 10) / 10 : null;
-  const matchs = notees.filter(ev => ev.type === "Observation de match" || !ev.type);
-  const moyMatch = moy(matchs.map(ev => ev.note20)), moy3 = moy(matchs.slice(-3).map(ev => ev.note20));
-  // familles : moyenne des 3 dernières évaluations qui les renseignent
-  const fam = EVAL_FAM_.map(([k, l]) => { const v = evals.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return { k, l, v: moy(v.slice(-3)), n: v.length }; });
-  const famOk = fam.filter(f => f.v !== null);
-  const pire = famOk.length ? famOk.slice().sort((a, b) => a.v - b.v)[0] : null;
-  // axes récurrents : un mot-clé significatif présent dans ≥ 2 évaluations différentes
-  const STOP = /^(ameliorer|retravailler|travailler|gestion|meilleur|meilleure|niveau|match|matchs|plus|moins|avec|sans|dans|pour|etre|faire|avoir|tous|toutes|situations?|notamment|davantage)$/;
-  const axes = {};
-  evals.forEach((ev, idx) => { const vus = {}; [ev.axe1, ev.axe2].filter(Boolean).forEach(a => normaliserRecherche(a).split(/[^a-z0-9]+/).filter(w => w.length > 4 && !STOP.test(w)).forEach(w => { if (vus[w]) return; vus[w] = 1; const o = axes[w] = axes[w] || { n: 0, ex: a, evs: {} }; if (!o.evs[idx]) { o.evs[idx] = 1; o.n++; } })); });
-  const recurrents = Object.keys(axes).map(w => Object.assign({ w }, axes[w])).filter(x => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 4);
+  const moyObs = moy(obs.map(ev => ev.note20));
+  const tendance = obs.length >= 2 ? Math.round((obs[obs.length - 1].note20 - obs[obs.length - 2].note20) * 10) / 10 : null;
+  const fam = evalFamillesMoy_(evals).filter(f => f.v !== null);
+  const avecFam = evals.filter(ev => ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined)).length;
+  const etendue = fam.length >= 2 ? Math.max(...fam.map(f => f.v)) - Math.min(...fam.map(f => f.v)) : 0;
+  const pire = (fam.length >= 2 && avecFam >= 2 && etendue >= 1) ? fam.slice().sort((a, b) => a.v - b.v)[0] : null;
+  const sousTitre = ev => ev ? escapeHtml([ev.championnat || ev.rencontre || "", evalDateCourte_(ev), ev.observateur].filter(Boolean).join(" · ")) : "";
   return `
-    <div class="kpi-grid">
-      <div class="kpi hero"><label>Dernière note</label><strong>${derniere ? derniere.note20.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${derniere ? escapeHtml((derniere.type || "") + " · " + (derniere.championnat || derniere.rencontre || "") + " · " + (derniere.dateEval || derniere.dateMatch || "")) : "aucune évaluation notée"}</span></div>
-      <div class="kpi"><label>Moyenne matchs</label><strong>${moyMatch !== null ? moyMatch.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${matchs.length} observation${matchs.length > 1 ? "s" : ""}${moy3 !== null && matchs.length > 3 ? " · 3 dernières : " + moy3.toLocaleString("fr-FR") : ""}</span></div>
-      <div class="kpi"><label>Point faible</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? pire.v.toLocaleString("fr-FR") + " / 20 sur les dernières évaluations" : "familles non renseignées"}</span></div>
-      <div class="kpi"><label>Évaluations</label><strong>${evals.length}</strong><span class="sub">${["Observation de match", "Stage", "TIC"].map(t => { const n = evals.filter(e => (e.type || "Observation de match") === t).length; return n ? n + " " + t.toLowerCase().replace("observation de match", "match" + (n > 1 ? "s" : "")) : ""; }).filter(Boolean).join(" · ")}</span></div>
-    </div>
-    ${notees.length >= 2 || famOk.length ? `<div class="charts-2 eval-charts">
-      ${notees.length >= 2 ? `<div class="chart-card"><h3>Notes dans le temps</h3><p class="hint">Observations de match en jaune, stages et TIC en bleu. Sur 20.</p><div class="chart-box small"><canvas id="chartEvalNotes"></canvas></div></div>` : ""}
-      ${famOk.length >= 3 ? `<div class="chart-card"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations qui notent chaque famille.</p><div class="chart-box small"><canvas id="chartEvalRadar"></canvas></div></div>` : ""}
-    </div>` : ""}
-    ${recurrents.length ? `<div class="table-card eval-recur"><h3 class="section-title sub-title" style="margin-top:0">Axes qui reviennent</h3><ul>${recurrents.map(r => `<li><span class="badge gold">${r.n} éval.</span> <b>${escapeHtml(r.w)}</b> <span class="card-sub">— ex. ${escapeHtml(r.ex)}</span></li>`).join("")}</ul></div>` : ""}`;
+    <div class="kpi-grid ev-kpis">
+      <div class="kpi ev-kpi-note ev-kpi-main"><label>Dernière observation</label><strong>${dObs ? evalNoteHtml_(dObs) : "—"}</strong><span class="sub">${dObs ? sousTitre(dObs) : "aucune observation notée"}${tendance !== null ? ` · <b class="${tendance >= 0 ? "ev-up" : "ev-down"}">${tendance >= 0 ? "+" : ""}${tendance.toLocaleString("fr-FR")}</b> vs précédente` : ""}</span></div>
+      <div class="kpi ev-kpi-note"><label>Dernier stage / TIC</label><strong>${dStage ? evalNoteHtml_(dStage) : "—"}</strong><span class="sub">${dStage ? escapeHtml(dStage.type) + " · " + sousTitre(dStage) : "aucun stage noté"}</span></div>
+      <div class="kpi"><label>Moyenne observations</label><strong>${moyObs !== null ? moyObs.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${obs.length} observation${obs.length > 1 ? "s" : ""} notée${obs.length > 1 ? "s" : ""}</span></div>
+      <div class="kpi${pire && pire.v < 12 ? " kpi-alert" : ""}"><label>Famille à travailler</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? pire.v.toLocaleString("fr-FR") + " / 20 · 3 dernières évaluations" : (avecFam < 2 ? "il faut 2 évaluations détaillées" : "profil équilibré")}</span></div>
+    </div>`;
+}
+/* b24 — Plan de développement : barres par famille, actions des 3 dernières
+   évaluations, axes récurrents regroupés par famille. */
+function renderPlanDeveloppement_(evals) {
+  if (!evals.length) return "";
+  const fam = evalFamillesMoy_(evals);
+  const famOk = fam.filter(f => f.v !== null);
+  const pireK = famOk.length >= 2 ? famOk.slice().sort((a, b) => a.v - b.v)[0].k : "";
+  const couleur = v => v === null ? "" : v < 10 ? "is-bad" : v < 14 ? "is-mid" : "is-good";
+  const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
+  const vus = {}, actions = [];
+  tri.slice(0, 3).forEach(ev => (ev.plan || []).forEach(a => {
+    const cle = normaliserRecherche(evalSansPrefixe_(a)).slice(0, 40);
+    if (!cle || vus[cle]) return; vus[cle] = 1;
+    actions.push({ txt: evalSansPrefixe_(a), fam: evalFamilleDe_(a), src: (ev.championnat || ev.type || "") + " · " + evalDateCourte_(ev) });
+  }));
+  const parFam = {};
+  evals.forEach((ev, idx) => { const vusEv = {}; [ev.axe1, ev.axe2].filter(Boolean).forEach(a => { const k = evalFamilleDe_(a) || "autre"; if (vusEv[k]) return; vusEv[k] = 1; const o = parFam[k] = parFam[k] || { n: 0, ex: [] }; o.n++; if (o.ex.length < 2) o.ex.push(a); }); });
+  const recur = Object.keys(parFam).filter(k => parFam[k].n >= 2).sort((a, b) => parFam[b].n - parFam[a].n).slice(0, 3);
+  const nomFam = k => (EVAL_FAM_.find(x => x[0] === k) || [k, "Autre"])[1];
+  if (!famOk.length && !actions.length && !recur.length) return "";
+  return `
+    <h2 class="section-title">Plan de développement</h2>
+    <div class="pd-grid">
+      ${famOk.length ? `<div class="table-card pd-fam"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations détaillées · sur 20</p>
+        ${fam.map(f => `<div class="pd-bar${f.k === pireK ? " is-focus" : ""}"><span class="pd-bar-l">${escapeHtml(f.l)}${f.k === pireK ? ` <em>à travailler</em>` : ""}</span><span class="pd-bar-t"><i class="${couleur(f.v)}" style="width:${f.v === null ? 0 : f.v / 20 * 100}%"></i></span><b>${f.v === null ? "—" : f.v.toLocaleString("fr-FR")}</b></div>`).join("")}</div>` : ""}
+      <div class="table-card pd-actions"><h3>Actions prioritaires</h3><p class="hint">Plans de travail des 3 dernières évaluations</p>
+        ${actions.length ? `<ol>${actions.slice(0, 6).map(a => `<li>${a.fam ? `<span class="badge ${a.fam === pireK ? "red" : "gray"}">${escapeHtml(nomFam(a.fam))}</span> ` : ""}${escapeHtml(a.txt)}<span class="card-sub"> — ${escapeHtml(a.src)}</span></li>`).join("")}</ol>` : `<p class="card-sub">Aucun plan généré : relance « Ré-analyser » sur une évaluation.</p>`}
+        ${recur.length ? `<div class="pd-recur"><b>Ce qui revient</b> ${recur.map(k => `<span class="pd-chip"><span class="badge gold">${parFam[k].n} éval.</span> ${escapeHtml(nomFam(k))}<small> — ${escapeHtml(parFam[k].ex[0])}</small></span>`).join("")}</div>` : ""}
+      </div>
+    </div>`;
+}
+function renderEvalCharts_(evals) {
+  const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev));
+  const nObs = notees.filter(evalEstMatch_).length;
+  const famOk = evalFamillesMoy_(evals).filter(f => f.v !== null).length;
+  if (notees.length < 2 && famOk < 3) return "";
+  const avecStages = state._evalStages || nObs < 2;
+  return `<div class="charts-2 eval-charts">
+      ${notees.length >= 2 ? `<div class="chart-card"><div class="pd-chart-head"><h3>Notes dans le temps</h3><label class="pd-toggle"><input type="checkbox" id="evalStagesToggle"${avecStages ? " checked" : ""}${nObs < 2 ? " disabled" : ""}> stages / TIC</label></div><p class="hint">Sur 20. Les stages sont notés sur d'autres échelles : ils sont ramenés sur 20 mais restent à part.</p><div class="chart-box small"><canvas id="chartEvalNotes"></canvas></div></div>` : ""}
+      ${famOk >= 3 ? `<div class="chart-card"><h3>Radar des 5 familles</h3><p class="hint">Dernière évaluation détaillée (trait plein) vs moyenne des 3 dernières (pointillé).</p><div class="chart-box small"><canvas id="chartEvalRadar"></canvas></div></div>` : ""}
+    </div>`;
 }
 function buildEvalCharts_(evals) {
   if (typeof Chart === "undefined") return;
-  const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
+  const tout = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
+  const nObs = tout.filter(evalEstMatch_).length;
+  const avecStages = state._evalStages || nObs < 2;
+  const notees = avecStages ? tout : tout.filter(evalEstMatch_);
   const c1 = ctx("chartEvalNotes");
   if (c1 && notees.length >= 2) {
-    const estMatch = ev => ev.type === "Observation de match" || !ev.type;
+    const moyMobile = notees.map((ev, i) => { const w = notees.slice(Math.max(0, i - 2), i + 1).filter(evalEstMatch_); return w.length ? Math.round(w.reduce((t, x) => t + x.note20, 0) / w.length * 10) / 10 : null; });
     AN.charts.evalNotes = new Chart(c1, { type: "line", data: {
-      labels: notees.map(ev => evalDate_(ev).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" })),
+      labels: notees.map(evalDateCourte_),
       datasets: [
-        { label: "Matchs", data: notees.map(ev => estMatch(ev) ? ev.note20 : null), borderColor: "#f5b400", backgroundColor: "#f5b400", spanGaps: true, tension: .3, pointRadius: 5 },
-        { label: "Stages / TIC", data: notees.map(ev => estMatch(ev) ? null : ev.note20), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", spanGaps: true, tension: .3, pointRadius: 5, pointStyle: "rectRot" }
+        { label: "Observations", data: notees.map(ev => evalEstMatch_(ev) ? ev.note20 : null), borderColor: "#f5b400", backgroundColor: "#f5b400", spanGaps: true, tension: .3, pointRadius: 6, pointHoverRadius: 8, borderWidth: 3 },
+        { label: "Tendance (3 obs.)", data: moyMobile, borderColor: "rgba(10,31,68,.55)", borderDash: [5, 4], borderWidth: 2, pointRadius: 0, spanGaps: true, tension: .4 },
+        ...(avecStages ? [{ label: "Stages / TIC", data: notees.map(ev => evalEstMatch_(ev) ? null : ev.note20), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", showLine: false, pointRadius: 7, pointStyle: "rectRot" }] : [])
       ] }, options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 20 } },
-      plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.championnat || ev.rencontre || "") + (ev.observateur ? " · " + ev.observateur : ""); } } } } } });
+      plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.noteBrute ? "Note : " + ev.noteBrute + " · " : "") + (ev.championnat || ev.rencontre || "") + (ev.observateur ? " · " + ev.observateur : ""); } } } } } });
   }
   const c2 = ctx("chartEvalRadar");
   if (c2) {
-    const moy = arr => arr.length ? arr.reduce((t, v) => t + v, 0) / arr.length : null;
-    const vals = EVAL_FAM_.map(([k]) => { const v = evals.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return moy(v.slice(-3)); });
-    AN.charts.evalRadar = new Chart(c2, { type: "radar", data: { labels: EVAL_FAM_.map(x => x[1]), datasets: [{ label: "Sur 20", data: vals, borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.2)", pointBackgroundColor: "#f5b400" }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { r: { min: 0, max: 20, ticks: { stepSize: 5, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
+    const moy = evalFamillesMoy_(evals).map(f => f.v);
+    const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
+    const derniere = tri.find(ev => ev.familles && EVAL_FAM_.filter(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined).length >= 3);
+    AN.charts.evalRadar = new Chart(c2, { type: "radar", data: { labels: EVAL_FAM_.map(x => x[1]), datasets: [
+        ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k]), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5 }] : []),
+        { label: "Moyenne 3 dernières", data: moy, borderColor: "#0A1F44", backgroundColor: "rgba(10,31,68,.06)", borderDash: [5, 4], pointBackgroundColor: "#0A1F44", borderWidth: 1.5 }
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 20, ticks: { stepSize: 5, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
+}
+/* b24 — carte d'évaluation : note telle qu'écrite, détails structurés, ré-analyse. */
+function renderEvalCard_(ev) {
+  const t = ev.type || "Observation de match"; const estMatch = t === "Observation de match";
+  const syn = String(ev.synthese || "").split(/\n\nPoints forts\s*:/)[0].replace(/^Synthèse\s*:\s*/, "").trim();
+  const axes = [ev.axe1, ev.axe2].filter(Boolean);
+  return `
+      <article class="eval-card">
+        <div class="eval-head">
+          <div class="eval-note${ev.note20 === null || ev.note20 === undefined ? " is-vide" : ""}">${evalNoteHtml_(ev)}</div>
+          <div class="eval-main">
+            <div class="eval-titre"><span class="badge ${EVAL_TYPE_CLS_[t] || "gray"}">${escapeHtml(t)}</span>${ev.instance ? `<span class="badge">${escapeHtml(ev.instance)}</span>` : ""}${ev.championnat ? `<span class="badge gray">${escapeHtml(ev.championnat)}</span>` : ""}${ev.saison ? `<span class="badge gray">${escapeHtml(ev.saison)}</span>` : ""}</div>
+            <strong>${escapeHtml(estMatch ? (ev.rencontre || "Match non rattaché") : (ev.rencontre || ev.championnat || t))}</strong>
+            <span class="card-sub">${escapeHtml([ev.dateEval || ev.dateMatch, ev.observateur ? "Observateur : " + ev.observateur : ""].filter(Boolean).join(" · "))}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}${ev.statut && !/^Analysé/.test(ev.statut) ? ` · <span class="ev-down">${escapeHtml(ev.statut)}</span>` : ""}</span>
+          </div>
+          <div class="eval-side">
+            <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">PDF</a>
+            <button type="button" class="ct-gear" data-eval-edit="${ev.id}" title="Corriger le type ou la note" aria-label="Corriger">${ICONE_ENGRENAGE_}</button>
+          </div>
+        </div>
+        ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${ev.familles[k].toLocaleString("fr-FR")}</em></span>`).join("")}</div>` : ""}
+        ${axes.length ? `<div class="eval-axes">${axes.map(a => `<span>→ ${escapeHtml(a)}</span>`).join("")}</div>` : ""}
+        <details class="pr-det"><summary>Détail de l'évaluation</summary>
+          ${syn ? `<div class="ev-bloc"><b>Synthèse</b><p>${escapeHtml(syn)}</p></div>` : ""}
+          ${ev.pointsForts && ev.pointsForts.length ? `<div class="ev-bloc"><b>Points forts</b><ul>${ev.pointsForts.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}
+          ${ev.plan && ev.plan.length ? `<div class="ev-bloc"><b>Plan de travail</b><ol>${ev.plan.map(x => `<li>${escapeHtml(evalSansPrefixe_(x))}</li>`).join("")}</ol></div>` : ""}
+          ${ev.grille && ev.grille.length ? `<details class="ev-grille-det"><summary>Grille d'origine (${ev.grille.length} critères)</summary><table class="eval-grille"><tbody>${ev.grille.map(g => `<tr><td>${escapeHtml(g.critere)}</td><td>${escapeHtml(g.valeur)}</td></tr>`).join("")}</tbody></table></details>` : ""}
+          <div class="actions ev-actions">
+            <button type="button" class="small-btn secondary" data-eval-reanalyse="${ev.id}">Ré-analyser le PDF</button>
+            <button type="button" class="action-link alerte-danger" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Retirer du suivi (le PDF reste dans le Drive)</button>
+          </div>
+        </details>
+      </article>`;
+}
+function renderEvalListe_(evaluations) {
+  if (!evaluations.length) return "";
+  const saisons = Array.from(new Set(evaluations.map(ev => ev.saison).filter(Boolean))).sort().reverse();
+  const filtre = state._evalSaison && saisons.includes(state._evalSaison) ? state._evalSaison : "";
+  const liste = evaluations.filter(ev => !filtre || ev.saison === filtre).sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
+  const LIM = 3, tout = state._evalTout || liste.length <= LIM;
+  const visibles = tout ? liste : liste.slice(0, LIM);
+  return `
+    <div class="ev-liste-head"><h2 class="section-title" style="margin:0">Toutes les évaluations <span class="count">${liste.length}</span></h2>
+      ${saisons.length > 1 ? `<select id="evalSaisonFiltre" class="ev-select"><option value="">Toutes les saisons</option>${saisons.map(sa => `<option value="${escapeHtml(sa)}"${sa === filtre ? " selected" : ""}>${escapeHtml(sa)}</option>`).join("")}</select>` : ""}</div>
+    <div class="eval-list">${visibles.map(renderEvalCard_).join("")}</div>
+    ${!tout ? `<div class="actions" style="margin-top:10px"><button type="button" class="small-btn secondary" id="evalVoirTout">Voir les ${liste.length - LIM} autres</button></div>` : ""}`;
 }
 
 function renderDesignationsParNiveau_() {
@@ -3714,7 +3843,6 @@ function renderProgression() {
   const actuel = niveaux.find(n => !n.dateFin) || niveaux[0] || null;
 
   const evaluations = state.evaluations || [];
-  const planTravail = evaluations.filter(ev => ev.axe1 || ev.axe2);
 
   root.innerHTML = `
     <h2 class="section-title">Progression</h2>
@@ -3726,16 +3854,17 @@ function renderProgression() {
       </div>
     </div>
 
-    <h2 class="section-title">Évaluations</h2>
     ${renderEvalSynthese_(evaluations)}
+    ${renderPlanDeveloppement_(evaluations)}
+    ${renderEvalCharts_(evaluations)}
 
-    <div class="table-card" style="padding:16px; margin-top:12px">
+    <div class="table-card ev-depot">
       <div id="evalDropzone" class="eval-dropzone">
         <span class="eval-dropzone-icon" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14a2 2 0 0 0 2-2v-5"/><path d="M3 14v5a2 2 0 0 0 2 2h1"/></svg>
         </span>
         <p class="eval-dropzone-text">Glisse un ou plusieurs PDF ici, ou <label for="evalFileInput" class="eval-dropzone-link">choisis des fichiers</label></p>
-        <p class="eval-dropzone-sub">Fiches CD67, Ligue, stages, TIC : le type est reconnu, les notes ramenées sur 20, et un match est rattaché quand il s'agit d'une observation. Environ 20 s par fichier.</p>
+        <p class="eval-dropzone-sub">Fiches CD67, Ligue, stages, TIC : lecture directe du PDF, note telle qu'écrite dans le document, match rattaché pour les observations. 20 à 40 s par fichier. Un PDF déjà déposé n'est pas dupliqué.</p>
         <input id="evalFileInput" type="file" accept="application/pdf" multiple hidden />
       </div>
       <div id="evalProgress" class="eval-progress" hidden></div>
@@ -3744,36 +3873,19 @@ function renderProgression() {
       </div>
     </div>
 
-    ${evaluations.length ? `<div class="eval-list">${evaluations.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0)).map(ev => { const t = ev.type || "Observation de match"; const estMatch = t === "Observation de match"; return `
-      <article class="eval-card">
-        <div class="eval-head">
-          <div class="eval-note${ev.note20 === null || ev.note20 === undefined ? " is-vide" : ""}">${ev.note20 !== null && ev.note20 !== undefined ? ev.note20.toLocaleString("fr-FR") : "—"}<small>/20</small></div>
-          <div class="eval-main">
-            <div class="eval-titre"><span class="badge ${EVAL_TYPE_CLS_[t] || "gray"}">${escapeHtml(t)}</span>${ev.instance ? `<span class="badge">${escapeHtml(ev.instance)}</span>` : ""}${ev.championnat ? `<span class="badge gray">${escapeHtml(ev.championnat)}</span>` : ""}</div>
-            <strong>${escapeHtml(estMatch ? (ev.rencontre || "Match non rattaché") : (ev.rencontre || ev.championnat || t))}</strong>
-            <span class="card-sub">${escapeHtml([ev.dateEval || ev.dateMatch, ev.observateur ? "Observateur : " + ev.observateur : ""].filter(Boolean).join(" · "))}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}</span>
-          </div>
-          <div class="eval-side">
-            <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">PDF</a>
-            <button type="button" class="ct-gear" data-eval-edit="${ev.id}" title="Corriger le type ou la note" aria-label="Corriger">${ICONE_ENGRENAGE_}</button>
-          </div>
-        </div>
-        ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${ev.familles[k].toLocaleString("fr-FR")}</em></span>`).join("")}</div>` : ""}
-        ${ev.axe1 || ev.axe2 ? `<div class="eval-axes">${[ev.axe1, ev.axe2].filter(Boolean).map(a => `<span>→ ${escapeHtml(a)}</span>`).join("")}</div>` : ""}
-        ${ev.synthese ? `<details class="pr-det"><summary>Synthèse complète${ev.grille && ev.grille.length ? " et grille d'origine" : ""}</summary>
-          <div class="pr-corps">${escapeHtml(ev.synthese)}</div>
-          ${ev.grille && ev.grille.length ? `<table class="eval-grille"><tbody>${ev.grille.map(g => `<tr><td>${escapeHtml(g.critere)}</td><td>${escapeHtml(g.valeur)}</td></tr>`).join("")}</tbody></table>` : ""}
-          <button type="button" class="action-link alerte-danger" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Retirer du suivi (le PDF reste dans le Drive)</button>
-        </details>` : ""}
-      </article>`; }).join("")}</div>` : ""}
+    ${renderEvalListe_(evaluations)}
 
-    <h2 class="section-title">Plan de travail (exams QCM)</h2>
+    <details class="past-block" style="margin-top:18px">
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Thèmes faibles aux exams QCM</span>${(state.qcmStats && state.qcmStats.faiblesses_top) ? `<span class="count">${state.qcmStats.faiblesses_top.length}</span>` : ""}</span></summary>
+      <div class="past-body">
     ${(state.qcmStats && state.qcmStats.faiblesses_top && state.qcmStats.faiblesses_top.length) ? `
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Thème du règlement</th><th class="num">Erreurs cumulées (exams)</th></tr></thead>
       <tbody>${state.qcmStats.faiblesses_top.map(f => `<tr><td>${escapeHtml(f.theme)}</td><td class="num">${f.n}</td></tr>`).join("")}</tbody>
     </table></div></div>`
     : empty("Passe un exam dans l'onglet QCM : tes thèmes faibles apparaîtront ici.")}
+      </div>
+    </details>
 
     <details class="past-block" style="margin-top:18px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Historique du niveau</span><span class="count">${niveaux.length}</span></span></summary>
@@ -3923,6 +4035,21 @@ function renderProgression() {
     if (!res || !res.success || !res.result) throw new Error((res && res.error) || "Apps Script b22 pas encore déployé");
     state.evaluations = null; loadEvaluations(); setStatus(msg, "ok");
   };
+  const tg = root.querySelector("#evalStagesToggle");
+  if (tg) tg.addEventListener("change", () => { state._evalStages = tg.checked; renderProgression(); });
+  const sf = root.querySelector("#evalSaisonFiltre");
+  if (sf) sf.addEventListener("change", () => { state._evalSaison = sf.value; state._evalTout = false; renderProgression(); });
+  const vt = root.querySelector("#evalVoirTout");
+  if (vt) vt.addEventListener("click", () => { state._evalTout = true; renderProgression(); });
+  root.querySelectorAll("[data-eval-reanalyse]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true; b.textContent = "Analyse en cours (20-40 s)…";
+    try {
+      const res = await jsonp("evaluation.reanalyse", { id: b.dataset.evalReanalyse });
+      if (!res || !res.success || !res.result) throw new Error((res && res.error) || "Apps Script b24 pas encore déployé");
+      state.evaluations = null; loadEvaluations();
+      setStatus("Évaluation ré-analysée" + (res.result.noteBrute ? " · note " + res.result.noteBrute : ""), "ok");
+    } catch (err) { b.disabled = false; b.textContent = "Ré-analyser le PDF"; setStatus("Erreur : " + err.message, "error"); }
+  }));
   root.querySelectorAll("[data-eval-edit]").forEach(b => b.addEventListener("click", () => {
     const ev = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalEdit); if (!ev) return;
     ouvrirModaleEdition_({ titre: "Corriger l'évaluation", champs: [
