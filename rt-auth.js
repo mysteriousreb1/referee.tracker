@@ -991,6 +991,16 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
+      <h3>Notifications sur cet appareil</h3>
+      <p class="rt-help" id="pfPushAide">Nouveau match, annulation, paiement en retard : directement sur ce téléphone.</p>
+      <div class="rt-row">
+        <button type="button" class="rt-btn" id="pfPushOn">Activer</button>
+        <button type="button" class="rt-btn" id="pfPushOff">Désactiver</button>
+        <span class="rt-help" id="pfPushEtat" style="margin:0"></span>
+      </div>
+    </section>
+
+    <section class="rt-sect">
       <h3>Apparence</h3>
       <p class="rt-help">Thème de l'interface — mémorisé sur cet appareil.</p>
       <div class="rt-row">
@@ -1048,6 +1058,7 @@ function renderProfile() {
     try { localStorage.setItem("rt-theme", t); } catch (e) { /* stockage indisponible */ }
     toast(t === "dark" ? "Thème sombre activé." : "Thème clair activé.");
   };
+  PUSH.lier();
   const tc = document.getElementById("pfThemeClair");
   if (tc) tc.addEventListener("click", () => setTheme("light"));
   const ts = document.getElementById("pfThemeSombre");
@@ -1265,6 +1276,53 @@ function hideProfile() {
   const el = document.getElementById("rtProfile");
   if (el) el.classList.remove("is-visible");
 }
+/* ---------------- b32 — Notifications push (PWA) ----------------
+   iPhone : iOS 16.4+, app ajoutée à l'écran d'accueil (Partager → Sur l'écran
+   d'accueil), puis « Activer » ici. L'abonnement est stocké dans Supabase
+   (table push_subscriptions, RLS) ; l'envoi se fait par la fonction Supabase
+   « push » appelée par Apps Script. Clé publique VAPID ci-dessous : publique
+   par conception. */
+const PUSH_VAPID_PUBLIC = "BH95R5mQR6Wil1xDHQkiyqKPBVWTWQwaZUdqbwnGR5msRmkfjOhIh0mGVaTkP1xFOx8QAYQQ_d6Ln_lt4Eeu8-4";
+const PUSH = {
+  supporte() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; },
+  standaloneIos() { return /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches); },
+  _b64(s) { const pad = "=".repeat((4 - s.length % 4) % 4); const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...raw].map(c => c.charCodeAt(0))); },
+  async reg() { return navigator.serviceWorker.register("./sw.js", { scope: "./" }); },
+  async etat() {
+    if (!this.supporte()) return { ok: false, texte: this.standaloneIos() ? "Ajoute d'abord l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil), puis reviens ici." : "Navigateur sans notifications push." };
+    if (this.standaloneIos()) return { ok: false, texte: "Sur iPhone, ouvre l'app depuis l'écran d'accueil pour activer les notifications." };
+    try { const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription(); return { ok: !!sub, texte: sub ? "Activées sur cet appareil." : (Notification.permission === "denied" ? "Refusées dans les réglages du téléphone (Réglages → Notifications → Referee Tracker)." : "Désactivées.") }; } catch (e) { return { ok: false, texte: "" }; }
+  },
+  async activer() {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Permission refusée");
+    const r = await this.reg(); await navigator.serviceWorker.ready;
+    const sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
+    const j = sub.toJSON();
+    await SB.write("POST", "push_subscriptions?on_conflict=endpoint", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, appareil: navigator.userAgent.slice(0, 120) }).catch(async err => {
+      // doublon : on met à jour les clés
+      if (/409|duplicate/i.test(err.message || "")) return SB.write("PATCH", "push_subscriptions?endpoint=eq." + encodeURIComponent(j.endpoint), { p256dh: j.keys.p256dh, auth: j.keys.auth });
+      throw err;
+    });
+    return true;
+  },
+  async desactiver() {
+    const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription();
+    if (sub) { try { await SB.write("DELETE", "push_subscriptions?endpoint=eq." + encodeURIComponent(sub.endpoint)); } catch (e) {} await sub.unsubscribe(); }
+    return true;
+  },
+  lier() {
+    const on = document.getElementById("pfPushOn"), off = document.getElementById("pfPushOff"), et = document.getElementById("pfPushEtat");
+    if (!on || !off || !et) return;
+    const maj = async () => { const e = await this.etat(); et.textContent = e.texte; on.disabled = e.ok; off.disabled = !e.ok; };
+    on.addEventListener("click", async () => { on.disabled = true; et.textContent = "Activation…"; try { await this.activer(); } catch (err) { et.textContent = "Impossible : " + err.message; } maj(); });
+    off.addEventListener("click", async () => { off.disabled = true; try { await this.desactiver(); } catch (err) {} maj(); });
+    maj();
+  }
+};
+// Enregistrement silencieux du service worker (nécessaire pour recevoir les push déjà activés).
+if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {}); });
+
 /* ---------------- Démarrage ----------------
    app.js n'appelle plus loadData() au chargement : c'est ici qu'on décide,
    selon la présence d'une session valide, d'ouvrir l'application ou l'écran
