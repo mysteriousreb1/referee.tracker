@@ -211,7 +211,7 @@ const ECRITURES = {
   updatePaymentStatus: 1,
   "payment.update": 1, "bank.add": 1, "bank.undo": 1,
   setContact: 1,
-  deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1,
+  deleteEvaluation: 1, importAllEvaluations: 1, "evaluation.upload": 1, "evaluation.update": 1,
   addFormation: 1, deleteFormation: 1,
   addNiveau: 1, deleteNiveau: 1,
   addContact: 1, deleteContact: 1,
