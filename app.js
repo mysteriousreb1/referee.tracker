@@ -618,6 +618,10 @@ function loadPrixCarburant() {
     .then(res => {
       if (res && res.config && res.config.couts) state.couts = res.config.couts;
       if (res && res.config && Array.isArray(res.config.vehicles)) state.vehicles = res.config.vehicles;
+      // b41 — historique mensuel E10 depuis l'onglet PRIX_E10 (complète la table codée)
+      if (res && res.config && res.config.prix_e10_historique && typeof res.config.prix_e10_historique === "object") {
+        Object.keys(res.config.prix_e10_historique).forEach(k => { const v = Number(res.config.prix_e10_historique[k]); if (/^\d{4}-\d{2}$/.test(k) && v > 0.5 && v < 4) PRIX_E10[k] = v; });
+      }
       const p = res && res.config ? Number(res.config.prix_e10_actuel) : 0;
       if (p > 0.5 && p < 4 && p !== state.prixActuel) {
         state.prixActuel = p;

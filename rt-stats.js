@@ -16,6 +16,7 @@ const RT_STATS = (function () {
   function _cacheEcrire_(k, v) { return v; }
   function _cacheInvalider_() {}
   function lireCouts_() { return ENV.couts || { prix: [], entretien: [] }; }
+  function prixHistorique_() { return (ENV.prixHistorique && Object.keys(ENV.prixHistorique).length) ? ENV.prixHistorique : PRIX_E10_HISTORIQUE; }
   function lirePrixActuel_() { const n = Number(ENV.prixActuel); return (n > 0.5 && n < 4) ? n : 0; }
   function lirePrixGel_(cle) { const v = Number((ENV.prixGel || {})[cle]); return (v > 0.5 && v < 4) ? v : 0; }
   function gelerPrix_() {}            // le gel est fait côté serveur
@@ -227,7 +228,8 @@ const RT_STATS = (function () {
   if (perPrix) return perPrix.prix;
   const cle = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
   // 1. Le mois figure dans l'historique : c'est la valeur définitive
-  if (PRIX_E10_HISTORIQUE[cle]) return PRIX_E10_HISTORIQUE[cle];
+  const HISTO = prixHistorique_();
+  if (HISTO[cle]) return HISTO[cle];
   const aujourdhui = new Date();
   aujourdhui.setHours(0, 0, 0, 0);
   // 2. Match passé hors historique : on prend le mois connu le plus proche —
@@ -237,7 +239,7 @@ const RT_STATS = (function () {
   // semaine par majPrixCarburantActuel_) est une bien meilleure approximation
   // qu'un mois potentiellement vieux de plusieurs mois. MODIFICATION 19/09/2026.
   if (d < aujourdhui) {
-  const mois = Object.keys(PRIX_E10_HISTORIQUE).sort();
+  const mois = Object.keys(HISTO).sort();
   if (!mois.length) return FUEL_PRICE_PER_L;
   const dernierMoisConnu = mois[mois.length - 1];
   const moisCourant = aujourdhui.getFullYear() + "-" + String(aujourdhui.getMonth() + 1).padStart(2, "0");
