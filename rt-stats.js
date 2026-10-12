@@ -288,7 +288,10 @@ const RT_STATS = (function () {
   const groupes = {};
   entries.forEach(e => {
   if (!e.date) return;
-  const brut = e.salle || e.adresse || e.ville || "";
+  // b39 — même règle que le site (lieuDouble_) : VILLE d'abord (les salles sont
+  // écrites différemment d'une convocation à l'autre), jamais en 3x3.
+  if (String(e.format || "") === "3x3") return;
+  const brut = e.ville || e.salle || e.adresse || "";
   const lieu = normUpper_(brut).replace(/[^A-Z0-9]/g, "");
   if (!lieu) return;
   const d = e.date;
@@ -378,8 +381,11 @@ const RT_STATS = (function () {
   // Délai réel de paiement, si le match est encaissé et les deux dates connues
   const dPrevu = parseDate_(datePaiementPrevu);
   const dRecu = parseDate_(dateReception);
-  const delaiJours = (dPrevu && dRecu) ? Math.round((dRecu - dPrevu) / 86400000) : null;
   const dMatch = parseDate_(dateStr);
+  let delaiJours = (dPrevu && dRecu) ? Math.round((dRecu - dPrevu) / 86400000) : null;
+  // b39 — une réception AVANT le match ou à plus de 400 j est une date d'import
+  // (correction en lot), pas un vrai délai : on l'ignore.
+  if (delaiJours !== null && ((dMatch && dRecu < dMatch) || Math.abs(delaiJours) > 400)) delaiJours = null;
   const jourSemaine = dMatch ? dMatch.getDay() : null; // 0 = dimanche ... 6 = samedi
   const is3x3 = format === "3x3";
   const isBasketCenter = LIEUX_3X3.some(l => normUpper_(recevant).includes(l) || normUpper_(salle).includes(l));

@@ -6760,10 +6760,17 @@ function calculerEstimation_() {
 
   const semainesRestantes = Math.max(0, (fin - auj) / (7 * 86400000));
   const semainesEcoulees = Math.max(1, (auj - debut) / (7 * 86400000));
-  let ratio = 1, methode;
+  /* b39 — le ratio « rythme actuel / rythme N-1 » est très bruité en début
+     de saison (3 matchs d'avance en octobre faisaient x1,6 sur toute l'année :
+     118 matchs annoncés pour 71 l'an passé). On ne lui fait confiance qu'en
+     proportion de la saison écoulée (plein poids après 16 semaines), et on le
+     borne à [0,7 ; 1,4]. */
+  let ratio = 1, methode, ratioBrut = 1, poids = 0;
   if (prev.length && prevReste > 0) {
-    ratio = Math.min(1.6, Math.max(0.6, (faits.length + 3) / (prevEcoule + 3)));
-    methode = "calendrier connu + rythme de la saison passée (x" + ratio.toFixed(2).replace(".", ",") + " selon ton rythme actuel)";
+    ratioBrut = Math.min(1.4, Math.max(0.7, (faits.length + 3) / (prevEcoule + 3)));
+    poids = Math.min(1, semainesEcoulees / 16);
+    ratio = 1 + (ratioBrut - 1) * poids;
+    methode = "calendrier connu + rythme de la saison passée (x" + ratio.toFixed(2).replace(".", ",") + " selon ton rythme actuel, pondéré à " + Math.round(poids * 100) + " % car " + Math.round(semainesEcoulees) + " semaine(s) écoulée(s))";
   } else {
     methode = "calendrier connu + rythme actuel (pas d'historique N-1 comparable, estimation prudente)";
   }
@@ -6778,7 +6785,12 @@ function calculerEstimation_() {
      et tant que la saison compte moins de 12 missions, on complète avec
      la saison précédente (sinon 3 matchs de début de saison faussent tout). */
   const payants = faits.concat(avenir).filter(r => !r._benevole);
-  const base = payants.length >= 12 ? payants : payants.concat(prev.filter(r => !r._benevole));
+  /* b39 — valeur d'un match « à prévoir » : saison en cours + saison passée,
+     toujours (un début de saison en Championnat de France gonflait la moyenne
+     km à 80+ au lieu de ~60, d'où 9 933 km annoncés). La saison en cours pèse
+     double tant qu'elle compte moins de 30 missions, puis seule. */
+  const prevPayants = prev.filter(r => !r._benevole);
+  const base = payants.length >= 30 || !prevPayants.length ? payants : payants.concat(payants, prevPayants);
   const moy = agregEstim_(base);
   const m = { ind: base.length ? moy.ind / base.length : 0, km: base.length ? moy.km / base.length : 0 };
   const carbMoy = realFuelCostClient(m.km, auj), entMoy = m.km * entretienKmClient_(auj);
@@ -6804,7 +6816,8 @@ function calculerEstimation_() {
     Y, rF, rA, rC, totC, totB, totH, hotelsPayes: round2(hotelsPayes), hotelPrevu, nbHotelPrevu: aVenirHotel.length, ecoHotel,
     hotelsFin, netC: net(totC, hotelsFin), netB: net(totB, hotelsFin), netH: net(totH, hotelsFin),
     recuSaison, resteConnu, aToucherFin: round2(resteConnu + rC.ind), aToucherHaut: round2(resteConnu + rH.ind),
-    restantCentral, extraC, methode, semainesRestantes: Math.round(semainesRestantes), prevN: prev.length, m
+    restantCentral, extraC, methode, semainesRestantes: Math.round(semainesRestantes), prevN: prev.length, m,
+    ratio, ratioBrut, poids, prevEcoule, prevReste
   };
 }
 
@@ -6854,7 +6867,7 @@ function estInfoHtml_(e) {
     ${e.nbHotelPrevu ? `<p>Hôtels prévus : ${e.nbHotelPrevu} nuit(s) conseillée(s) à ${HOTEL_CFG.budget} € max (économie de carburant correspondante : ${F(e.ecoHotel)}, non déduite des km).</p>` : ""}
     <p><strong>Réalisé</strong> : matchs passés, valeurs réelles.</p>
     <p><strong>À venir (désignés)</strong> : désignations reçues, valorisées exactement (km réels, prix du carburant de la période).</p>
-    <p><strong>À prévoir</strong> : matchs pas encore reçus. Base : matchs arbitrés l'an dernier sur la même période restante, multipliés par ton rythme actuel (borné entre 0,6 et 1,6). Sans historique N-1 : rythme actuel réduit de 40 %. Valorisés à ta moyenne saison (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km).</p>
+    <p><strong>À prévoir</strong> : matchs pas encore reçus. Base : les ${e.prevReste || 0} matchs arbitrés l'an dernier sur la même période restante (${e.prevEcoule || 0} étaient faits à la même date, ${e.rF.n} cette saison), multipliés par ton rythme actuel x${(e.ratioBrut || 1).toFixed(2).replace(".", ",")} (borné entre 0,7 et 1,4) pondéré à ${Math.round((e.poids || 0) * 100)} % de confiance selon l'avancement de la saison, soit x${(e.ratio || 1).toFixed(2).replace(".", ",")}. Sans historique N-1 : rythme actuel réduit de 40 %. Valorisés à ta moyenne par match (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km), calculée sur cette saison et la précédente tant que la saison compte moins de 30 missions.</p>
     <p><strong>Fiabilité</strong> : la partie sûre est « Réalisé » + « À venir » (${F(round2(e.rF.ind + e.rA.ind))} d'indemnités). « À prévoir » est une projection : elle suppose que tu seras désigné autant que la saison dernière (${e.prevN} matchs en N-1) au rythme actuel. Plus la saison avance, plus elle devient fiable ; en octobre, compte une marge de ±25 %.</p>
     <p><strong>Fourchette</strong> : basse = désignations connues seules ; haute = estimation centrale + 25 %.</p>
     <p><strong>Nouvelle désignation</strong> : tout se recalcule. Elle remplace un match « à prévoir » (le total attendu est le plus grand des deux), puis elle est comptée exactement : le net ne bouge beaucoup que si tu dépasses l'estimation.</p>
@@ -6882,7 +6895,7 @@ function renderStatsAvancees(stats) {
     <h2 class="section-title">Délais de paiement réels</h2>
     ${dp.par_type && dp.par_type.length ? `
       <div class="kpi-grid">
-        ${kpi("Délai moyen constaté", dp.delai_moyen_jours !== null ? dp.delai_moyen_jours + " j" : "—", "entre la date prévue et la réception")}
+        ${kpi("Délai moyen constaté", dp.delai_moyen_jours !== null ? dp.delai_moyen_jours + " j" : "—", "réception − date prévue (négatif = payé en avance)")}
         ${kpi("Paiements avec délai connu", dp.nb_avec_delai_connu)}
       </div>
       <div class="table-card"><div class="table-wrap"><table>
