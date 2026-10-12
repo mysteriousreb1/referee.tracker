@@ -12,7 +12,7 @@ const PAYMENT_STATUSES = ["En retard", "À recevoir", "Reçu partiel", "À véri
 const BENEVOLE = "Bénévole";
 
 /* Bloc 9 (25/09/2026) — Perf & fiabilité */
-const APP_VERSION = window.RT_VERSION || "2026-10-11-b32";
+const APP_VERSION = window.RT_VERSION || "2026-10-12-b36";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
@@ -399,12 +399,111 @@ document.addEventListener("click", e => {
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".tabs .tab").forEach(t => { const l = t.querySelector(".tab-label"); if (l && !t.title) t.title = l.textContent.trim(); });
 });
+/* ---------------- b36 — Recherche par page (loupe flottante) ----------------
+   Les filtres (saison, texte, niveau, paiement, format) sont propres à chaque
+   page de la liste RECH.PAGES ; les autres pages (Accueil, Alertes, QCM…)
+   restent toujours sur la saison en cours, sans filtre. Les champs globaux
+   (state.selectedSeason, state.search…) sont ceux de la page active : on les
+   sauvegarde / restaure au changement d'onglet, le reste du code ne change pas. */
+const RECH = {
+  PAGES: ["matchs", "troisx3", "paiements", "stats", "hotel", "export", "progression", "rapports"],
+  TITRES: { matchs: "5×5", troisx3: "3×3", paiements: "Paiements", stats: "Stats", hotel: "Hôtel", export: "Export", progression: "Progression", rapports: "Rapports" },
+  parPage: {},
+  ouvert: false,
+  defaut() { return { season: getCurrentSeason(), search: "", niveau: "", statut: "", format: "" }; },
+  lire() { return { season: state.selectedSeason, search: state.search || "", niveau: state.filterNiveau, statut: state.filterStatut, format: state.filterFormat }; },
+  appliquer(f) {
+    const saisonChange = state.selectedSeason !== f.season;
+    state.selectedSeason = f.season; state.search = f.search || ""; state.searchTokens = state.search ? state.search.split(" ") : [];
+    state.filterNiveau = f.niveau || ""; state.filterStatut = f.statut || ""; state.filterFormat = f.format || "";
+    if (saisonChange) { state.serverStats = null; AN.statsCache = {}; if (typeof buildQuickFilterSelects_ === "function") buildQuickFilterSelects_(); }
+    return saisonChange;
+  },
+  changerPage(avant, apres) {
+    if (avant === apres) return;
+    if (this.PAGES.includes(avant)) this.parPage[avant] = this.lire();
+    const cible = this.PAGES.includes(apres) ? (this.parPage[apres] || this.defaut()) : this.defaut();
+    if (this.appliquer(cible) && typeof loadStats === "function") loadStats();
+    this.fermer();
+  },
+  actifs() { const f = this.lire(); return (f.season !== getCurrentSeason() ? 1 : 0) + (f.search ? 1 : 0) + (f.niveau ? 1 : 0) + (f.statut ? 1 : 0) + (f.format ? 1 : 0); },
+  majBouton() {
+    let b = document.getElementById("rtSearchFab");
+    if (!b) {
+      b = document.createElement("button"); b.id = "rtSearchFab"; b.type = "button"; b.className = "rt-fab"; b.setAttribute("aria-label", "Rechercher et filtrer");
+      b.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span class="rt-fab-badge" hidden></span>`;
+      b.addEventListener("click", () => this.ouvert ? this.fermer() : this.ouvrir());
+      document.body.appendChild(b);
+    }
+    const visible = this.PAGES.includes(state.activeTab);
+    b.hidden = !visible;
+    const n = this.actifs(), badge = b.querySelector(".rt-fab-badge");
+    badge.hidden = !n; badge.textContent = String(n);
+    b.classList.toggle("is-filtered", n > 0);
+    if (!visible) this.fermer();
+  },
+  ouvrir() {
+    this.fermer();
+    const f = this.lire(), page = state.activeTab;
+    const saisons = ["Toutes les saisons", ...getSeasonsFrom2022ToCurrent().slice().reverse()];
+    const rowsSaison = state.allRows.filter(r => f.season === "Toutes les saisons" || r._season === f.season);
+    const vals = k => [...new Set(rowsSaison.map(r => cleanText(get(r, k))).filter(Boolean))].sort();
+    const opts = (liste, cour) => `<option value="">Tous</option>` + liste.map(v => `<option value="${escapeHtml(v)}"${v === cour ? " selected" : ""}>${escapeHtml(v)}</option>`).join("");
+    const avecPaiement = ["paiements", "matchs", "troisx3", "export", "stats"].includes(page);
+    const avecFormat = ["paiements", "stats", "export", "hotel"].includes(page);
+    const el = document.createElement("div");
+    el.id = "rtSearchLayer"; el.className = "rt-search-layer";
+    el.innerHTML = `<div class="rt-search-backdrop"></div>
+      <section class="rt-search" role="dialog" aria-modal="true" aria-label="Recherche">
+        <header class="rt-search-head"><div><span class="rt-search-kicker">Recherche · ${escapeHtml(this.TITRES[page] || "")}</span><h3>Que cherches-tu ?</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer">✕</button></header>
+        <div class="rt-search-field"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(document.getElementById("searchInput") ? document.getElementById("searchInput").value : "")}" autocomplete="off"></div>
+        <div class="rt-search-sec"><label>Saison</label><div class="rt-chips" id="rtSearchSaisons">${saisons.map(sa => `<button type="button" class="rt-chip${sa === f.season ? " is-on" : ""}" data-saison="${escapeHtml(sa)}">${sa === "Toutes les saisons" ? "Toutes" : escapeHtml(sa)}</button>`).join("")}</div></div>
+        <div class="rt-search-grid">
+          <div class="rt-search-sec"><label for="rtSearchNiveau">Niveau</label><select id="rtSearchNiveau">${opts(vals("Niveau administratif"), f.niveau)}</select></div>
+          ${avecPaiement ? `<div class="rt-search-sec"><label for="rtSearchStatut">Paiement</label><select id="rtSearchStatut">${opts(vals("Statut paiement"), f.statut)}</select></div>` : ""}
+          ${avecFormat ? `<div class="rt-search-sec"><label for="rtSearchFormat">Format</label><select id="rtSearchFormat">${opts(["5x5", "3x3"], f.format)}</select></div>` : ""}
+        </div>
+        <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount"></span><div><button type="button" class="rt-btn" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
+      </section>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("is-open"));
+    this.ouvert = true;
+    const maj = () => {
+      const nf = { season: el.querySelector(".rt-chip.is-on").dataset.saison, search: normaliserRecherche(el.querySelector("#rtSearchInput").value), niveau: (el.querySelector("#rtSearchNiveau") || {}).value || "", statut: (el.querySelector("#rtSearchStatut") || {}).value || "", format: (el.querySelector("#rtSearchFormat") || {}).value || "" };
+      const saisonChange = this.appliquer(nf);
+      const si = document.getElementById("searchInput"); if (si) si.value = el.querySelector("#rtSearchInput").value;
+      if (saisonChange && typeof loadStats === "function") loadStats();
+      renderAll(); this.majBouton();
+      const n = state.filteredRows.filter(r => r._format !== "Alerte").length;
+      el.querySelector("#rtSearchCount").textContent = n + " mission" + (n > 1 ? "s" : "");
+    };
+    let t = 0;
+    el.querySelector("#rtSearchInput").addEventListener("input", () => { clearTimeout(t); t = setTimeout(maj, 160); });
+    el.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { el.querySelectorAll(".rt-chip").forEach(x => x.classList.remove("is-on")); c.classList.add("is-on"); maj(); }));
+    el.querySelectorAll("select").forEach(sel => sel.addEventListener("change", maj));
+    el.querySelector("#rtSearchReset").addEventListener("click", () => { el.querySelector("#rtSearchInput").value = ""; el.querySelectorAll(".rt-chip").forEach(x => x.classList.toggle("is-on", x.dataset.saison === getCurrentSeason())); el.querySelectorAll("select").forEach(x => x.value = ""); maj(); });
+    el.querySelector("#rtSearchOk").addEventListener("click", () => this.fermer());
+    el.querySelector("#rtSearchClose").addEventListener("click", () => this.fermer());
+    el.querySelector(".rt-search-backdrop").addEventListener("click", () => this.fermer());
+    this._esc = e => { if (e.key === "Escape") this.fermer(); };
+    document.addEventListener("keydown", this._esc);
+    maj();
+    if (window.innerWidth > 767) setTimeout(() => { const i = el.querySelector("#rtSearchInput"); if (i) i.focus(); }, 60);
+  },
+  fermer() {
+    const el = document.getElementById("rtSearchLayer");
+    if (el) { el.classList.remove("is-open"); setTimeout(() => el.remove(), 200); }
+    if (this._esc) { document.removeEventListener("keydown", this._esc); this._esc = null; }
+    this.ouvert = false;
+  }
+};
 function setActiveTab(tab) {
   if (tab === "monespace") {
     const d = state.meLast || "elicence";
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
+  RECH.changerPage(state.activeTab, tab);   // b36 : filtres propres à chaque page
   state.activeTab = tab;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab || (b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
   const plus = document.getElementById("tabMoreBtn");   // b18 : « Plus » allumé si l'onglet ouvert est dedans
@@ -418,6 +517,7 @@ function setActiveTab(tab) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   state.filteredRows = filterRows(state.allRows);
   renderTab_(tab);
+  RECH.majBouton();
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
   if (tab === "progression" && !state.qcmStats) loadQcmStats();
 }
@@ -791,8 +891,17 @@ function safeRender_(fn, panelId, label) {
 }
 
 /* Bloc 7 (28/09/2026) — Onglet IA Règlement : Q&A sur le corpus FIBA.
-   Chat simple ; chaque question part au backend reglement.ask (Gemini). */
+   b37 — plein écran façon messagerie : fil de discussion, composeur collé en
+   bas, exemples au démarrage, chrono de réponse, gestion des documents du
+   corpus (liste, dépôt .txt/.md/.pdf, retrait, rechargement) depuis l'app. */
 const REGL_LS_KEY = "rt-reglement-hist-v1";
+const REGL_EXEMPLES_ = [
+  "Un joueur au sol garde le ballon, que siffle-t-on ?",
+  "Différence entre faute technique et antisportive ?",
+  "Faute sur un tireur à 3 points qui réussit son tir : combien de lancers ?",
+  "Le ballon touche l'arrière du panneau : dehors ou en jeu ?",
+  "Temps-mort demandé pendant un lancer franc : quand l'accorder ?"
+];
 function reglHistLoad_() {
   if (!state._reglementHist) {
     try { state._reglementHist = JSON.parse(localStorage.getItem(REGL_LS_KEY) || "[]") || []; } catch (e) { state._reglementHist = []; }
@@ -802,45 +911,149 @@ function reglHistLoad_() {
 function reglHistSave_() {
   try { localStorage.setItem(REGL_LS_KEY, JSON.stringify((state._reglementHist || []).slice(-60))); } catch (e) { /* stockage indisponible */ }
 }
+function reglHeure_(ts) {
+  if (!ts) return "";
+  try { return new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+}
+function reglMetaIa_(m) {
+  const parts = [];
+  if (m.ms && m.ms.total) parts.push(m.cache ? "instantané (cache)" : "répondu en " + (m.ms.total / 1000).toFixed(1).replace(".", ",") + " s");
+  if (m.passages) parts.push(m.passages + " passages lus");
+  const h = reglHeure_(m.ts); if (h) parts.push(h);
+  return parts.length ? `<div class="regl-meta">${escapeHtml(parts.join(" · "))}</div>` : "";
+}
 function renderReglement() {
   const root = document.getElementById("reglement");
   if (!root) return;
   const hist = reglHistLoad_();
+  const docsInfo = state._reglDocs;
+  const nbDocs = docsInfo && docsInfo.docs ? docsInfo.docs.filter(d => d.lisible).length : null;
   root.innerHTML = `
-    <h2 class="section-title">Règlement & situations <span class="count">IA</span>${hist.length ? ` <button type="button" class="small-btn secondary" id="reglClear" style="margin-left:auto">Effacer l'historique</button>` : ""}</h2>
-    <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => `
-      <div class="regl-msg regl-${m.role === "user" ? "user" : "ia"}"><div class="regl-bulle">${m.role === "user" ? escapeHtml(m.text) : reglReponseHtml_(m)}</div></div>`).join("") : `<div class="empty">Aucune question pour l'instant. Exemples : « Un joueur au sol garde le ballon, que siffle-t-on ? » · « Différence entre faute technique et antisportive ? »</div>`}</div>
-    <form class="regl-form" id="reglForm">
-      <textarea id="reglInput" rows="2" placeholder="Ta question de règlement ou ta situation…"></textarea>
-      <button type="submit" class="rt-btn regl-send" id="reglSend">Demander</button>
-    </form>
-    <div class="regl-status" id="reglStatus" role="status"></div>
-    ${renderReglementDocs_()}`;
+    <div class="regl-wrap">
+      <div class="regl-head">
+        <div class="regl-head-t">
+          <h2 class="section-title">Règlement <span class="count">IA</span></h2>
+          <div class="regl-head-sub">${nbDocs === null ? "Corpus FIBA" : nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
+        </div>
+        <div class="regl-head-act">
+          <button type="button" class="small-btn secondary" id="reglDocsBtn" title="Documents lus par l'IA">Documents</button>
+          ${hist.length ? `<button type="button" class="small-btn secondary" id="reglClear" title="Nouvelle conversation">Effacer</button>` : ""}
+        </div>
+      </div>
+      <div class="regl-chat" id="reglChat">${hist.length ? hist.map(m => m.role === "user"
+        ? `<div class="regl-msg regl-user"><div class="regl-bulle">${escapeHtml(m.text)}</div><div class="regl-meta regl-meta-u">${escapeHtml(reglHeure_(m.ts))}</div></div>`
+        : `<div class="regl-msg regl-ia"><div class="regl-avatar" aria-hidden="true">IA</div><div class="regl-col"><div class="regl-bulle">${reglReponseHtml_(m)}</div>${reglMetaIa_(m)}</div></div>`).join("")
+        : `<div class="regl-empty">
+            <div class="regl-empty-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7"/><path d="M9 11h5"/></svg></div>
+            <h3>Pose ta question de règlement</h3>
+            <p>L'IA répond à partir du règlement FIBA, des interprétations et du manuel technique. Si la situation est ambiguë, elle te demande une précision avant de trancher.</p>
+            <div class="regl-ex">${REGL_EXEMPLES_.map(x => `<button type="button" class="regl-ex-btn" data-ex="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("")}</div>
+          </div>`}
+        <div class="regl-status" id="reglStatus" role="status"></div>
+      </div>
+      <form class="regl-form" id="reglForm">
+        <textarea id="reglInput" rows="1" placeholder="Décris la situation ou pose ta question…" aria-label="Question de règlement"></textarea>
+        <button type="submit" class="regl-send" id="reglSend" aria-label="Envoyer" title="Envoyer (Entrée)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+      </form>
+    </div>`;
   attachReglementListeners_(root);
-  const chat = document.getElementById("reglChat"); if (chat) chat.scrollTop = chat.scrollHeight;
+  reglChargerDocs_();
+  reglScrollBas_();
+}
+function reglScrollBas_() {
+  const form = document.getElementById("reglForm");
+  if (!form) return;
+  requestAnimationFrame(() => { try { form.scrollIntoView({ block: "end", behavior: "auto" }); } catch (e) { window.scrollTo(0, document.body.scrollHeight); } });
 }
 
-/* Documents lus par l'IA (dossier Drive « Referee Tracker - Corpus »).
-   Pour intégrer une nouvelle version du règlement : ajouter / remplacer le
-   fichier dans ce dossier, pris en compte dès la question suivante. */
-function renderReglementDocs_() {
-  if (state._reglDocs === undefined && !state._reglDocsEnCours) {
-    state._reglDocsEnCours = true;
-    jsonp("reglement.docs").then(res => {
-      state._reglDocs = (res && res.success && res.result && res.result.ok) ? res.result : null;
-    }).catch(() => { state._reglDocs = null; }).then(() => {
-      state._reglDocsEnCours = false;
-      if (state.activeTab === "reglement") renderReglement();
+/* Documents lus par l'IA (dossier Drive « Referee Tracker - Corpus »). */
+function reglChargerDocs_(forcer) {
+  if ((state._reglDocs !== undefined && !forcer) || state._reglDocsEnCours) return Promise.resolve(state._reglDocs);
+  state._reglDocsEnCours = true;
+  return jsonp("reglement.docs").then(res => {
+    state._reglDocs = (res && res.success && res.result && res.result.ok) ? res.result : null;
+  }).catch(() => { state._reglDocs = null; }).then(() => {
+    state._reglDocsEnCours = false;
+    const sub = document.querySelector("#reglement .regl-head-sub");
+    if (sub && state._reglDocs && state._reglDocs.docs) {
+      const n = state._reglDocs.docs.filter(d => d.lisible).length;
+      sub.textContent = n + " document" + (n > 1 ? "s" : "") + " lu" + (n > 1 ? "s" : "") + " par l'IA" + (state._reglDocs.cache ? " · cache chaud" : "");
+    }
+    return state._reglDocs;
+  });
+}
+function reglTaille_(o) { o = Number(o) || 0; return o < 1024 ? o + " o" : o < 1048576 ? Math.round(o / 1024) + " Ko" : (o / 1048576).toFixed(1).replace(".", ",") + " Mo"; }
+function reglDocsModal_() {
+  const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
+  const ov = document.createElement("div");
+  ov.id = "rtmDialog"; ov.className = "rtm-ov";
+  const dessiner = () => {
+    const d = state._reglDocs;
+    const docs = d && d.docs ? d.docs : [];
+    ov.innerHTML = `<div class="rtm regl-docs-m" role="dialog" aria-modal="true" aria-label="Documents du règlement">
+      <div class="rtm-head"><h3>Documents lus par l'IA</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
+      ${state._reglDocsEnCours && !docs.length ? `<p class="card-sub">Chargement…</p>` : !d ? `<p class="card-sub">Dossier corpus introuvable (Drive « Referee Tracker - Corpus »).</p>` : `
+      <ul class="regl-doc-list">${docs.length ? docs.map(x => `
+        <li class="regl-doc${x.lisible ? "" : " regl-doc--off"}">
+          <div class="regl-doc-i">
+            <div class="regl-doc-n">${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener">${escapeHtml(x.nom)}</a>` : escapeHtml(x.nom)}</div>
+            <div class="regl-doc-s">${escapeHtml(x.type)} · ${escapeHtml(reglTaille_(x.taille))} · mis à jour le ${escapeHtml(x.maj)}${x.lisible ? "" : " · <b>non lu</b> (archive)"}</div>
+          </div>
+          <button type="button" class="small-btn secondary regl-doc-del" data-id="${escapeHtml(x.id)}" data-nom="${escapeHtml(x.nom)}" title="Retirer (corbeille Drive)">Retirer</button>
+        </li>`).join("") : `<li class="card-sub">Aucun document : dépose le règlement, les interprétations et le manuel technique.</li>`}</ul>
+      <div class="regl-doc-cache">${d.cache ? `Cache : ${d.cache.docs} document(s), ${d.cache.passages} passages, ${Math.round(d.cache.chars / 1000)} k caractères` : "Cache froid : la première question prendra quelques secondes de plus."}${d.modele ? ` · modèle ${escapeHtml(d.modele)}` : ""}</div>
+      <div class="regl-doc-add">
+        <label class="small-btn regl-doc-up"><input type="file" id="reglDocFile" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" hidden /><span>+ Ajouter un document</span></label>
+        <button type="button" class="small-btn secondary" id="reglDocReload">Recharger le corpus</button>
+        ${d.dossierUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(d.dossierUrl))}" target="_blank" rel="noopener">Ouvrir le dossier Drive</a>` : ""}
+      </div>
+      <p class="card-sub regl-doc-help">Formats : .txt, .md ou .pdf (le PDF est converti en texte). Un fichier de même nom remplace l'ancien. Le retrait envoie le fichier à la corbeille Drive (récupérable 30 jours). Pris en compte dès la question suivante.</p>
+      <div class="regl-status" id="reglDocStatus" role="status"></div>`}
+    </div>`;
+    ov.querySelector(".rtm-x").addEventListener("click", fermer);
+    const statut = (txt, err) => { const s = ov.querySelector("#reglDocStatus"); if (s) { s.textContent = txt; s.classList.toggle("is-err", !!err); } };
+    const inp = ov.querySelector("#reglDocFile");
+    if (inp) inp.addEventListener("change", async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      if (f.size > 20 * 1024 * 1024) { statut("Fichier trop gros (max 20 Mo).", true); return; }
+      statut(`Envoi de ${f.name}… ${/pdf$/i.test(f.name) ? "(conversion du PDF en texte : jusqu'à 1 min)" : ""}`);
+      ov.querySelectorAll("button, input").forEach(b => b.disabled = true);
+      try {
+        const res = await jsonp("reglement.doc.upload", { fNom: f.name, fMime: f.type || "", fData: await fichierEnBase64_(f) });
+        if (!res || !res.success || !res.result || !res.result.ok) throw new Error((res && (res.error || (res.result && res.result.error))) || "Erreur");
+        setStatus("Document ajouté : " + (res.result.fichiers || []).map(x => x.nom).join(", "), "ok");
+        await reglChargerDocs_(true); dessiner();
+      } catch (e) { ov.querySelectorAll("button, input").forEach(b => b.disabled = false); statut("Échec : " + (e.message || e), true); }
     });
-    return "";
-  }
-  return "";   // b19 : la liste des documents lus par l'IA n'est plus affichée
-  // eslint-disable-next-line no-unreachable
-  const d = state._reglDocs;
-  if (!d) return "";
-  const body = `<ul class="regl-docs">${d.docs.map(x => `<li><strong>${escapeHtml(x.nom)}</strong> <span class="sub">mis à jour le ${escapeHtml(x.maj)}</span></li>`).join("")}</ul>
-    <p class="card-sub">Nouvelle version du règlement ? Remplace ou ajoute le fichier (.txt ou Google Doc) dans <a href="${escapeHtml(safeUrl_(d.dossierUrl))}" target="_blank" rel="noopener">le dossier Drive</a>. Pris en compte à la question suivante, sans mise à jour du site.</p>`;
-  return `<div class="regl-corpus"><div class="regl-sources-t">Documents lus par l'IA</div>${body}</div>`;
+    const rl = ov.querySelector("#reglDocReload");
+    if (rl) rl.addEventListener("click", async () => {
+      statut("Relecture des documents…"); rl.disabled = true;
+      try {
+        const res = await jsonp("reglement.recharger");
+        const r = res && res.result;
+        if (!res || !res.success || !r || !r.ok) throw new Error((r && r.error) || (res && res.error) || "Erreur");
+        setStatus(`Corpus rechargé : ${r.docs} document(s), ${r.passages} passages (${(r.ms / 1000).toFixed(1).replace(".", ",")} s)`, "ok");
+        await reglChargerDocs_(true); dessiner();
+      } catch (e) { rl.disabled = false; statut("Échec : " + (e.message || e), true); }
+    });
+    ov.querySelectorAll(".regl-doc-del").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm(`Retirer « ${b.dataset.nom} » du corpus ? (il part à la corbeille Drive)`)) return;
+      statut("Retrait…"); b.disabled = true;
+      try {
+        const res = await jsonp("reglement.doc.trash", { id: b.dataset.id });
+        if (!res || !res.success || !res.result || !res.result.ok) throw new Error((res && (res.error || (res.result && res.result.error))) || "Erreur");
+        setStatus("Document retiré : " + res.result.nom, "ok");
+        await reglChargerDocs_(true); dessiner();
+      } catch (e) { b.disabled = false; statut("Échec : " + (e.message || e), true); }
+    }));
+  };
+  document.body.appendChild(ov);
+  const esc = e => { if (e.key === "Escape") fermer(); };
+  const fermer = () => { ov.remove(); document.removeEventListener("keydown", esc); };
+  ov.addEventListener("click", e => { if (e.target === ov) fermer(); });
+  document.addEventListener("keydown", esc);
+  dessiner();
+  if (state._reglDocs === undefined || state._reglDocsEnCours) reglChargerDocs_().then(() => { if (document.body.contains(ov)) dessiner(); });
 }
 
 /* b20 — réponse structurée : décision mise en avant, explication, articles,
@@ -885,16 +1098,17 @@ async function askReglement_(question, precisions) {
   // Même question déjà posée (sans précision) : réponse instantanée depuis l'historique.
   if (!precisions) for (let i = 0; i < h0.length - 1; i++) {
     if (h0[i].role === "user" && normaliserRecherche(h0[i].text) === cle && h0[i + 1].role === "ia" && String(h0[i + 1].text || "").indexOf("⚠") !== 0 && (h0[i + 1].decision || h0[i + 1].text)) {
-      h0.push({ role: "user", text: question }, Object.assign({}, h0[i + 1]));
+      h0.push({ role: "user", text: question, ts: Date.now() }, Object.assign({}, h0[i + 1], { ts: Date.now(), cache: true, ms: { total: 1 } }));
       reglHistSave_(); renderReglement(); return;
     }
   }
-  if (!precisions) state._reglementHist.push({ role: "user", text: question });
+  if (!precisions) state._reglementHist.push({ role: "user", text: question, ts: Date.now() });
   reglHistSave_();
   renderReglement();
   const status = document.getElementById("reglStatus");
   if (status) status.innerHTML = `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…`;
   const btn = document.getElementById("reglSend"); if (btn) btn.disabled = true;
+  const t0 = Date.now();
   // Contexte : la dernière réponse, pour les questions de suivi (« et si… »).
   const derniere = h0.slice().reverse().find(m => m.role === "ia" && m.decision);
   try {
@@ -908,9 +1122,10 @@ async function askReglement_(question, precisions) {
       return;
     }
     state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", explication: r.explication || "", articles: r.articles || [], precisions: precisions || null,
-      sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })) });
+      sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })),
+      ts: Date.now(), cache: !!r.cache, passages: r.passages || 0, ms: { total: Date.now() - t0, ia: r.ms && r.ms.ia } });
   } catch (err) {
-    state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") + " — renvoie ta question, elle sera retentée.", q: question });
+    state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") + " — renvoie ta question, elle sera retentée.", q: question, ts: Date.now() });
   }
   reglHistSave_();
   renderReglement();
@@ -960,23 +1175,30 @@ function attachReglementListeners_(root) {
     if (!confirm("Effacer l'historique des conversations ?")) return;
     state._reglementHist = []; reglHistSave_(); renderReglement();
   });
+  const docs = root.querySelector("#reglDocsBtn");
+  if (docs) docs.addEventListener("click", reglDocsModal_);
+  root.querySelectorAll(".regl-ex-btn").forEach(b => b.addEventListener("click", () => askReglement_(b.dataset.ex)));
   const form = root.querySelector("#reglForm");
   if (form) form.addEventListener("submit", e => {
     e.preventDefault();
     const ta = document.getElementById("reglInput");
     const q = ta ? ta.value.trim() : "";
     if (!q) return;
-    ta.value = "";
+    ta.value = ""; ta.style.height = "";
     askReglement_(q);
   });
-  // Entrée = envoi ; Maj+Entrée = nouvelle ligne (28/09 -> 30/09)
+  // Entrée = envoi ; Maj+Entrée = nouvelle ligne ; hauteur auto (max 6 lignes)
   const ta = root.querySelector("#reglInput");
-  if (ta) ta.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      if (form) { form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event("submit", { cancelable: true })); }
-    }
-  });
+  if (ta) {
+    const ajuster = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 160) + "px"; };
+    ta.addEventListener("input", ajuster);
+    ta.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (form) { form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event("submit", { cancelable: true })); }
+      }
+    });
+  }
 }
 
 /* Performance (03/10/2026) : on ne redessine QUE l'onglet visible. Les autres
@@ -1339,8 +1561,8 @@ function renderAccueil() {
   const saisonHtml = `<div class="acc-season">
     <div class="acc-s"><span class="acc-s-val">${saison.length}</span><span class="acc-s-lbl">Matchs saison</span></div>
     <div class="acc-s"><span class="acc-s-val">${aVenir.length}</span><span class="acc-s-lbl">À venir</span></div>
-    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoney(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span></div>
-    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoney(attS)}</span><span class="acc-s-lbl">En attente</span></div>
+    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoney(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span><span class="acc-s-sub">encaissés depuis le début de la saison ${escapeHtml(state.selectedSeason || "")}</span></div>
+    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoney(attS)}</span><span class="acc-s-lbl">En attente</span><span class="acc-s-sub">reste à percevoir sur la saison · ${saison.filter(r => (r._reste || 0) > 0).length} mission(s)</span></div>
   </div>`;
   root.innerHTML = `
     ${bienvenue}
@@ -2296,12 +2518,15 @@ function renderPaiements() {
   const retards = rows.filter(paiementEnRetard);
   root.innerHTML = `
     <h2 class="section-title">Paiements</h2>
-    <p class="mp-line">Reste dû : <strong>${formatMoney(totalDu)}</strong> · Déjà reçu : <strong>${formatMoney(totalRecu)}</strong>${benevoles.length ? " · Bénévole : <strong>" + benevoles.length + "</strong>" : ""}</p>
+    <div class="kpi-grid pay-kpis">
+      <div class="kpi hero pay-kpi-attente"><label>En attente de virement</label><strong>${formatMoney(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
+      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
+    </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
+    <div class="rb-pc-only">${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}</div>
     <h2 class="section-title">Missions par statut</h2>
     ${retards.length ? bloc("En retard (échéance dépassée)", retards, false) : ""}
     ${order.filter(k => grouped[k]).map(status => bloc(status, grouped[status], false)).join("")}
-    <div class="rb-pc-only">${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}</div>
     <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
   `;
   attachCardListeners(root);
@@ -2436,7 +2661,6 @@ function renderAnalysePaiements_(rows) {
   return `
     <section class="pa-wrap">
       <h2 class="section-title">Analyse des paiements</h2>
-      <p class="pa-intro">Calculé sur la saison sélectionnée (filtres du haut appliqués). « Reçu » = montants réellement encaissés, datés au jour du versement. « Attendu » = reste dû, placé au mois de son échéance. Bénévolat exclu.</p>
       <div class="pa-kpis">
         <div class="pa-kpi"><label>Reçu sur la saison</label><strong>${formatMoney(D.recuTot)}</strong><span>${D.meilleur ? "meilleur mois : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
         <div class="pa-kpi"><label>Reste à percevoir</label><strong>${formatMoney(D.resteTot)}</strong><span>missions jouées ou à venir, non soldées</span></div>
@@ -3777,22 +4001,24 @@ function renderEvalCard_(ev) {
   const syn = String(ev.synthese || "").split(/\n\nPoints forts\s*:/)[0].replace(/^Synthèse\s*:\s*/, "").trim();
   const axes = [ev.axe1, ev.axe2].filter(Boolean);
   return `
-      <article class="eval-card">
-        <div class="eval-head">
+      <details class="eval-card eval-card--pliee">
+        <summary class="eval-head">
           <div class="eval-note${ev.note20 === null || ev.note20 === undefined ? " is-vide" : ""}">${evalNoteHtml_(ev)}</div>
           <div class="eval-main">
             <div class="eval-titre"><span class="badge ${EVAL_TYPE_CLS_[t] || "gray"}">${escapeHtml(t)}</span>${ev.instance ? `<span class="badge">${escapeHtml(ev.instance)}</span>` : ""}${ev.championnat ? `<span class="badge gray">${escapeHtml(ev.championnat)}</span>` : ""}${ev.saison ? `<span class="badge gray">${escapeHtml(ev.saison)}</span>` : ""}</div>
             <strong>${escapeHtml(estMatch ? (ev.rencontre || "Match non rattaché") : (ev.rencontre || ev.championnat || t))}</strong>
             <span class="card-sub">${escapeHtml([ev.dateEval || ev.dateMatch, ev.observateur ? "Observateur : " + ev.observateur : ""].filter(Boolean).join(" · "))}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}${ev.statut && !/^Analysé/.test(ev.statut) ? ` · <span class="ev-down">${escapeHtml(ev.statut)}</span>` : ""}</span>
           </div>
-          <div class="eval-side">
-            <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">PDF</a>
-            <button type="button" class="ct-gear" data-eval-edit="${ev.id}" title="Corriger le type ou la note" aria-label="Corriger">${ICONE_ENGRENAGE_}</button>
-          </div>
+          <div class="eval-side"><span class="eval-chevron" aria-hidden="true"></span></div>
+        </summary>
+        <div class="eval-corps">
+        <div class="actions ev-actions-haut">
+          <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">Ouvrir le PDF</a>
+          <button type="button" class="small-btn secondary" data-eval-edit="${ev.id}">Corriger type / note</button>
         </div>
         ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${ev.familles[k].toLocaleString("fr-FR")}</em></span>`).join("")}</div>` : ""}
         ${axes.length ? `<div class="eval-axes">${axes.map(a => `<span>→ ${escapeHtml(a)}</span>`).join("")}</div>` : ""}
-        <details class="pr-det"><summary>Détail de l'évaluation</summary>
+        <details class="pr-det" open><summary>Détail de l'évaluation</summary>
           ${syn ? `<div class="ev-bloc"><b>Synthèse</b><p>${escapeHtml(syn)}</p></div>` : ""}
           ${ev.pointsForts && ev.pointsForts.length ? `<div class="ev-bloc"><b>Points forts</b><ul>${ev.pointsForts.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}
           ${ev.plan && ev.plan.length ? `<div class="ev-bloc"><b>Plan de travail</b><ol>${ev.plan.map(x => `<li>${escapeHtml(evalSansPrefixe_(x))}</li>`).join("")}</ol></div>` : ""}
@@ -3802,20 +4028,20 @@ function renderEvalCard_(ev) {
             <button type="button" class="action-link alerte-danger" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Retirer du suivi (le PDF reste dans le Drive)</button>
           </div>
         </details>
-      </article>`;
+        </div>
+      </details>`;
 }
 function renderEvalListe_(evaluations) {
   if (!evaluations.length) return "";
-  const saisons = Array.from(new Set(evaluations.map(ev => ev.saison).filter(Boolean))).sort().reverse();
-  const filtre = state._evalSaison && saisons.includes(state._evalSaison) ? state._evalSaison : "";
-  const liste = evaluations.filter(ev => !filtre || ev.saison === filtre).sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
-  const LIM = 3, tout = state._evalTout || liste.length <= LIM;
-  const visibles = tout ? liste : liste.slice(0, LIM);
+  // Par défaut (saison en cours) : tout l'historique ; une saison passée choisie dans la loupe filtre.
+  const saison = state.selectedSeason && state.selectedSeason !== "Toutes les saisons" && state.selectedSeason !== getCurrentSeason() ? state.selectedSeason : "";
+  const liste = evaluations.filter(ev => !saison || ev.saison === saison || !ev.saison).sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
+  const total = evaluations.length;
   return `
-    <div class="ev-liste-head"><h2 class="section-title" style="margin:0">Toutes les évaluations <span class="count">${liste.length}</span></h2>
-      ${saisons.length > 1 ? `<select id="evalSaisonFiltre" class="ev-select"><option value="">Toutes les saisons</option>${saisons.map(sa => `<option value="${escapeHtml(sa)}"${sa === filtre ? " selected" : ""}>${escapeHtml(sa)}</option>`).join("")}</select>` : ""}</div>
-    <div class="eval-list">${visibles.map(renderEvalCard_).join("")}</div>
-    ${!tout ? `<div class="actions" style="margin-top:10px"><button type="button" class="small-btn secondary" id="evalVoirTout">Voir les ${liste.length - LIM} autres</button></div>` : ""}`;
+    <details class="past-block eval-exams" data-panel="progression-exams"${PASSES_OUVERTS["progression-exams"] ? " open" : ""}>
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Mes exams</span><span class="count">${liste.length}${liste.length !== total ? " / " + total : ""}</span><span class="pay-bloc-tot">${saison ? escapeHtml(saison) : "toutes saisons"} · loupe pour changer</span></span></summary>
+      <div class="past-body">${liste.length ? `<div class="eval-list">${liste.map(renderEvalCard_).join("")}</div>` : empty("Aucune évaluation sur cette saison.")}</div>
+    </details>`;
 }
 
 function renderDesignationsParNiveau_() {
@@ -4091,6 +4317,7 @@ function renderProgression() {
       { id: "note20", label: "Note / 20", value: ev.note20 === null || ev.note20 === undefined ? "" : String(ev.note20), type: "number" }
     ], onSave: v => majEval(ev.id, { type: v.type, note20: v.note20 }, "Évaluation corrigée") });
   }));
+  root.querySelectorAll(".eval-head button, .eval-head a").forEach(b => b.addEventListener("click", e => e.stopPropagation()));
   root.querySelectorAll("[data-eval-lier]").forEach(b => b.addEventListener("click", () => {
     const ev = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalLier); if (!ev) return;
     const d = evalDate_(ev);
@@ -6288,17 +6515,11 @@ function renderAnalyse() {
   }
 
   // Saison retenue pour l'ensemble de l'onglet Analyse
-  AN.saison = resoudreSaison_(AN.saison, toutes);
+  AN.saison = resoudreSaison_(state.selectedSeason || AN.saison, toutes);   // b35 : suit la saison globale (menu recherche à venir)
   const rows = filtrerParSaison_(toutes, AN.saison);
 
   if (!rows.length) {
     root.innerHTML = `
-      <div class="analysis-toolbar">
-        <div class="chart-filter">
-          <label for="saisonAnalyse">Saison analysée</label>
-          <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
-        </div>
-      </div>
       ${empty("Aucune mission pour cette saison.")}
     `;
     brancherSelecteurAnalyse_();
@@ -6324,13 +6545,7 @@ function renderAnalyse() {
   const montantDu = nonPayes.reduce((t, r) => t + r._brut, 0);
 
   root.innerHTML = `
-    <div class="analysis-toolbar">
-      <div class="chart-filter">
-        <label for="saisonAnalyse">Saison analysée</label>
-        <select id="saisonAnalyse">${optionsSaison_(toutes, AN.saison)}</select>
-      </div>
-      <div class="toolbar-summary">${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div>
-    </div>
+    <div class="analysis-toolbar"><div class="toolbar-summary"><strong>${escapeHtml(AN.saison)}</strong> · ${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div></div>
 
     ${renderAnalyseHero(brut, carburant, net, partGardee, rows.length, kmTotal, heuresTotal)}
 
@@ -8042,17 +8257,18 @@ async function chargerEmarque_(reveler) {
     if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
     if (!res.data) throw new Error("Apps Script b19 pas encore déployé");
     state.emarque = { defini: res.data.defini, masque: res.data.masque, clair: reveler ? res.data.cle : "" };
-    if (reveler) { clearTimeout(state._emqT); state._emqT = setTimeout(() => { if (state.emarque) { state.emarque.clair = ""; if (state.activeTab === "elicence") rerenderPerso_(); } }, 30000); }
+    if (reveler) state._emqSession = res.data.cle;   // b35 : mémorisée en mémoire jusqu'à la fermeture (jamais sur disque)
   } catch (err) { state.emarque = { erreur: err.message }; }
   if (state.activeTab === "elicence") rerenderPerso_();
 }
 function attachEmarque_(root) {
   const q = id => root.querySelector("#" + id);
-  if (q("emqVoir")) q("emqVoir").addEventListener("click", () => { if (state.emarque.clair) { state.emarque.clair = ""; rerenderPerso_(); } else chargerEmarque_(true); });
+  if (q("emqVoir")) q("emqVoir").addEventListener("click", () => { if (state.emarque.clair) { state.emarque.clair = ""; rerenderPerso_(); } else if (state._emqSession) { state.emarque.clair = state._emqSession; rerenderPerso_(); } else chargerEmarque_(true); });
   if (q("emqCopier")) q("emqCopier").addEventListener("click", async () => {
     try {
       let k = state.emarque.clair;
-      if (!k) { const r = await jsonp("emarque.get", { reveler: "1" }); k = r && r.data && r.data.cle; }
+      if (!k) k = state._emqSession;
+      if (!k) { const r = await jsonp("emarque.get", { reveler: "1" }); k = r && r.data && r.data.cle; state._emqSession = k; }
       if (!k) throw new Error("clé indisponible");
       await navigator.clipboard.writeText(k);
       setStatus("Clé copiée", "ok");

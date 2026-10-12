@@ -291,6 +291,7 @@ function sb_matchVersSheet_(r) {
     const c = SB_MATCH_COLS[h], v = r[c];
     if (SB_DATES[c]) o[h] = sb_dateFr_(v);
     else if (c === "derniere_maj") o[h] = v ? sb_dateFr_(v) + " " + String(v).slice(11, 16) : "";
+    else if (c === "heure_rdv") { const t = String(v == null ? "" : v); const m = t.match(/(\d{1,2}):(\d{2})/); o[h] = /^1899/.test(t) && !m ? "" : (m ? m[1].padStart(2, "0") + ":" + m[2] : t); }   // b34 : heure Sheets (1899-12-30) → HH:MM
     else if (typeof v === "number") o[h] = sb_num_(v);
     else o[h] = sb_txt_(v);
   });
@@ -1323,6 +1324,60 @@ const PUSH = {
 // Enregistrement silencieux du service worker (nécessaire pour recevoir les push déjà activés).
 if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {}); });
 
+/* ---------------- b35 — Confirmations (annulation reçue par mail) ----------------
+   Le robot a reconnu un mail #RT-ANNULATION : il n'annule rien, il crée une
+   demande (table confirmations) et envoie un push. Ici on l'affiche et on
+   applique la décision. */
+const CONFIRM = {
+  _vues: {},
+  async verifier() {
+    if (!SB.actif) return;
+    let liste = [];
+    try { liste = await SB.get("confirmations?select=*&statut=eq.en_attente&order=id.desc&limit=10"); } catch (e) { return; }
+    const c = liste.find(x => !this._vues[x.id]);
+    if (c) this.afficher(c);
+  },
+  afficher(c) {
+    this._vues[c.id] = 1;
+    document.querySelectorAll(".rt-confirm").forEach(e => e.remove());
+    const el = document.createElement("div");
+    el.className = "rt-confirm";
+    el.innerHTML = `<div class="rt-confirm-card" role="dialog" aria-modal="true">
+      <span class="rt-confirm-tag">Annulation reçue par mail</span>
+      <h2>Annuler ce match ?</h2>
+      <p class="rt-confirm-lib">${esc(c.libelle || c.uid || "")}</p>
+      <p class="rt-confirm-aide">Le match passera en « Annulé », l'événement d'agenda sera retiré. Rien n'a encore été modifié.</p>
+      <div class="rt-confirm-actions">
+        <button type="button" class="rt-btn rt-btn-danger" id="rtConfirmOui">Oui, annuler le match</button>
+        <button type="button" class="rt-btn" id="rtConfirmNon">Non, garder le match</button>
+      </div>
+      <div class="rt-login-msg" id="rtConfirmMsg" role="status"></div>
+    </div>`;
+    document.body.appendChild(el);
+    const msg = el.querySelector("#rtConfirmMsg");
+    const decider = async (oui) => {
+      el.querySelectorAll("button").forEach(b => b.disabled = true);
+      msg.textContent = oui ? "Annulation en cours…" : "C'est noté.";
+      try {
+        if (oui) {
+          const r = await jsonp("mission.annuler", { uid: c.uid });
+          if (!r || r.success === false) throw new Error((r && r.error) || "Annulation refusée");
+          sbSyncArrierePlan("matchs");
+        }
+        await SB.write("PATCH", "confirmations?id=eq." + c.id, { statut: oui ? "confirme" : "refuse", decided_at: new Date().toISOString() });
+        el.remove();
+        try { if (typeof setStatus === "function") setStatus(oui ? "Match annulé" : "Match conservé", "ok"); if (typeof loadData === "function") loadData(); } catch (e) {}
+        this.verifier();
+      } catch (err) {
+        msg.textContent = "Erreur : " + err.message; msg.className = "rt-login-msg is-error";
+        el.querySelectorAll("button").forEach(b => b.disabled = false);
+      }
+    };
+    el.querySelector("#rtConfirmOui").addEventListener("click", () => decider(true));
+    el.querySelector("#rtConfirmNon").addEventListener("click", () => decider(false));
+  }
+};
+
 /* ---------------- Démarrage ----------------
    app.js n'appelle plus loadData() au chargement : c'est ici qu'on décide,
    selon la présence d'une session valide, d'ouvrir l'application ou l'écran
@@ -1340,7 +1395,10 @@ function startApp() {
   // aucune ligne. Le report laisse app.js finir son initialisation.
   setTimeout(function () {
     if (typeof loadData === "function") loadData();
+    setTimeout(() => { try { CONFIRM.verifier(); } catch (e) {} }, 1500);   // b35
   }, 0);
+  // Retour depuis la notification push : on revérifie quand l'app reprend le premier plan.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { try { CONFIRM.verifier(); } catch (e) {} } });
 
   // b26 — préchargement discret des lectures Apps Script lentes (QCM, enjeux,
   // classements, config) : les onglets s'ouvrent ensuite sans attente.
