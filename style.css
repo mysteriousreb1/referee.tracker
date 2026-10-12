@@ -3651,3 +3651,74 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
   .regl-ex-btn { font-size: 12.5px; padding: 7px 11px; }
   .regl-doc-del { padding: 6px 10px; font-size: 12.5px; }
 }
+
+/* =====================================================================
+   b38 — écrans : téléphone (tableaux empilés, onglets défilants, 16 px),
+   grand écran (largeur fluide ≤ 1600 px, grilles 3-4 colonnes), iPad.
+   ===================================================================== */
+/* --- Téléphone --- */
+@media (max-width: 767px) {
+  body { font-size: 16px; }
+  .panel p, .card-sub, .stat-note, .empty { font-size: 14.5px; }
+  input, select, textarea, button { font-size: 16px; }   /* évite le zoom iOS au focus */
+  .small-btn { font-size: 14px; }
+  th, td { font-size: 14px; }
+  /* Onglets mini : une ligne qui défile, plus de troncature */
+  .tabs-mini { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; border-radius: 14px; }
+  .tabs-mini::-webkit-scrollbar { display: none; }
+  .tabs-mini-btn { flex: 0 0 auto; white-space: nowrap; font-size: 13.5px; padding: 9px 13px; }
+  /* Tableaux ≥ 4 colonnes : une carte par ligne */
+  .table-wrap table.rt-stack { min-width: 0; width: 100%; }
+  .table-wrap table.rt-stack thead { display: none; }
+  .table-wrap table.rt-stack, .table-wrap table.rt-stack tbody { display: block; }
+  .table-wrap table.rt-stack tr { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .table-wrap table.rt-stack tr:last-child { border-bottom: 0; }
+  .table-wrap table.rt-stack td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0; border: 0; text-align: right; font-size: 14px; white-space: normal; }
+  .table-wrap table.rt-stack td[data-label]::before { content: attr(data-label); flex: 0 0 42%; text-align: left; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .table-wrap table.rt-stack td:not([data-label]) { justify-content: flex-start; text-align: left; font-weight: 700; }
+  .table-wrap table.rt-stack td:empty { display: none; }
+  .table-wrap table.rt-stack td:first-child { font-weight: 700; }
+  .table-wrap table.rt-stack tfoot tr { display: block; background: var(--surface-2); }
+  .table-wrap table.rt-stack tfoot td { display: flex; }
+  #stats th, #stats td { white-space: normal; }
+  /* Petits tableaux (2-3 colonnes) : défilement horizontal, sans largeur minimale forcée */
+  .table-wrap table.rt-nostack { min-width: 0; }
+  .table-wrap table.rt-nostack th, .table-wrap table.rt-nostack td { padding: 9px 8px; }
+}
+/* --- iPad / fenêtre moyenne : 2 colonnes --- */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .acc-days, .mp-tuiles, .km-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .we-days { grid-template-columns: 1fr; }
+  .pa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page { padding-left: 16px; padding-right: 16px; }
+}
+/* --- Grand écran : largeur fluide jusqu'à 1600 px, grilles 3-4 colonnes --- */
+@media (min-width: 1400px) {
+  .page { max-width: 1840px !important; padding-left: 40px; padding-right: 40px; }
+  .panel { max-width: 1600px !important; }
+  .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .kpi.hero { grid-column: 1 / -1; }
+  .acc-days, .we-days { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mp-tuiles, .km-cols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pa-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  th, td { font-size: 13.5px; }
+  .regl-wrap { max-width: 1100px; }
+}
+@media (min-width: 1800px) {
+  .page { max-width: 1900px !important; }
+  .panel { max-width: 1640px !important; }
+}
+/* Badge « Payé » / bleu lisibles en sombre (le texte foncé codé en dur disparaissait) */
+:root[data-theme="dark"] .badge.green { color: #8FF0C2; background: rgba(63,206,134,.18); border-color: rgba(63,206,134,.45); }
+:root[data-theme="dark"] .badge.blue { color: #BFD4FF; background: rgba(47,111,224,.2); border-color: rgba(47,111,224,.5); }
+:root[data-theme="dark"] .badge.gray { color: #C9D2E3; background: rgba(255,255,255,.08); }
+/* b38 — cartes de match sur téléphone : la date ne chevauche plus le club */
+@media (max-width: 767px) {
+  .mrow-card .card-head.mrow { grid-template-columns: 74px minmax(0, 1fr) auto; gap: 8px; }
+  .mrow-date { overflow: hidden; }
+  .mrow-date strong { font-size: 12px; letter-spacing: -.02em; }
+  .mrow-date span { font-size: 11px; }
+  .mrow-main .card-title { font-size: 15.5px; }
+  .mrow-main .card-sub { font-size: 13px; }
+}

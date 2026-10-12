@@ -1222,6 +1222,21 @@ const TAB_RENDERERS_ = {
 };
 
 /* Un seul grand titre par page : le premier h2 du panneau, les suivants deviennent des sous-titres. */
+/* b38 — tableaux empilés sur téléphone : chaque cellule reçoit l'intitulé de
+   sa colonne (data-label) ; le CSS (≤ 767 px) transforme alors chaque ligne en
+   carte « intitulé : valeur ». Tables ≥ 4 colonnes seulement (les petites
+   restent en tableau), sauf .no-stack. */
+function etiqueterTableaux_() {
+  document.querySelectorAll(".table-wrap table:not(.rt-stack):not(.no-stack):not(.rt-nostack)").forEach(t => {
+    const ths = t.tHead ? Array.from(t.tHead.querySelectorAll("th")) : [];
+    if (ths.length < 4) { t.classList.add("rt-nostack"); return; }
+    const labels = ths.map(th => th.textContent.replace(/\s+/g, " ").trim());
+    Array.from(t.tBodies).forEach(tb => Array.from(tb.rows).forEach(tr => {
+      let i = 0; Array.from(tr.cells).forEach(td => { if (td.colSpan === 1 && labels[i] && !td.hasAttribute("data-label")) td.setAttribute("data-label", labels[i]); i += td.colSpan || 1; });
+    }));
+    t.classList.add("rt-stack");
+  });
+}
 let _titresId = 0;
 function harmoniserTitres_() {
   _titresId = 0;
@@ -1235,7 +1250,7 @@ function harmoniserTitres_() {
   });
 }
 (function () {
-  const lancer = () => { if (_titresId) return; _titresId = requestAnimationFrame(() => { try { harmoniserTitres_(); } catch (_) {} }); };
+  const lancer = () => { if (_titresId) return; _titresId = requestAnimationFrame(() => { try { harmoniserTitres_(); etiqueterTableaux_(); } catch (_) {} }); };
   const init = () => { const c = document.querySelector(".content") || document.body; new MutationObserver(lancer).observe(c, { childList: true, subtree: true }); lancer(); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
