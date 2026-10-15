@@ -177,6 +177,29 @@ const RT_PAIEMENTS = (function () {
       return isFinite(n) ? Math.round(n * 100) / 100 : 0;
     }
   
+    /* b44 (A25) — saisie utilisateur : vide = 0, sinon nombre ≥ 0 et ≤ 10 000 €,
+       sinon erreur (la valeur précédente n'est jamais écrasée par du texte). */
+    function montantSaisi_(v, libelle) {
+      if (v === "" || v === null || v === undefined) return 0;
+      var n = Number(String(v).replace(/\s/g, "").replace(",", "."));
+      if (!isFinite(n) || n < 0 || n > 10000) throw new Error("Montant invalide pour « " + libelle + " » : " + String(v).slice(0, 20));
+      return Math.round(n * 100) / 100;
+    }
+    function dateSaisie_(v, libelle) {
+      if (v === "" || v === null || v === undefined) return "";
+      var d = date_(v);
+      if (!d) throw new Error("Date invalide pour « " + libelle + " » : " + String(v).slice(0, 20));
+      return formatDate_(d);
+    }
+  
+    function recuRecevantRecalcul_(row, map) {
+      var r = val_(row, map, "Reçu recevant"), v = val_(row, map, "Reçu visiteur");
+      var vide = function (x) { return x === "" || x === null || x === undefined; };
+      if (!vide(r)) return nombre_(r);
+      if (vide(v)) return nombre_(val_(row, map, "Montant reçu"));
+      return 0;
+    }
+  
     function centimes_(v) {
       return Math.round(nombre_(v) * 100);
     }
@@ -186,9 +209,11 @@ const RT_PAIEMENTS = (function () {
       if (!v) return null;
       if (v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
       var t = String(v).trim(), m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+      // b44 (A25) — date impossible (31/02) refusée au lieu d'être décalée au 03/03.
+      var ok = function (y, mo, j) { var d = new Date(y, mo - 1, j); return (d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === j) ? d : null; };
+      if (m) return ok(+m[3], +m[2], +m[1]);
       m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);   // accepte aussi « 2026-04-30 0:00:00 »
-      if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+      if (m) return ok(+m[1], +m[2], +m[3]);
       var d = new Date(t);
       return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
     }
@@ -479,14 +504,14 @@ const RT_PAIEMENTS = (function () {
   
       var total = nombre_(val_(row, map, "Indemnité totale"));
       var rep = repartition_(regime, total);
-      var recuR = params.recu_recevant !== undefined ? nombre_(params.recu_recevant) : nombre_(val_(row, map, "Reçu recevant"));
-      var recuV = params.recu_visiteur !== undefined ? nombre_(params.recu_visiteur) : nombre_(val_(row, map, "Reçu visiteur"));
+      var recuR = params.recu_recevant !== undefined ? montantSaisi_(params.recu_recevant, "Reçu recevant") : nombre_(val_(row, map, "Reçu recevant"));
+      var recuV = params.recu_visiteur !== undefined ? montantSaisi_(params.recu_visiteur, "Reçu visiteur") : nombre_(val_(row, map, "Reçu visiteur"));
       var modeR = params.mode_recevant !== undefined ? String(params.mode_recevant) : String(val_(row, map, "Mode recevant") || val_(row, map, "Mode paiement") || "");
       var modeV = params.mode_visiteur !== undefined ? String(params.mode_visiteur) : String(val_(row, map, "Mode visiteur") || "");
       if (MODES.indexOf(modeR) === -1 || MODES.indexOf(modeV) === -1) throw new Error("Mode de paiement non autorisé");
   
-      var dateR = params.date_recu_recevant !== undefined ? formatDate_(date_(params.date_recu_recevant)) : String(val_(row, map, "Date reçu recevant") || "");
-      var dateV = params.date_recu_visiteur !== undefined ? formatDate_(date_(params.date_recu_visiteur)) : String(val_(row, map, "Date reçu visiteur") || "");
+      var dateR = params.date_recu_recevant !== undefined ? dateSaisie_(params.date_recu_recevant, "Date reçu recevant") : String(val_(row, map, "Date reçu recevant") || "");
+      var dateV = params.date_recu_visiteur !== undefined ? dateSaisie_(params.date_recu_visiteur, "Date reçu visiteur") : String(val_(row, map, "Date reçu visiteur") || "");
       var aujourdHui = formatDate_(new Date());
       var dateMarquage = params.date_reception ? formatDate_(date_(params.date_reception)) : aujourdHui;
       if (recuR > 0 && !dateR) dateR = aujourdHui;
@@ -635,7 +660,10 @@ const RT_PAIEMENTS = (function () {
             regime: regime,
             benevole: false,
             total: total,
-            recuR: nombre_(val_(row, map, "Reçu recevant")) || nombre_(val_(row, map, "Montant reçu")),
+            // b44 (A17) — le repli « Montant reçu » (lignes historiques sans parts)
+            // ne s'applique que si AUCUNE part n'est renseignée. Avant : un recevant
+            // à 0 reprenait le total déjà reçu du visiteur → compté deux fois → « Reçu ».
+            recuR: recuRecevantRecalcul_(row, map),
             recuV: nombre_(val_(row, map, "Reçu visiteur")),
             modeR: modeR, modeV: modeV,
             dateAttendue: dateAtt

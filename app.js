@@ -118,7 +118,9 @@ document.addEventListener("DOMContentLoaded", () => {
      worker de cache ferait en plus resservir d'anciennes versions : on
      désinscrit tout worker resté d'un ancien essai. */
   if ("serviceWorker" in navigator) {
-    try { navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {}); } catch (e) {}
+    // b44 (A31) — on ne désinscrit QUE d'anciens workers d'un autre scope ; le
+    // worker des notifications (./sw.js) est géré par rt-auth.js (PUSH).
+    try { navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => { const u = (r.active || r.waiting || r.installing || {}).scriptURL || ""; if (!/\/sw\.js(\?|$)/.test(u)) r.unregister(); })).catch(() => {}); } catch (e) {}
   }
 });
 
@@ -2910,6 +2912,24 @@ function rbCsv_(txt) {
   return rows;
 }
 
+/* b44 (A02) — le classeur est analysé dans un Worker jetable : une pollution
+   de prototype (CVE-2023-30533) reste confinée au Worker, et un fichier qui
+   bloque l'analyse (ReDoS CVE-2024-22363) est coupé au bout de 15 s. Limites :
+   5 000 lignes, 40 colonnes, 1re feuille seulement. */
+function rbLireXlsxIsole_(buf) {
+  return new Promise((ok, ko) => {
+    const lib = new URL("./vendor/xlsx.full.min.js?v=" + encodeURIComponent(window.RT_VERSION || ""), location.href).href;
+    const code = "importScripts(" + JSON.stringify(lib) + ");onmessage=function(e){try{var wb=XLSX.read(e.data,{type:'array',cellDates:true,dense:true,sheetRows:5001});var ws=wb.Sheets[wb.SheetNames[0]];var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''}).slice(0,5000).map(function(r){return r.slice(0,40).map(function(v){return v instanceof Date?v:(typeof v==='number'?v:String(v).slice(0,500));});});postMessage({ok:true,rows:rows,version:XLSX.version});}catch(err){postMessage({ok:false,error:String(err&&err.message||err)});}};";
+    const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+    let w;
+    try { w = new Worker(url); } catch (e) { URL.revokeObjectURL(url); ko(new Error("Lecteur Excel indisponible : exporte le relevé en CSV.")); return; }
+    const fin = () => { try { w.terminate(); } catch (e) {} URL.revokeObjectURL(url); };
+    const t = setTimeout(() => { fin(); ko(new Error("Fichier Excel trop complexe (analyse arrêtée au bout de 15 s). Exporte-le en CSV.")); }, 15000);
+    w.onmessage = e => { clearTimeout(t); fin(); const d = e.data || {}; if (d.ok) { RB.xlsxVersion = d.version; ok(d.rows || []); } else ko(new Error(d.error || "Lecture impossible")); };
+    w.onerror = e => { clearTimeout(t); fin(); ko(new Error("Lecteur Excel indisponible : exporte le relevé en CSV.")); };
+    w.postMessage(buf, [buf]);
+  });
+}
 function rbChargerXlsx_() {
   if (window.XLSX) return Promise.resolve();
   return new Promise((ok, ko) => {
@@ -3133,6 +3153,16 @@ async function rbMemoriser_(entrees) {
   await rbChargerHist_();
 }
 function rbTrimestre_(iso) { const m = /^(\d{4})-(\d{2})/.exec(iso || ""); return m ? "T" + (Math.floor((Number(m[2]) - 1) / 3) + 1) + " " + m[1] : "?"; }
+/* b44 (A16) — une seule sérialisation CSV pour tous les exports : les nombres
+   restent des nombres, tout texte commençant par = + - @ (ou tabulation /
+   retour chariot) est neutralisé par une apostrophe. */
+function csvCellule_(v) {
+  if (typeof v === "number" && isFinite(v)) return '"' + String(v) + '"';
+  let x = String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/\s+/g, " ").trim();
+  if (/^-?\d+(?:[.,]\d+)?$/.test(x)) return '"' + x + '"';
+  if (/^[=+\-@\t\r]/.test(x)) x = "'" + x;
+  return '"' + x.replace(/"/g, '""') + '"';
+}
 function rbCsvCell_(v) { let x = String(v == null ? "" : v).replace(/\s+/g, " ").trim(); if (/^[=+\-@]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; }
 function rbExportCsv_() {
   const lignes = [["Date virement", "Libellé", "Montant (€)", "Payeur", "Missions", "Écart (€)", "Pointé le"]].concat(
@@ -3268,9 +3298,7 @@ function attachRapprochement_(root) {
       try {
         if (/\.(csv|txt)$/i.test(f.name)) RB.brut = rbCsv_(await f.text());
         else {
-          await rbChargerXlsx_();
-          const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
-          RB.brut = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+          RB.brut = await rbLireXlsxIsole_(await f.arrayBuffer());
         }
         RB.entete = Math.max(0, RB.brut.slice(0, 30).findIndex(r => r.filter(x => /date|libell|montant|credit|crédit|debit|débit|operation|opération|intitul/i.test(String(x))).length >= 2));
         if (!RB.histOk) await rbChargerHist_();
@@ -4914,7 +4942,8 @@ function loadQcmBank() {
   fetch("./data/questions.json")
     .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(d => {
-      state.qcmBank = (d && d.questions) || [];
+      // b44 (A30) — une question sans réponses ou sans correction est exclue du tirage.
+      state.qcmBank = ((d && d.questions) || []).filter(q => q && Array.isArray(q.answers) && q.answers.length >= 2 && Array.isArray(q.correct) && q.correct.length >= 1 && q.correct.every(i => Number.isInteger(i) && i >= 0 && i < q.answers.length));
       state._qcmBankEnCours = false;
       if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
     })
@@ -4939,6 +4968,7 @@ function qcmTheme_(q) {
 }
 function qcmOk_(q, choisi) {
   const a = (choisi || []).slice().sort(), c = (q.correct || []).slice().sort();
+  if (!c.length || !a.length) return false;     // b44 (A30) : jamais « juste » sans réponse
   return a.length === c.length && a.every((v, i) => v === c[i]);
 }
 function qcmLettres_(q, idxs) {
@@ -5655,8 +5685,9 @@ function exportRows() {
 function exportTotals(rows) {
   const gross = rows.reduce((t, r) => t + r._amount, 0);
   const cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
+  const entretien = rows.reduce((t, r) => t + (r._kmEff || 0) * entretienKmClient_(r._date), 0);
   return {
-    gross, cost, net: gross - cost,
+    gross, cost, entretien, net: gross - cost, netTout: gross - cost - entretien,
     km: rows.reduce((t, r) => t + (r._kmEff || 0), 0),
     five: rows.filter(r => r._format === "5x5").length,
     three: rows.filter(r => r._format === "3x3").length
@@ -5725,9 +5756,9 @@ function renderExport() {
 
     <div class="kpi-grid" style="margin-top:14px">
       <div class="kpi hero">
-        <label>Revenu net réel</label>
+        <label>Revenu net réel (après carburant)</label>
         <strong>${formatMoney(t.net)}</strong>
-        <span class="sub">${escapeHtml(exportPeriodLabel())}</span>
+        <span class="sub">${escapeHtml(exportPeriodLabel())} · tout compris (entretien déduit) : ${formatMoney(t.netTout)}</span>
       </div>
       <div class="kpi"><label>Indemnités brutes</label><strong>${formatMoney(t.gross)}</strong></div>
       <div class="kpi"><label>Coût carburant</label><strong>${formatMoney(t.cost)}</strong></div>
@@ -5987,14 +6018,15 @@ async function exporterCartePdf_() {
 function downloadExportCsv() {
   const rows = exportRows();
   if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
-  const header = ["Date", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net (€)", "Paiement"];
-  const csvEscape = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  // b44 (A28) — définitions explicites : net après carburant ET net tout compris (entretien déduit).
+  const header = ["Date", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net après carburant (€)", "Entretien (€)", "Net tout compris (€)", "Paiement"];
+  const csvEscape = csvCellule_;
   const lines = [header.map(csvEscape).join(";")];
   rows.forEach(r => {
     const c = realFuelCostClient(r._kmEff, r._date);
     lines.push([
       get(r, "Date match"), r._format, get(r, "Niveau administratif"), rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
-      r._kmEff, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), get(r, "Statut paiement")
+      r._kmEff, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), ((r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), (r._amount - c - (r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), get(r, "Statut paiement")
     ].map(csvEscape).join(";"));
   });
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -6051,21 +6083,22 @@ function generateExportPdf() {
 
   // Bandeau de synthèse
   const summary = [
-    ["Revenu net réel", formatMoney(t.net), green],
+    ["Net après carburant", formatMoney(t.net), green],
+    ["Net tout compris", formatMoney(t.netTout), green],
     ["Indemnités brutes", formatMoney(t.gross), navy],
     ["Coût carburant", formatMoney(t.cost), [181, 89, 10]],
-    ["Missions", `${rows.length}  (${t.five} en 5x5 · ${t.three} en 3x3)`, navy],
+    ["Missions", `${rows.length} (${t.five} 5x5, ${t.three} 3x3)`, navy],
     ["Kilomètres A/R", formatNumber(t.km, " km"), navy]
   ];
   let x = 12;
   const cellW = (pageW - 24) / summary.length;
   summary.forEach(([label, value, color]) => {
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(grey[0], grey[1], grey[2]);
     doc.text(pdfSafe(label.toUpperCase()), x, 35);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFontSize(10.5);
     doc.setTextColor(color[0], color[1], color[2]);
     doc.text(pdfSafe(value), x, 42);
     x += cellW;
@@ -6356,8 +6389,11 @@ function consoPour_(date) {
   const l = state.vehicles;
   if (date && Array.isArray(l) && l.length) {
     const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-    let v = null;
-    l.forEach(x => { const d = String(x.depuis || ""); if (/^\d{4}-\d{2}-\d{2}/.test(d) && d.slice(0, 10) <= iso && Number(x.consoL100 || x.conso)) v = x; });
+    // b44 (A26) — « depuis » accepté en AAAA-MM-JJ ou JJ/MM/AAAA (format envoyé
+    // par Mon profil) ; on prend la DERNIÈRE période applicable.
+    const isoDe = d => { d = String(d || "").trim(); let m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3]; m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; };
+    let v = null, vDe = "";
+    l.forEach(x => { const d = isoDe(x.depuis); const c = Number(x.consoL100 || x.conso); if (d && d <= iso && c > 0 && c < 30 && d >= vDe) { v = x; vDe = d; } });
     if (v) return Number(v.consoL100 || v.conso);
   }
   return (date && date >= new Date(2026, 7, 1)) ? 6.0 : 6.58;
@@ -8360,7 +8396,9 @@ function chargerPdfJs_() {
 }
 async function pdfEnImage_(file, largeur, poidsMax) {
   const lib = await chargerPdfJs_();
-  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  // b44 (A01) — CVE-2024-4367 : isEvalSupported:false empêche l'exécution de JS
+  // embarqué dans une police piégée ; pas de script PDF, pas de XFA.
+  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, enableXfa: false, disableFontFace: false }).promise;
   const page = await pdf.getPage(1);
   const v0 = page.getViewport({ scale: 1 });
   const vp = page.getViewport({ scale: largeur / v0.width });

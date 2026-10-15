@@ -62,6 +62,9 @@ const Session = {
 
 /* ---------------- Erreurs ---------------- */
 
+/* b44 (A22) — date civile AAAA-MM-JJ dans le fuseau de l'utilisateur (Paris).
+   toISOString() passe par l'UTC : le 15/10 à minuit devenait le 14/10. */
+function isoLocal_(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function apiError(message, hint) {
   const err = new Error(message);
   if (hint) err.hint = hint;
@@ -375,13 +378,13 @@ async function sb_ecrire_(action, p = {}) {
     case "deleteProcedure": await SB.write("DELETE", "procedures?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
     case "addNiveau": {
       if (!sb_clean_(p.niveau)) throw new Error("Niveau requis");
-      const r = await SB.write("POST", "niveaux", { type_d_officiel: sb_clean_(p.typeOfficiel) || "Arbitre", niveau: sb_clean_(p.niveau), couleur: sb_clean_(p.couleur), recyclage: sb_iso_(p.recyclage), date_de_debut: sb_iso_(p.dateDebut) || new Date().toISOString().slice(0, 10), date_de_fin: sb_iso_(p.dateFin), groupement: sb_clean_(p.groupement), saisi_par: sb_clean_(p.saisiPar) });
+      const r = await SB.write("POST", "niveaux", { type_d_officiel: sb_clean_(p.typeOfficiel) || "Arbitre", niveau: sb_clean_(p.niveau), couleur: sb_clean_(p.couleur), recyclage: sb_iso_(p.recyclage), date_de_debut: sb_iso_(p.dateDebut) || isoLocal_(new Date()), date_de_fin: sb_iso_(p.dateFin), groupement: sb_clean_(p.groupement), saisi_par: sb_clean_(p.saisiPar) });
       return ok({ id: r[0] && r[0].id });
     }
     case "deleteNiveau": await SB.write("DELETE", "niveaux?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
     case "addFormation": {
       if (!sb_clean_(p.intitule)) throw new Error("Intitulé requis");
-      const r = await SB.write("POST", "formations", { date: sb_iso_(p.date) || new Date().toISOString().slice(0, 10), intitule: sb_clean_(p.intitule), lieu: sb_clean_(p.lieu), km_a_r: Number(String(p.km || "0").replace(",", ".")) || 0, notes: sb_clean_(p.notes) });
+      const r = await SB.write("POST", "formations", { date: sb_iso_(p.date) || isoLocal_(new Date()), intitule: sb_clean_(p.intitule), lieu: sb_clean_(p.lieu), km_a_r: Number(String(p.km || "0").replace(",", ".")) || 0, notes: sb_clean_(p.notes) });
       return ok({ id: r[0] && r[0].id });
     }
     case "deleteFormation": {
@@ -394,7 +397,7 @@ async function sb_ecrire_(action, p = {}) {
       if (isNaN(sc) || sc < 0 || sc > tot) throw new Error("Score invalide");
       const pct = tot > 0 ? Math.round(sc / tot * 1000) / 10 : 0;
       let fb = ""; try { fb = p.faiblesses ? JSON.stringify(JSON.parse(String(p.faiblesses)).slice(0, 40)) : ""; } catch (e) { fb = ""; }
-      const r = await SB.write("POST", "qcm", { date: new Date().toISOString().slice(0, 10), score: sc, total: tot, pourcentage: pct, duree_min: Number(p.duree) || null, mode: p.mode === "exam" ? "exam" : (p.mode === "entrainement" ? "entrainement" : "manuel"), faiblesses: fb });
+      const r = await SB.write("POST", "qcm", { date: isoLocal_(new Date()), score: sc, total: tot, pourcentage: pct, duree_min: Number(p.duree) || null, mode: p.mode === "exam" ? "exam" : (p.mode === "entrainement" ? "entrainement" : "manuel"), faiblesses: fb });
       return ok({ id: r[0] && r[0].id, score: sc, total: tot, pourcentage: pct });
     }
     case "deleteQcmSession": await SB.write("DELETE", "qcm?id=eq." + sb_id_(p.id)); return ok({ deleted: true });
@@ -521,7 +524,7 @@ function _statsLocal(extra) {
    transition : le Sheet reste identique ; tout écart est journalisé). */
 const SB_PAIEMENT_COLS_DATE = { date_attendue: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_reception: 1, date_paiement: 1 };
 function sb_valeurColonne_(col, v) {
-  if (v instanceof Date) return isNaN(v) ? null : (col === "derniere_maj" ? v.toISOString() : v.toISOString().slice(0, 10));
+  if (v instanceof Date) return isNaN(v) ? null : (col === "derniere_maj" ? v.toISOString() : isoLocal_(v));   // b44 (A22) : date civile locale, pas UTC
   if (v === "" || v === null || v === undefined) return null;
   if (SB_PAIEMENT_COLS_DATE[col]) return sb_iso_(v);
   if (col === "derniere_maj") { const d = new Date(v); return isNaN(d) ? null : d.toISOString(); }
