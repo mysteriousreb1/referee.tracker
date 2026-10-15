@@ -2934,7 +2934,7 @@ function rbChargerXlsx_() {
   if (window.XLSX) return Promise.resolve();
   return new Promise((ok, ko) => {
     const s = document.createElement("script");
-    s.src = "./vendor/xlsx.full.min.js?v=0.18.5";   // copie locale (même origine) : pas de dépendance CDN
+    s.src = "./vendor/xlsx.full.min.js?v=0.20.3";   // copie locale (même origine) : pas de dépendance CDN
     s.onload = ok; s.onerror = () => ko(new Error("Lecteur Excel indisponible (réseau). Exporte le relevé en CSV."));
     document.head.appendChild(s);
   });
