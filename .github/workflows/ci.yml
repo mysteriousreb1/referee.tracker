@@ -1,19 +1,25 @@
-# Referee Tracker — b47 (audit A36/A38) — contrôles automatiques à chaque push.
-# Avec la protection de branche (Settings → Branches → main → « Require status
-# checks to pass »), un push qui échoue ici ne peut pas être publié sur Pages.
+# Referee Tracker — b47.2 (audit A36/A38) — contrôles puis publication.
+# Le site n'est publié sur GitHub Pages QUE si les contrôles et le scan de
+# secrets passent (job « publier » dépendant des deux). Pas besoin de pull
+# request : tu pousses sur main, et un push défaillant n'est pas publié.
+# Prérequis : Settings → Pages → Source = « GitHub Actions ».
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
 jobs:
   controles:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -52,3 +58,35 @@ jobs:
           n=$(grep -c "?v=$v" index.html)
           [ "$n" -ge 4 ] || { echo "::error::les ?v= de index.html ne correspondent pas à rt-version ($v)"; exit 1; }
           echo "OK version $v"
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # analyse aussi l'historique du push
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  publier:
+    # Publication Pages uniquement si TOUT est vert, et seulement pour main.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [controles, gitleaks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - id: deploiement
+        uses: actions/deploy-pages@v4
