@@ -734,7 +734,7 @@ function indexRecherche_(row) {
   try { morceaux.push(niveauCarte(row).badge); } catch (e) { /* rien */ }
 
   // Le téléphone du collègue remis au format national : chercher
-  // « 0771567486 » doit marcher même si la base stocke « 771567486 ».
+  // « 0600000000 » doit marcher même si la base stocke « 600000000 ».
   morceaux.push(normalizePhoneFr(get(row, "Collègue téléphone")));
 
   // La date sous toutes ses formes lisibles : 12/09/2026, 12 09 2026,

@@ -44,5 +44,12 @@ regexes = ['''AKfycbyi-iJfUyRyN39R9vknQTyvgLeCMA3QzLtsD5N4XVwpJTMtsXMsUSsrsrqDXL
 [allowlist]
 # Noms de clés de stockage du navigateur (ex. REGL_LS_KEY = "rt-reglement-hist-v1") : pas des secrets.
 regexTarget = "line"
-regexes = ['''_KEY\s*=\s*["']rt[-_][a-z0-9_.-]+["']''']
+regexes = [
+  '''_KEY\s*=\s*["']rt[-_][a-z0-9_.-]+["']''',
+  # b47.1 — liste de clés de stockage purgées à la déconnexion : [TOKEN_KEY, EMAIL_KEY, …, "rt-…"]
+  '''\[(?:[A-Z_]+_KEY,\s*)+["']rt[-_][a-z0-9_.-]+["']''',
+  # Valeurs publiques par conception (clé « publishable » Supabase, clé VAPID publique) :
+  '''SB_KEY\s*=\s*["']sb_publishable_''',
+  '''PUSH_VAPID_PUBLIC\s*=\s*["']B[A-Za-z0-9_-]{86}["']''',
+]
 paths = ['''vendor/''', '''data/questions\.json''', '''\.(png|jpg|jpeg|webp|pdf)$''']
