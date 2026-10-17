@@ -117,6 +117,13 @@ function apiCall(action, extra = {}, withToken = true) {
     if (res && res.success === false && /toujours en cours/i.test(res.error || "") && attentes++ < 25) {
       return new Promise(ok => setTimeout(ok, 4000)).then(() => essai(n));
     }
+    // b45 (A10) — l'action a bien eu lieu mais sa réponse a expiré côté serveur :
+    // on le dit clairement plutôt que de la ré-exécuter ou d'afficher un faux échec.
+    if (res && res.dejaTraite) {
+      const e = new Error("Action déjà enregistrée. Recharge la page pour voir le résultat.");
+      e.dejaTraite = true;
+      throw e;
+    }
     return res;
   }, err => {
     if (n >= API_RETRY_PAUSES.length || !_retentable(err)) throw err;
@@ -253,35 +260,84 @@ const SB = {
   save(s) { try { localStorage.setItem(SB_STORE, JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at || (Math.floor(Date.now() / 1000) + (s.expires_in || 3600)) })); } catch (e) {} },
   clear() { try { localStorage.removeItem(SB_STORE); } catch (e) {} },
   get actif() { return !!(this.session && this.session.refresh_token); },
+  /* b45 (A33) — tout appel Supabase a un délai borné (AbortController). */
+  async _fetch(url, opts, delaiMs) {
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const minuteur = ctl ? setTimeout(() => ctl.abort(), delaiMs || 15000) : null;
+    try { return await fetch(url, Object.assign({}, opts, ctl ? { signal: ctl.signal } : {})); }
+    catch (e) { if (e && e.name === "AbortError") throw new Error("Supabase ne répond pas (délai dépassé)"); throw e; }
+    finally { if (minuteur) clearTimeout(minuteur); }
+  },
   async _auth(grant, body) {
-    const r = await fetch(SB_URL + "/auth/v1/token?grant_type=" + grant, { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await this._fetch(SB_URL + "/auth/v1/token?grant_type=" + grant, { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify(body) }, 15000);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.msg || j.error_description || j.error || ("Supabase HTTP " + r.status));
     this.save(j);
     return j;
   },
   login(email, password) { return this._auth("password", { email, password }); },
+  /* b45 (A33) — UN seul renouvellement à la fois : dix lectures lancées avec un
+     jeton expiré partagent la même promesse. Un échec ne détruit la session
+     que si aucun autre appel (ou onglet) ne l'a renouvelée entre-temps. */
+  _refreshEnCours: null,
+  _rafraichir() {
+    if (this._refreshEnCours) return this._refreshEnCours;
+    const s = this.session;
+    if (!s || !s.refresh_token) return Promise.reject(new Error("AUTH_REQUIRED"));
+    const rt = s.refresh_token;
+    this._refreshEnCours = this._auth("refresh_token", { refresh_token: rt })
+      .catch(err => {
+        const actuelle = this.session;
+        if (actuelle && actuelle.refresh_token && actuelle.refresh_token !== rt && actuelle.expires_at - Math.floor(Date.now() / 1000) > 60) return actuelle;   // un autre onglet a renouvelé
+        if (/délai|network|failed to fetch|load failed/i.test(err && err.message || "")) throw err;   // panne réseau : la session reste
+        this.clear();
+        throw new Error("AUTH_REQUIRED");
+      })
+      .finally(() => { this._refreshEnCours = null; });
+    return this._refreshEnCours;
+  },
   async token() {
     const s = this.session;
     if (!s) throw new Error("Session Supabase absente");
     if (s.expires_at - Math.floor(Date.now() / 1000) > 60) return s.access_token;
-    const j = await this._auth("refresh_token", { refresh_token: s.refresh_token });
+    const j = await this._rafraichir();
     return j.access_token;
   },
   async write(method, path, body, tentative = 0) {
     const t = await this.token();
-    const r = await fetch(SB_URL + "/rest/v1/" + path, { method, headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json", Accept: "application/json", Prefer: "return=representation" }, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (r.status === 401 && tentative === 0) { try { await this._auth("refresh_token", { refresh_token: this.session.refresh_token }); } catch (e) { this.clear(); throw new Error("AUTH_REQUIRED"); } return this.write(method, path, body, 1); }
+    const r = await this._fetch(SB_URL + "/rest/v1/" + path, { method, headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json", Accept: "application/json", Prefer: "return=representation" }, body: body === undefined ? undefined : JSON.stringify(body) }, 20000);
+    // Écriture : jamais retentée automatiquement (pas de garantie d'idempotence), sauf après renouvellement du jeton.
+    if (r.status === 401 && tentative === 0) { await this._rafraichir(); return this.write(method, path, body, 1); }
     if (!r.ok) { let m = ""; try { m = (await r.json()).message || ""; } catch (e) {} throw new Error("Supabase HTTP " + r.status + (m ? " : " + m : "")); }
     const txt = await r.text();
     return txt ? JSON.parse(txt) : [];
   },
   async get(path, tentative = 0) {
     const t = await this.token();
-    const r = await fetch(SB_URL + "/rest/v1/" + path, { headers: { apikey: SB_KEY, Authorization: "Bearer " + t, Accept: "application/json" }, cache: "no-store" });
-    if (r.status === 401 && tentative === 0) { try { await this._auth("refresh_token", { refresh_token: this.session.refresh_token }); } catch (e) { this.clear(); throw new Error("AUTH_REQUIRED"); } return this.get(path, 1); }
+    let r;
+    try {
+      r = await this._fetch(SB_URL + "/rest/v1/" + path, { headers: { apikey: SB_KEY, Authorization: "Bearer " + t, Accept: "application/json" }, cache: "no-store" }, 15000);
+    } catch (e) {
+      // Lecture : une seule nouvelle tentative après une courte pause (réseau instable).
+      if (tentative < 2) { await new Promise(ok => setTimeout(ok, 800)); return this.get(path, 2); }
+      throw e;
+    }
+    if (r.status === 401 && tentative !== 1) { await this._rafraichir(); return this.get(path, 1); }
+    if (r.status >= 500 && tentative < 2) { await new Promise(ok => setTimeout(ok, 800)); return this.get(path, 2); }
     if (!r.ok) throw new Error("Supabase HTTP " + r.status + " (" + path.split("?")[0] + ")");
     return r.json();
+  },
+  /* b45 (A24) — lecture COMPLÈTE paginée (le serveur plafonne chaque réponse,
+     1000 lignes par défaut) : pages de 1000 sur un ordre stable, jusqu'à la
+     dernière page incomplète. `chemin` doit contenir un order=…. */
+  async getTout(chemin) {
+    const PAGE = 1000, tout = [];
+    for (let off = 0; off < 100000; off += PAGE) {
+      const lot = await this.get(chemin + (chemin.indexOf("?") === -1 ? "?" : "&") + "limit=" + PAGE + "&offset=" + off);
+      tout.push.apply(tout, lot);
+      if (lot.length < PAGE) return tout;
+    }
+    throw new Error("Lecture Supabase interrompue : plus de 100 000 lignes");
   }
 };
 function sb_dateFr_(v) { if (!v) return ""; const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : String(v); }
@@ -301,15 +357,20 @@ function sb_matchVersSheet_(r) {
   return o;
 }
 const SB_SELECT_MATCHS = Object.values(SB_MATCH_COLS).join(",");
+/* b45 (A18) — version (derniere_maj brute) de chaque match tel que lu : une
+   écriture de paiement n'aboutit que si la ligne n'a pas changé depuis. */
+const SB_VERSIONS = new Map();
 async function sb_lire_(action) {
   const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
   switch (action) {
     case "matchs": {
-      const rows = await SB.get("matchs?select=" + SB_SELECT_MATCHS + "&order=date_match.desc.nullslast&limit=5000");
+      SB_VERSIONS.clear();
+      const rows = await SB.getTout("matchs?select=" + SB_SELECT_MATCHS + "&order=date_match.desc.nullslast,uid.asc");
+      rows.forEach(r => SB_VERSIONS.set(String(r.uid), r.derniere_maj || null));
       return { success: true, data: rows.map(sb_matchVersSheet_) };
     }
     case "evaluations": {
-      const rows = await SB.get("evaluations?select=*&order=date_depot.desc&limit=2000");
+      const rows = await SB.getTout("evaluations?select=*&order=date_depot.desc,id.asc");
       return { success: true, data: rows.map(r => ({
         id: r.sheet_row, dateDepot: sb_dateFr_(r.date_depot), uidMatch: sb_txt_(r.uid_match_lie), dateMatch: sb_dateFr_(r.date_match_liee), rencontre: sb_txt_(r.rencontre),
         fichier: sb_txt_(r.nom_fichier), lien: sb_txt_(r.lien_drive), statut: sb_txt_(r.statut_analyse_ia), synthese: sb_txt_(r.synthese_ia), axe1: sb_txt_(r.axe_travail_1), axe2: sb_txt_(r.axe_travail_2),
@@ -319,23 +380,23 @@ async function sb_lire_(action) {
         saison: sb_txt_(r.saison), noteBrute: sb_txt_(r.note_brute), noteEstimee: r.note_estimee === "oui" })) };
     }
     case "niveaux": {
-      const rows = await SB.get("niveaux?select=*&order=date_de_debut.desc.nullslast");
+      const rows = await SB.getTout("niveaux?select=*&order=date_de_debut.desc.nullslast,id.asc");
       return { success: true, data: rows.map(r => ({ id: r.id, typeOfficiel: sb_txt_(r.type_d_officiel), niveau: sb_txt_(r.niveau), couleur: sb_txt_(r.couleur), recyclage: sb_dateFr_(r.recyclage), dateDebut: sb_dateFr_(r.date_de_debut), dateFin: sb_dateFr_(r.date_de_fin), groupement: sb_txt_(r.groupement), saisiPar: sb_txt_(r.saisi_par) })) };
     }
     case "contacts": {
-      const rows = await SB.get("contacts?select=*&order=id");
+      const rows = await SB.getTout("contacts?select=*&order=id");
       return { success: true, data: rows.map(r => ({ id: r.id, nom: sb_txt_(r.nom), role: sb_txt_(r.role), organisation: sb_txt_(r.organisation_club), telephone: sb_txt_(r.telephone), email: sb_txt_(r.email), notes: sb_txt_(r.notes), championnat: sb_txt_(r.championnat), situation: sb_txt_(r.situation) })) };
     }
     case "procedures": {
-      const rows = await SB.get("procedures?select=*&order=id");
+      const rows = await SB.getTout("procedures?select=*&order=id");
       return { success: true, data: rows.map(r => ({ id: r.id, titre: sb_txt_(r.titre), categorie: sb_txt_(r.categorie), contenu: sb_txt_(r.contenu), lien: sb_txt_(r.lien), mail: sb_txt_(r.mail), telephone: sb_txt_(r.telephone), personne: sb_txt_(r.personne), importance: sb_txt_(r.importance) })) };
     }
     case "hotels": {
-      const rows = await SB.get("hotels?select=*&order=date_nuit.desc.nullslast");
+      const rows = await SB.getTout("hotels?select=*&order=date_nuit.desc.nullslast,id.asc");
       return { success: true, data: rows.map(r => ({ id: sb_txt_(r.id_ref), date: sb_dateFr_(r.date_nuit), lieu: sb_txt_(r.lieu), hotel: sb_txt_(r.hotel), prix: Number(r.prix_nuit) || 0, repas: Number(r.repas) || 0, notes: sb_txt_(r.notes), matchUid: sb_txt_(r.match_uid), facture: sb_txt_(r.facture_url) })) };
     }
     case "formations": {
-      const rows = await SB.get("formations?select=*&order=date.desc.nullslast");
+      const rows = await SB.getTout("formations?select=*&order=date.desc.nullslast,id.asc");
       return { success: true, data: rows.map(r => ({ date: sb_dateFr_(r.date), intitule: sb_txt_(r.intitule), lieu: sb_txt_(r.lieu), km: Number(r.km_a_r) || 0, notes: sb_txt_(r.notes) })) };
     }
     case "qcmStats": {
@@ -405,8 +466,15 @@ async function sb_ecrire_(action, p = {}) {
   throw new Error("Écriture Supabase inconnue : " + action);
 }
 
+/* b45 (A35) — la clé de cache porte l'identité du compte : un changement de
+   compte ne relit jamais les données de l'ancien. */
+function _cacheUser() {
+  const e = String(Session.email || "anon").toLowerCase();
+  let h = 5381; for (let i = 0; i < e.length; i++) h = ((h * 33) ^ e.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
 function _cacheKey(action, extra) {
-  return CACHE_PREFIX + action + ":" + JSON.stringify(extra || {});
+  return CACHE_PREFIX + _cacheUser() + "|" + action + ":" + JSON.stringify(extra || {});
 }
 
 function _cacheLire(cle) {
@@ -414,8 +482,11 @@ function _cacheLire(cle) {
     const brut = localStorage.getItem(cle);
     if (!brut) return null;
     const o = JSON.parse(brut);
-    if (o && o.t === 1 && o.d) return o;   // b26 : périmé volontairement, à revalider
-    return (o && o.t && Date.now() - o.t < CACHE_MAX_AGE) ? o : null;
+    // b45 (A35) — âge réel toujours contrôlé (7 jours max), y compris pour une
+    // entrée marquée périmée (p = 1 : à revalider, mais horodatage conservé).
+    if (!o || !o.d || !o.t || o.t === 1 || Date.now() - o.t >= CACHE_MAX_AGE) { localStorage.removeItem(cle); return null; }
+    if (o.p) o.t = Math.min(o.t, Date.now() - CACHE_FRESH - 1);   // force la revalidation
+    return o;
   } catch (e) { return null; }
 }
 
@@ -435,17 +506,18 @@ function _cacheEcrire(cle, data) {
 }
 
 function cacheVider() {
+  try { _statsEnv = null; } catch (e) {}   // b45 (A35) — un réglage modifié (coûts, tarifs) est pris en compte tout de suite
   try {
     Object.keys(localStorage)
       // On garde le dernier instantané des matchs. Une écriture déclenche un
       // rafraîchissement réseau, mais un échec ne doit jamais vider l'écran.
-      .filter(k => k.indexOf(CACHE_PREFIX) === 0 && k.indexOf(CACHE_PREFIX + "matchs:") !== 0)
+      .filter(k => k.indexOf(CACHE_PREFIX) === 0 && k.indexOf("|matchs:") === -1)
       .forEach(k => {
         // b26 — les lectures calculées côté Apps Script (stats, QCM, enjeux,
         // classements) ne sont plus effacées mais marquées périmées : l'onglet
         // s'affiche tout de suite depuis le cache et se revalide en arrière-plan.
-        if (/_(stats|qcmStats|enjeux|classements|config):/.test(k)) {
-          try { const o = JSON.parse(localStorage.getItem(k)); if (o && o.d) { o.t = 1; localStorage.setItem(k, JSON.stringify(o)); return; } } catch (e) {}
+        if (/[_|](stats|qcmStats|enjeux|classements|config):/.test(k)) {
+          try { const o = JSON.parse(localStorage.getItem(k)); if (o && o.d) { o.p = 1; localStorage.setItem(k, JSON.stringify(o)); return; } } catch (e) {}
         }
         localStorage.removeItem(k);
       });
@@ -518,10 +590,13 @@ function _statsLocal(extra) {
   });
 }
 /* b30 — moteur de paiement local (rt-paiements.js = Paiement.gs + Echeancier.gs).
-   1) calcul sur la ligne en mémoire, 2) écriture Supabase (≈ 150 ms), réponse
-   immédiate au même format qu'Apps Script (res.row), 3) en arrière-plan, la
-   même mise à jour est envoyée à Apps Script (double écriture pendant la
-   transition : le Sheet reste identique ; tout écart est journalisé). */
+   b45 (A18) — UN SEUL MAÎTRE pour une saisie de paiement faite sur le site :
+   Supabase. Plus de seconde écriture Apps Script en arrière-plan. L'écriture
+   est CONDITIONNELLE (derniere_maj lue = version attendue) : si un autre
+   onglet, appareil ou robot a modifié la ligne entre-temps, rien n'est écrasé,
+   on recharge et on le dit. Le Sheet est mis à jour par SB_EXPORT_MATCHS_VERS_SHEET
+   (avant chaque passage robot et toutes les 30 min). Zéro ligne modifiée n'est
+   jamais affiché comme un succès. */
 const SB_PAIEMENT_COLS_DATE = { date_attendue: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_reception: 1, date_paiement: 1 };
 function sb_valeurColonne_(col, v) {
   if (v instanceof Date) return isNaN(v) ? null : (col === "derniere_maj" ? v.toISOString() : isoLocal_(v));   // b44 (A22) : date civile locale, pas UTC
@@ -546,24 +621,25 @@ function _paiementLocal(extra) {
   });
   const rowSortie = Object.assign({}, local.row);
   if (rowSortie["Dernière MAJ"] instanceof Date) rowSortie["Dernière MAJ"] = rowSortie["Dernière MAJ"].toLocaleString("fr-FR");
+  const uid = String(extra.uid);
+  const version = SB_VERSIONS.has(uid) ? SB_VERSIONS.get(uid) : undefined;
+  const filtre = "matchs?uid=eq." + encodeURIComponent(uid) + (version === undefined ? "" : (version === null ? "&derniere_maj=is.null" : "&derniere_maj=eq." + encodeURIComponent(version)));
   const t0 = performance.now();
-  return SB.write("PATCH", "matchs?uid=eq." + encodeURIComponent(String(extra.uid)), patch).then(() => {
+  return SB.write("PATCH", filtre, patch).then(lignes => {
+    if (!Array.isArray(lignes) || lignes.length !== 1) {
+      // Conflit de version (ou ligne disparue) : on ne force rien.
+      try { cacheVider(); } catch (e) {}
+      try { if (typeof loadData === "function") loadData(); } catch (e) {}
+      return { success: false, conflit: true, error: "Ce match a été modifié ailleurs entre-temps (autre onglet, appareil ou mise à jour automatique). La liste a été rechargée : refais la saisie." };
+    }
+    SB_VERSIONS.set(uid, lignes[0].derniere_maj || null);
     window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
-    window.RT_CACHE_INFO["payment.update"] = { timestamp: Date.now(), ms: Math.round(performance.now() - t0), source: "local+supabase" };
-    // Double écriture Apps Script (arrière-plan) + contrôle d'écart.
-    _jsonpReseau("payment.update", extra).then(res => {
-      const srv = res && res.row;
-      if (!srv) return;
-      const ecarts = ["Statut paiement", "Montant reçu", "Date attendue", "Régime", "Reçu recevant", "Reçu visiteur"].filter(k => String(srv[k] == null ? "" : srv[k]).replace(/,/g, ".") !== String(local.row[k] == null ? "" : local.row[k]).replace(/,/g, "."));
-      if (ecarts.length) {
-        console.warn("[Paiement] écart moteur local / Apps Script sur " + extra.uid + " :", ecarts.map(k => k + " local=" + local.row[k] + " serveur=" + srv[k]).join(" ; "));
-        try { const j = JSON.parse(localStorage.getItem("rt_pay_ecarts") || "[]"); j.push({ t: new Date().toISOString(), uid: extra.uid, ecarts: ecarts.map(k => [k, local.row[k], srv[k]]) }); localStorage.setItem("rt_pay_ecarts", JSON.stringify(j.slice(-50))); } catch (e) {}
-      }
-    }).catch(err => console.warn("[Paiement] double écriture Apps Script échouée (Supabase à jour) :", err && err.message));
+    window.RT_CACHE_INFO["payment.update"] = { timestamp: Date.now(), ms: Math.round(performance.now() - t0), source: "supabase" };
     return { success: true, result: local.result, row: rowSortie, source: "local" };
   }).catch(err => {
     if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
-    console.warn("[Paiement] écriture Supabase échouée, repli Apps Script :", err.message);
+    // Supabase injoignable : Apps Script devient l'unique écrivain de cette saisie (pas de double écriture).
+    console.warn("[Paiement] écriture Supabase impossible, enregistrement par Apps Script :", err.message);
     return null;
   });
 }
@@ -581,7 +657,7 @@ function jsonp(action, extra = {}) {
     return sb_lire_(action).then(res => {
       window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
       window.RT_CACHE_INFO[action] = { timestamp: Date.now(), age: 0, stale: false, ms: Math.round(performance.now() - t0), source: "supabase" };
-      if (!_reponseVide(action, res)) _cacheEcrire(cle, res);
+      _cacheEcrire(cle, res);   // b45 (A35) — réponse Supabase réussie = autoritaire, même vide
       return res;
     }).catch(err => {
       if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
