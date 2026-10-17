@@ -16,6 +16,7 @@
 const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyi-iJfUyRyN39R9vknQTyvgLeCMA3QzLtsD5N4XVwpJTMtsXMsUSsrsrqDXLi8DI1t/exec";
 const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premier appel (démarrage à froid)
 const TOKEN_KEY = "rt_session_token";
+try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}   // b47.2 — reliquat de l'ancienne connexion Apps Script purgé au démarrage
 const EMAIL_KEY = "rt_session_email";
 const SINCE_KEY = "rt_session_since";
 const CFG_KEY   = "rt_config_cache";
