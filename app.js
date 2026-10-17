@@ -4338,7 +4338,9 @@ function renderProgression() {
   try { buildEvalCharts_(state.evaluations || []); } catch (e) { console.warn("Graphiques évaluations :", e); }
   // b22 — corriger type / note, rattacher à un match
   const majEval = async (id, corps, msg) => {
-    const res = await jsonp("evaluation.update", Object.assign({ id }, corps));
+    // b45 (A23) — le fichier Drive (lien) identifie l'évaluation, le n° de ligne n'est qu'un indice.
+    const evRef = (state.evaluations || []).find(x => String(x.id) === String(id));
+    const res = await jsonp("evaluation.update", Object.assign({ id, lien: evRef ? evRef.lien : "" }, corps));
     if (!res || !res.success || !res.result) throw new Error((res && res.error) || "Apps Script b22 pas encore déployé");
     state.evaluations = null; loadEvaluations(); setStatus(msg, "ok");
   };
@@ -4351,7 +4353,8 @@ function renderProgression() {
   root.querySelectorAll("[data-eval-reanalyse]").forEach(b => b.addEventListener("click", async () => {
     b.disabled = true; b.textContent = "Analyse en cours (20-40 s)…";
     try {
-      const res = await jsonp("evaluation.reanalyse", { id: b.dataset.evalReanalyse });
+      const evRef = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalReanalyse);
+      const res = await jsonp("evaluation.reanalyse", { id: b.dataset.evalReanalyse, lien: evRef ? evRef.lien : "" });
       if (!res || !res.success || !res.result) throw new Error((res && res.error) || "Apps Script b24 pas encore déployé");
       state.evaluations = null; loadEvaluations();
       setStatus("Évaluation ré-analysée" + (res.result.noteBrute ? " · note " + res.result.noteBrute : ""), "ok");
