@@ -1711,6 +1711,12 @@ function slugCompetition(row) {
 
 /* Repli en chaîne : GitHub Pages est sensible à la casse et aux extensions.
    On essaie le nom connu, puis les variantes courantes, puis la pastille texte. */
+/* b47 (A15) — plus de gestionnaire inline onerror (interdit par la CSP) : un seul écouteur
+   global en phase de capture (l'événement error ne remonte pas). */
+document.addEventListener("error", function (ev) {
+  const img = ev.target;
+  if (img && img.tagName === "IMG" && img.classList && img.classList.contains("comp-logo")) logoSuivant_(img);
+}, true);
 function logoSuivant_(img) {
   const c = (img.dataset.cands || "").split("|").filter(Boolean);
   const i = Number(img.dataset.i || 0) + 1;
@@ -1767,7 +1773,7 @@ function logoCompetition(row) {
   return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
                alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
                data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
-               loading="lazy" decoding="async" onerror="logoSuivant_(this)">`;
+               loading="lazy" decoding="async">`;
 }
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.

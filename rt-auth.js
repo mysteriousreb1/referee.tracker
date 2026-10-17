@@ -26,36 +26,33 @@ var HOME = { label: "", lat: 0, lon: 0 };   // renseigné uniquement après auth
 
 /* ---------------- Stockage du jeton ---------------- */
 
+/* b47 (A03/A14) — plus de jeton Apps Script : la session, c'est Supabase.
+   `token` renvoie le jeton d'accès Supabase courant (renouvelé par SB.token()).
+   `clear()` purge TOUT ce qui est personnel dans le navigateur. */
 const Session = {
-  get token() {
-    try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return window.__rtToken || ""; }
-  },
+  get token() { try { const s = SB.session; return (s && s.access_token) || ""; } catch (e) { return ""; } },
   get email() {
     try { return localStorage.getItem(EMAIL_KEY) || ""; } catch (e) { return window.__rtEmail || ""; }
   },
   get since() {
     try { return Number(localStorage.getItem(SINCE_KEY)) || 0; } catch (e) { return window.__rtSince || 0; }
   },
-  save(token, email) {
+  save(_token, email) {
     const now = Date.now();
-    window.__rtToken = token; window.__rtEmail = email; window.__rtSince = now;
+    window.__rtEmail = email; window.__rtSince = now;
     try {
-      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);   // ancien jeton Apps Script (avant b47) : jamais conservé
       localStorage.setItem(EMAIL_KEY, email || "");
       localStorage.setItem(SINCE_KEY, String(now));
     } catch (e) { /* navigation privée : la session ne durera que l'onglet */ }
   },
   clear() {
-    window.__rtToken = ""; window.__rtEmail = "";
+    window.__rtEmail = "";
     try { SB.clear(); } catch (e) {}
     try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(EMAIL_KEY);
-      localStorage.removeItem(SINCE_KEY);
-      localStorage.removeItem(CFG_KEY);
-      Object.keys(localStorage)
-        .filter(k => k.indexOf("rt_c_") === 0 || k === "rt-reglement-hist-v1" || k === "rt_logos_v1" || k === "rt-alertes-traitees-v2")
-        .forEach(k => localStorage.removeItem(k));
+      [TOKEN_KEY, EMAIL_KEY, SINCE_KEY, CFG_KEY, "rt-reglement-hist-v1", "rt_logos_v1", "rt-alertes-traitees-v2", "rt_pay_ecarts", "rt_rb_payeurs_v1", "rt_last_matchs"].forEach(k => localStorage.removeItem(k));
+      Object.keys(localStorage).filter(k => k.indexOf("rt_c_") === 0 || k.indexOf("rt_rb_") === 0 || k.indexOf("rt_pay") === 0).forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
     } catch (e) {}
   }
 };
@@ -133,8 +130,11 @@ function apiCall(action, extra = {}, withToken = true) {
 }
 function _apiCallUnique(action, extra = {}, withToken = true) {
   const body = { action, ...extra };
-  if (withToken) body.token = Session.token;
-
+  // b47 — le jeton d'accès Supabase (renouvelé si besoin) part dans le corps, jamais dans l'URL.
+  const jetonP = withToken ? SB.token().catch(() => { throw apiError("AUTH_REQUIRED", ""); }) : Promise.resolve("");
+  return jetonP.then(t => { if (withToken) body.token = t; return _apiFetch_(action, body); });
+}
+function _apiFetch_(action, body) {
   const hasAbort = typeof AbortController === "function";
   const controller = hasAbort ? new AbortController() : null;
   const timer = setTimeout(() => { if (controller) controller.abort(); }, API_TIMEOUTS[action] || API_TIMEOUT_MS);
@@ -195,6 +195,8 @@ function _apiCallUnique(action, extra = {}, withToken = true) {
    version repart toujours sur des données au bon format (les anciens préfixes
    sont purgés au démarrage). 7 jours maximum : au-delà, les données perso
    (licence, téléphones des collègues) ne traînent plus dans le navigateur. */
+// b47 (A15) — plus de script inline : la version vient de <meta name="rt-version"> (CSP sans 'unsafe-inline' ni hash).
+window.RT_VERSION = window.RT_VERSION || (function () { try { return document.querySelector('meta[name="rt-version"]').content; } catch (e) { return "x"; } })();
 const CACHE_VERSION = String(window.RT_VERSION || "x").replace(/[^\w-]/g, "");
 const CACHE_PREFIX  = "rt_c_" + CACHE_VERSION + "_";
 const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;
@@ -276,6 +278,40 @@ const SB = {
     return j;
   },
   login(email, password) { return this._auth("password", { email, password }); },
+  /* b47 (A14) — déconnexion côté Supabase : le refresh token est révoqué (scope global = tous les appareils). */
+  async signOut() {
+    const s = this.session; if (!s || !s.access_token) return;
+    try { await this._fetch(SB_URL + "/auth/v1/logout?scope=global", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + s.access_token } }, 8000); } catch (e) { /* hors ligne : purge locale quand même */ }
+  },
+  /* b47 (A03) — mot de passe oublié : Supabase envoie un lien de réinitialisation vers le site. */
+  async recover(email) {
+    const r = await this._fetch(SB_URL + "/auth/v1/recover", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email, gotrue_meta_security: {} }) }, 15000);
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.msg || j.error_description || ("Supabase HTTP " + r.status)); }
+  },
+  /* b47 (A03) — nouveau mot de passe pour la session courante. */
+  async setPassword(password) {
+    const t = await this.token();
+    const r = await this._fetch(SB_URL + "/auth/v1/user", { method: "PUT", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ password }) }, 15000);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.msg || j.error_description || j.error || ("Supabase HTTP " + r.status));
+    return j;
+  },
+  /* b47 — e-mail lu dans le jeton d'accès courant (sans appel réseau). */
+  emailDuJeton() {
+    try { const t = (this.session || {}).access_token || ""; let b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return String(JSON.parse(atob(b)).email || "").toLowerCase(); } catch (e) { return ""; }
+  },
+  /* b47 — session reçue dans l'URL (lien de réinitialisation : #access_token=…&type=recovery). */
+  depuisHash() {
+    const h = String(location.hash || "");
+    if (!/access_token=/.test(h)) return null;
+    const p = new URLSearchParams(h.replace(/^#/, ""));
+    const s = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_in: Number(p.get("expires_in") || 3600) };
+    const type = p.get("type") || "";
+    if (!s.access_token || !s.refresh_token) return null;
+    this.save(s);
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    return { type };
+  },
   /* b45 (A33) — UN seul renouvellement à la fois : dix lectures lancées avec un
      jeton expiré partagent la même promesse. Un échec ne détruit la session
      que si aucun autre appel (ou onglet) ne l'a renouvelée entre-temps. */
@@ -725,8 +761,18 @@ function _jsonpReseau(action, extra = {}) {
       showLogin("Session expirée, reconnecte-toi.");
       throw apiError("Session expirée", "");
     }
+    if (res && res.success === false && /SITE_OBSOLETE/.test(res.error || "")) {
+      // b47 — ancien site en cache face au nouveau serveur : on se met à jour.
+      try { navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())); } catch (e) {}
+      setTimeout(() => location.reload(true), 300);
+    }
     return res;
   }).catch(err => {
+    if (err && /^AUTH_REQUIRED/.test(err.message || "")) {
+      Session.clear();
+      showLogin("Connexion requise.");
+      throw apiError("Session expirée", "");
+    }
     if (err && err.name === "AbortError") {
       throw apiError("Délai dépassé sans réponse de l'API",
         "Relance, puis vérifie Apps Script → Exécutions.");
@@ -765,17 +811,15 @@ function buildLoginOverlay() {
 
     <form class="rt-login-card" id="rtResetForm" style="display:none" autocomplete="off">
       <h1>Mot de passe oublié</h1>
-      <p class="rt-login-sub" id="rtResetSub">On t'envoie un code à 6 chiffres par email.</p>
+      <p class="rt-login-sub" id="rtResetSub">On t'envoie un lien de réinitialisation par email.</p>
 
       <div id="rtResetStep1">
         <label for="rtResetEmail">Email du compte</label>
         <input id="rtResetEmail" type="email" autocomplete="username">
-        <button type="button" id="rtResetSend">Envoyer le code</button>
+        <button type="button" id="rtResetSend">Envoyer le lien</button>
       </div>
 
       <div id="rtResetStep2" style="display:none">
-        <label for="rtResetCode">Code reçu par email</label>
-        <input id="rtResetCode" type="text" inputmode="numeric" maxlength="6" placeholder="123456">
         <label for="rtResetPwd">Nouveau mot de passe</label>
         <input id="rtResetPwd" type="password" autocomplete="new-password" placeholder="12 caractères minimum">
         <button type="button" id="rtResetDo">Valider</button>
@@ -797,17 +841,13 @@ function buildLoginOverlay() {
     msg.textContent = "Vérification…";
     msg.className = "rt-login-msg";
 
-    // b25 — 1) Supabase (lectures, auth principale) 2) Apps Script (écritures).
-    // Même email + même mot de passe des deux côtés pendant la transition.
+    // b47 (A03) — UNE connexion : Supabase. Apps Script vérifie ce même jeton.
     SB.login(email, pwd)
-      .then(() => apiCall("login", { email, password: pwd }, false).catch(err => ({ success: false, error: err.message })))
-      .then(res => {
-        if (res && res.success) Session.save(res.token, res.email);
-        else { Session.save("", email); console.warn("[RefereeTracker] Apps Script refuse la connexion (écritures indisponibles) : " + (res && res.error)); }
+      .then(() => {
+        Session.save("", email);
         document.getElementById("rtPwd").value = "";
         hideLogin();
         startApp();
-        if (!(res && res.success)) setTimeout(() => { try { setStatus("Lecture OK (Supabase) · écritures indisponibles : mot de passe Apps Script différent", "error"); } catch (e) {} }, 1500);
       })
       .catch(err => {
         msg.textContent = err.message || "Connexion impossible";
@@ -848,12 +888,8 @@ function buildLoginOverlay() {
     const b = document.getElementById("rtResetSend");
     b.disabled = true;
     msgReset("Envoi en cours…");
-    apiCall("password.forgot", { email: document.getElementById("rtResetEmail").value.trim() }, false)
-      .then(res => {
-        msgReset((res && res.message) || "Code envoyé.");
-        document.getElementById("rtResetStep1").style.display = "none";
-        document.getElementById("rtResetStep2").style.display = "";
-      })
+    SB.recover(document.getElementById("rtResetEmail").value.trim())
+      .then(() => msgReset("Si ce compte existe, un lien vient d'être envoyé. Ouvre-le depuis cet appareil : il te ramène ici pour choisir le nouveau mot de passe."))
       .catch(err => msgReset(err.message || "Envoi impossible", true))
       .finally(() => { b.disabled = false; });
   });
@@ -862,23 +898,30 @@ function buildLoginOverlay() {
     const b = document.getElementById("rtResetDo");
     b.disabled = true;
     msgReset("Vérification…");
-    apiCall("password.reset", {
-      email:   document.getElementById("rtResetEmail").value.trim(),
-      code:    document.getElementById("rtResetCode").value.trim(),
-      nouveau: document.getElementById("rtResetPwd").value
-    }, false)
-      .then(res => {
-        if (!res || !res.success) throw new Error((res && res.error) || "Échec");
-        msgReset(res.message || "Mot de passe réinitialisé.");
-        setTimeout(() => {
-          basculer(false);
-          document.getElementById("rtPwd").value = "";
-          document.getElementById("rtLoginMsg").textContent = "Mot de passe changé, connecte-toi.";
-        }, 1500);
+    const nouveau = document.getElementById("rtResetPwd").value;
+    (nouveau.length < 12 ? Promise.reject(new Error("12 caractères minimum")) : SB.setPassword(nouveau))
+      .then(u => {
+        Session.save("", (u && u.email) || SB.emailDuJeton() || "");
+        msgReset("Mot de passe réinitialisé.");
+        document.getElementById("rtResetPwd").value = "";
+        setTimeout(() => { hideLogin(); startApp(); }, 800);
       })
       .catch(err => msgReset(err.message || "Échec", true))
       .finally(() => { b.disabled = false; });
   });
+}
+
+/* b47 — arrivée par le lien de réinitialisation : formulaire « nouveau mot de passe ». */
+function showRecovery() {
+  buildLoginOverlay();
+  document.getElementById("rtLogin").classList.add("is-visible");
+  document.getElementById("rtLoginForm").style.display = "none";
+  document.getElementById("rtResetForm").style.display = "";
+  document.getElementById("rtResetSub").textContent = "Choisis ton nouveau mot de passe.";
+  document.getElementById("rtResetStep1").style.display = "none";
+  document.getElementById("rtResetStep2").style.display = "";
+  document.getElementById("rtBackBtn").style.display = "none";
+  document.getElementById("rtResetPwd").focus();
 }
 
 function showLogin(message) {
@@ -900,10 +943,12 @@ function hideLogin() {
   if (el) el.classList.remove("is-visible");
 }
 
-function logout() {
+async function logout() {
+  // b47 (A14) — 1) Apps Script oublie le jeton, 2) Supabase révoque la session, 3) purge locale, 4) rechargement.
   const token = Session.token;
+  try { await Promise.race([apiCall("logout", { token }, false), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}
+  try { await SB.signOut(); } catch (e) {}
   Session.clear();
-  apiCall("logout", { token }, false).catch(() => { /* déconnexion locale de toute façon */ });
   location.reload();
 }
 
@@ -1283,12 +1328,17 @@ function delVehicule(i) {
 function changePassword() {
   const anc = val("pwAnc"), nouv = val("pwNouv");
   if (!anc || !nouv) return toast("Remplis les deux champs.", true);
-  jsonp("password.change", { ancien: anc, nouveau: nouv }).then(res => {
-    if (!res || !res.success) throw new Error((res && res.error) || "Échec");
-    document.getElementById("pwAnc").value = "";
-    document.getElementById("pwNouv").value = "";
-    toast(res.message || "Mot de passe modifié.");
-  }).catch(err => toast(err.message || "Échec", true));
+  if (nouv.length < 12) return toast("12 caractères minimum.", true);
+  // b47 (A03) — l'ancien mot de passe est vérifié par une connexion Supabase, puis le nouveau est posé.
+  SB.login(Session.email, anc)
+    .catch(() => { throw new Error("Mot de passe actuel incorrect."); })
+    .then(() => SB.setPassword(nouv))
+    .then(() => {
+      document.getElementById("pwAnc").value = "";
+      document.getElementById("pwNouv").value = "";
+      toast("Mot de passe modifié. Les autres appareils devront se reconnecter.");
+    })
+    .catch(err => toast(err.message || "Échec", true));
 }
 
 /* Ouverture instantanée : la config est déjà en mémoire (renvoyée par « me »
@@ -1484,7 +1534,7 @@ function startApp() {
   setTimeout(function () {
     ["qcmStats", "enjeux", "classements", "config"].forEach((a, i) => setTimeout(() => { try { jsonp(a).catch(() => {}); } catch (e) {} }, i * 1500));
   }, 4000);
-  if (!Session.token) return;   // b25 : session Supabase seule (écritures Apps Script indisponibles)
+  if (!SB.actif) return;
   jsonp("me")
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
@@ -1501,7 +1551,10 @@ function startApp() {
 
 document.addEventListener("DOMContentLoaded", () => {
   buildLoginOverlay();
-  if (Session.token || SB.actif) startApp();
+  let arrivee = null;
+  try { arrivee = SB.depuisHash(); } catch (e) { arrivee = null; }
+  if (arrivee && arrivee.type === "recovery") showRecovery();
+  else if (SB.actif) startApp();
   else showLogin("");
 
   const btn = document.getElementById("rtProfileBtn");

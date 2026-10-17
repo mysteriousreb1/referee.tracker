@@ -1,0 +1,54 @@
+# Referee Tracker — b47 (audit A36/A38) — contrôles automatiques à chaque push.
+# Avec la protection de branche (Settings → Branches → main → « Require status
+# checks to pass »), un push qui échoue ici ne peut pas être publié sur Pages.
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  controles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fichiers interdits (back-end, données, secrets)
+        run: |
+          set -e
+          mauvais=$(git ls-files | grep -Ei '\.(gs|xlsx|xls|csv|ods|rtf)$|^apps-script/|^CODES/|^DATA BASE/|vapid\.json|\.clasprc|remplacements\.txt|RT_sauvegarde_' || true)
+          if [ -n "$mauvais" ]; then echo "::error::Fichier interdit dans le dépôt :"; echo "$mauvais"; exit 1; fi
+
+      - name: Secrets en clair (clés API, jetons, clés privées)
+        run: |
+          set -e
+          fuite=$(git ls-files -z | grep -zv '\.md$' | xargs -0 grep -nE 'sk-ant-[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{10,}|AIza[0-9A-Za-z_-]{30,}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]{40,}' || true)
+          if [ -n "$fuite" ]; then echo "::error::Secret détecté :"; echo "$fuite"; exit 1; fi
+
+      - name: Syntaxe JavaScript
+        run: |
+          set -e
+          for f in app.js rt-auth.js rt-stats.js rt-paiements.js sw.js; do
+            [ -f "$f" ] && node --check "$f" && echo "OK $f"
+          done
+
+      - name: Sécurité de la page (CSP présente, aucun script inline)
+        run: |
+          set -e
+          grep -q 'http-equiv="Content-Security-Policy"' index.html || { echo "::error::CSP absente de index.html"; exit 1; }
+          if grep -nP '<script(?![^>]*\bsrc=)' index.html; then echo "::error::script inline dans index.html (interdit par la CSP)"; exit 1; fi
+          if grep -nE '\son[a-z]+="' index.html app.js rt-auth.js; then echo "::error::gestionnaire d'événement inline (onclick=…)"; exit 1; fi
+          echo "OK page"
+
+      - name: Cohérence des versions
+        run: |
+          set -e
+          v=$(grep -oE 'name="rt-version" content="[^"]+"' index.html | sed -E 's/.*content="([^"]+)"/\1/')
+          [ -n "$v" ] || { echo "::error::meta rt-version absente"; exit 1; }
+          n=$(grep -c "?v=$v" index.html)
+          [ "$n" -ge 4 ] || { echo "::error::les ?v= de index.html ne correspondent pas à rt-version ($v)"; exit 1; }
+          echo "OK version $v"
