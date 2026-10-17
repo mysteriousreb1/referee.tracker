@@ -1424,23 +1424,55 @@ const PUSH = {
     if (this.standaloneIos()) return { ok: false, texte: "Sur iPhone, ouvre l'app depuis l'écran d'accueil pour activer les notifications." };
     try { const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription(); return { ok: !!sub, texte: sub ? "Activées sur cet appareil." : (Notification.permission === "denied" ? "Refusées dans les réglages du téléphone (Réglages → Notifications → Referee Tracker)." : "Désactivées.") }; } catch (e) { return { ok: false, texte: "" }; }
   },
-  async activer() {
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") throw new Error("Permission refusée");
-    const r = await this.reg(); await navigator.serviceWorker.ready;
-    const sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
-    const j = sub.toJSON();
+  async _enregistrer(j) {
     await SB.write("POST", "push_subscriptions?on_conflict=endpoint", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, appareil: navigator.userAgent.slice(0, 120) }).catch(async err => {
       // doublon : on met à jour les clés
       if (/409|duplicate/i.test(err.message || "")) return SB.write("PATCH", "push_subscriptions?endpoint=eq." + encodeURIComponent(j.endpoint), { p256dh: j.keys.p256dh, auth: j.keys.auth });
       throw err;
     });
+    try { localStorage.setItem("rt_push_endpoint", j.endpoint); localStorage.setItem("rt_push_verif", String(Date.now())); } catch (e) {}
+  },
+  async activer() {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Permission refusée");
+    const r = await this.reg(); await navigator.serviceWorker.ready;
+    const sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
+    await this._enregistrer(sub.toJSON());
     return true;
   },
   async desactiver() {
     const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription();
     if (sub) { try { await SB.write("DELETE", "push_subscriptions?endpoint=eq." + encodeURIComponent(sub.endpoint)); } catch (e) {} await sub.unsubscribe(); }
+    try { localStorage.removeItem("rt_push_endpoint"); localStorage.removeItem("rt_push_verif"); } catch (e) {}
     return true;
+  },
+  /* b48 — resynchronisation silencieuse à chaque ouverture (et retour au premier plan).
+     iOS renouvelle parfois l'abonnement (redémarrage, mise à jour, réinstallation) : l'ancien
+     endpoint meurt chez Apple, la fonction push le retire de la table, et plus rien ne part
+     tant qu'on ne reclique pas « Activer ». Ici : si la permission est accordée et que l'appareil
+     a déjà été activé, on recrée / ré-enregistre l'abonnement sans rien demander. */
+  async resync(raison) {
+    try {
+      if (!this.supporte() || !SB.actif || Notification.permission !== "granted") return;
+      let memo = "";
+      try { memo = localStorage.getItem("rt_push_endpoint") || ""; } catch (e) {}
+      const r = await navigator.serviceWorker.getRegistration("./");
+      if (!r) return;
+      let sub = await r.pushManager.getSubscription();
+      if (!sub) {
+        if (!memo) return;                       // jamais activé sur cet appareil : on ne force pas
+        sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
+      }
+      const j = sub.toJSON();
+      let dernier = 0;
+      try { dernier = Number(localStorage.getItem("rt_push_verif") || 0); } catch (e) {}
+      if (memo === j.endpoint && Date.now() - dernier < 6 * 3600 * 1000 && raison !== "force") return;   // vérifié il y a < 6 h
+      let present = false;
+      try { const rows = await SB.get("push_subscriptions?select=endpoint&endpoint=eq." + encodeURIComponent(j.endpoint)); present = Array.isArray(rows) && rows.length > 0; } catch (e) { return; }
+      if (!present) await this._enregistrer(j);
+      else { try { localStorage.setItem("rt_push_endpoint", j.endpoint); localStorage.setItem("rt_push_verif", String(Date.now())); } catch (e) {} }
+      if (memo && memo !== j.endpoint) { try { await SB.write("DELETE", "push_subscriptions?endpoint=eq." + encodeURIComponent(memo)); } catch (e) {} }
+    } catch (e) { /* silencieux : jamais bloquant pour l'app */ }
   },
   lier() {
     const on = document.getElementById("pfPushOn"), off = document.getElementById("pfPushOff"), et = document.getElementById("pfPushEtat");
@@ -1513,7 +1545,17 @@ const CONFIRM = {
    selon la présence d'une session valide, d'ouvrir l'application ou l'écran
    de connexion. */
 
+/* b48 — notifications : resynchronisation à l'ouverture, au retour au premier plan,
+   et quand le service worker signale un changement d'abonnement. */
+function pushResyncInstaller_() {
+  if (window.__rtPushResync) return;
+  window.__rtPushResync = true;
+  setTimeout(() => PUSH.resync(), 4000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") PUSH.resync(); });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
+}
 function startApp() {
+  pushResyncInstaller_();
   // On affiche AVANT de parler au serveur : `loadData` passe par le cache,
   // donc le contenu est à l'écran immédiatement au lieu d'attendre la réponse
   // de « me » — un aller-retour Apps Script, soit 1 à 5 s d'écran vide.

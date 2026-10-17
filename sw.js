@@ -24,3 +24,13 @@ self.addEventListener("notificationclick", e => {
     return self.clients.openWindow(cible);
   }));
 });
+/* b48 — l'OS a renouvelé l'abonnement : on en reprend un avec la même clé et on prévient
+   la page (qui l'enregistre côté Supabase avec sa session). */
+self.addEventListener("pushsubscriptionchange", e => {
+  const ancien = e.oldSubscription;
+  const cle = (ancien && ancien.options && ancien.options.applicationServerKey) || null;
+  e.waitUntil((cle ? self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cle }) : Promise.resolve(null))
+    .catch(() => null)
+    .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+    .then(liste => { liste.forEach(c => c.postMessage({ type: "rt-push-changed" })); }));
+});
