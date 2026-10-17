@@ -29,8 +29,8 @@ const RT_PAIEMENTS = (function () {
   
      - CD67 (régime cd67)        : échéancier officiel du Comité, payé le 11 du
                                    mois qui suit le mois de la période.
-     - Ligue LRGEB (region)      : caisse de péréquation, paiement la semaine qui
-                                   suit chaque bloc d'environ 4 week-ends.
+     - Ligue LRGEB (region)      : caisse de péréquation, calendrier officiel de
+                                   la Ligue (périodes + date « à partir du »).
      - FFBB CF séniors (federation) : période = mois civil (du 1er au 30/31),
                                    versement au cours du mois suivant.
      La date attendue = jour à partir duquel un paiement manquant est EN RETARD.
@@ -53,10 +53,16 @@ const RT_PAIEMENTS = (function () {
     ]
   };
   
-  /* Ligue LRGEB — [début, fin, lundi de la semaine de paiement].
-     2024/2025 : calendrier officiel. 2026/2027 : ESTIMÉ sur le même principe
-     (blocs de ~4 week-ends calés sur les vacances zone B 2026/27) en attendant
-     le calendrier officiel de la saison — remplacer dès réception. */
+  /* Ligue LRGEB — caisse de péréquation — [début, fin, date « à partir du »].
+     2024/2025 : calendrier officiel (3e colonne = lundi de la semaine de paiement,
+     marge 4 j → vendredi).
+     2026/2027 : CALENDRIER OFFICIEL « Championnat Régional 2026/2027 — Calendrier
+     Caisse de péréquation » (reçu le 17/10/2026). La 3e colonne est la date
+     « A partir du » annoncée par la Ligue ; marge 7 j pour le délai de virement.
+     La 1re période officielle commence le 03/10 : les matchs Ligue antérieurs
+     (septembre) lui sont rattachés. Dernière période : « 01/05/2027 à la fin de
+     saison après playoffs, paiement + 9 jours » → fin estimée au 30/06, soit le
+     09/07/2027 (seule date estimée de la saison). */
   var ECH_LIGUE = {
     "2024/2025": [
       ["09/09/2024", "20/10/2024", "21/10/2024"],
@@ -69,20 +75,18 @@ const RT_PAIEMENTS = (function () {
       ["21/04/2025", "25/05/2025", "26/05/2025"],
       ["26/05/2025", "15/06/2025", "16/06/2025"]
     ],
-    "2026/2027": [   // ESTIMÉ
-      ["01/09/2026", "18/10/2026", "19/10/2026"],
-      ["19/10/2026", "22/11/2026", "23/11/2026"],
-      ["23/11/2026", "20/12/2026", "21/12/2026"],
-      ["21/12/2026", "31/01/2027", "01/02/2027"],
-      ["01/02/2027", "07/03/2027", "08/03/2027"],
-      ["08/03/2027", "04/04/2027", "05/04/2027"],
-      ["05/04/2027", "25/04/2027", "26/04/2027"],
-      ["26/04/2027", "30/05/2027", "31/05/2027"],
-      ["31/05/2027", "20/06/2027", "21/06/2027"]
+    "2026/2027": [   // OFFICIEL (b46)
+      ["01/09/2026", "15/11/2026", "25/11/2026"],
+      ["16/11/2026", "20/12/2026", "11/01/2027"],
+      ["21/12/2026", "31/01/2027", "10/02/2027"],
+      ["01/02/2027", "28/03/2027", "08/04/2027"],
+      ["29/03/2027", "30/04/2027", "10/05/2027"],
+      ["01/05/2027", "30/06/2027", "09/07/2027"]
     ]
   };
-  var ECH_LIGUE_ESTIME = { "2026/2027": true };
-  var ECH_LIGUE_MARGE_JOURS = 4;   // virement attendu au plus tard le vendredi de la semaine de paiement
+  var ECH_LIGUE_ESTIME = {};                                  // plus aucune saison estimée
+  var ECH_LIGUE_MARGE_JOURS = 4;                              // 2024/2025 : lundi → vendredi
+  var ECH_LIGUE_MARGE_PAR_SAISON = { "2026/2027": 7 };        // « à partir du » + délai de virement
   
   function ech_date_(v) {
     if (!v) return null;
@@ -119,7 +123,8 @@ const RT_PAIEMENTS = (function () {
     if (regime === "region") {
       var q = ech_cherche_(ECH_LIGUE, d);
       if (q) {
-        var j = new Date(q.paiement); j.setDate(j.getDate() + ECH_LIGUE_MARGE_JOURS);
+        var marge = ECH_LIGUE_MARGE_PAR_SAISON[ech_saison_(d)];
+        var j = new Date(q.paiement); j.setDate(j.getDate() + (marge === undefined ? ECH_LIGUE_MARGE_JOURS : marge));
         return { date: j, source: ECH_LIGUE_ESTIME[ech_saison_(d)] ? "estime" : "echeancier", periode: q.periode };
       }
       var r = new Date(d); r.setDate(r.getDate() + 35);
