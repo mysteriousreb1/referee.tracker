@@ -3722,3 +3722,59 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
   .mrow-main .card-title { font-size: 15.5px; }
   .mrow-main .card-sub { font-size: 13px; }
 }
+
+/* =====================================================================
+   b49 (19/10/2026) — interface : téléphone d'abord, Règlement PC, session,
+   menu « Plus », titres sur deux lignes, boutons pleine largeur.
+   Ce bloc est en fin de fichier : il prime sur tout ce qui précède.
+   ===================================================================== */
+
+/* --- Session (barre latérale PC) : discret, une ligne, e-mail tronqué --- */
+.tabs-foot { justify-content: flex-start; text-align: left; flex-wrap: nowrap; gap: 8px; padding: 10px 12px; margin: 8px 6px 4px; border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.tabs-foot span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; min-width: 0; font-size: 12px; color: var(--muted); font-weight: 600; }
+
+/* --- Règlement PC : vrai écran de chat (fil qui défile, composeur ancré en bas) --- */
+@media (min-width: 768px) {
+  #reglement.active { height: calc(100dvh - var(--header-h, 64px) - 24px); min-height: 0; overflow: hidden; }
+  .regl-wrap { height: 100%; max-width: 900px; }
+  #reglement .regl-chat { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 8px 16px; scrollbar-width: thin; }
+  #reglement .regl-form { position: static; margin: 10px 0 0; }
+  .regl-empty { margin: auto 0; padding: 20px 12px; }
+  .regl-ex { max-width: 760px; margin: 0 auto; }
+  .regl-ex-btn { font-size: 13.5px; padding: 10px 15px; }
+}
+
+/* --- Titres de carte : deux lignes plutôt que « GEISPOLSHEIM C.… » --- */
+.card-title, .mrow-main .card-title { white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-overflow: clip; }
+
+/* --- Téléphone --- */
+@media (max-width: 767px) {
+  /* Loupe : dans l'en-tête (plus de bouton flottant qui masque le contenu) */
+  .rt-fab { display: none !important; }
+  #searchToggleBtn { display: inline-flex !important; }
+  #searchToggleBtn .loupe-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold, #F5B400); box-shadow: 0 0 0 2px var(--surface); }
+  #searchToggleBtn .loupe-dot[hidden] { display: none; }
+  #searchToggleBtn.is-filtered { color: var(--gold, #F5B400); border-color: var(--gold, #F5B400); }
+
+  /* Lisibilité : étiquettes moins minuscules, cartes un peu plus aérées */
+  .card-title { font-size: 18px; line-height: 1.15; }
+  .acc-s-sub, .kpi small, .kpi .kpi-sub { font-size: 11.5px; }
+  .detail-grid { gap: 8px; }
+
+  /* Boutons d'action du détail (Waze, SMS, Contact fait, FBI, Annulé…) : grille 2 colonnes, pleine largeur */
+  .match-card .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .match-card .actions > * { width: 100%; margin: 0; justify-content: center; text-align: center; min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
+  .match-card .actions > :last-child:nth-child(odd) { grid-column: span 2; }   /* dernier bouton seul : pleine largeur */
+
+  /* Menu « Plus » : feuille collée à la barre, voile derrière, rien ne passe par-dessus */
+  .tab-more-panel { left: 0; right: 0; bottom: calc(var(--nav-h) + var(--safe-b)); border-radius: 20px 20px 0 0; padding: 14px 12px 16px; gap: 10px; box-shadow: 0 -14px 40px rgba(10,31,68,.35); max-height: 70vh; }
+  .tab-more-panel::before { content: ""; position: fixed; inset: 0; background: rgba(5, 15, 35, .45); z-index: -1; }
+  .tab-more-item { min-height: 78px; border-radius: 14px; }
+
+  /* Règlement : composeur sur deux lignes lisibles, placeholder non coupé */
+  #reglement .regl-form textarea { min-height: 48px; line-height: 1.35; }
+  #reglement .regl-form textarea::placeholder { font-size: 14px; }
+}
+
+/* --- Menus déroulants : texte aligné à gauche partout (jamais centré) --- */
+select, .rt-search-sec select, .chart-filter select, .payment-row select { text-align: left; text-align-last: left; }

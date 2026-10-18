@@ -181,7 +181,9 @@ function bindUi() {
   // Sur PC la barre est toujours visible (bouton masqué en CSS), toggle sans effet.
   const searchToggle = document.getElementById("searchToggleBtn");
   const toolbarSearch = document.getElementById("toolbarSearch");
-  if (searchToggle && toolbarSearch) {
+  // b49 — la loupe de l'en-tête ouvre le panneau Recherche (RECH) ; l'ancienne barre
+  // repliable n'est plus utilisée (toolbarSearch reste masqué par le CSS).
+  if (searchToggle && toolbarSearch && false) {
     searchToggle.addEventListener("click", () => {
       const open = toolbarSearch.classList.toggle("search-open");
       searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
@@ -442,6 +444,15 @@ const RECH = {
     const n = this.actifs(), badge = b.querySelector(".rt-fab-badge");
     badge.hidden = !n; badge.textContent = String(n);
     b.classList.toggle("is-filtered", n > 0);
+    // b49 — sur téléphone la loupe vit dans l'en-tête (le bouton flottant masquait le contenu).
+    const h = document.getElementById("searchToggleBtn");
+    if (h) {
+      if (!h.dataset.rech) { h.dataset.rech = "1"; h.addEventListener("click", ev => { ev.stopPropagation(); this.ouvert ? this.fermer() : this.ouvrir(); }); }
+      h.hidden = !visible;
+      h.classList.toggle("is-filtered", n > 0);
+      h.setAttribute("aria-expanded", this.ouvert ? "true" : "false");
+      const dot = h.querySelector(".loupe-dot"); if (dot) dot.hidden = !n;
+    }
     if (!visible) this.fermer();
   },
   ouvrir() {
@@ -497,6 +508,7 @@ const RECH = {
     if (el) { el.classList.remove("is-open"); setTimeout(() => el.remove(), 200); }
     if (this._esc) { document.removeEventListener("keydown", this._esc); this._esc = null; }
     this.ouvert = false;
+    const h = document.getElementById("searchToggleBtn"); if (h) h.setAttribute("aria-expanded", "false");
   }
 };
 function setActiveTab(tab) {
@@ -1293,7 +1305,8 @@ function renderTabBadges_() {
   const rows = state.filteredRows || [];
   const sessEl = document.querySelector(".tabs-foot span:last-child");
   if (sessEl && typeof Session !== "undefined" && Session && Session.email) {
-    sessEl.textContent = "Session : " + Session.email;
+    sessEl.textContent = Session.email;   // b49 — plus de « Session : » ; l'e-mail seul, tronqué par le CSS
+    sessEl.title = "Connecté : " + Session.email;
     sessEl.title = "Tu es connecté avec ce compte. La session reste ouverte tant que tu utilises le site (30 jours d'inactivité maximum).";
   }
 
