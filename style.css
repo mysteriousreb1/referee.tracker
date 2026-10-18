@@ -3776,5 +3776,11 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
   #reglement .regl-form textarea::placeholder { font-size: 14px; }
 }
 
+/* --- b50 : rapprochement v2 — explications sous chaque virement --- */
+.rb-expl { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+.rb-expl span { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+.rb-synth { margin: 10px 0 12px; }
+.rb-synth .rb-synth-warn { color: var(--red, #E4002B); border-color: var(--red, #E4002B); }
+
 /* --- Menus déroulants : texte aligné à gauche partout (jamais centré) --- */
 select, .rt-search-sec select, .chart-filter select, .payment-row select { text-align: left; text-align-last: left; }

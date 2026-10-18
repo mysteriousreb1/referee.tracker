@@ -3028,41 +3028,6 @@ function rbPayeur_(n) {
   if (/federation francaise|\bffbb\b/.test(n)) return "ffbb";
   return "";
 }
-function rbCandidats_() {
-  return state.allRows
-    .filter(r => r._isActive && r._format !== "Alerte" && !r._benevole && r._reste > 0)
-    .map(r => {
-      const toks = new Set();
-      [get(r, "Recevant"), get(r, "Visiteur / événement"), get(r, "Libellé compétition"), get(r, "Code compétition")].forEach(t =>
-        rbNorm_(t).split(/[^a-z0-9]+/).forEach(w => { if (w.length >= 3 && !RB_STOP_.has(w)) toks.add(w); }));
-      return { uid: get(r, "UID"), c: Math.round(r._reste * 100), date: r._date, toks: [...toks], niv: rbNorm_(get(r, "Niveau administratif")), cls: rbClasse_(r), att: parseFrDate(get(r, "Date attendue")) };
-    })
-    .filter(x => x.uid && x.c > 0)
-    .sort((a, b) => (a.date || 0) - (b.date || 0));
-}
-
-/* Analyse par montant d'un crédit sans correspondance exacte : mission déjà reçue de même
-   montant, ou missions les plus proches (écart signé = virement − indemnité due). */
-function rbAnalyse_(t, deja, tolC, lv, pris) {
-  const dj = deja.find(x => Math.abs(x.c - t.cents) <= tolC);
-  if (dj) return { txt: "Montant identique à une mission déjà marquée reçue : " + dj.lib, part: [] };
-  const lst = state.allRows.filter(r => r._isActive && r._format !== "Alerte" && !r._benevole && r._amountTheorique > 0 && (!r._date || !t.date || r._date <= t.date) && (!lv || rbClasse_(r) === lv) && !(pris && pris.has(get(r, "UID"))))
-    .map(r => {
-      const du = Math.round(r._amountTheorique * 100), h = rbTokensRow_(r).filter(w => t.words.has(w) || (t.mtoks || []).includes(w)).length;
-      return { r, ecart: t.cents - du, h, ab: Math.abs(t.cents - du) };
-    })
-    .filter(x => x.h > 0 || x.ab <= Math.max(300, t.cents * 0.15) || (lv && x.ecart < 0 && t.cents >= Math.round(x.r._amountTheorique * 100) * 0.4))
-    .sort((a, b) => b.h - a.h || a.ab - b.ab).slice(0, 3);
-  if (!lst.length) return { txt: "Aucune mission d'un montant proche.", part: [] };
-  const txt = "Missions les plus proches : " + lst.map(x => {
-    const nm = [get(x.r, "Recevant"), get(x.r, "Visiteur / événement")].filter(Boolean).join(" / ");
-    const e = x.ecart / 100;
-    return `${nm} (${rbFmtDate_(x.r._date)}, dû ${money(x.r._amountTheorique)}, ${get(x.r, "Statut paiement") || "À recevoir"}) → écart ${(e > 0 ? "+" : "") + money(e)}${x.ecart > 0 ? " (trop-perçu ?)" : x.ecart < 0 ? " (paiement partiel ?)" : ""}`;
-  }).join(" ; ");
-  // Paiement partiel proposé : virement inférieur au dû, mission encore à solder
-  const part = lst.filter(x => x.ecart < 0 && x.r._reste > 0).map(x => ({ uid: get(x.r, "UID"), nom: [get(x.r, "Recevant"), get(x.r, "Visiteur / événement")].filter(Boolean).join(" / ") }));
-  return { txt, part };
-}
 function rbMode_(n) { return /cheque/.test(n) ? "Chèque" : /especes/.test(n) ? "Espèces" : "Virement"; }
 function rbIso_(d) { return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : ""; }
 function rbTokensRow_(r) {
@@ -3070,79 +3035,6 @@ function rbTokensRow_(r) {
   [get(r, "Recevant"), get(r, "Visiteur / événement"), get(r, "Libellé compétition"), get(r, "Code compétition")].forEach(t =>
     rbNorm_(t).split(/[^a-z0-9]+/).forEach(w => { if (w.length >= 3 && !RB_STOP_.has(w) && !o.includes(w)) o.push(w); }));
   return o;
-}
-
-function rbRapprocher_() {
-  const tolC = Math.round((Number(RB.tol) || 0) * 100);
-  const cands = rbCandidats_();
-  const pris = new Set();
-  const deja = state.allRows.filter(r => r._isActive && r._encaisse > 0).map(r => ({ c: Math.round(r._encaisse * 100), lib: (get(r, "Recevant") || "") + " / " + (get(r, "Visiteur / événement") || ""), d: r._date }));
-  const resoudre = t => {
-    t.mtoks = (rbMemLire_()[rbCle_(t.n)] || {}).toks || [];
-    const hint = x => x.toks.filter(w => t.words.has(w) || (t.mtoks || []).includes(w)).length;
-    let pool = cands.filter(x => !pris.has(x.uid) && (!x.date || !t.date || x.date <= t.date)).map(x => ({ ...x, h: hint(x) }));
-    /* Payeur institutionnel reconnu dans le libellé → on ne garde que son niveau de compétition
-       (Ligue/LRGEB/Grand Est = Régional ; Comité/CD = Départemental ; FFBB = Championnat de France). */
-    const lv = rbPayeur_(t.n);
-    const anonyme = /remise de cheque|especes/.test(t.n);   // chèque/espèces : payeur inconnu, toutes classes possibles
-    /* STRICT dans tous les sens : Ligue = Régional seulement ; Comité = Départemental + 3x3 ; FFBB = CF séniors ;
-       un virement dont l'émetteur n'est pas une institution (club) ne peut payer qu'un match « club ». */
-    if (lv) pool = pool.filter(x => x.cls === lv).map(x => ({ ...x, h: x.h + 1 }));
-    else if (!anonyme) pool = pool.filter(x => x.cls === "club");
-    pool.sort((a, b) => b.h - a.h || (a.date || 0) - (b.date || 0));
-    pool = pool.slice(0, 40);
-    pool.sort((a, b) => b.c - a.c);
-    const rest = new Array(pool.length + 1).fill(0);
-    for (let i = pool.length - 1; i >= 0; i--) rest[i] = rest[i + 1] + pool[i].c;
-    const sols = []; let noeuds = 0;
-    const tolT = Math.max(tolC, Math.abs(((rbMemLire_()[rbCle_(t.n)] || {}).ecart) || 0));   // écart habituel de ce payeur
-    const lo = t.cents - tolT, hi = t.cents + tolT;
-    (function dfs(i, somme, pick) {
-      if (sols.length >= 30 || noeuds++ > 300000) return;
-      if (somme >= lo && somme <= hi && pick.length) { sols.push(pick.slice()); return; }
-      if (pick.length >= 6 || i >= pool.length || somme + rest[i] < lo) return;
-      for (let j = i; j < pool.length; j++) {
-        if (somme + pool[j].c > hi) continue;
-        pick.push(pool[j]); dfs(j + 1, somme + pool[j].c, pick); pick.pop();
-        if (sols.length >= 30 || noeuds > 300000) return;
-      }
-    })(0, 0, []);
-    const sc = s => ({ items: s, h: s.reduce((a, x) => a + x.h, 0), n: s.length, d: s.reduce((a, x) => a + (x.date ? x.date.getTime() : 0), 0) / s.length,
-      e: t.date ? s.reduce((a, x) => a + Math.abs(t.date - (x.att || x.date || t.date)), 0) / s.length : 0 });   // écart à la date attendue
-    const alts = sols.map(sc).sort((a, b) => b.h - a.h || a.e - b.e || a.n - b.n || a.d - b.d).slice(0, 5);
-    let conf = "aucune";
-    if (alts.length) {
-      const [a, b] = alts;
-      if (alts.length === 1) conf = (a.n === 1 || a.h > 0) ? "haute" : "moyenne";
-      else if (a.h > b.h && a.h > 0) conf = "haute";
-      else if (a.h > 0 && alts.every(z => z.h === a.h && z.items.map(x => x.c).sort().join() === a.items.map(x => x.c).sort().join())) conf = "haute";   // missions interchangeables (même club, même montant)
-      else conf = "ambigu";
-      if (conf === "haute" || conf === "moyenne") a.items.forEach(x => pris.add(x.uid));
-    }
-    const an = alts.length ? { txt: "", part: [] } : rbAnalyse_(t, deja, tolC, lv, pris);
-    const note = an.txt;
-    let warn = t.dup ? "Possible doublon : même date, montant et libellé qu'une autre ligne du relevé." : "";
-    if (alts.length && new Set(alts[0].items.map(x => x.cls)).size > 1) { warn += " Missions de payeurs différents (Ligue/Comité/FFBB/club) : à vérifier."; if (conf === "haute") conf = "moyenne"; }
-    if (t.multi && conf === "haute") conf = "moyenne";
-    // Match CF jeunes / club : pointé à la main par défaut, jamais pré-coché sans nom de club reconnu.
-    if (conf === "haute" && alts[0].items.some(x => x.cls === "club") && !alts[0].items.every(x => x.h > (lv ? 1 : 0))) conf = "moyenne";
-    return { t, alts, sel: 0, conf, note, warn: warn.trim(), part: an.part, coches: new Set(alts.length && conf === "haute" ? alts[0].items.map(x => x.uid) : []), faits: new Set() };
-  };
-  RB.props = RB.lignes.map(resoudre);
-  /* 2e passe : un règlement coupé en 2 virements/dépôts (ex. 70 € espèces + 2 € ailleurs
-     pour une mission de 72 €). On essaie les paires de crédits restés sans correspondance
-     à moins de 21 jours ; résultat toujours « à contrôler » (jamais pré-coché). */
-  const libres = RB.props.filter(p => !p.alts.length && p.t.date);
-  const absorbes = new Set();
-  for (let i = 0; i < libres.length; i++) for (let j = i + 1; j < libres.length; j++) {
-    const a = libres[i], b = libres[j];
-    if (absorbes.has(a) || absorbes.has(b) || Math.abs(a.t.date - b.t.date) > 21 * 86400000) continue;
-    const t = { parts: [a.t, b.t], hash: a.t.hash + "+" + b.t.hash, id: "m" + a.t.id + "_" + b.t.id, date: a.t.date > b.t.date ? a.t.date : b.t.date, cents: a.t.cents + b.t.cents, multi: true,
-      libelle: a.t.libelle + " + " + b.t.libelle, n: a.t.n + " " + b.t.n, words: new Set([...a.t.words, ...b.t.words]) };
-    const m = resoudre(t);
-    if (m.alts.length && m.conf !== "ambigu") { absorbes.add(a); absorbes.add(b); RB.props[RB.props.indexOf(a)] = m; }
-  }
-  RB.props = RB.props.filter(p => !absorbes.has(p));
 }
 
 /* ---- Historique des virements pointés (feuille VIREMENTS_POINTES) ---- */
@@ -3209,15 +3101,6 @@ function rbHistHtml_() {
   </details>`;
 }
 
-function rbLigneMatch_(uid, coche, fait) {
-  const r = state.allRows.find(x => get(x, "UID") === uid);
-  if (!r) return `<li class="rb-m">Mission introuvable (${escapeHtml(uid)})</li>`;
-  const equipes = [get(r, "Recevant"), get(r, "Visiteur / événement")].filter(Boolean).join(" / ") || get(r, "Libellé compétition") || "Mission";
-  return `<li class="rb-m"><label><input type="checkbox" data-rb-uid="${escapeHtml(uid)}"${coche ? " checked" : ""}${fait ? " disabled" : ""}>
-    <span class="rb-m-t"><strong>${escapeHtml(equipes)}</strong><small>${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(get(r, "Libellé compétition") || "")}</small></span>
-    <span class="rb-m-v">${formatMoney(r._reste)}</span></label></li>`;
-}
-
 function rbHtmlProp_(p, i) {
   const c = p.conf;
   const lib = { haute: "Correspondance probable", moyenne: p.t.multi ? "Cumul de virements" : "À contrôler", ambigu: "Plusieurs possibilités", aucune: "Aucune correspondance" }[c];
@@ -3228,7 +3111,8 @@ function rbHtmlProp_(p, i) {
     <div class="rb-head"><span class="rb-d">${escapeHtml(rbFmtDate_(p.t.date))}</span><span class="rb-l" title="${escapeHtml(p.t.libelle)}">${escapeHtml(p.t.libelle || "(sans libellé)")}</span><strong class="rb-v">${formatMoney(p.t.cents / 100)}</strong>
     <span class="rb-b rb-b-${valide ? "ok" : c}">${valide ? "Validé" : lib}</span></div>
     ${p.warn ? `<div class="rb-warn">${escapeHtml(p.warn)}</div>` : ""}
-    ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.uid, p.coches.has(x.uid), p.faits.has(x.uid))).join("")}</ul>` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.uid)}"${p.faits.has(q.uid) ? " disabled" : ""}>${p.faits.has(q.uid) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom)}</button>`).join("")}` : "")}
+    ${(p.expl || []).length ? `<div class="rb-expl">${p.expl.map(x => `<span>${escapeHtml(x)}</span>`).join("")}</div>` : ""}
+    ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.id, p.coches.has(x.id), p.faits.has(x.id))).join("")}</ul>` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.id)}"${p.faits.has(q.id) ? " disabled" : ""}>${p.faits.has(q.id) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom) + (q.cote === "visiteur" ? " (part visiteuse)" : "")}</button>`).join("")}` : "")}
   </div>`;
 }
 
@@ -3247,7 +3131,11 @@ function rbHtml_() {
   const sel = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).length, 0);
   const tot = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).reduce((s, u) => { const r = state.allRows.find(x => get(x, "UID") === u); return s + (r ? r._reste : 0); }, 0), 0);
   const avec = RB.props.filter(p => p.alts.length), sans = RB.props.filter(p => !p.alts.length);
-  return `${zoneFichier}
+  /* b50 — synthèse par payeur : ce que le relevé règle (haute / à contrôler) et ce qui reste inexpliqué. */
+  const parPayeur = {}; let inexplique = 0;
+  RB.props.forEach(p => { const k = p.payeur ? (RB_CLS_LIB_[p.payeur.cls] || (p.payeur.src === "anonyme" ? "Chèques / espèces" : "Clubs")) : "?"; if (p.alts.length) { const e = parPayeur[k] = parPayeur[k] || { n: 0, c: 0, haute: 0 }; e.n++; e.c += p.t.cents; if (p.conf === "haute") e.haute++; } else inexplique += p.t.cents; });
+  const synthese = Object.keys(parPayeur).length || inexplique ? `<div class="rb-expl rb-synth">${Object.keys(parPayeur).map(k => `<span>${escapeHtml(k)} : ${parPayeur[k].n} virement(s), ${formatMoney(parPayeur[k].c / 100)} (${parPayeur[k].haute} sûr(s))</span>`).join("")}${inexplique ? `<span class="rb-synth-warn">Non expliqué : ${formatMoney(inexplique / 100)}</span>` : ""}</div>` : "";
+  return `${zoneFichier}${synthese}
     <div class="rb-cols">${colSel("date", "Date")}${colSel("libelle", "Libellé")}${colSel("credit", "Crédit")}${colSel("montant", "Montant (si pas de colonne Crédit)")}</div>
     <div class="rb-sum"><strong>${RB.lignes.length}</strong> virement(s) entrant(s) · <strong>${avec.length}</strong> rapproché(s) · <strong>${sans.length}</strong> sans correspondance${RB.dejaN ? ` · ${RB.dejaN} déjà pointé(s)` : ""}${RB.ign ? ` · ${RB.ign} ignoré(s)` : ""}</div>
     ${Object.keys(RB.autres).length ? `<div class="rb-note">Autres crédits non liés à l'arbitrage : ${Object.keys(RB.autres).map(k => `${escapeHtml(k)} ${formatMoney(RB.autres[k].cents / 100)} (${RB.autres[k].n})`).join(" · ")}</div>` : ""}
@@ -3257,39 +3145,336 @@ function rbHtml_() {
     ${rbHistHtml_()}`;
 }
 
+/* ===================================================================
+   RAPPROCHEMENT BANCAIRE v2 — b50 (19/10/2026)
+   Principes :
+   1. On ne rapproche plus des « missions » mais des CRÉANCES : ce qu'un payeur
+      précis doit encore. Parts égales → deux créances (club recevant, club
+      visiteur). Institutionnel (Ligue / Comité / FFBB) → une créance par mission,
+      rattachée à sa PÉRIODE d'échéancier (date attendue).
+   2. Un virement institutionnel est d'abord comparé à des PÉRIODES entières
+      (somme des créances de la période), puis à des sous-ensembles d'une même
+      période ; le reliquat égal à une créance précise est nommé (« mission non
+      réglée »). Un virement de club ne vise que les créances de ce club.
+   3. La validation écrit des MONTANTS EXACTS par côté (reçu recevant / reçu
+      visiteur, date, mode) : jamais « marquer reçu » en bloc. Paiement partiel =
+      montant du virement, pas la créance.
+   4. Mémoire des payeurs côté serveur (onglet RB_PAYEURS via bank.payeurs) +
+      cache navigateur : libellé → classe, club, écart habituel.
+   5. Pré-coché seulement en confiance HAUTE ; tout le reste se valide à la main.
+   =================================================================== */
+const RB_CLS_INST_ = { cd: 1, ligue: 1, ffbb: 1 };
+const RB_PERIODE_MAX_ = 12;      // créances max dans une période pour la recherche de sous-ensemble
+
+/* ---- mémoire des payeurs : serveur (RB_PAYEURS) + cache local ---- */
+const RBMEM = {
+  _m: null, _chargee: false,
+  lire() { if (this._m) return this._m; this._m = rbMemLire_(); return this._m; },
+  async charger() {
+    if (this._chargee) return;
+    this._chargee = true;
+    try {
+      const res = await jsonpFrais("bank.payeurs");
+      if (res && res.success !== false && res.data) {
+        const m = this.lire();
+        (res.data || []).forEach(p => { if (p.cle) m[p.cle] = { cls: p.cls || "", club: p.club || "", toks: p.toks || [], ecart: Number(p.ecart) || 0, n: Number(p.n) || 0 }; });
+        rbMemEcrire_(m);
+      }
+    } catch (e) { /* serveur indisponible : on reste sur le cache */ }
+  },
+  async enregistrer(cle, entree) {
+    const m = this.lire(); m[cle] = entree; rbMemEcrire_(m);
+    try { await jsonp("bank.payeur.set", { cle, cls: entree.cls || "", club: entree.club || "", toks: (entree.toks || []).join(" "), ecart: String(entree.ecart || 0) }); } catch (e) { /* cache local suffit */ }
+  }
+};
+
+/* ---- identité d'un club dans une mission (code FFBB, nom court, tokens) ---- */
+function rbClubId_(r, cote) {
+  const code = cleanText(get(r, cote === "visiteur" ? "Code club visiteur" : "Code club recevant"));
+  const nomCourt = cleanText(get(r, cote === "visiteur" ? "Visiteur court" : "Recevant court"));
+  const nom = cleanText(get(r, cote === "visiteur" ? "Visiteur / événement" : "Recevant"));
+  const toks = new Set();
+  [nomCourt, nom].forEach(t => rbNorm_(t).split(/[^a-z0-9]+/).forEach(w => { if (w.length >= 3 && !RB_STOP_.has(w)) toks.add(w); }));
+  return { code, nom: nomCourt || nom, toks: [...toks] };
+}
+function rbPeriodeIso_(r) { const d = parseFrDate(get(r, "Date attendue")) || parseFrDate(get(r, "Date paiement")); return d ? rbIso_(d) : ""; }
+
+/* ---- CRÉANCES : ce que chaque payeur doit encore, mission par mission ---- */
+function rbCreances_() {
+  const out = [];
+  state.allRows.forEach(r => {
+    if (!(r._isActive && r._format !== "Alerte" && !r._benevole && r._reste > 0)) return;
+    const uid = get(r, "UID"); if (!uid) return;
+    const cls = rbClasse_(r), regime = paiementRegime_(r);
+    const base = { uid, date: r._date, att: parseFrDate(get(r, "Date attendue")), periode: rbPeriodeIso_(r), niv: rbNorm_(get(r, "Niveau administratif")), lib: rbEquipes_(r), compet: get(r, "Libellé compétition") || "" };
+    const tot = Math.round(r._amountTheorique * 100);
+    if (regime === "parts_egales") {
+      const attR = Math.round((toNumber(get(r, "Attendu recevant")) || r._amountTheorique / 2) * 100), attV = Math.round((toNumber(get(r, "Attendu visiteur")) || (r._amountTheorique - r._amountTheorique / 2)) * 100);
+      const recR = Math.round(toNumber(get(r, "Reçu recevant")) * 100), recV = Math.round(toNumber(get(r, "Reçu visiteur")) * 100);
+      const cR = Math.max(0, attR - recR), cV = Math.max(0, attV - recV);
+      if (cR > 0) out.push({ ...base, id: uid + "#R", cote: "recevant", cls: "club", club: rbClubId_(r, "recevant"), c: cR, toks: rbClubId_(r, "recevant").toks });
+      if (cV > 0) out.push({ ...base, id: uid + "#V", cote: "visiteur", cls: "club", club: rbClubId_(r, "visiteur"), c: cV, toks: rbClubId_(r, "visiteur").toks });
+      return;
+    }
+    const c = Math.round(r._reste * 100); if (c <= 0) return;
+    if (cls === "club") out.push({ ...base, id: uid + "#R", cote: "recevant", cls: "club", club: rbClubId_(r, "recevant"), c, toks: rbTokensRow_(r) });
+    else out.push({ ...base, id: uid + "#I", cote: "recevant", cls, club: null, c, toks: rbTokensRow_(r) });
+  });
+  return out.sort((a, b) => (a.date || 0) - (b.date || 0));
+}
+
+/* ---- payeur d'un crédit : mémoire serveur/locale, puis institutions, puis club reconnu ---- */
+function rbPayeurV2_(t, creances) {
+  const cle = rbCle_(t.n), mem = RBMEM.lire()[cle];
+  if (mem && mem.cls) return { cls: mem.cls, club: mem.club || "", src: "mémoire", toks: mem.toks || [], ecart: Number(mem.ecart) || 0 };
+  if (/ligue regionale|lrgeb|grand est/.test(t.n)) return { cls: "ligue", club: "", src: "libellé", toks: [], ecart: 0 };
+  if (/comite|bas rhin|\bcd ?67\b/.test(t.n)) return { cls: "cd", club: "", src: "libellé", toks: [], ecart: 0 };
+  if (/federation francaise|\bffbb\b/.test(t.n)) return { cls: "ffbb", club: "", src: "libellé", toks: [], ecart: 0 };
+  if (/remise de cheque|especes|versement/.test(t.n)) return { cls: "", club: "", src: "anonyme", toks: [], ecart: 0 };
+  // Club reconnu par ses mots (nom court / nom complet) dans le libellé du virement
+  const scores = {};
+  creances.filter(x => x.cls === "club" && x.club).forEach(x => {
+    const h = x.club.toks.filter(w => t.words.has(w)).length;
+    if (h) { const k = x.club.code || x.club.nom; scores[k] = Math.max(scores[k] || 0, h); }
+  });
+  const best = Object.keys(scores).sort((a, b) => scores[b] - scores[a])[0];
+  if (best) return { cls: "club", club: best, src: "nom du club", toks: [], ecart: 0, h: scores[best] };
+  return { cls: "club", club: "", src: "inconnu", toks: [], ecart: 0 };
+}
+
+/* ---- sous-ensemble dont la somme = cible ± tol (DFS borné) ---- */
+function rbSousEnsembles_(pool, lo, hi, maxN, maxSols) {
+  pool = pool.slice().sort((a, b) => b.c - a.c);
+  const rest = new Array(pool.length + 1).fill(0);
+  for (let i = pool.length - 1; i >= 0; i--) rest[i] = rest[i + 1] + pool[i].c;
+  const sols = []; let noeuds = 0;
+  (function dfs(i, somme, pick) {
+    if (sols.length >= maxSols || noeuds++ > 200000) return;
+    if (somme >= lo && somme <= hi && pick.length) { sols.push(pick.slice()); return; }
+    if (pick.length >= maxN || i >= pool.length || somme + rest[i] < lo) return;
+    for (let j = i; j < pool.length; j++) {
+      if (somme + pool[j].c > hi) continue;
+      pick.push(pool[j]); dfs(j + 1, somme + pool[j].c, pick); pick.pop();
+      if (sols.length >= maxSols || noeuds > 200000) return;
+    }
+  })(0, 0, []);
+  return sols;
+}
+
+/* ---- résolution d'un crédit ---- */
+function rbResoudreV2_(t, creances, pris, tolC) {
+  const payeur = rbPayeurV2_(t, creances);
+  const tolT = Math.max(tolC, Math.abs(payeur.ecart || 0));
+  const lo = t.cents - tolT, hi = t.cents + tolT;
+  const libres = creances.filter(x => !pris.has(x.id) && (!x.date || !t.date || x.date <= t.date));
+  const explications = [];
+  let alts = [], conf = "aucune", note = "", warn = t.dup ? "Possible doublon : même date, montant et libellé qu'une autre ligne du relevé." : "";
+
+  const score = items => ({ items, n: items.length, h: items.reduce((a, x) => a + (x.h || 0), 0),
+    e: t.date ? items.reduce((a, x) => a + Math.abs(t.date - (x.att || x.date || t.date)), 0) / items.length : 0,
+    d: items.reduce((a, x) => a + (x.date ? x.date.getTime() : 0), 0) / items.length });
+
+  if (RB_CLS_INST_[payeur.cls]) {
+    /* ---- institution : périodes entières d'abord ---- */
+    const pool = libres.filter(x => x.cls === payeur.cls);
+    const parPeriode = {};
+    pool.forEach(x => { (parPeriode[x.periode || "?"] = parPeriode[x.periode || "?"] || []).push(x); });
+    const periodes = Object.keys(parPeriode).sort();
+    // 1) une période complète
+    periodes.forEach(p => {
+      const s = parPeriode[p].reduce((a, x) => a + x.c, 0);
+      if (s >= lo && s <= hi) { alts.push({ ...score(parPeriode[p]), periode: p, mode: "période complète" }); }
+    });
+    // 2) deux périodes consécutives complètes (retard de paiement rattrapé)
+    if (!alts.length) for (let i = 0; i + 1 < periodes.length; i++) {
+      const items = parPeriode[periodes[i]].concat(parPeriode[periodes[i + 1]]);
+      const s = items.reduce((a, x) => a + x.c, 0);
+      if (s >= lo && s <= hi) alts.push({ ...score(items), periode: periodes[i] + " + " + periodes[i + 1], mode: "deux périodes" });
+    }
+    // 3) sous-ensemble d'une même période ; reliquat = une créance précise → nommée
+    if (!alts.length) periodes.forEach(p => {
+      const items = parPeriode[p]; if (items.length > RB_PERIODE_MAX_) return;
+      rbSousEnsembles_(items, lo, hi, 10, 6).forEach(s => {
+        const manquent = items.filter(x => !s.includes(x));
+        const a = { ...score(s), periode: p, mode: "partie de période", manquent };
+        if (manquent.length === 1) a.noteManque = "Dans cette période, la mission « " + manquent[0].lib + " » (" + money(manquent[0].c / 100) + ") n'est pas réglée par ce virement.";
+        alts.push(a);
+      });
+    });
+    // 4) sous-ensemble toutes périodes (≤ 6)
+    if (!alts.length) rbSousEnsembles_(pool.slice(0, 40), lo, hi, 6, 8).forEach(s => alts.push({ ...score(s), periode: "", mode: "missions éparses" }));
+    alts.sort((a, b) => (a.mode === "période complète" ? 0 : 1) - (b.mode === "période complète" ? 0 : 1) || (a.manquent ? a.manquent.length : 0) - (b.manquent ? b.manquent.length : 0) || a.e - b.e || b.n - a.n);
+    alts = alts.slice(0, 5);
+    if (alts.length) {
+      const a = alts[0];
+      if (a.mode === "période complète" || a.mode === "deux périodes") conf = "haute";
+      else if (a.mode === "partie de période" && alts.filter(z => z.mode === "partie de période").length === 1) conf = a.manquent && a.manquent.length <= 1 ? "haute" : "moyenne";
+      else if (alts.length === 1) conf = "moyenne";
+      else conf = "ambigu";
+      explications.push("Payeur : " + ({ cd: "Comité 67", ligue: "Ligue (LRGEB)", ffbb: "FFBB" })[payeur.cls] + " (" + payeur.src + ")" + (a.periode ? " · échéance " + a.periode : "") + " · " + a.mode);
+      if (a.noteManque) explications.push(a.noteManque);
+    }
+  } else if (payeur.src === "anonyme") {
+    /* ---- chèque / espèces : payeur inconnu, créances club seulement, montant exact ---- */
+    const pool = libres.filter(x => x.cls === "club");
+    rbSousEnsembles_(pool.slice(0, 40), lo, hi, 3, 8).forEach(s => alts.push({ ...score(s), mode: "chèque / espèces" }));
+    alts.sort((a, b) => a.n - b.n || a.e - b.e); alts = alts.slice(0, 5);
+    conf = alts.length ? (alts.length === 1 ? "moyenne" : "ambigu") : "aucune";
+    if (alts.length) explications.push("Dépôt anonyme : montant exact, à confirmer à la main.");
+  } else {
+    /* ---- club : créances de CE club (code FFBB ou mots du nom), puis montants ---- */
+    let pool = libres.filter(x => x.cls === "club");
+    const cible = payeur.club;
+    const duClub = cible ? pool.filter(x => x.club && (x.club.code === cible || x.club.nom === cible)) : [];
+    const avecMots = pool.map(x => ({ ...x, h: (x.toks || []).filter(w => t.words.has(w) || (payeur.toks || []).includes(w)).length })).filter(x => x.h > 0);
+    const base = duClub.length ? duClub.map(x => ({ ...x, h: 2 })) : avecMots;
+    const chercher = (liste, maxN) => rbSousEnsembles_(liste.slice(0, 40), lo, hi, maxN, 8).map(s => ({ ...score(s), mode: liste === base ? "club reconnu" : "montant seul" }));
+    if (base.length) alts = chercher(base, 3);
+    if (!alts.length) alts = chercher(pool.map(x => ({ ...x, h: 0 })), 2);
+    alts.sort((a, b) => b.h - a.h || a.n - b.n || a.e - b.e); alts = alts.slice(0, 5);
+    if (alts.length) {
+      const a = alts[0], b = alts[1];
+      const meme = z => z.items.map(x => x.c).sort().join() === a.items.map(x => x.c).sort().join() && z.h === a.h;
+      if (a.mode === "club reconnu" && (alts.length === 1 || alts.every(meme))) conf = "haute";
+      else if (a.mode === "club reconnu" && b && a.h > b.h) conf = "haute";
+      else if (alts.length === 1) conf = "moyenne";
+      else conf = "ambigu";
+      explications.push(a.mode === "club reconnu" ? "Club reconnu : " + (cible || a.items[0].club.nom) + " (" + payeur.src + ")" : "Aucun nom de club reconnu dans le libellé : rapproché sur le montant seul.");
+      if (a.items.some(x => x.cote === "visiteur")) explications.push("Part visiteuse d'un match « parts égales ».");
+    }
+  }
+  /* sans solution : analyse (déjà reçu ? partiel ? proche ?) */
+  let part = [];
+  if (!alts.length) {
+    const an = rbAnalyseV2_(t, libres, payeur, tolC);
+    note = an.txt; part = an.part;
+  }
+  if (conf === "haute" && t.multi) conf = "moyenne";
+  if (conf === "haute" || conf === "moyenne") alts[0].items.forEach(x => pris.add(x.id));
+  return { t, payeur, alts, sel: 0, conf, note, warn: warn.trim(), part, expl: explications,
+    coches: new Set(alts.length && conf === "haute" ? alts[0].items.map(x => x.id) : []), faits: new Set() };
+}
+
+/* ---- analyse d'un crédit sans correspondance ---- */
+function rbAnalyseV2_(t, libres, payeur, tolC) {
+  const deja = state.allRows.filter(r => r._isActive && r._encaisse > 0 && Math.abs(Math.round(r._encaisse * 100) - t.cents) <= tolC);
+  if (deja.length) return { txt: "Montant identique à une mission déjà marquée reçue : " + rbEquipes_(deja[0]) + " (" + rbFmtDate_(deja[0]._date) + "). Doublon de relevé ou second paiement ?", part: [] };
+  let pool = libres;
+  if (RB_CLS_INST_[payeur.cls]) {
+    pool = pool.filter(x => x.cls === payeur.cls);
+    /* Institution : on compare d'abord aux PÉRIODES entières (un écart d'un euro ou d'une mission se lit tout de suite). */
+    const parP = {}; pool.forEach(x => { (parP[x.periode || "?"] = parP[x.periode || "?"] || []).push(x); });
+    const per = Object.keys(parP).map(p => { const s = parP[p].reduce((a, x) => a + x.c, 0); return { p, s, n: parP[p].length, ecart: t.cents - s }; })
+      .filter(z => Math.abs(z.ecart) <= Math.max(2000, t.cents * 0.5)).sort((a, b) => Math.abs(a.ecart) - Math.abs(b.ecart)).slice(0, 2);
+    if (per.length) {
+      const txt = "Périodes les plus proches : " + per.map(z => `échéance ${z.p.split("-").reverse().join("/")} (${z.n} mission(s), attendu ${money(z.s / 100)}) → écart ${(z.ecart > 0 ? "+" : "") + money(z.ecart / 100)}${z.ecart > 0 ? " (trop-perçu ou mission absente de la base ?)" : " (retenue ou mission non réglée ?)"}`).join(" ; ");
+      return { txt: txt + ". Augmente la tolérance si l'écart est un arrondi, sinon vérifie les missions de la période.", part: [] };
+    }
+  }
+  else if (payeur.src !== "anonyme") {
+    pool = pool.filter(x => x.cls === "club");
+    if (payeur.club) { const duClub = pool.filter(x => x.club && (x.club.code === payeur.club || x.club.nom === payeur.club)); if (duClub.length) pool = duClub; }
+  }
+  const proches = pool.map(x => ({ x, ecart: t.cents - x.c, h: (x.toks || []).filter(w => t.words.has(w)).length }))
+    .filter(z => z.h > 0 || Math.abs(z.ecart) <= Math.max(300, t.cents * 0.15) || (z.ecart < 0 && t.cents >= z.x.c * 0.4))
+    .sort((a, b) => b.h - a.h || Math.abs(a.ecart) - Math.abs(b.ecart)).slice(0, 3);
+  if (!proches.length) return { txt: RB_CLS_INST_[payeur.cls] ? "Aucune créance " + payeur.cls.toUpperCase() + " d'un montant proche : vérifie l'échéancier ou une mission absente de la base." : "Aucune mission d'un montant proche.", part: [] };
+  const txt = "Missions les plus proches : " + proches.map(z => `${z.x.lib} (${rbFmtDate_(z.x.date)}, dû ${money(z.x.c / 100)}${z.x.cote === "visiteur" ? ", part visiteuse" : ""}) → écart ${(z.ecart > 0 ? "+" : "") + money(z.ecart / 100)}${z.ecart > 0 ? " (trop-perçu ?)" : " (paiement partiel ?)"}`).join(" ; ");
+  const part = proches.filter(z => z.ecart < 0).map(z => ({ id: z.x.id, uid: z.x.uid, nom: z.x.lib, cote: z.x.cote, cents: t.cents }));
+  return { txt, part };
+}
+
+function rbRapprocher_() {
+  const tolC = Math.round((Number(RB.tol) || 0) * 100);
+  const creances = rbCreances_();
+  RB.creances = creances;
+  const pris = new Set();
+  // Les crédits institutionnels d'abord (ils sont les plus sûrs), puis les clubs, par date.
+  const ordre = RB.lignes.slice().map(t => ({ t, p: rbPayeurV2_(t, creances) }))
+    .sort((a, b) => (RB_CLS_INST_[a.p.cls] ? 0 : 1) - (RB_CLS_INST_[b.p.cls] ? 0 : 1) || (a.t.date || 0) - (b.t.date || 0));
+  const props = ordre.map(o => rbResoudreV2_(o.t, creances, pris, tolC));
+  /* 2e passe : deux crédits proches (≤ 21 j) sans solution dont la somme règle une créance (ex. 70 € + 2 €). */
+  const libresP = props.filter(p => !p.alts.length && p.t.date);
+  const absorbes = new Set();
+  for (let i = 0; i < libresP.length; i++) for (let j = i + 1; j < libresP.length; j++) {
+    const a = libresP[i], b = libresP[j];
+    if (absorbes.has(a) || absorbes.has(b) || Math.abs(a.t.date - b.t.date) > 21 * 86400000) continue;
+    const t = { parts: [a.t, b.t], hash: a.t.hash + "+" + b.t.hash, id: "m" + a.t.id + "_" + b.t.id, date: a.t.date > b.t.date ? a.t.date : b.t.date, cents: a.t.cents + b.t.cents, multi: true,
+      libelle: a.t.libelle + " + " + b.t.libelle, n: a.t.n + " " + b.t.n, words: new Set([...a.t.words, ...b.t.words]) };
+    const m = rbResoudreV2_(t, creances, pris, tolC);
+    if (m.alts.length && m.conf !== "ambigu") { absorbes.add(a); absorbes.add(b); props[props.indexOf(a)] = m; }
+  }
+  // Ordre d'affichage : par date de virement.
+  RB.props = props.filter(p => !absorbes.has(p)).sort((a, b) => (a.t.date || 0) - (b.t.date || 0));
+  /* Contrôle global : une même créance proposée (ambigu) par plusieurs crédits → signalée. */
+  const vu = {};
+  RB.props.forEach(p => p.alts.forEach(a => a.items.forEach(x => { (vu[x.id] = vu[x.id] || new Set()).add(p); })));
+  RB.props.forEach(p => { if (p.alts.length && p.alts[p.sel].items.some(x => vu[x.id] && vu[x.id].size > 1)) p.warn = (p.warn ? p.warn + " " : "") + "Une des missions est aussi proposée pour un autre virement : vérifie avant de valider."; });
+}
+
+/* ---- ligne d'une créance dans une proposition ---- */
+function rbLigneMatch_(id, coche, fait) {
+  const x = (RB.creances || []).find(c => c.id === id);
+  if (!x) return `<li class="rb-m">Créance introuvable (${escapeHtml(id)})</li>`;
+  const cote = x.cote === "visiteur" ? " · part visiteuse" : (x.cls === "club" && x.id.endsWith("#R") && (RB.creances || []).some(c => c.uid === x.uid && c.cote === "visiteur") ? " · part recevante" : "");
+  return `<li class="rb-m"><label><input type="checkbox" data-rb-uid="${escapeHtml(id)}"${coche ? " checked" : ""}${fait ? " disabled" : ""}>
+    <span class="rb-m-t"><strong>${escapeHtml(x.lib)}</strong><small>${escapeHtml(rbFmtDate_(x.date))} · ${escapeHtml(x.compet)}${escapeHtml(cote)}${x.periode ? " · échéance " + escapeHtml(x.periode.split("-").reverse().join("/")) : ""}</small></span>
+    <span class="rb-m-v">${formatMoney(x.c / 100)}</span></label></li>`;
+}
+
+/* ---- validation : montants exacts par côté ---- */
 async function rbValider_(zone) {
-  const uids = [...new Set(RB.props.flatMap(p => [...p.coches].filter(u => !p.faits.has(u))))];
-  if (!uids.length) return;
+  const choix = [];   // { id, uid, cote, cents, date, mode }
+  RB.props.forEach(p => {
+    const alt = p.alts[p.sel]; if (!alt) return;
+    alt.items.forEach(x => { if (p.coches.has(x.id) && !p.faits.has(x.id)) choix.push({ p, x, cents: x.c }); });
+  });
+  if (!choix.length) return;
   RB.busy = true; const erreurs = [];
+  // Regroupement par mission : un seul payment.update par uid (recevant + visiteur en une fois).
+  const parUid = {};
+  choix.forEach(ch => { (parUid[ch.x.uid] = parUid[ch.x.uid] || []).push(ch); });
+  const uids = Object.keys(parUid);
   for (let i = 0; i < uids.length; i++) {
     setStatus(`Validation ${i + 1}/${uids.length}…`, "");
+    const uid = uids[i], lots = parUid[uid];
+    const r = state.allRows.find(y => get(y, "UID") === uid);
     try {
-      const pr = RB.props.find(p => p.coches.has(uids[i]));
-      const params = { uid: uids[i], marquer_recu: "1" };
-      if (pr && pr.t.date) { params.date_recu_recevant = rbIso_(pr.t.date); params.date_reception = rbIso_(pr.t.date); params.mode_recevant = rbMode_(pr.t.n); }   // date réelle du virement
+      const params = { uid };
+      lots.forEach(ch => {
+        const t = ch.p.t, d = rbIso_(t.date), mode = rbMode_(t.n);
+        if (ch.x.cote === "visiteur") {
+          params.recu_visiteur = String(((Math.round(toNumber(get(r, "Reçu visiteur")) * 100)) + ch.cents) / 100);
+          if (d) params.date_recu_visiteur = d; params.mode_visiteur = mode;
+        } else {
+          params.recu_recevant = String(((Math.round(toNumber(get(r, "Reçu recevant")) * 100)) + ch.cents) / 100);
+          if (d) { params.date_recu_recevant = d; params.date_reception = d; } params.mode_recevant = mode;
+        }
+      });
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
-      RB.props.forEach(p => { if (p.coches.has(uids[i])) p.faits.add(uids[i]); });
-    } catch (e) { erreurs.push(e.message || String(e)); }
+      lots.forEach(ch => ch.p.faits.add(ch.x.id));
+    } catch (e) { erreurs.push((r ? rbEquipes_(r) : uid) + " : " + (e.message || String(e))); }
   }
   RB.busy = false;
   const entrees = [];
   RB.props.forEach(p => {
-    const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.coches.has(x.uid)) : [];
-    if (items.length && items.every(x => p.faits.has(x.uid)) && !p.memo) { p.memo = true; entrees.push(...rbEntrees_(p, items)); }
+    const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.coches.has(x.id)) : [];
+    if (items.length && items.every(x => p.faits.has(x.id)) && !p.memo) { p.memo = true; entrees.push(...rbEntrees_(p, items)); }
   });
-  // Mémoire des payeurs (navigateur uniquement) : libellé validé → classe de payeur + équipes (pour les clubs).
+  /* Mémoire des payeurs : libellé validé → classe, club, écart habituel (serveur + cache). */
   try {
-    const mem = rbMemLire_();
-    RB.props.forEach(p => {
-      const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.faits.has(x.uid)) : [];
+    for (const p of RB.props) {
+      const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.faits.has(x.id)) : [];
       const k = rbCle_(p.t.n); const cl = new Set(items.map(x => x.cls));
-      if (!items.length || !k || cl.size !== 1 || /^(remise de cheque|espèces|especes)/.test(k)) return;
+      if (!items.length || !k || cl.size !== 1 || p.payeur.src === "anonyme") continue;
       const c = [...cl][0];
       const dif = Math.abs(p.t.cents - items.reduce((a, x) => a + x.c, 0));
-      mem[k] = { ecart: dif > 0 && dif <= 500 ? dif : ((mem[k] || {}).ecart || 0), cls: c, toks: c === "club" ? [...new Set(items.flatMap(x => x.toks))].filter(w => p.t.words && p.t.words.has(w)).slice(0, 12) : [] };
-    });
-    rbMemEcrire_(mem);
+      const clubs = new Set(items.filter(x => x.club).map(x => x.club.code || x.club.nom));
+      const anc = RBMEM.lire()[k] || {};
+      await RBMEM.enregistrer(k, { cls: c, club: clubs.size === 1 ? [...clubs][0] : (anc.club || ""), ecart: dif > 0 && dif <= 500 ? dif : (anc.ecart || 0), n: (anc.n || 0) + 1,
+        toks: c === "club" ? [...new Set(items.flatMap(x => x.toks || []))].filter(w => p.t.words && p.t.words.has(w)).slice(0, 12) : [] });
+    }
   } catch (e) { /* mémoire facultative */ }
   try {
     const frais = await jsonpFrais("matchs");
@@ -3297,7 +3482,7 @@ async function rbValider_(zone) {
   } catch (e) { /* le paiement est déjà enregistré côté serveur */ }
   await rbMemoriser_(entrees);
   state._lastLoadTs = Date.now(); AN.statsCache = {};
-  setStatus(erreurs.length ? `${uids.length - erreurs.length} validé(s), ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${uids.length} paiement(s) marqué(s) reçu(s)`, erreurs.length ? "error" : "ok");
+  setStatus(erreurs.length ? `${uids.length - erreurs.length} validé(s), ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${uids.length} mission(s) mise(s) à jour (montants exacts par payeur)`, erreurs.length ? "error" : "ok");
   RB.ouvert = true; renderAll(); loadStats(true);
 }
 
@@ -3307,6 +3492,7 @@ function attachRapprochement_(root) {
   if (fold) fold.addEventListener("toggle", e => { if (e.target === fold) RB.ouvert = fold.open; });
   zone.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("rb-hist")) RB.histOpen = e.target.open; }, true);
   const majMois = () => { const mz = document.getElementById("moisZone"); if (mz) mz.innerHTML = renderMoisPaiements_(); };
+  RBMEM.charger();
   if (!RB.histOk) rbChargerHist_().then(() => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); majMois(); });
   const redessiner = () => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); };
   zone.addEventListener("change", async e => {
@@ -3328,7 +3514,7 @@ function attachRapprochement_(root) {
     }
     if (t.id === "rbTol") { RB.tol = Math.min(5, Math.max(0, Number(t.value) || 0)); if (RB.lignes.length) rbRapprocher_(); redessiner(); return; }
     if (t.dataset.rbCol) { RB.cols[t.dataset.rbCol] = Number(t.value); if (t.dataset.rbCol === "credit" && Number(t.value) >= 0) RB.cols.montant = -1; rbExtraire_(); rbRapprocher_(); redessiner(); return; }
-    if (t.classList.contains("rb-alt")) { const p = RB.props[Number(t.dataset.rbI)]; p.sel = Number(t.value); p.coches = new Set(p.alts[p.sel].items.map(x => x.uid)); redessiner(); return; }
+    if (t.classList.contains("rb-alt")) { const p = RB.props[Number(t.dataset.rbI)]; p.sel = Number(t.value); p.coches = new Set(p.alts[p.sel].items.map(x => x.id)); redessiner(); return; }
     if (t.dataset.rbUid) {
       const card = t.closest("[data-rb-card]"); const p = RB.props[Number(card.dataset.rbCard)];
       if (t.checked) p.coches.add(t.dataset.rbUid); else p.coches.delete(t.dataset.rbUid);
@@ -3357,16 +3543,18 @@ function attachRapprochement_(root) {
       return;
     }
     const b = e.target.closest("[data-rb-part]"); if (!b) return;
-    const p = RB.props[Number(b.dataset.rbPart)], uid = b.dataset.rbUid2;
-    const r = state.allRows.find(x => get(x, "UID") === uid); if (!p || !r) return;
+    const p = RB.props[Number(b.dataset.rbPart)], id = b.dataset.rbUid2;
+    const x = (RB.creances || []).find(c => c.id === id); const r = x && state.allRows.find(y => get(y, "UID") === x.uid); if (!p || !x || !r) return;
     b.disabled = true;
     try {
-      const params = { uid, recu_recevant: round2((r._recu || 0) + p.t.cents / 100).toFixed(2), recu_visiteur: "0.00", mode_recevant: rbMode_(p.t.n) };
-      if (p.t.date) params.date_recu_recevant = rbIso_(p.t.date);
+      // b50 — paiement partiel : le montant du virement sur LA créance choisie (côté recevant ou visiteur).
+      const params = { uid: x.uid };
+      if (x.cote === "visiteur") { params.recu_visiteur = String((Math.round(toNumber(get(r, "Reçu visiteur")) * 100) + p.t.cents) / 100); params.mode_visiteur = rbMode_(p.t.n); if (p.t.date) params.date_recu_visiteur = rbIso_(p.t.date); }
+      else { params.recu_recevant = String((Math.round(toNumber(get(r, "Reçu recevant")) * 100) + p.t.cents) / 100); params.mode_recevant = rbMode_(p.t.n); if (p.t.date) { params.date_recu_recevant = rbIso_(p.t.date); params.date_reception = rbIso_(p.t.date); } }
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
-      p.faits.add(uid);
-      await rbMemoriser_(rbEntrees_(p, [{ uid, c: Math.round((r._amountTheorique || 0) * 100), cls: rbClasse_(r) }]));
+      p.faits.add(id);
+      await rbMemoriser_(rbEntrees_(p, [{ uid: x.uid, c: x.c, cls: x.cls }]));
       const frais = await jsonpFrais("matchs");
       if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
       AN.statsCache = {}; setStatus("Paiement partiel enregistré", "ok"); RB.ouvert = true; renderAll(); loadStats(true);
