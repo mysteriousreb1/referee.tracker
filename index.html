@@ -10,7 +10,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Referee Tracker</title>
   <meta name="theme-color" content="#0B1F3B" />
-  <meta name="rt-version" content="2026-10-23-b53" />
+  <meta name="rt-version" content="2026-10-23-b54" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,500;0,600;0,700;0,800;1,800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
@@ -18,10 +18,10 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="preconnect" href="https://script.google.com" crossorigin />
-  <link rel="stylesheet" href="./style.css?v=2026-10-23-b52.1" />
-  <link rel="manifest" href="./manifest.json?v=2026-10-23-b52.1" />
-  <link rel="icon" href="./favicon-32.png?v=2026-10-23-b52.1" sizes="32x32" type="image/png" />
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-10-23-b52.1" />
+  <link rel="stylesheet" href="./style.css?v=2026-10-23-b54" />
+  <link rel="manifest" href="./manifest.json?v=2026-10-23-b54" />
+  <link rel="icon" href="./favicon-32.png?v=2026-10-23-b54" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-10-23-b54" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -32,7 +32,7 @@
     <header class="app-header">
       <div class="header-inner">
         <div class="brand" id="brandHome" role="link" tabindex="0" aria-label="Retour à l'accueil" title="Accueil">
-          <img class="brand-logo" src="./img/logo-icon.png?v=2026-10-23-b52.1" alt="" width="44" height="40" decoding="async" />
+          <img class="brand-logo" src="./img/logo-icon.png?v=2026-10-23-b54" alt="" width="44" height="40" decoding="async" />
           <div class="brand-text">
             <h1>Referee<span>Tracker</span></h1>
           </div>
@@ -107,7 +107,7 @@
         <button class="tab" data-tab="matchs" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M3 12h18"/><path d="M5.6 5.6c3 3 3 9.8 0 12.8"/><path d="M18.4 5.6c-3 3-3 9.8 0 12.8"/></svg></span><span class="tab-label">5×5</span></button>
         <button class="tab" data-tab="troisx3" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="tab-label">3×3</span></button>
         <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span><span class="tab-badge" id="badgePaiements" hidden>0</span></button>
-        <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Stats</span></button>
+        <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Analyse</span></button>
         <button class="tab" data-tab="hotel" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19V7"/><path d="M3 14h18v5"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.5"/></svg></span><span class="tab-label">Hôtel</span></button>
         <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span><span class="tab-badge" id="badgeAlertes" hidden>0</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
@@ -128,10 +128,17 @@
           <button type="button" class="tabs-mini-btn active" id="statsSubOverviewBtn">Vue d'ensemble</button>
           <button type="button" class="tabs-mini-btn" id="statsSubAvanceeBtn">Analyse avancée</button>
           <button type="button" class="tabs-mini-btn" id="statsSubEstimationBtn">Estimation</button>
+          <!-- b54 — page « Analyse » PC/tablette : un seul endroit pour travailler (masqués sur téléphone). -->
+          <button type="button" class="tabs-mini-btn tab-tel-hide" id="statsSubProgressionBtn">Progression</button>
+          <button type="button" class="tabs-mini-btn tab-tel-hide" id="statsSubRapprochementBtn">Rapprochement</button>
+          <button type="button" class="tabs-mini-btn tab-tel-hide" id="statsSubExportBtn">Export</button>
         </div>
         <div id="statsFinancier"></div>
         <div id="statsAnalyse" style="display:none"></div>
         <div id="statsEstimation" style="display:none"></div>
+        <div id="statsProgression" style="display:none"></div>
+        <div id="statsRapprochement" style="display:none"></div>
+        <div id="statsExport" style="display:none"></div>
       </section>
       <section id="hotel" class="panel"></section>
       <section id="alertes" class="panel"></section>
@@ -152,9 +159,9 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k" crossorigin="anonymous"></script>
-  <script defer src="./rt-auth.js?v=2026-10-23-b52.1"></script>
-  <script defer src="./rt-stats.js?v=2026-10-23-b52.1"></script>
-  <script defer src="./rt-paiements.js?v=2026-10-23-b52.1"></script>
-  <script defer src="./app.js?v=2026-10-23-b52.1"></script>
+  <script defer src="./rt-auth.js?v=2026-10-23-b54"></script>
+  <script defer src="./rt-stats.js?v=2026-10-23-b54"></script>
+  <script defer src="./rt-paiements.js?v=2026-10-23-b54"></script>
+  <script defer src="./app.js?v=2026-10-23-b54"></script>
 </body>
 </html>

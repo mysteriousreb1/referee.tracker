@@ -1128,6 +1128,15 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
+      <h3>Jour de match (téléphone)</h3>
+      <p class="rt-help">« Départ conseillé » sur l'Accueil dans les 3 h avant le match (heure de RDV moins le trajet estimé). Mode test : désactivable ici.</p>
+      <div class="rt-row">
+        <button type="button" class="rt-btn" id="pfDepartOn">Activé</button>
+        <button type="button" class="rt-btn" id="pfDepartOff">Désactivé</button>
+      </div>
+    </section>
+
+    <section class="rt-sect">
       <h3>Apparence</h3>
       <p class="rt-help">Thème de l'interface — mémorisé sur cet appareil.</p>
       <div class="rt-row">
@@ -1186,6 +1195,13 @@ function renderProfile() {
     toast(t === "dark" ? "Thème sombre activé." : "Thème clair activé.");
   };
   PUSH.lier();
+  // b54 — réglage « Départ conseillé » (b53), mémorisé sur l'appareil.
+  const majDepart = () => { let on = true; try { on = localStorage.getItem("rt_depart") !== "0"; } catch (e) {}
+    const a = document.getElementById("pfDepartOn"), b = document.getElementById("pfDepartOff"); if (a) a.classList.toggle("is-on", on); if (b) b.classList.toggle("is-on", !on); };
+  const dOn = document.getElementById("pfDepartOn"), dOff = document.getElementById("pfDepartOff");
+  if (dOn) dOn.addEventListener("click", () => { try { localStorage.setItem("rt_depart", "1"); } catch (e) {} majDepart(); toast("Départ conseillé activé."); });
+  if (dOff) dOff.addEventListener("click", () => { try { localStorage.setItem("rt_depart", "0"); } catch (e) {} majDepart(); toast("Départ conseillé désactivé."); });
+  majDepart();
   const tc = document.getElementById("pfThemeClair");
   if (tc) tc.addEventListener("click", () => setTheme("light"));
   const ts = document.getElementById("pfThemeSombre");

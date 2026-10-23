@@ -148,6 +148,11 @@ function bindUi() {
   if (statsSubAvanceeBtn) statsSubAvanceeBtn.addEventListener("click", () => setStatsSubView_("avancee"));
   const statsSubEstimationBtn = document.getElementById("statsSubEstimationBtn");
   if (statsSubEstimationBtn) statsSubEstimationBtn.addEventListener("click", () => setStatsSubView_("estimation"));
+  // b54 — page Analyse (PC/tablette) : Progression, Rapprochement, Export rejoignent les sous-onglets.
+  [["statsSubProgressionBtn", "progression"], ["statsSubRapprochementBtn", "rapprochement"], ["statsSubExportBtn", "export"]].forEach(([id, v]) => {
+    const b = document.getElementById(id); if (b) b.addEventListener("click", () => setStatsSubView_(v));
+  });
+  analyseInstallerSections_();
 
   const refresh = document.getElementById("refreshBtn");
   refresh.addEventListener("click", () => {
@@ -417,7 +422,7 @@ document.addEventListener("DOMContentLoaded", () => {
    sauvegarde / restaure au changement d'onglet, le reste du code ne change pas. */
 const RECH = {
   PAGES: ["matchs", "troisx3", "paiements", "stats", "hotel", "export", "progression", "rapports"],
-  TITRES: { matchs: "5×5", troisx3: "3×3", paiements: "Paiements", stats: "Stats", hotel: "Hôtel", export: "Export", progression: "Progression", rapports: "Rapports" },
+  TITRES: { matchs: "5×5", troisx3: "3×3", paiements: "Paiements", stats: "Analyse", hotel: "Hôtel", export: "Export", progression: "Progression", rapports: "Rapports" },
   parPage: {},
   ouvert: false,
   defaut() { return { season: getCurrentSeason(), search: "", niveau: "", statut: "", format: "" }; },
@@ -523,6 +528,8 @@ function setActiveTab(tab) {
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
+  if (!estTel_() && ANALYSE_PC_.indexOf(tab) >= 0 && tab !== "rapprochement") { state.statsSubView = tab; tab = "stats"; }   // b54 : Export / Progression = page Analyse
+  if (tab === "rapprochement") { state.statsSubView = "rapprochement"; tab = "stats"; }
   RECH.changerPage(state.activeTab, tab);   // b36 : filtres propres à chaque page
   state.activeTab = tab;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab || (b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
@@ -1233,7 +1240,7 @@ const TAB_RENDERERS_ = {
   matchs:      [function () { renderMatchs(); },      "Matchs"],
   troisx3:     [function () { renderTroisx3(); },     "3×3"],
   paiements:   [function () { renderPaiements(); },   "Paiements"],
-  stats:       [function () { renderStats(); },       "Statistiques"],
+  stats:       [function () { renderStats(); },       "Analyse"],
   reglement:   [function () { renderReglement(); },   "Règlement"],
   alertes:     [function () { renderAlertes(); },     "Alertes"],
   export:      [function () { renderExport(); },      "Export"],
@@ -1283,8 +1290,7 @@ function renderTab_(tab) {
   const e = TAB_RENDERERS_[tab];
   if (!e) return;
   safeRender_(e[0], tab, e[1]);
-  if (tab === "stats" && state.statsSubView === "avancee") safeRender_(renderAnalyse, "stats", "Analyse");
-  if (tab === "stats" && state.statsSubView === "estimation") safeRender_(renderEstimation, "stats", "Estimation");
+  if (tab === "stats" && (state.statsSubView || "overview") !== "overview") safeRender_(() => setStatsSubView_(state.statsSubView), "stats", "Analyse");   // b54 : sous-vue courante de la page Analyse
 }
 
 function renderAll() {
@@ -1344,21 +1350,40 @@ function renderTabBadges_() {
 /* Bascule entre les deux vues fusionnées de l'onglet Stats (19/09/2026) :
    « Vue d'ensemble » (ex-onglet Stats) et « Analyse avancée » (ex-onglet
    Analyse), toutes deux dans le même panel via le pattern .tabs-mini. */
+const ANALYSE_VUES_ = { overview: ["statsSubOverviewBtn", "statsFinancier"], avancee: ["statsSubAvanceeBtn", "statsAnalyse"], estimation: ["statsSubEstimationBtn", "statsEstimation"],
+  progression: ["statsSubProgressionBtn", "statsProgression"], rapprochement: ["statsSubRapprochementBtn", "statsRapprochement"], export: ["statsSubExportBtn", "statsExport"] };
+const ANALYSE_PC_ = ["progression", "rapprochement", "export"];   // b54 : sous-vues PC/tablette uniquement
 function setStatsSubView_(view) {
+  if (estTel_() && ANALYSE_PC_.indexOf(view) >= 0) view = "overview";
   state.statsSubView = view;
-  const overviewBtn = document.getElementById("statsSubOverviewBtn");
-  const avanceeBtn = document.getElementById("statsSubAvanceeBtn");
-  if (overviewBtn) overviewBtn.classList.toggle("active", view === "overview");
-  if (avanceeBtn) avanceeBtn.classList.toggle("active", view === "avancee");
-  const estBtn = document.getElementById("statsSubEstimationBtn");
-  if (estBtn) estBtn.classList.toggle("active", view === "estimation");
-  const financier = document.getElementById("statsFinancier");
-  const analyse = document.getElementById("statsAnalyse");
-  const estim = document.getElementById("statsEstimation");
-  if (financier) financier.style.display = view === "overview" ? "" : "none";
-  if (analyse) analyse.style.display = view === "avancee" ? "" : "none";
-  if (estim) estim.style.display = view === "estimation" ? "" : "none";
-  if (view === "avancee") renderAnalyse(); else if (view === "estimation") renderEstimation(); else renderStats();
+  Object.keys(ANALYSE_VUES_).forEach(k => {
+    const b = document.getElementById(ANALYSE_VUES_[k][0]); if (b) b.classList.toggle("active", k === view);
+    const z = document.getElementById(ANALYSE_VUES_[k][1]); if (z) z.style.display = k === view ? "" : "none";
+  });
+  if (view === "avancee") renderAnalyse();
+  else if (view === "estimation") renderEstimation();
+  else if (view === "progression") renderProgression();
+  else if (view === "export") renderExport();
+  else if (view === "rapprochement") renderRapprochementAnalyse_();
+  else renderStats();
+}
+/* b54 — Sur PC/tablette, les sections Export et Progression vivent dans la page Analyse :
+   on déplace leurs <section> dans le panel Stats (les rendus continuent d'écrire dans #export / #progression). */
+function analyseInstallerSections_() {
+  if (estTel_()) return;
+  [["export", "statsExport"], ["progression", "statsProgression"]].forEach(([id, hote]) => {
+    const sec = document.getElementById(id), h = document.getElementById(hote);
+    if (!sec || !h || sec.parentNode === h) return;
+    sec.classList.remove("panel"); sec.classList.add("analyse-section"); h.appendChild(sec);
+    const t = document.querySelector(`nav.tabs .tab[data-tab="${id}"]`); if (t) t.classList.add("tab-pc-hide");
+  });
+}
+function renderRapprochementAnalyse_() {
+  const h = document.getElementById("statsRapprochement"); if (!h) return;
+  h.innerHTML = `<h2 class="section-title">Rapprochement bancaire</h2>
+    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (Ligue, CD67, FFBB, clubs).</p>
+    <div id="rbZone">${rbHtml_()}</div>`;
+  attachRapprochement_(h);
 }
 
 function filterRows(rows) {
@@ -2413,6 +2438,78 @@ function renderPaymentClub_(row, cote, visible) {
     </div>`;
 }
 
+/* ===================== b54 — RELANCE CLUB EN 1 CLIC =====================
+   Contact = « Correspondant recevant/visiteur (nom + tél) » lu sur la convocation
+   (ou saisi à la main). Un côté n'est proposé que s'il doit encore quelque chose.
+   SMS prérempli (iPhone/Android), appel, ou message copié pour un mail. */
+function contactClub_(row, cote) {
+  const brut = cleanText(get(row, cote === "visiteur" ? "Correspondant visiteur (nom + tél)" : "Correspondant recevant (nom + tél)"));
+  const tel = normalizePhoneFr(brut) || "";
+  const nom = brut.replace(/(?:\+33\s?|0)[1-9](?:[\s.\-]?\d{2}){4}/g, "").replace(/[\s·:;,\-]+$/g, "").trim();
+  return { brut, tel, nom };
+}
+function messageRelance_(row, cote, montant) {
+  const rec = cleanText(get(row, "Recevant court") || get(row, "Recevant")), vis = cleanText(get(row, "Visiteur court") || get(row, "Visiteur / événement"));
+  const quand = get(row, "Date match"), comp = cleanText(get(row, "Libellé compétition"));
+  const moi = (window.RT_AUTH && RT_AUTH.prenom) || "Clément";
+  return `Bonjour,\nje suis ${moi}, arbitre de la rencontre ${rec} – ${vis} du ${quand}${comp ? " (" + comp + ")" : ""}.\nL'indemnité d'arbitrage de ${formatMoney(montant)} à la charge de votre club ne m'est pas encore parvenue. Pouvez-vous me confirmer la date du virement ?\nMerci d'avance, bonne journée.`;
+}
+function renderRelanceClub_(row, regime) {
+  const uid = escapeHtml(get(row, "UID"));
+  const cotes = regime === "parts_egales" ? ["recevant", "visiteur"] : ["recevant"];
+  const lignes = cotes.map(c => {
+    const attendu = toNumber(get(row, c === "visiteur" ? "Attendu visiteur" : "Attendu recevant")), recu = toNumber(get(row, c === "visiteur" ? "Reçu visiteur" : "Reçu recevant"));
+    const reste = Math.max(0, attendu - recu);
+    if (reste <= 0.005) return "";
+    const club = cleanText(c === "visiteur" ? (get(row, "Visiteur court") || get(row, "Visiteur / événement")) : (get(row, "Recevant court") || get(row, "Recevant")));
+    const ct = contactClub_(row, c);
+    const msg = messageRelance_(row, c, reste);
+    const boutons = ct.tel
+      ? `<a class="small-btn" href="sms:${escapeHtml(ct.tel)}${/iPhone|iPad|Macintosh/.test(navigator.userAgent) ? "&" : "?"}body=${encodeURIComponent(msg)}" data-relance="sms" data-uid="${uid}" data-cote="${c}">SMS</a>
+         <a class="small-btn secondary" href="tel:${escapeHtml(ct.tel)}" data-relance="tel" data-uid="${uid}" data-cote="${c}">Appeler</a>`
+      : `<button type="button" class="small-btn secondary" data-relance="saisir" data-uid="${uid}" data-cote="${c}">Saisir le contact</button>`;
+    return `<div class="relance-ligne">
+      <div class="relance-info"><strong>${escapeHtml(club)}</strong><span>${ct.nom ? escapeHtml(ct.nom) + (ct.tel ? " · " + escapeHtml(telAffiche_(ct.tel)) : "") : (ct.tel ? escapeHtml(telAffiche_(ct.tel)) : "Contact inconnu")} · reste ${formatMoney(reste)}</span></div>
+      <div class="relance-btns">${boutons}<button type="button" class="small-btn secondary" data-relance="copier" data-uid="${uid}" data-cote="${c}" data-msg="${escapeHtml(msg)}">Copier le message</button>${ct.tel ? `<button type="button" class="small-btn secondary" data-relance="saisir" data-uid="${uid}" data-cote="${c}">Modifier le contact</button>` : ""}</div>
+    </div>`;
+  }).join("");
+  if (!lignes) return "";
+  const note = cleanText(get(row, "Note paiement"));
+  const derniere = (note.match(/Relanc[ée]e? le (\d{2}\/\d{2}(?:\/\d{4})?)/g) || []).pop();
+  return `<div class="payment-relance"><div class="relance-head"><strong>Relancer le club</strong>${derniere ? `<span>${escapeHtml(derniere)}</span>` : ""}</div>${lignes}</div>`;
+}
+function attachRelanceListeners_(root) {
+  root.querySelectorAll("[data-relance]").forEach(el => el.addEventListener("click", async ev => {
+    const uid = el.dataset.uid, cote = el.dataset.cote, type = el.dataset.relance;
+    const row = state.allRows.find(r => get(r, "UID") === uid); if (!row) return;
+    const noterRelance = async () => {
+      const auj = formatDateShort(new Date());
+      const note = cleanText(get(row, "Note paiement"));
+      if (new RegExp("Relancé le " + auj.replace(/\//g, "\\/")).test(note)) return;
+      try { const res = await jsonp("payment.update", { uid, note: (note ? note + " · " : "") + "Relancé le " + auj }); if (res && res.row) remplacerLigne_(uid, res.row); } catch (e) {}
+    };
+    if (type === "copier") {
+      ev.preventDefault();
+      try { await navigator.clipboard.writeText(el.dataset.msg); setStatus("Message copié — colle-le dans un mail ou un SMS.", "ok"); } catch (e) { window.prompt("Copie ce message :", el.dataset.msg); }
+      noterRelance(); return;
+    }
+    if (type === "sms" || type === "tel") { noterRelance(); return; }   // le lien fait le reste
+    if (type === "saisir") {
+      ev.preventDefault();
+      const actuel = cleanText(get(row, cote === "visiteur" ? "Correspondant visiteur (nom + tél)" : "Correspondant recevant (nom + tél)"));
+      const v = window.prompt("Correspondant du club (nom + téléphone) :", actuel || "NOM Prénom · 06 00 00 00 00");
+      if (v === null) return;
+      el.disabled = true; setStatus("Enregistrement du contact…", "");
+      try {
+        const res = await jsonp("club.contact.set", { uid, cote, value: v.trim() });
+        if (!res || res.success === false) throw new Error((res && res.error) || "Refusé");
+        const brut = state.allRows.map(rawOf_); const i = brut.findIndex(r => get(r, "UID") === uid);
+        if (i >= 0) { brut[i] = Object.assign({}, brut[i], { [cote === "visiteur" ? "Correspondant visiteur (nom + tél)" : "Correspondant recevant (nom + tél)"]: v.trim() }); state.allRows = normalizeRows(brut); }
+        setStatus("Contact enregistré", "ok"); renderAll();
+      } catch (err) { setStatus("Erreur contact : " + err.message, "error"); el.disabled = false; }
+    }
+  }));
+}
 function renderPaymentControl(row) {
   const uid = escapeHtml(get(row, "UID"));
   const status = get(row, "Statut paiement") || "À recevoir";
@@ -2441,7 +2538,7 @@ function renderPaymentControl(row) {
         <div><strong>Suivi du paiement</strong><span>${escapeHtml(due ? "Échéance : " + due : "Échéance à déterminer")}</span></div>
         <span class="payment-status ${paymentStatusClass_(status)}">${escapeHtml(status)}</span>
       </div>
-      ${overdue ? `<div class="payment-warning">Warning : paiement non soldé. Vérification et éventuelle relance à gérer manuellement.</div>` : ""}
+      ${overdue ? `<div class="payment-warning">Échéance dépassée : paiement non soldé.${club ? " Relance du club en 1 clic ci-dessous." : " Vérifier le virement " + escapeHtml(paiementPayeur_(regime)) + "."}</div>` : ""}
       ${aTrancher ? `<div class="payment-decision">À trancher${raison ? " : " + escapeHtml(raison) : ""}</div>` : ""}
       ${institutionnel ? `
         <div class="payment-institution">
@@ -2463,6 +2560,7 @@ function renderPaymentControl(row) {
           <div class="payment-balance"><span>Reçu ${formatMoney(recuTotal)}</span><strong>${recuTotal === total ? "Soldé" : `Reste ${formatMoney(Math.max(0, total - recuTotal))}`}</strong><span>Dû ${formatMoney(total)}</span></div>
           <label class="payment-note"><span>Note</span><input name="note" type="text" value="${escapeHtml(note)}" placeholder="Information utile sur ce règlement" /></label>
           ${row._isPast && recuTotal < total ? `<div class="payment-surplace"><button type="button" class="small-btn payment-action" data-action="sur-place" data-uid="${uid}">Payé sur place (espèces)</button><span>Tout l'argent reçu en salle : montant prérempli.</span></div>` : ""}
+          ${row._isPast && recuTotal < total ? renderRelanceClub_(row, regime) : ""}
           <div class="payment-actions">
             <button type="submit" class="small-btn">Enregistrer le paiement</button>
             <button type="button" class="small-btn secondary payment-action" data-action="verify" data-uid="${uid}">Marquer à vérifier</button>
@@ -2669,7 +2767,7 @@ function renderPaiements() {
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
     </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
-    <div class="rb-pc-only">${foldable_("Rapprochement bancaire", `<div id="rbZone">${rbHtml_()}</div>`, { open: RB.ouvert || RB.lignes.length > 0 })}</div>
+    <div class="rb-pc-only pay-vers-analyse"><button type="button" class="small-btn secondary" data-goto-analyse="rapprochement">Rapprochement bancaire → page Analyse</button> <button type="button" class="small-btn secondary" data-goto-analyse="export">Export annuel → page Analyse</button></div>
     <h2 class="section-title">Missions par statut</h2>
     ${retards.length ? bloc("En retard (échéance dépassée)", retards, false) : ""}
     ${order.filter(k => grouped[k]).map(status => bloc(status, grouped[status], false)).join("")}
@@ -2679,7 +2777,7 @@ function renderPaiements() {
   attachPaymentListeners(root);
   attachContactListeners(root);
   attachPastToggle(root);
-  attachRapprochement_(root);
+  root.querySelectorAll("[data-goto-analyse]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.gotoAnalyse)));
   attachAnalysePaiements_(root, rows);
 }
 
@@ -2878,6 +2976,7 @@ function attachContactListeners(root) {
 }
 
 function attachPaymentListeners(root) {
+  attachRelanceListeners_(root);   // b54
   const envoyer = async (params, button) => {
     if (button) button.disabled = true;
     setStatus("Enregistrement du paiement…", "");
@@ -4470,6 +4569,22 @@ function renderProgression() {
 
   const evaluations = state.evaluations || [];
 
+  // b54 (décision 12) — téléphone : niveau actuel + évolution, le détail (fiches, plan, saisie) reste sur PC/tablette.
+  if (estTel_()) {
+    root.innerHTML = `
+      <h2 class="section-title">Progression</h2>
+      <div class="kpi-grid">
+        <div class="kpi hero">
+          <label>Niveau actuel</label>
+          <strong>${actuel ? escapeHtml(actuel.niveau) : "Non renseigné"}</strong>
+          <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.dateDebut) + (actuel.groupement ? " — " + escapeHtml(actuel.groupement) : "") : "À renseigner sur ordinateur"}</span>
+        </div>
+      </div>
+      ${renderEvalSynthese_(evaluations)}
+      <p class="card-sub tel-note">Fiches d'évaluation, plan de développement et historique : sur ordinateur ou tablette (Analyse → Progression).</p>`;
+    return;
+  }
+
   root.innerHTML = `
     <h2 class="section-title">Progression</h2>
     <div class="kpi-grid">
@@ -5986,7 +6101,18 @@ function monthsOfSeason(season) {
    mois" ou à cheval sur deux saisons, ce que le mode saison ne permet pas. */
 const EXPORT_TOUTES = "Toutes les saisons";
 
+/* b54 — export annuel : année civile (1er janvier → 31 décembre), pour la déclaration de revenus / URSSAF. */
+function exportAnnees_() {
+  const ys = new Set(); state.allRows.forEach(r => { if (r._date) ys.add(r._date.getFullYear()); });
+  ys.add(new Date().getFullYear());
+  return [...ys].sort((a, b) => b - a);
+}
 function exportRows() {
+  if (state.exportMode === "year") {
+    const y = Number(state.exportYear) || new Date().getFullYear();
+    // Seules les missions déjà jouées comptent (une désignation à venir n'est pas un revenu).
+    return state.allRows.filter(r => r._isActive && r._format !== "Alerte" && r._date && r._date.getFullYear() === y && r._isPast).slice().sort(sortByDateAsc);
+  }
   if (state.exportMode === "range") {
     const from = state.exportFrom ? new Date(state.exportFrom + "T00:00:00") : null;
     const to = state.exportTo ? new Date(state.exportTo + "T23:59:59") : null;
@@ -6004,6 +6130,19 @@ function exportRows() {
     .sort(sortByDateAsc);
 }
 
+/* b54 — récapitulatif annuel : par payeur (brut, reçu, reste, missions) et par mois. */
+function exportRecap_(rows) {
+  const parP = {}, parM = {};
+  rows.forEach(r => {
+    const k = payeurAffiche_(r), lib = PAYEURS_LIB_[k] || "Clubs (coupes, amicaux)";
+    const p = parP[lib] || (parP[lib] = { lib, nb: 0, brut: 0, recu: 0, reste: 0 });
+    p.nb++; p.brut += r._amount || 0; p.recu += r._encaisse || 0; p.reste += r._reste || 0;
+    const mk = monthKeyOf(r._date), m = parM[mk] || (parM[mk] = { mois: monthLabelOf(mk), nb: 0, brut: 0, recu: 0, km: 0 });
+    m.nb++; m.brut += r._amount || 0; m.recu += r._encaisse || 0; m.km += r._kmEff || 0;
+  });
+  const ordre = PAYEURS_ORDRE_.map(k => PAYEURS_LIB_[k]);
+  return { payeurs: Object.values(parP).sort((a, b) => ordre.indexOf(a.lib) - ordre.indexOf(b.lib)), mois: Object.keys(parM).sort().map(k => parM[k]) };
+}
 function exportTotals(rows) {
   const gross = rows.reduce((t, r) => t + r._amount, 0);
   const cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
@@ -6027,6 +6166,7 @@ function rencontreLabel(row) {
 }
 
 function exportPeriodLabel() {
+  if (state.exportMode === "year") return `Année civile ${Number(state.exportYear) || new Date().getFullYear()}`;
   if (state.exportMode === "range") {
     if (state.exportFrom && state.exportTo) return `Du ${escapeHtml(state.exportFrom)} au ${escapeHtml(state.exportTo)}`;
     if (state.exportFrom) return `Depuis le ${escapeHtml(state.exportFrom)}`;
@@ -6049,14 +6189,25 @@ function renderExport() {
   if (toutes || (state.exportMonth && !months.some(m => m.value === state.exportMonth))) state.exportMonth = "";
   if (!state.exportMode) state.exportMode = "season";
 
-  const rng = state.exportMode === "range";
+  const rng = state.exportMode === "range", annuel = state.exportMode === "year";
+  if (annuel && !state.exportYear) state.exportYear = new Date().getFullYear();
   const rows = exportRows();
   const t = exportTotals(rows);
+  const recap = annuel ? exportRecap_(rows) : null;
 
   root.innerHTML = `
     <h2 class="section-title">Export</h2>
+    <div class="tabs-mini export-modes">
+      <button type="button" class="tabs-mini-btn${!rng && !annuel ? " active" : ""}" data-export-mode="season">Saison / mois</button>
+      <button type="button" class="tabs-mini-btn${annuel ? " active" : ""}" data-export-mode="year">Année civile</button>
+      <button type="button" class="tabs-mini-btn${rng ? " active" : ""}" data-export-mode="range">Plage de dates</button>
+    </div>
 
-    <section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+    ${annuel ? `<section class="toolbar" style="grid-template-columns: 1fr 2fr;">
+      <div class="field"><label for="exportYearSelect">Année</label>
+        <select id="exportYearSelect">${exportAnnees_().map(y => `<option value="${y}"${y === Number(state.exportYear) ? " selected" : ""}>${y}</option>`).join("")}</select></div>
+      <p class="card-sub" style="margin:auto 0">Missions jouées du 1er janvier au 31 décembre (les désignations à venir ne comptent pas) : total par payeur et par mois, puis le détail de chaque mission. C'est le document à garder pour la déclaration de revenus (indemnités d'arbitrage, franchise URSSAF).</p>
+    </section>` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
         <select id="exportSeasonSelect"${rng ? " disabled" : ""}>
@@ -6071,10 +6222,9 @@ function renderExport() {
           ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
         </select>
       </div>
-      <label class="export-check" style="grid-column:1 / -1"><input type="checkbox" id="exportRangeChk"${rng ? " checked" : ""} /> Filtrer par plage de dates</label>
       ${rng ? `<div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
       <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>` : ""}
-    </section>
+    </section>`}
 
     <div class="kpi-grid" style="margin-top:14px">
       <div class="kpi hero">
@@ -6089,9 +6239,18 @@ function renderExport() {
     </div>
 
     <div class="actions" style="margin-top:14px">
-      <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>Générer le PDF</button>
-      <button class="small-btn secondary" type="button" id="exportCsvBtn"${rows.length ? "" : " disabled"}>Exporter en CSV</button>
+      <button class="small-btn" type="button" id="genPdfBtn"${rows.length ? "" : " disabled"}>${annuel ? "PDF annuel" : "Générer le PDF"}</button>
+      <button class="small-btn secondary" type="button" id="exportCsvBtn"${rows.length ? "" : " disabled"}>${annuel ? "CSV annuel" : "Exporter en CSV"}</button>
     </div>
+    ${recap && rows.length ? `
+    <div class="table-card" style="margin-top:14px"><div class="table-wrap"><table>
+      <thead><tr><th>Payeur</th><th class="num">Missions</th><th class="num">Brut</th><th class="num">Reçu</th><th class="num">Reste</th></tr></thead>
+      <tbody>${recap.payeurs.map(p => `<tr><td>${escapeHtml(p.lib)}</td><td class="num">${p.nb}</td><td class="num">${formatMoney(p.brut)}</td><td class="num pos">${formatMoney(p.recu)}</td><td class="num">${formatMoney(p.reste)}</td></tr>`).join("")}</tbody>
+    </table></div></div>
+    <div class="table-card" style="margin-top:10px"><div class="table-wrap"><table>
+      <thead><tr><th>Mois</th><th class="num">Missions</th><th class="num">Km</th><th class="num">Brut</th><th class="num">Reçu</th></tr></thead>
+      <tbody>${recap.mois.map(m => `<tr><td>${escapeHtml(m.mois)}</td><td class="num">${m.nb}</td><td class="num">${formatNumber(m.km, "")}</td><td class="num">${formatMoney(m.brut)}</td><td class="num pos">${formatMoney(m.recu)}</td></tr>`).join("")}</tbody>
+    </table></div></div>` : ""}
 
     <div class="table-card" style="padding:14px; margin-top:14px">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
@@ -6139,8 +6298,10 @@ function renderExport() {
     </details>` : empty("Aucune mission pour cette période.")}
   `;
 
-  document.getElementById("exportRangeChk").addEventListener("change", e => { state.exportMode = e.target.checked ? "range" : "season"; renderExport(); });
-  if (rng) {
+  root.querySelectorAll("[data-export-mode]").forEach(b => b.addEventListener("click", () => { state.exportMode = b.dataset.exportMode; renderExport(); }));
+  if (annuel) {
+    document.getElementById("exportYearSelect").addEventListener("change", e => { state.exportYear = Number(e.target.value); renderExport(); });
+  } else if (rng) {
     document.getElementById("exportFromInput").addEventListener("change", e => { state.exportFrom = e.target.value; renderExport(); });
     document.getElementById("exportToInput").addEventListener("change", e => { state.exportTo = e.target.value; renderExport(); });
   } else {
@@ -6341,14 +6502,24 @@ function downloadExportCsv() {
   const rows = exportRows();
   if (!rows.length) { setStatus("Aucune mission à exporter pour cette période", "error"); return; }
   // b44 (A28) — définitions explicites : net après carburant ET net tout compris (entretien déduit).
-  const header = ["Date", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net après carburant (€)", "Entretien (€)", "Net tout compris (€)", "Paiement"];
+  const header = ["Date", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut (€)", "Carburant (€)", "Net après carburant (€)", "Entretien (€)", "Net tout compris (€)", "Paiement", "Payeur"];
   const csvEscape = csvCellule_;
   const lines = [header.map(csvEscape).join(";")];
+  if (state.exportMode === "year") {   // b54 — récapitulatif annuel en tête du fichier
+    const rc = exportRecap_(rows);
+    lines.push(["Récapitulatif " + exportPeriodLabel()].map(csvEscape).join(";"));
+    lines.push(["Payeur", "Missions", "Brut (€)", "Reçu (€)", "Reste (€)"].map(csvEscape).join(";"));
+    rc.payeurs.forEach(p => lines.push([p.lib, p.nb, p.brut.toFixed(2), p.recu.toFixed(2), p.reste.toFixed(2)].map(csvEscape).join(";")));
+    lines.push(["Mois", "Missions", "Km", "Brut (€)", "Reçu (€)"].map(csvEscape).join(";"));
+    rc.mois.forEach(m => lines.push([m.mois, m.nb, m.km, m.brut.toFixed(2), m.recu.toFixed(2)].map(csvEscape).join(";")));
+    lines.push("");
+    lines.push(header.map(csvEscape).join(";"));
+  }
   rows.forEach(r => {
     const c = realFuelCostClient(r._kmEff, r._date);
     lines.push([
       get(r, "Date match"), r._format, get(r, "Niveau administratif"), rencontreLabel(r), get(r, "Ville") || get(r, "Salle"),
-      r._kmEff, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), ((r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), (r._amount - c - (r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), get(r, "Statut paiement")
+      r._kmEff, r._amount.toFixed(2), c.toFixed(2), (r._amount - c).toFixed(2), ((r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), (r._amount - c - (r._kmEff || 0) * entretienKmClient_(r._date)).toFixed(2), get(r, "Statut paiement"), PAYEURS_LIB_[payeurAffiche_(r)] || ""
     ].map(csvEscape).join(";"));
   });
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -6428,6 +6599,24 @@ function generateExportPdf() {
   doc.setDrawColor(220, 227, 239);
   doc.line(12, 46, pageW - 12, 46);
 
+  // b54 — export annuel : récapitulatif par payeur puis par mois avant le détail.
+  let yDetail = 52;
+  if (state.exportMode === "year") {
+    const rc = exportRecap_(rows);
+    const styles = { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: [12, 23, 48], lineColor: [220, 227, 239] };
+    doc.autoTable({ startY: 52, head: [["Payeur", "Missions", "Brut", "Recu", "Reste"]],
+      body: rc.payeurs.map(p => [pdfSafe(p.lib), String(p.nb), pdfSafe(formatMoney(p.brut)), pdfSafe(formatMoney(p.recu)), pdfSafe(formatMoney(p.reste))]),
+      foot: [["TOTAL", String(rows.length), pdfSafe(formatMoney(t.gross)), pdfSafe(formatMoney(rc.payeurs.reduce((a, p) => a + p.recu, 0))), pdfSafe(formatMoney(rc.payeurs.reduce((a, p) => a + p.reste, 0)))]],
+      theme: "grid", styles, headStyles: { fillColor: navy, textColor: 255, fontStyle: "bold" }, footStyles: { fillColor: [242, 245, 251], textColor: navy, fontStyle: "bold" },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } }, margin: { left: 12, right: pageW / 2 + 4 } });
+    const yP = doc.lastAutoTable.finalY;
+    doc.autoTable({ startY: 52, head: [["Mois", "Missions", "Km", "Brut", "Recu"]],
+      body: rc.mois.map(m => [pdfSafe(m.mois), String(m.nb), pdfSafe(formatNumber(m.km, "")), pdfSafe(formatMoney(m.brut)), pdfSafe(formatMoney(m.recu))]),
+      theme: "grid", styles, headStyles: { fillColor: navy, textColor: 255, fontStyle: "bold" },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } }, margin: { left: pageW / 2 + 4, right: 12 } });
+    yDetail = Math.max(yP, doc.lastAutoTable.finalY) + 8;
+  }
+
   // Tableau détaillé
   const body = rows.map(r => {
     const c = realFuelCostClient(r._kmEff, r._date);
@@ -6447,7 +6636,7 @@ function generateExportPdf() {
   });
 
   doc.autoTable({
-    startY: 52,
+    startY: yDetail,
     head: [["Date", "Heure", "Format", "Niveau", "Rencontre", "Lieu", "Km", "Brut", "Carburant", "Net", "Paiement"]],
     body: body,
     foot: [["", "", "", "", "TOTAL", "", pdfSafe(formatNumber(t.km, "")), pdfSafe(formatMoney(t.gross)),
