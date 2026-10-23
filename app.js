@@ -16,6 +16,8 @@ const APP_VERSION = window.RT_VERSION || "2026-10-12-b36";
 const RT_NET = { retries: 0, echecs: 0, keepWarm: 0, dernierPing: null };
 const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", "qcmStats", "formations", "niveaux", "evaluations", "contacts", "procedures", "hotels", "enjeux", "elicence", "rapports"];
 
+/* b53 — mode téléphone (≤ 767 px) : navigation 4 onglets, Matchs fusionnés, Argent, trésorerie compacte. */
+const estTel_ = () => window.innerWidth <= 767;
 let state = {
   allRows: [],
   filteredRows: [],
@@ -336,6 +338,10 @@ function setupMoreMenu_() {
      Paiements, Plus). Hôtel et Alertes rejoignent le panneau « Plus ». */
   /* b19 — iPhone : Alertes et Export ne sont pas proposés (voir CSS). */
   const SECONDARY = ["stats", "hotel", "qcm", "progression", "reglement", "monespace", "alertes", "export"];
+  // b53 — téléphone : 3×3 fusionné dans « Matchs », « Paiements » devient « Argent ».
+  const t3 = nav.querySelector('.tab[data-tab="troisx3"]'); if (t3) t3.classList.add("tab-tel-hide");
+  const lab = (t, txt) => { const e = nav.querySelector(`.tab[data-tab="${t}"] .tab-label`); if (e && estTel_()) e.textContent = txt; };
+  lab("matchs", "Matchs"); lab("paiements", "Argent");
   SECONDARY.forEach(t => {
     const b = nav.querySelector(`.tab[data-tab="${t}"]`);
     if (b) b.classList.add("tab-secondary");
@@ -1378,7 +1384,27 @@ function isExaminateur_(r) {
   if (r._exam) return true;
   return /examinateur|observateur|[ée]valuateur/i.test([get(r, "Collègue rôle"), get(r, "Collègue nom"), get(r, "Mon rôle")].join(" "));
 }
-function renderMatchs() { renderMatchPanel("matchs", "5x5", "5×5"); }
+function renderMatchs() { if (estTel_()) return renderMatchsTel_(); renderMatchPanel("matchs", "5x5", "5×5"); }
+/* b53 — téléphone : 5×5 et 3×3 dans une seule liste, puces de filtre. */
+function renderMatchsTel_() {
+  const root = document.getElementById("matchs");
+  const f = state.telFormat || "tous";
+  const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte" && (f === "tous" || r._format === f)).sort(sortByDateAsc);
+  const upcoming = rows.filter(r => !r._isPast);
+  const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
+  const n5 = state.filteredRows.filter(r => r._isActive && r._format === "5x5").length, n3 = state.filteredRows.filter(r => r._isActive && r._format === "3x3").length;
+  const ouvert = PASSES_OUVERTS.matchs === true;
+  const chip = (v, l) => `<button type="button" class="rt-chip${f === v ? " is-on" : ""}" data-tel-format="${v}">${l}</button>`;
+  root.innerHTML = `
+    <h2 class="section-title">À venir <span class="count">${upcoming.length}</span></h2>
+    <div class="tel-chips">${chip("tous", "Tous")}${chip("5x5", "5×5 · " + n5)}${chip("3x3", "3×3 · " + n3)}</div>
+    ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty("Aucun match à venir pour cette saison.")}
+    ${past.length ? `<details class="past-block" data-panel="matchs"${ouvert ? " open" : ""}>
+        <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Passés</span><span class="count">${past.length}</span></span></summary>
+        <div class="past-body">${renderWeekendGroups(past, true)}</div></details>` : ""}`;
+  root.querySelectorAll("[data-tel-format]").forEach(b => b.addEventListener("click", () => { state.telFormat = b.dataset.telFormat; renderMatchsTel_(); }));
+  attachCardListeners(root); attachPaymentListeners(root); attachContactListeners(root); attachPastToggle(root);
+}
 function renderTroisx3() { renderMatchPanel("troisx3", "3x3", "3×3"); }
 
 function renderMatchPanel(rootId, format, label) {
@@ -1517,6 +1543,18 @@ function renderAccueil() {
     const auj = new Date(); auj.setHours(0, 0, 0, 0);
     const jours = r._date ? Math.round((new Date(r._date.getFullYear(), r._date.getMonth(), r._date.getDate()) - auj) / 86400000) : null;
     const delai = enCours ? "En cours" : jours === 0 ? "Aujourd'hui" : jours === 1 ? "Demain" : jours > 1 ? "Dans " + jours + " jours" : "";
+    // b53 — mode « départ » : dans les 3 h avant le coup d'envoi, heure de départ conseillée
+    // (RDV − trajet estimé : km aller à 55 km/h + 10 min). Désactivable dans Mon profil (rt_depart = 0).
+    let depart = "";
+    try {
+      const actif = localStorage.getItem("rt_depart") !== "0";
+      const diffH = (debut.getTime() - Date.now()) / 3600000;
+      if (actif && !enCours && heure && diffH <= 3 && diffH > -0.5 && !est3x3) {
+        const kmAller = (r._km || 0) / 2; const trajet = kmAller ? Math.round(kmAller / 55 * 60 + 10) : 0;
+        const dd = new Date(debut.getTime() - ((rdvMinutes_(r) || 0) + trajet) * 60000);
+        depart = String(dd.getHours()).padStart(2, "0") + "h" + String(dd.getMinutes()).padStart(2, "0");
+      }
+    } catch (e) {}
     const ico = {
       waze: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-8 18-2-8z"/></svg>`,
       tel: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>`,
@@ -1538,6 +1576,7 @@ function renderAccueil() {
         ${rdv ? `<span class="acc-chip acc-chip--rdv">RDV ${escapeHtml(rdv)}</span>` : ""}
         ${delai ? `<span class="acc-chip acc-chip--delai">${escapeHtml(delai)}</span>` : ""}
       </div>
+      ${depart ? `<div class="acc-hero-depart">Départ conseillé vers <strong>${escapeHtml(depart)}</strong> · ${escapeHtml(rdv ? "RDV " + rdv : "")}</div>` : ""}
       ${salle || ville ? `<div class="acc-hero-lieu">${ico.pin}<span>${escapeHtml(salle || "")}${salle && ville ? " · " : ""}${escapeHtml(ville || "")}</span></div>` : ""}
       <div class="acc-hero-foot">
         <div class="acc-hero-actions">
@@ -1550,8 +1589,9 @@ function renderAccueil() {
     </div>`;
   })();
 
-  // --- 4 chiffres clés : information seule, aucun lien ---
-  const compteurs = `
+  // --- 4 chiffres clés : information seule, aucun lien --- (b53 : seulement ven→dim avec un match)
+  const jourSem = new Date().getDay();
+  const compteurs = (nb === 0 || [5, 6, 0].indexOf(jourSem) === -1) ? "" : `
     <div class="acc-kpis">
       <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
       <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(km, "")}</span><span class="acc-kpi-lbl">km ce week-end</span></div>
@@ -2422,6 +2462,7 @@ function renderPaymentControl(row) {
           <div class="payment-progress"><span style="width:${Math.min(100, total > 0 ? recuTotal / total * 100 : 0)}%"></span></div>
           <div class="payment-balance"><span>Reçu ${formatMoney(recuTotal)}</span><strong>${recuTotal === total ? "Soldé" : `Reste ${formatMoney(Math.max(0, total - recuTotal))}`}</strong><span>Dû ${formatMoney(total)}</span></div>
           <label class="payment-note"><span>Note</span><input name="note" type="text" value="${escapeHtml(note)}" placeholder="Information utile sur ce règlement" /></label>
+          ${row._isPast && recuTotal < total ? `<div class="payment-surplace"><button type="button" class="small-btn payment-action" data-action="sur-place" data-uid="${uid}">Payé sur place (espèces)</button><span>Tout l'argent reçu en salle : montant prérempli.</span></div>` : ""}
           <div class="payment-actions">
             <button type="submit" class="small-btn">Enregistrer le paiement</button>
             <button type="button" class="small-btn secondary payment-action" data-action="verify" data-uid="${uid}">Marquer à vérifier</button>
@@ -2560,10 +2601,41 @@ function renderMoisPaiements_() {
       <tbody>${lignes}</tbody></table></div></div>`;
 }
 
+/* b53 — téléphone : « Argent », 3 chiffres + listes (retard / à venir / reçu). Analyse et rapprochement restent sur PC. */
+function renderArgentTel_(root, rows) {
+  const retards = rows.filter(paiementEnRetard);
+  const setR = new Set(retards.map(r => get(r, "UID")));
+  const statutDe = r => get(r, "Statut paiement") || "À recevoir";
+  const aVenir = rows.filter(r => !setR.has(get(r, "UID")) && (r._reste || 0) > 0 && statutDe(r) !== BENEVOLE).sort(sortByDateAsc);
+  const recus = rows.filter(r => statutDe(r) === "Reçu").sort(sortByDateDesc);
+  const benev = rows.filter(r => statutDe(r) === BENEVOLE).sort(sortByDateDesc);
+  const sum = (l, k) => l.reduce((t, r) => t + (r[k] || 0), 0);
+  const bloc = (id, titre, liste, ouvertDef, cls) => {
+    if (!liste.length) return "";
+    const ouvert = PASSES_OUVERTS[id] !== undefined ? PASSES_OUVERTS[id] : ouvertDef;
+    return `<details class="past-block pay-bloc ${cls || ""}" data-panel="${id}"${ouvert ? " open" : ""}>
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">${titre}</span><span class="count">${liste.length}</span></span></summary>
+      <div class="past-body"><div class="cards">${liste.map(renderMatchCard).join("")}</div></div></details>`;
+  };
+  root.innerHTML = `
+    <h2 class="section-title">Argent</h2>
+    <div class="tel-kpis">
+      <div class="tel-kpi tel-kpi--ok"><strong>${formatMoney(sum(rows, "_encaisse"))}</strong><span>reçu</span></div>
+      <div class="tel-kpi tel-kpi--att"><strong>${formatMoney(sum(aVenir, "_reste"))}</strong><span>à venir</span></div>
+      <div class="tel-kpi ${retards.length ? "tel-kpi--ko" : ""}"><strong>${formatMoney(sum(retards, "_reste"))}</strong><span>en retard</span></div>
+    </div>
+    ${bloc("tel-retard", "En retard", retards, true, "is-retard")}
+    ${bloc("tel-avenir", "À percevoir", aVenir, true)}
+    ${bloc("tel-recus", "Reçus", recus, false)}
+    ${bloc("tel-benev", "Bénévole", benev, false)}
+    <p class="card-sub tel-note">Analyse détaillée et rapprochement bancaire : sur ordinateur ou tablette.</p>`;
+  attachCardListeners(root); attachPaymentListeners(root); attachContactListeners(root); attachPastToggle(root);
+}
 function renderPaiements() {
   const root = document.getElementById("paiements");
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
+  if (estTel_()) return renderArgentTel_(root, rows);
 
   // Les dossiers en retard figurent déjà dans le bloc « Warnings » : pas de doublon dessous.
   const dejaRelance = new Set(rows.filter(paiementEnRetard).map(r => get(r, "UID")));
@@ -2867,6 +2939,7 @@ function attachPaymentListeners(root) {
       const action = button.dataset.action;
       const params = { uid };
       if (action === "received") params.marquer_recu = "1";
+      if (action === "sur-place") { params.marquer_recu = "1"; params.mode_recevant = "Espèces"; }   // b53
       if (action === "verify") params.a_verifier = "1";
       if (action === "volunteer") params.benevole = "1";
       if (action === "unvolunteer") params.benevole = "0";
@@ -3647,6 +3720,11 @@ function cfTableau_() {
   if (!l.length) return "";
   let cumul = 0;
   const dans = d => { const j = Math.round((d - auj) / 86400000); return j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " jours"; };
+  if (estTel_()) {   // b53 — une ligne par échéance, détail au tap
+    return `<div class="cf-lignes">${l.map(g => { cumul += g.montant; return `<details class="cf-ligne">
+      <summary><span class="cf-l-date">${escapeHtml(g.d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }))}</span><span class="cf-l-pay">${escapeHtml(Object.keys(g.payeurs).join(", "))}</span><strong class="cf-l-mt">${money(g.montant)}</strong></summary>
+      <div class="cf-l-det">${dans(g.d)} · ${g.nb} mission${g.nb > 1 ? "s" : ""} · cumulé ${money(cumul)}</div></details>`; }).join("")}</div>`;
+  }
   return `<div class="table-card"><div class="table-wrap"><table class="cf-table">
     <thead><tr><th>Versement prévu</th><th>Quand</th><th>Payeur</th><th class="num">Missions</th><th class="num">Montant</th><th class="num">Cumulé</th></tr></thead>
     <tbody>${l.map(g => { cumul += g.montant; return `<tr>
@@ -8207,7 +8285,8 @@ function hotelWeekend_(date, vus) {
 /* Ouvre la carte d'un match dans son onglet (5x5 ou 3x3). */
 function ouvrirMatch(uid) {
   const r = state.allRows.find(x => get(x, "UID") === uid);
-  const tab = (r && r._format === "3x3") ? "troisx3" : "matchs";
+  const tab = (r && r._format === "3x3" && !estTel_()) ? "troisx3" : "matchs";
+  if (estTel_() && r && r._format === "3x3" && state.telFormat === "5x5") state.telFormat = "tous";
   setActiveTab(tab);
   setTimeout(() => {
     document.querySelectorAll("#" + tab + " .match-card").forEach(c => {
@@ -8990,3 +9069,65 @@ function attachPersoListeners_(root) {
     } catch (err) { setStatus("Erreur d'envoi : " + err.message, "error"); }
   });
 }
+
+
+/* ======================= b53 — Téléphone : hors ligne, tirer pour rafraîchir, appui long, lien « ?recu= » ======================= */
+(function () {
+  /* Hors ligne visible : bandeau avec la date des données affichées. */
+  function majHorsLigne_() {
+    let el = document.getElementById("rtOffline");
+    const info = window.RT_CACHE_INFO && window.RT_CACHE_INFO.matchs;
+    const quand = info && info.timestamp ? new Date(info.timestamp).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    if (navigator.onLine) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.id = "rtOffline"; el.className = "rt-offline"; const m = document.querySelector("main.content"); if (m) m.insertBefore(el, m.firstChild); }
+    el.textContent = "Hors ligne" + (quand ? " · données du " + quand : "") + " · les saisies seront refusées jusqu'au retour du réseau";
+  }
+  window.addEventListener("online", () => { majHorsLigne_(); try { loadData(); } catch (e) {} });
+  window.addEventListener("offline", majHorsLigne_);
+  document.addEventListener("DOMContentLoaded", () => setTimeout(majHorsLigne_, 1500));
+
+  /* Tirer vers le bas pour rafraîchir (téléphone, page en haut). */
+  let y0 = null, tire = 0;
+  const ind = () => { let e = document.getElementById("rtPull"); if (!e) { e = document.createElement("div"); e.id = "rtPull"; e.className = "rt-pull"; e.innerHTML = "<span></span>"; document.body.appendChild(e); } return e; };
+  document.addEventListener("touchstart", e => { if (!estTel_() || window.scrollY > 0 || document.querySelector(".rt-search-layer.is-open, #rtProfile.is-visible")) { y0 = null; return; } y0 = e.touches[0].clientY; tire = 0; }, { passive: true });
+  document.addEventListener("touchmove", e => { if (y0 === null) return; tire = Math.max(0, e.touches[0].clientY - y0); if (tire > 10) { const el = ind(); el.style.opacity = Math.min(1, tire / 90); el.style.transform = `translate(-50%, ${Math.min(60, tire / 2)}px)`; el.classList.toggle("is-ready", tire > 90); } }, { passive: true });
+  document.addEventListener("touchend", () => { if (y0 === null) return; const el = document.getElementById("rtPull"); if (tire > 90) { if (el) { el.classList.add("is-busy"); } try { setStatus("Actualisation…", ""); loadData(); } catch (e) {} setTimeout(() => { if (el) el.remove(); }, 1800); } else if (el) el.remove(); y0 = null; tire = 0; });
+
+  /* Appui long sur une carte match : menu d'actions rapides (reprend les boutons de la carte). */
+  let lp = null;
+  const fermerSheet = () => { const s = document.getElementById("rtSheet"); if (s) s.remove(); };
+  function ouvrirSheet(card) {
+    fermerSheet();
+    const uid = card.dataset.uid; const row = (typeof rowByUid_ === "function") ? rowByUid_(uid) : null;
+    const actions = [...card.querySelectorAll(".actions a, .actions button")].filter(b => !/annul|supprim/i.test(b.textContent));
+    const titre = row ? (cleanText(get(row, "Recevant")) + (get(row, "Visiteur / événement") ? " – " + cleanText(get(row, "Visiteur / événement")) : "")) : "Match";
+    const adresse = row ? cleanText(get(row, "Adresse")) || [get(row, "Salle"), get(row, "Ville")].filter(Boolean).join(" ") : "";
+    const emarque = row ? cleanText(get(row, "Code e-Marque")) : "";
+    const s = document.createElement("div"); s.id = "rtSheet"; s.className = "rt-sheet";
+    s.innerHTML = `<div class="rt-sheet-back"></div><div class="rt-sheet-card" role="dialog"><div class="rt-sheet-title">${escapeHtml(titre)}</div>
+      ${actions.map((b, i) => `<button type="button" class="rt-sheet-btn" data-i="${i}">${escapeHtml(b.textContent.trim())}</button>`).join("")}
+      ${adresse ? `<button type="button" class="rt-sheet-btn" data-copy="${escapeHtml(adresse)}">Copier l'adresse</button>` : ""}
+      ${emarque ? `<button type="button" class="rt-sheet-btn" data-copy="${escapeHtml(emarque)}">Copier le code e-Marque</button>` : ""}
+      <button type="button" class="rt-sheet-btn rt-sheet-cancel">Fermer</button></div>`;
+    document.body.appendChild(s);
+    s.querySelector(".rt-sheet-back").addEventListener("click", fermerSheet);
+    s.querySelector(".rt-sheet-cancel").addEventListener("click", fermerSheet);
+    s.querySelectorAll("[data-i]").forEach(b => b.addEventListener("click", () => { fermerSheet(); actions[+b.dataset.i].click(); }));
+    s.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(b.dataset.copy); setStatus("Copié", "ok"); } catch (e) { setStatus("Copie impossible", "error"); } fermerSheet(); }));
+  }
+  document.addEventListener("touchstart", e => { if (!estTel_()) return; const card = e.target.closest(".match-card"); if (!card || e.target.closest("a, button, input, select, textarea, form")) return; lp = setTimeout(() => { lp = null; if (navigator.vibrate) navigator.vibrate(12); ouvrirSheet(card); }, 550); }, { passive: true });
+  ["touchend", "touchmove", "touchcancel"].forEach(t => document.addEventListener(t, () => { if (lp) { clearTimeout(lp); lp = null; } }, { passive: true }));
+
+  /* Lien de notification « ?recu=UID » (push « Payé sur place ? ») : ouvre la mission sur son bloc paiement. */
+  document.addEventListener("DOMContentLoaded", () => {
+    const uid = new URLSearchParams(location.search).get("recu");
+    if (!uid) return;
+    let essais = 0;
+    const t = setInterval(() => {
+      if (!state.allRows.length && essais++ < 40) return;
+      clearInterval(t);
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      if (typeof ouvrirMatch === "function") { ouvrirMatch(uid); setTimeout(() => { const p = document.querySelector(`.match-card[data-uid="${CSS.escape(uid)}"] .payment-panel`); if (p) p.scrollIntoView({ behavior: "smooth", block: "center" }); }, 400); }
+    }, 250);
+  });
+})();

@@ -3829,3 +3829,47 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 /* b52 — bandeau notifications obligatoires */
 .rt-push-bandeau { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--gold-soft); border: 1px solid rgba(245,180,0,.45); color: var(--text); font-size: 13.5px; font-weight: 600; }
 .rt-push-bandeau .rt-btn { margin-left: auto; white-space: nowrap; }
+
+
+/* ================= b53 — Téléphone ================= */
+.tel-chips { display: flex; gap: 6px; margin: -4px 0 12px; }
+.tel-chips .rt-chip { padding: 7px 13px; }
+.tel-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.tel-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 8px; text-align: center; }
+.tel-kpi strong { display: block; font-family: var(--mono); font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.tel-kpi span { display: block; margin-top: 3px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tel-kpi--ok strong { color: var(--green); } .tel-kpi--att strong { color: var(--gold); } .tel-kpi--ko strong { color: var(--red); }
+.tel-kpi--ko { border-color: rgba(228,0,43,.4); }
+.pay-bloc.is-retard .past-title { color: var(--red); }
+.tel-note { margin-top: 14px; text-align: center; }
+.cf-lignes { display: grid; gap: 6px; }
+.cf-ligne { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.cf-ligne summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; list-style: none; cursor: pointer; }
+.cf-ligne summary::-webkit-details-marker { display: none; }
+.cf-l-date { font-family: var(--mono); font-weight: 700; font-size: 13px; color: var(--navy-700); white-space: nowrap; }
+.cf-l-pay { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-l-mt { font-family: var(--mono); font-size: 14px; }
+.cf-l-det { padding: 0 12px 10px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.payment-surplace { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 10px; border-radius: 10px; background: var(--green-soft); }
+.payment-surplace span { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.acc-hero-depart { margin: 10px 18px 0; padding: 9px 12px; border-radius: 10px; background: rgba(245,180,0,.16); border: 1px solid rgba(245,180,0,.4); font-size: 13.5px; font-weight: 700; }
+.acc-hero-depart strong { color: #FFD966; }
+.rt-offline { margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-md); background: var(--red-soft, #FDE8EC); color: var(--red); border: 1px solid rgba(228,0,43,.35); font-size: 13px; font-weight: 700; }
+.rt-pull { position: fixed; top: calc(var(--safe-t, 0px) + 8px); left: 50%; transform: translate(-50%, 0); z-index: 120; width: 36px; height: 36px; border-radius: 50%; background: var(--surface); box-shadow: 0 6px 18px rgba(10,31,68,.25); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; }
+.rt-pull span { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--navy-600); }
+.rt-pull.is-ready span { border-top-color: var(--gold); }
+.rt-pull.is-busy span { animation: rtspin .8s linear infinite; }
+@keyframes rtspin { to { transform: rotate(360deg); } }
+.rt-sheet { position: fixed; inset: 0; z-index: 9400; }
+.rt-sheet-back { position: absolute; inset: 0; background: rgba(5,15,35,.55); }
+.rt-sheet-card { position: absolute; left: 10px; right: 10px; bottom: calc(10px + var(--safe-b, 0px)); background: var(--surface); border-radius: 18px; padding: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.35); display: grid; gap: 6px; animation: rtup .18s ease-out; }
+@keyframes rtup { from { transform: translateY(24px); opacity: 0; } }
+.rt-sheet-title { padding: 8px 10px 4px; font-size: 13px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.rt-sheet-btn { height: 48px; border: 0; border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 15.5px; font-weight: 700; }
+.rt-sheet-cancel { background: var(--navy-800); color: #fff; margin-top: 4px; }
+@media (max-width: 767px) {
+  nav.tabs { grid-template-columns: repeat(4, 1fr); }
+  nav.tabs .tab-tel-hide { display: none !important; }
+  .rb-pc-only { display: none !important; }
+  .match-card { -webkit-touch-callout: none; }
+}
