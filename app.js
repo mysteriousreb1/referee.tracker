@@ -359,7 +359,7 @@ function setupMoreMenu_() {
     const ico = nav.querySelector(`.tab[data-tab="${t}"] .tab-icon`);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "tab-more-item" + (t === "alertes" || t === "export" ? " tab-more-pc" : "");
+    item.className = "tab-more-item" + (t === "export" ? " tab-more-pc" : "");   // b52 : Alertes visible sur téléphone
     item.dataset.goto = t;
     item.innerHTML = `${ico ? ico.outerHTML : ""}<span>${escapeHtml(src ? src.textContent : t)}</span><span class="tab-badge tab-more-badge" data-badge-for="${t}" hidden>0</span>`;
     panel.appendChild(item);
@@ -1528,7 +1528,7 @@ function renderAccueil() {
       <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
       <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(km, "")}</span><span class="acc-kpi-lbl">km ce week-end</span></div>
       <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
-      <div class="acc-kpi"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">total impayé${impayes.length ? " · " + impayes.length : ""}</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">en retard${impayes.length ? " · " + impayes.length : ""}</span></div>
     </div>`;
 
   // --- Bandeau de bienvenue compact ---
@@ -1866,7 +1866,7 @@ function renderMatchCard(row) {
   const sous = format === "3x3"
     ? [get(row, "Ville")].filter(Boolean).join(" · ")
     : [get(row, "Visiteur / événement"), get(row, "Ville")].filter(Boolean).join(" · ");
-  const etatPaie = isBenevole ? ["Bénévole", "gray"] : isPaid ? ["Payé", "green"] : [paiement, paiement === "À recevoir" ? "gold" : "orange"];
+  const etatPaie = isBenevole ? ["Bénévole", "gray"] : isPaid ? ["Payé", "green"] : paiement === "Annulé" ? ["Annulé", "gray"] : [paiement, paiement === "À recevoir" ? "gold" : "orange"];
   return `
     <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}" data-uid="${uid}">
       <div class="card-head mrow" role="button" tabindex="0" aria-expanded="false">
@@ -1878,7 +1878,7 @@ function renderMatchCard(row) {
           <div class="badges">
             <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
             ${examCF ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}
-            ${reglement ? `<span class="badge badge-reglement" title="${escapeHtml(reglement)}">⚠ ${escapeHtml(reglement)}</span>` : ""}
+            ${reglement ? `<span class="badge badge-regime" title="Payé par : ${escapeHtml(reglement)}">${escapeHtml(regimeCourt_(row, reglement))}</span>` : ""}
             ${badge(get(row, "Genre"), get(row, "Genre") === "Féminin" ? "red" : get(row, "Genre") === "Mixte" ? "gold" : "")}
             ${renderHotelBadge_(row)}
           </div>
@@ -1906,7 +1906,7 @@ function renderEnjeuClassement_(row) {
   if (row._isPast) return "";
   const en = state.enjeux && state.enjeux[get(row, "UID")];
   const raisonTxt = (en && en.raison && !(en.rec || en.vis) && niveauRencontre(row) === "france")
-    ? `<div class="enjeu-classement"><div class="enjeu-ligne" style="opacity:.7"><em>Classement indisponible : ${escapeHtml(en.raison)}</em></div></div>` : "";
+    ? "" : "";   // b52 — plus de message technique quand le classement n'est pas disponible
   if (en && (en.rec || en.vis)) {
     const lg = (nom, c) => c ? `<div class="enjeu-ligne"><strong>${escapeHtml(nom)}</strong> — ${c.pos}e/${en.taille} · ${c.pts} pt${c.pts > 1 ? "s" : ""} (${c.j} match${c.j > 1 ? "s" : ""})</div>` : "";
     return `<div class="enjeu-classement">${lg(get(row, "Recevant") || "Recevant", en.rec)}${lg(get(row, "Visiteur / événement") || "Visiteur", en.vis)}${en.enjeu ? `<div class="enjeu-ligne"><em>${escapeHtml(en.enjeu)}</em></div>` : ""}</div>`;
@@ -1925,7 +1925,7 @@ function renderEnjeuClassement_(row) {
     // Aucun enjeu calculé pour une rencontre CF proche : on le dit au lieu de rester muet.
     const j = row._date ? (row._date.getTime() - Date.now()) / 86400000 : 99;
     if (!en && niveauRencontre(row) === "france" && j >= -1 && j <= 21 && state.enjeux && Object.keys(state.enjeux).length)
-      return `<div class="enjeu-classement"><div class="enjeu-ligne" style="opacity:.7"><em>Classement indisponible : rencontre absente du calcul (voir DIAG_ENJEUX dans Apps Script)</em></div></div>`;
+      return "";   // b52
     return "";
   }
 
@@ -2058,7 +2058,7 @@ function initMapFor(uid, addr) {
         map.fitBounds(line.getBounds().pad(0.2));
         const km = Math.round(r.distanceKm * 2);
         L.popup().setLatLng([dest.lat, dest.lon])
-          .setContent(`<b>${km} km A/R</b><br>${(km * 0.4).toFixed(2)} € remboursés`).openOn(map);
+          .setContent(`<b>${km} km A/R</b><br>carburant réel ≈ ${formatMoney(realFuelCostClient(km, null))}`).openOn(map);
       } else {
         L.polyline([[HOME.lat, HOME.lon], [dest.lat, dest.lon]], { color: "#E4002B", weight: 3, dashArray: "6 8" }).addTo(map);
         map.fitBounds(L.latLngBounds([[HOME.lat, HOME.lon], [dest.lat, dest.lon]]).pad(0.3));
@@ -2098,6 +2098,12 @@ function route(from, to) {
    visuel sur la carte plutôt qu'une alerte noyée dans un onglet.
 ---------------------------------------------------- */
 
+/* b52 — étiquette courte du payeur « club » (jamais un warning : c'est une information). */
+function regimeCourt_(row, reglement) {
+  const reg = normaliserRecherche(get(row, "Régime"));
+  if (reg === "parts_egales" || /parts egales/.test(normaliserRecherche(reglement))) return "2 clubs · 50/50";
+  return "Payé par le club";
+}
 function reglementSpecial(row) {
   const type = normaliserRecherche(get(row, "Paiement Type"));
   const par = normaliserRecherche(get(row, "Indemnisé par"));
@@ -2559,7 +2565,7 @@ function renderPaiements() {
   root.innerHTML = `
     <h2 class="section-title">Paiements</h2>
     <div class="kpi-grid pay-kpis">
-      <div class="kpi hero pay-kpi-attente"><label>En attente de virement</label><strong>${formatMoney(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
+      <div class="kpi hero pay-kpi-attente"><label>À percevoir</label><strong>${formatMoney(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
     </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
@@ -3589,7 +3595,7 @@ function renderCashFlow_(cf) {
       <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
       <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
     </div>
-    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+4 pour les clubs). « En retard » = date prévue dépassée sans versement.</p>
+    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
     ${spark}
     ${cfTableau_()}
         <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
@@ -5614,7 +5620,7 @@ function renderAgendaMatchMini_(row) {
       <div class="badges">
         <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
         ${format && format !== "3x3" ? badge(format, "gray") : ""}
-        ${isBenevole ? badge("Bénévole", "gray") : isPaid ? badge("Payé", "green") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
+        ${isBenevole ? badge("Bénévole", "gray") : isPaid ? badge("Payé", "green") : paiement === "Annulé" ? badge("Annulé", "gray") : badge(paiement, paiement === "À recevoir" ? "gold" : "orange")}
       </div>
       <div class="agenda-match-title">${escapeHtml(title || "Mission")}</div>
       <div class="agenda-match-meta">${time ? escapeHtml(time) + " · " : ""}${escapeHtml(lieu || "")}</div>

@@ -1122,8 +1122,10 @@ function renderProfile() {
       <div class="rt-row">
         <button type="button" class="rt-btn" id="pfPushOn">Activer</button>
         <button type="button" class="rt-btn" id="pfPushOff">Désactiver</button>
+        <button type="button" class="rt-btn" id="pfPushTest">Tester</button>
         <span class="rt-help" id="pfPushEtat" style="margin:0"></span>
       </div>
+      <p class="rt-help" id="pfPushDetail" style="margin-top:6px"></p>
     </section>
 
     <section class="rt-sect">
@@ -1474,12 +1476,35 @@ const PUSH = {
       if (memo && memo !== j.endpoint) { try { await SB.write("DELETE", "push_subscriptions?endpoint=eq." + encodeURIComponent(memo)); } catch (e) {} }
     } catch (e) { /* silencieux : jamais bloquant pour l'app */ }
   },
+  /* b52 (décision 5) — état détaillé : abonnement de cet appareil présent côté serveur ?
+     dernière vérification automatique ? nombre d'appareils enregistrés. */
+  async detail() {
+    try {
+      const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription();
+      let verif = 0; try { verif = Number(localStorage.getItem("rt_push_verif") || 0); } catch (e) {}
+      let tous = []; try { tous = await SB.get("push_subscriptions?select=endpoint,created_at&limit=20"); } catch (e) { tous = null; }
+      const present = sub && Array.isArray(tous) && tous.some(x => x.endpoint === sub.endpoint);
+      const dateFr = t => { const d = new Date(t); return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); };
+      if (!sub) return { ok: false, texte: "" };
+      if (tous === null) return { ok: true, texte: "Vérification serveur impossible (hors ligne ?)" };
+      return { ok: present, texte: (present ? "Enregistré côté serveur" : "Abonnement absent côté serveur — appuie sur Activer") + (verif ? " · vérifié le " + dateFr(verif) : "") + (Array.isArray(tous) ? " · " + tous.length + " appareil" + (tous.length > 1 ? "s" : "") + " enregistré" + (tous.length > 1 ? "s" : "") : "") };
+    } catch (e) { return { ok: false, texte: "" }; }
+  },
   lier() {
-    const on = document.getElementById("pfPushOn"), off = document.getElementById("pfPushOff"), et = document.getElementById("pfPushEtat");
+    const on = document.getElementById("pfPushOn"), off = document.getElementById("pfPushOff"), et = document.getElementById("pfPushEtat"), test = document.getElementById("pfPushTest"), det = document.getElementById("pfPushDetail");
     if (!on || !off || !et) return;
-    const maj = async () => { const e = await this.etat(); et.textContent = e.texte; on.disabled = e.ok; off.disabled = !e.ok; };
+    const maj = async () => {
+      const e = await this.etat(); et.textContent = e.texte; on.disabled = e.ok; off.disabled = !e.ok; if (test) test.disabled = !e.ok;
+      if (det) { const d = await this.detail(); det.textContent = d.texte; det.style.color = d.ok || !d.texte ? "" : "var(--red)"; if (!d.ok && d.texte && /absent/.test(d.texte)) on.disabled = false; }
+    };
     on.addEventListener("click", async () => { on.disabled = true; et.textContent = "Activation…"; try { await this.activer(); } catch (err) { et.textContent = "Impossible : " + err.message; } maj(); });
     off.addEventListener("click", async () => { off.disabled = true; try { await this.desactiver(); } catch (err) {} maj(); });
+    if (test) test.addEventListener("click", async () => {
+      test.disabled = true; const avant = et.textContent; et.textContent = "Envoi du test…";
+      try { await this.resync("force"); const r = await jsonp("notif.test"); et.textContent = r && r.success ? "Test envoyé : la notification doit arriver dans quelques secondes." : "Échec : " + ((r && r.error) || "serveur injoignable"); }
+      catch (err) { et.textContent = "Échec : " + (err.message || err); }
+      setTimeout(() => { et.textContent = avant; test.disabled = false; }, 8000);
+    });
     maj();
   }
 };

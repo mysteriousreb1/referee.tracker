@@ -1544,6 +1544,10 @@ tr:last-child td { border-bottom: 0; }
   background: var(--red);
   box-shadow: 0 2px 6px rgba(228, 0, 43, 0.28);
 }
+/* b52 — le payeur « club » est une information, pas une alerte : étiquette grise, bordure neutre */
+.badge-regime { color: var(--muted); background: var(--bg); border: 1px solid var(--line); font-weight: 700; }
+.match-card--reglement { border-left-color: var(--line) !important; }
+.match-card--reglement .card-head { background: none; }
 
 /* La pastille de niveau : volontairement plus grosse et plus
    contrastée que les autres badges, c'est elle qu'on cherche. */
