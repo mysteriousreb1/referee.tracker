@@ -2444,7 +2444,8 @@ function renderPaymentClub_(row, cote, visible) {
    SMS prérempli (iPhone/Android), appel, ou message copié pour un mail. */
 function contactClub_(row, cote) {
   const brut = cleanText(get(row, cote === "visiteur" ? "Correspondant visiteur (nom + tél)" : "Correspondant recevant (nom + tél)"));
-  const tel = normalizePhoneFr(brut) || "";
+  const m = brut.match(/(?:\+33\s?|0)[1-9](?:[\s.\-]?\d{2}){4}/);
+  const tel = m ? normalizePhoneFr(m[0]) : "";
   const nom = brut.replace(/(?:\+33\s?|0)[1-9](?:[\s.\-]?\d{2}){4}/g, "").replace(/[\s·:;,\-]+$/g, "").trim();
   return { brut, tel, nom };
 }
