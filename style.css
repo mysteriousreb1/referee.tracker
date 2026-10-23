@@ -1546,8 +1546,8 @@ tr:last-child td { border-bottom: 0; }
 }
 /* b52 — le payeur « club » est une information, pas une alerte : étiquette grise, bordure neutre */
 .badge-regime { color: var(--muted); background: var(--bg); border: 1px solid var(--line); font-weight: 700; }
-.match-card--reglement { border-left-color: var(--line) !important; }
-.match-card--reglement .card-head { background: none; }
+.match-card--reglement { border-left-color: var(--niveau, #C8D2E4) !important; }   /* b52 : la couleur de NIVEAU reste maîtresse */
+.match-card--reglement .card-head { background: linear-gradient(90deg, var(--niveau-wash, transparent), transparent 58%); }
 
 /* La pastille de niveau : volontairement plus grosse et plus
    contrastée que les autres badges, c'est elle qu'on cherche. */
@@ -3788,3 +3788,44 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
 
 /* --- Menus déroulants : texte aligné à gauche partout (jamais centré) --- */
 select, .rt-search-sec select, .chart-filter select, .payment-row select { text-align: left; text-align-last: left; }
+
+
+/* ================= b52 — Accueil : carte « prochain match » v2 ================= */
+.acc-hero--v2 { padding: 0; border-top: 0; }
+.acc-hero--v2::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 5px; background: var(--niveau, var(--gold)); z-index: 2; }
+.acc-hero--v2 > * { position: relative; z-index: 1; }
+.acc-hero--v2 .acc-hero-top { padding: 18px 18px 0; }
+.acc-hero-when { font-size: 13px; opacity: .92; text-transform: capitalize; white-space: nowrap; }
+.acc-hero-when strong { font-weight: 800; }
+.acc-hero-teams { padding: 14px 18px 0; }
+.acc-hero-team { font-family: var(--display); font-size: 21px; font-weight: 800; line-height: 1.12; letter-spacing: -.01em; }
+.acc-hero-team--vis { opacity: .92; }
+.acc-hero-vs { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; opacity: .55; }
+.acc-hero-vs::before, .acc-hero-vs::after { content: ""; height: 1px; background: rgba(255,255,255,.35); flex: 0 0 28px; }
+.acc-hero-vs::after { display: none; }
+.acc-hero-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 18px 0; }
+.acc-chip { font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.14); color: #fff; line-height: 1.2; }
+.acc-chip--niv { background: var(--niveau, var(--gold)); border-color: transparent; color: #0B1F3B; }
+.acc-hero--v2.niv-pn .acc-chip--niv, .acc-hero--v2.niv-region .acc-chip--niv, .acc-hero--v2.niv-departement .acc-chip--niv, .acc-hero--v2.niv-3x3 .acc-chip--niv { color: #fff; }
+.acc-chip--rdv { background: rgba(245,180,0,.18); border-color: rgba(245,180,0,.45); color: #FFD966; }
+.acc-chip--delai { background: rgba(255,255,255,.06); }
+.acc-hero--v2 .acc-hero-lieu { display: flex; align-items: center; gap: 6px; padding: 10px 18px 0; margin: 0; font-size: 13px; opacity: .85; }
+.acc-hero-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; padding: 12px 18px 16px; background: rgba(0,0,0,.18); border-top: 1px solid rgba(255,255,255,.08); }
+.acc-hero--v2 .acc-hero-actions { margin: 0; gap: 8px; flex-wrap: nowrap; }
+.acc-btn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 13px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: #fff; font: inherit; font-size: 13.5px; font-weight: 700; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.acc-btn:hover { background: rgba(255,255,255,.18); }
+.acc-btn--gold { background: var(--gold); border-color: var(--gold); color: #17244a; }
+.acc-btn--gold:hover { background: #ffc524; }
+.acc-hero--v2 .acc-hero-indem { position: static; margin-left: auto; font-size: 18px; padding: 7px 12px; background: rgba(255,255,255,.14); }
+@media (max-width: 767px) {
+  .acc-hero--v2 { padding: 0; }
+  .acc-hero-team { font-size: 19px; }
+  .acc-hero--v2 .acc-hero-actions { flex-wrap: wrap; }
+  .acc-btn { height: 42px; padding: 0 12px; font-size: 13px; }
+  .acc-hero-foot { flex-wrap: wrap; }
+  .acc-hero--v2 .acc-hero-indem { font-size: 17px; }
+}
+
+/* b52 — bandeau notifications obligatoires */
+.rt-push-bandeau { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--gold-soft); border: 1px solid rgba(245,180,0,.45); color: var(--text); font-size: 13.5px; font-weight: 600; }
+.rt-push-bandeau .rt-btn { margin-left: auto; white-space: nowrap; }

@@ -1493,32 +1493,60 @@ function renderAccueil() {
 
   const oppDe = r => (cleanText(get(r, "Recevant")) + " / " + cleanText(get(r, "Visiteur / événement"))).replace(/^ \/ | \/ $/g, "");
 
-  // --- Hero prochain match ---
+  // --- Hero prochain match (b52 : nouveau design) ---
   const hero = (() => {
     if (!prochain) return `<div class="acc-hero acc-hero--vide">Aucun match à venir.</div>`;
     const r = prochain;
     const uid = escapeHtml(get(r, "UID"));
-    const enCours = startDT_(r).getTime() <= Date.now();
-    const dateLong = r._date ? (r._date.toLocaleDateString("fr-FR", { weekday: "long" }) + " " + formatDateShort(r._date)) : "";
+    const debut = startDT_(r);
+    const enCours = debut.getTime() <= Date.now();
+    const jourCourt = r._date ? r._date.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "") : "";
     const heure = fmtHeure(heureDe_(r));
-    const comp = cleanText(get(r, "Libellé compétition") || get(r, "Niveau administratif")) || "";
+    const niv = niveauCarte(r);
     const role = cleanText(get(r, "Mon rôle"));
     const salle = cleanText(get(r, "Salle"));
     const ville = cleanText(get(r, "Ville"));
     const addr = cleanText(get(r, "Adresse")) || [salle, ville].filter(Boolean).join(" ");
     const col = cleanText(get(r, "Collègue nom"));
     const telBrut = normalizePhoneFr(get(r, "Collègue téléphone"));
-    return `<div class="acc-hero">
-      <div class="acc-hero-top"><span class="acc-hero-tag">${enCours ? "En cours" : "Prochain match"}</span><span class="acc-hero-date">${escapeHtml(dateLong)}${heure ? " · " + escapeHtml(heure) : ""}</span></div>
-      <div class="acc-hero-match">${escapeHtml(oppDe(r))}</div>
-      <div class="acc-hero-sub">${escapeHtml(comp)}${role ? " · " + escapeHtml(role) : ""}</div>
-      <div class="acc-hero-lieu">${escapeHtml(salle || ville || "Lieu à préciser")}${salle && ville ? " · " + escapeHtml(ville) : ""}</div>
-      <div class="acc-hero-actions">
-        ${addr ? `<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes" target="_blank" rel="noopener">Waze</a>` : ""}
-        ${telBrut ? `<a class="action-link secondary acc-tel-col" href="tel:${telBrut}">Tél ${escapeHtml(col || "collègue")}</a>` : ""}
-        <button type="button" class="action-link secondary acc-vers-match" data-uid="${uid}">Voir le match</button>
+    const rec = cleanText(get(r, "Recevant")), vis = cleanText(get(r, "Visiteur / événement"));
+    const est3x3 = r._format === "3x3";
+    // RDV = coup d'envoi − délai selon la compétition ; compte à rebours en jours.
+    let rdv = "";
+    if (heure && !est3x3) { const m = rdvMinutes_(r); const d = new Date(debut.getTime() - (m || 0) * 60000); rdv = String(d.getHours()).padStart(2, "0") + "h" + String(d.getMinutes()).padStart(2, "0"); }
+    const auj = new Date(); auj.setHours(0, 0, 0, 0);
+    const jours = r._date ? Math.round((new Date(r._date.getFullYear(), r._date.getMonth(), r._date.getDate()) - auj) / 86400000) : null;
+    const delai = enCours ? "En cours" : jours === 0 ? "Aujourd'hui" : jours === 1 ? "Demain" : jours > 1 ? "Dans " + jours + " jours" : "";
+    const ico = {
+      waze: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-8 18-2-8z"/></svg>`,
+      tel: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>`,
+      pin: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>`,
+      more: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`
+    };
+    return `<div class="acc-hero acc-hero--v2 ${niv.classe}">
+      <div class="acc-hero-top">
+        <span class="acc-hero-tag">${enCours ? "En cours" : "Prochain match"}</span>
+        <span class="acc-hero-when"><strong>${escapeHtml(jourCourt)}</strong>${heure ? ` · ${escapeHtml(heure)}` : ""}</span>
       </div>
-      <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
+      <div class="acc-hero-teams">
+        <div class="acc-hero-team">${escapeHtml(rec || vis || "Mission")}</div>
+        ${rec && vis && !est3x3 ? `<div class="acc-hero-vs"><span>vs</span></div><div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : (est3x3 && vis ? `<div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : "")}
+      </div>
+      <div class="acc-hero-chips">
+        <span class="acc-chip acc-chip--niv">${escapeHtml(niv.badge)}</span>
+        ${role ? `<span class="acc-chip">${escapeHtml(role)}</span>` : ""}
+        ${rdv ? `<span class="acc-chip acc-chip--rdv">RDV ${escapeHtml(rdv)}</span>` : ""}
+        ${delai ? `<span class="acc-chip acc-chip--delai">${escapeHtml(delai)}</span>` : ""}
+      </div>
+      ${salle || ville ? `<div class="acc-hero-lieu">${ico.pin}<span>${escapeHtml(salle || "")}${salle && ville ? " · " : ""}${escapeHtml(ville || "")}</span></div>` : ""}
+      <div class="acc-hero-foot">
+        <div class="acc-hero-actions">
+          ${addr ? `<a class="acc-btn acc-btn--gold" href="https://waze.com/ul?q=${encodeURIComponent(addr)}&navigate=yes" target="_blank" rel="noopener">${ico.waze}<span>Waze</span></a>` : ""}
+          ${telBrut ? `<a class="acc-btn" href="tel:${telBrut}">${ico.tel}<span>${escapeHtml((col || "Collègue").split(" ")[0])}</span></a>` : ""}
+          <button type="button" class="acc-btn acc-vers-match" data-uid="${uid}">${ico.more}<span>Détail</span></button>
+        </div>
+        <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
+      </div>
     </div>`;
   })();
 

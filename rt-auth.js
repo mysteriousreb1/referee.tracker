@@ -1118,10 +1118,9 @@ function renderProfile() {
 
     <section class="rt-sect">
       <h3>Notifications sur cet appareil</h3>
-      <p class="rt-help" id="pfPushAide">Nouveau match, annulation, paiement en retard : directement sur ce téléphone.</p>
+      <p class="rt-help" id="pfPushAide">Nouveau match, annulation, paiement en retard, échéance dépassée : toujours actives sur ce téléphone, remises en route automatiquement après un redémarrage.</p>
       <div class="rt-row">
-        <button type="button" class="rt-btn" id="pfPushOn">Activer</button>
-        <button type="button" class="rt-btn" id="pfPushOff">Désactiver</button>
+        <button type="button" class="rt-btn" id="pfPushOn" hidden>Activer les notifications</button>
         <button type="button" class="rt-btn" id="pfPushTest">Tester</button>
         <span class="rt-help" id="pfPushEtat" style="margin:0"></span>
       </div>
@@ -1462,7 +1461,7 @@ const PUSH = {
       if (!r) return;
       let sub = await r.pushManager.getSubscription();
       if (!sub) {
-        if (!memo) return;                       // jamais activé sur cet appareil : on ne force pas
+        // b52 — notifications obligatoires : permission accordée = abonnement recréé sans rien demander.
         sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
       }
       const j = sub.toJSON();
@@ -1491,14 +1490,15 @@ const PUSH = {
     } catch (e) { return { ok: false, texte: "" }; }
   },
   lier() {
-    const on = document.getElementById("pfPushOn"), off = document.getElementById("pfPushOff"), et = document.getElementById("pfPushEtat"), test = document.getElementById("pfPushTest"), det = document.getElementById("pfPushDetail");
-    if (!on || !off || !et) return;
+    const on = document.getElementById("pfPushOn"), et = document.getElementById("pfPushEtat"), test = document.getElementById("pfPushTest"), det = document.getElementById("pfPushDetail");
+    if (!on || !et) return;
+    // b52 (décision 5) — notifications OBLIGATOIRES : pas de « Désactiver ». « Activer » n'apparaît
+    // que si l'appareil n'est pas encore abonné (iOS exige un geste de l'utilisateur la 1re fois).
     const maj = async () => {
-      const e = await this.etat(); et.textContent = e.texte; on.disabled = e.ok; off.disabled = !e.ok; if (test) test.disabled = !e.ok;
-      if (det) { const d = await this.detail(); det.textContent = d.texte; det.style.color = d.ok || !d.texte ? "" : "var(--red)"; if (!d.ok && d.texte && /absent/.test(d.texte)) on.disabled = false; }
+      const e = await this.etat(); et.textContent = e.ok ? "Actives sur cet appareil." : e.texte; on.hidden = e.ok || !this.supporte() || this.standaloneIos(); if (test) test.disabled = !e.ok;
+      if (det) { const d = await this.detail(); det.textContent = d.texte; det.style.color = d.ok || !d.texte ? "" : "var(--red)"; if (!d.ok && d.texte && /absent/.test(d.texte)) on.hidden = false; }
     };
-    on.addEventListener("click", async () => { on.disabled = true; et.textContent = "Activation…"; try { await this.activer(); } catch (err) { et.textContent = "Impossible : " + err.message; } maj(); });
-    off.addEventListener("click", async () => { off.disabled = true; try { await this.desactiver(); } catch (err) {} maj(); });
+    on.addEventListener("click", async () => { on.disabled = true; et.textContent = "Activation…"; try { await this.activer(); } catch (err) { et.textContent = "Impossible : " + err.message; } on.disabled = false; maj(); });
     if (test) test.addEventListener("click", async () => {
       test.disabled = true; const avant = et.textContent; et.textContent = "Envoi du test…";
       try { await this.resync("force"); const r = await jsonp("notif.test"); et.textContent = r && r.success ? "Test envoyé : la notification doit arriver dans quelques secondes." : "Échec : " + ((r && r.error) || "serveur injoignable"); }
@@ -1572,10 +1572,27 @@ const CONFIRM = {
 
 /* b48 — notifications : resynchronisation à l'ouverture, au retour au premier plan,
    et quand le service worker signale un changement d'abonnement. */
+/* b52 — bandeau « notifications requises » tant que l'appareil n'est pas abonné (téléphone
+   installé sur l'écran d'accueil). Un seul bouton, disparaît dès que c'est fait. */
+async function pushBandeau_() {
+  try {
+    if (!PUSH.supporte() || !SB.actif) return;
+    const e = await PUSH.etat();
+    const old = document.getElementById("rtPushBandeau"); if (old) old.remove();
+    if (e.ok || Notification.permission === "denied") return;
+    const el = document.createElement("div"); el.id = "rtPushBandeau"; el.className = "rt-push-bandeau";
+    el.innerHTML = PUSH.standaloneIos()
+      ? `<span>Pour recevoir les notifications sur iPhone, ajoute l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil).</span>`
+      : `<span>Les notifications sont nécessaires (convocations, annulations, paiements).</span><button type="button" class="rt-btn" id="rtPushBandeauBtn">Activer</button>`;
+    const main = document.querySelector("main.content") || document.body; main.insertBefore(el, main.firstChild);
+    const b = document.getElementById("rtPushBandeauBtn");
+    if (b) b.addEventListener("click", async () => { b.disabled = true; try { await PUSH.activer(); el.remove(); toast("Notifications activées"); } catch (err) { b.disabled = false; toast("Impossible : " + err.message, true); } });
+  } catch (e) { /* jamais bloquant */ }
+}
 function pushResyncInstaller_() {
   if (window.__rtPushResync) return;
   window.__rtPushResync = true;
-  setTimeout(() => PUSH.resync(), 4000);
+  setTimeout(() => PUSH.resync().then(() => pushBandeau_()), 4000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") PUSH.resync(); });
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
 }
