@@ -588,6 +588,7 @@ function loadData() {
       _plus(loadPrixCarburant, "Prix carburant", 1200);
       _plus(loadClassements, "Classements FFBB", 2200);
       _plus(loadEnjeux, "Enjeux FFBB", 3500);
+      _plus(chargerResultatsFfbb_, "Résultats FFBB (classements)", 1600);   // b55
       // b19 : page Indispos supprimée (pas de connexion FBI possible).
     })
     .catch(showApiError);
@@ -1592,8 +1593,8 @@ function renderAccueil() {
         <span class="acc-hero-when"><strong>${escapeHtml(jourCourt)}</strong>${heure ? ` · ${escapeHtml(heure)}` : ""}</span>
       </div>
       <div class="acc-hero-teams">
-        <div class="acc-hero-team">${escapeHtml(rec || vis || "Mission")}</div>
-        ${rec && vis && !est3x3 ? `<div class="acc-hero-vs"><span>vs</span></div><div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : (est3x3 && vis ? `<div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : "")}
+        <div class="acc-hero-team">${escapeHtml(rec || vis || "Mission")}${cltPos_(r, "rec")}</div>
+        ${rec && vis && !est3x3 ? `<div class="acc-hero-vs"><span>vs</span></div><div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}${cltPos_(r, "vis")}</div>` : (est3x3 && vis ? `<div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : "")}
       </div>
       <div class="acc-hero-chips">
         <span class="acc-chip acc-chip--niv">${escapeHtml(niv.badge)}</span>
@@ -1981,12 +1982,15 @@ function renderMatchCard(row) {
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
-        ${enjeu}
+        ${estTel_() ? renderActions(row) : ""}
+        ${renderClassementMatch_(row) || enjeu}
         ${renderDetails(row)}
         ${renderHotelPanel_(row)}
         ${renderMapContainer(row, uid)}
-        ${renderActions(row)}
-        ${renderPaymentControl(row)}
+        ${estTel_() ? "" : renderActions(row)}
+        ${estTel_() && !row._isPast
+          ? `<details class="pay-fold"><summary><span>Paiement</span><span>${formatMoney(row._amount)} · ${escapeHtml(get(row, "Date attendue") ? "échéance " + get(row, "Date attendue") : "après le match")}</span></summary>${renderPaymentControl(row)}</details>`
+          : renderPaymentControl(row)}
       </div>
     </article>
   `;
@@ -2046,11 +2050,11 @@ function renderDetails(row) {
     ["Rencontre", [
       ["Compétition", get(row, "Libellé compétition"), true],
       ["N° rencontre", get(row, "N° rencontre")], ["Code e-Marque", get(row, "Code e-Marque")],
-      ["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]
+      ...(estTel_() && row._format !== "3x3" ? [] : [["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]])   // b55 : déjà dans le titre sur téléphone
     ]],
     ["Lieu et trajet", [
       ["Salle", get(row, "Salle"), true], ["Adresse", get(row, "Adresse"), true],
-      ["Ville", get(row, "Ville")],
+      ["Ville", estTel_() && cleanText(get(row, "Adresse")).toUpperCase().includes(cleanText(get(row, "Ville")).toUpperCase()) ? "" : get(row, "Ville")],
       ["KM A/R", row._double
         ? `${formatNumber(row._kmEff, " km")} (doublé : ${formatNumber(Math.round(row._kmEff * row._double.taille), " km")} A/R partagés sur ${row._double.taille} matchs)`
         : (row._km ? formatNumber(row._km, " km") : "")]
@@ -2076,7 +2080,7 @@ function renderDetails(row) {
 
 function renderMapContainer(row, uid) {
   const addr = get(row, "Adresse") || get(row, "Ville");
-  if (!addr) return "";
+  if (!addr || estTel_()) return "";   // b55 : téléphone → bouton Waze en haut de la fiche, pas de carte (lourde, peu lisible)
   return `<div class="card-map" id="map-${uid}" data-addr="${escapeHtml(addr)}"></div>`;
 }
 
@@ -2498,7 +2502,7 @@ function attachRelanceListeners_(root) {
     if (type === "saisir") {
       ev.preventDefault();
       const actuel = cleanText(get(row, cote === "visiteur" ? "Correspondant visiteur (nom + tél)" : "Correspondant recevant (nom + tél)"));
-      const v = window.prompt("Correspondant du club (nom + téléphone) :", actuel || "NOM Prénom · 06 00 00 00 00");
+      const v = window.prompt("Correspondant du club (nom + téléphone) :", actuel || "NOM Prénom · 0600000000");
       if (v === null) return;
       el.disabled = true; setStatus("Enregistrement du contact…", "");
       try {
@@ -9321,3 +9325,110 @@ function attachPersoListeners_(root) {
     }, 250);
   });
 })();
+
+
+/* ======================= b55 — CLASSEMENT DES 2 ÉQUIPES =======================
+   Source : résultats officiels FFBB de la saison (table Supabase ffbb_rencontres, alimentée
+   lundi et jeudi par le collecteur du Mac via l'API publique). Le classement de la poule est
+   recalculé ici, sans rien demander au serveur : victoire 2 pts, défaite 1 pt, forfait 0 pt
+   (20-0) ; départage : points, puis différence, puis points marqués.
+   La poule = l'ensemble des équipes reliées par des rencontres dans la même compétition. */
+const CLT = { lignes: null, maj: null, charge: false, cache: {} };
+const CLT_LS_ = "rt-ffbb-res-v1";
+const cltNorm_ = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+async function chargerResultatsFfbb_(force) {
+  if (typeof SB === "undefined" || !SB.actif || (CLT.charge && !force)) return;
+  CLT.charge = true;
+  if (!force) {
+    try {
+      const c = JSON.parse(localStorage.getItem(CLT_LS_) || "null");
+      if (c && Date.now() - c.t < 6 * 3600e3 && Array.isArray(c.l)) { CLT.lignes = c.l; CLT.maj = c.m; CLT.cache = {}; renderAllSoon_(); return; }
+    } catch (e) { /* stockage indisponible */ }
+  }
+  try {
+    const l = await SB.getTout("ffbb_rencontres?select=id,date,competition,equipe1,equipe2,score1,score2,joue&order=date.asc,id.asc");
+    let m = null; try { const meta = await SB.get("ffbb_meta?select=last_update"); m = meta && meta[0] ? meta[0].last_update : null; } catch (e) {}
+    CLT.lignes = l.map(r => [String(r.date || "").slice(0, 10), String(r.competition || "").toUpperCase(), r.equipe1 || "", r.equipe2 || "", r.score1, r.score2, r.joue ? 1 : 0]);
+    CLT.maj = m; CLT.cache = {};
+    try { localStorage.setItem(CLT_LS_, JSON.stringify({ t: Date.now(), l: CLT.lignes, m })); } catch (e) { /* quota : on garde en mémoire */ }
+    renderAllSoon_();
+  } catch (e) { console.warn("Résultats FFBB indisponibles :", e.message); CLT.charge = false; }
+}
+function classementMatch_(row) {
+  if (!CLT.lignes || row._format !== "5x5") return null;
+  const code = cleanText(get(row, "Code compétition")).toUpperCase();
+  if (!code || /^(AMI|CPE|3X3|\d)/.test(code)) return null;   // championnats seulement
+  const uid = get(row, "UID");
+  if (CLT.cache[uid] !== undefined) return CLT.cache[uid];
+  const rec = cltNorm_(get(row, "Recevant")), vis = cltNorm_(get(row, "Visiteur / événement"));
+  const dMatch = row._date ? `${row._date.getFullYear()}-${String(row._date.getMonth() + 1).padStart(2, "0")}-${String(row._date.getDate()).padStart(2, "0")}` : "9999";
+  const lignes = CLT.lignes.filter(l => l[1] === code || l[1].startsWith(code + "-"));
+  let res = null;
+  for (const slug of [...new Set(lignes.map(l => l[1]))]) {
+    const L = lignes.filter(l => l[1] === slug);
+    const adj = new Map(), noms = {};
+    const lien = (a, b) => { if (!adj.has(a)) adj.set(a, new Set()); adj.get(a).add(b); };
+    L.forEach(l => { const a = cltNorm_(l[2]), b = cltNorm_(l[3]); noms[a] = noms[a] || l[2]; noms[b] = noms[b] || l[3]; lien(a, b); lien(b, a); });
+    const depart = adj.has(rec) ? rec : adj.has(vis) ? vis : null;
+    if (!depart) continue;
+    const poule = new Set([depart]), pile = [depart];
+    while (pile.length) (adj.get(pile.pop()) || []).forEach(y => { if (!poule.has(y)) { poule.add(y); pile.push(y); } });
+    const st = {};
+    poule.forEach(n => { st[n] = { nom: noms[n], j: 0, v: 0, d: 0, pts: 0, pp: 0, pc: 0, forme: [] }; });
+    let face = null, derniere = null;
+    L.forEach(l => {
+      const a = cltNorm_(l[2]), b = cltNorm_(l[3]);
+      if (!poule.has(a) || !poule.has(b)) return;
+      const s1 = parseInt(l[4], 10), s2 = parseInt(l[5], 10);
+      if (!l[6] || !isFinite(s1) || !isFinite(s2) || s1 === s2) return;
+      const A = st[a], B = st[b], forfait = (s1 === 20 && s2 === 0) || (s1 === 0 && s2 === 20);
+      A.j++; B.j++; A.pp += s1; A.pc += s2; B.pp += s2; B.pc += s1;
+      const [G, P] = s1 > s2 ? [A, B] : [B, A];
+      G.v++; P.d++; G.pts += 2; P.pts += forfait ? 0 : 1; G.forme.push("V"); P.forme.push("D");
+      if (((a === rec && b === vis) || (a === vis && b === rec)) && l[0] < dMatch) face = { date: l[0], dom: l[2], ext: l[3], s1, s2 };
+      if (!derniere || l[0] > derniere) derniere = l[0];
+    });
+    const tab = Object.values(st).sort((x, y) => y.pts - x.pts || (y.pp - y.pc) - (x.pp - x.pc) || y.pp - x.pp || String(x.nom).localeCompare(String(y.nom)));
+    tab.forEach((t, i) => { t.pos = i + 1; });
+    res = { slug, taille: tab.length, rec: st[rec] || null, vis: st[vis] || null, face, derniere, tableau: tab };
+    break;
+  }
+  CLT.cache[uid] = res;
+  return res;
+}
+function cltPos_(row, cote) {
+  const c = classementMatch_(row); const t = c && c[cote];
+  return t && t.j ? ` <span class="acc-pos">${t.pos}<sup>e</sup></span>` : "";
+}
+function renderClassementMatch_(row) {
+  if (row._isPast && row._date && Date.now() - row._date.getTime() > 7 * 86400000) return "";
+  const c = classementMatch_(row);
+  if (!c || (!c.rec && !c.vis) || !c.tableau.some(t => t.j)) return "";
+  const dt = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) : "";
+  const forme = t => t.forme.slice(-5).map(f => `<i class="clt-f clt-f--${f}">${f}</i>`).join("");
+  const eq = (t, nom) => t ? `<div class="clt-eq">
+      <span class="clt-pos">${t.j ? t.pos : "–"}<sup>${t.j ? "e" : ""}</sup></span>
+      <span class="clt-nom">${escapeHtml(nom)}<small>${t.pts} pts · ${t.v} V – ${t.d} D · ${t.pp - t.pc >= 0 ? "+" : ""}${t.pp - t.pc}</small></span>
+      <span class="clt-forme">${forme(t)}</span></div>` : "";
+  const r = c.rec, v = c.vis, n = c.taille;
+  let enjeu = "";
+  if (r && v && r.j && v.j) {
+    if (r.pos <= 2 && v.pos <= 2) enjeu = "Choc en tête";
+    else if (r.pos <= 3 && v.pos <= 3) enjeu = "Duel du haut de tableau";
+    else if (r.pos > n - 3 && v.pos > n - 3) enjeu = "Match pour le maintien";
+    else if (Math.abs(r.pos - v.pos) >= Math.ceil(n / 2)) enjeu = "Écart au classement : " + Math.abs(r.pos - v.pos) + " places";
+  }
+  const nomR = cleanText(get(row, "Recevant court") || get(row, "Recevant")), nomV = cleanText(get(row, "Visiteur court") || get(row, "Visiteur / événement"));
+  const poule = (cleanText(get(row, "Libellé compétition")).match(/\((?:Poule|Phase)[^)]*\)/i) || [""])[0].replace(/[()]/g, "");
+  const cles = new Set([cltNorm_(get(row, "Recevant")), cltNorm_(get(row, "Visiteur / événement"))]);
+  return `<div class="clt-card">
+    <div class="clt-head"><strong>Classement${poule ? " · " + escapeHtml(poule) : ""}</strong><span>${n} équipes${c.derniere ? " · résultats au " + dt(c.derniere) : ""}</span></div>
+    ${eq(r, nomR)}${eq(v, nomV)}
+    ${enjeu ? `<div class="clt-enjeu">${escapeHtml(enjeu)}</div>` : ""}
+    ${c.face ? `<div class="clt-face">Match aller (${dt(c.face.date)}) : ${escapeHtml(c.face.dom)} ${c.face.s1} – ${c.face.s2} ${escapeHtml(c.face.ext)}</div>` : ""}
+    <details class="clt-poule"><summary>Voir toute la poule</summary>
+      <table class="clt-table"><thead><tr><th>#</th><th>Équipe</th><th class="num">Pts</th><th class="num">J</th><th class="num">V</th><th class="num">D</th><th class="num">Diff</th></tr></thead>
+      <tbody>${c.tableau.map(t => `<tr${cles.has(cltNorm_(t.nom)) ? ' class="is-match"' : ""}><td>${t.pos}</td><td>${escapeHtml(t.nom)}</td><td class="num"><strong>${t.pts}</strong></td><td class="num">${t.j}</td><td class="num">${t.v}</td><td class="num">${t.d}</td><td class="num">${t.pp - t.pc >= 0 ? "+" : ""}${t.pp - t.pc}</td></tr>`).join("")}</tbody></table>
+    </details>
+  </div>`;
+}
