@@ -3960,3 +3960,8 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .pay-fold[open] > summary { border-bottom: 1px solid var(--line); }
 .pay-fold .payment-panel { margin: 0; border: 0; box-shadow: none; }
 @media (max-width: 767px) { .payment-shortcuts .small-btn { min-height: 38px; padding: 0 12px; } }
+/* b55.1 — iPhone : pas de zoom automatique quand on touche un champ (police < 16 px = zoom Safari, qui décale les barres fixes) */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px !important; }
+  nav.tabs { will-change: transform; }
+}

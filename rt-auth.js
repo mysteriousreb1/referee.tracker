@@ -14,6 +14,34 @@
    ===================================================== */
 
 const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyi-iJfUyRyN39R9vknQTyvgLeCMA3QzLtsD5N4XVwpJTMtsXMsUSsrsrqDXLi8DI1t/exec";
+/* b56 — MULTI-UTILISATEURS : chaque arbitre a SON moteur Apps Script (son Gmail, son classeur).
+   L'adresse est lue dans la table Supabase « profils » (lecture de SA ligne uniquement, RLS),
+   validée (uniquement script.google.com/macros/s/…/exec) et mémorisée par utilisateur.
+   Sans ligne : moteur par défaut — qui refuse tout jeton qui n'est pas celui de son propriétaire. */
+const RT_API_RE_ = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+window.RT_AUTH = window.RT_AUTH || {};
+let _apiUrlP = null, _apiUrlSub = "";
+function rtSubDuJeton_() {
+  try { const t = (SB.session || {}).access_token || ""; let b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return String(JSON.parse(atob(b)).sub || ""); } catch (e) { return ""; }
+}
+function apiUrlUtilisateur_() {
+  const sub = rtSubDuJeton_();
+  if (!sub) return Promise.resolve(APP_SCRIPT_URL);
+  if (_apiUrlP && _apiUrlSub === sub) return _apiUrlP;
+  _apiUrlSub = sub;
+  const cle = "rt-api-url:" + sub;
+  let cache = null; try { cache = JSON.parse(localStorage.getItem(cle) || "null"); } catch (e) {}
+  if (cache && cache.prenom) window.RT_AUTH.prenom = cache.prenom;
+  const frais = SB.get("profils?select=api_url,prenom&limit=1").then(l => {
+    const p = (l && l[0]) || {};
+    const url = RT_API_RE_.test(String(p.api_url || "")) ? p.api_url : APP_SCRIPT_URL;
+    if (p.prenom) window.RT_AUTH.prenom = String(p.prenom).slice(0, 40);
+    try { localStorage.setItem(cle, JSON.stringify({ url, prenom: window.RT_AUTH.prenom || "" })); } catch (e) {}
+    return url;
+  }).catch(() => (cache && RT_API_RE_.test(cache.url || "")) ? cache.url : APP_SCRIPT_URL);
+  _apiUrlP = (cache && RT_API_RE_.test(cache.url || "")) ? Promise.resolve(cache.url) : frais;
+  return _apiUrlP;
+}
 const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premier appel (démarrage à froid)
 const TOKEN_KEY = "rt_session_token";
 try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}   // b47.2 — reliquat de l'ancienne connexion Apps Script purgé au démarrage
@@ -133,9 +161,9 @@ function _apiCallUnique(action, extra = {}, withToken = true) {
   const body = { action, ...extra };
   // b47 — le jeton d'accès Supabase (renouvelé si besoin) part dans le corps, jamais dans l'URL.
   const jetonP = withToken ? SB.token().catch(() => { throw apiError("AUTH_REQUIRED", ""); }) : Promise.resolve("");
-  return jetonP.then(t => { if (withToken) body.token = t; return _apiFetch_(action, body); });
+  return jetonP.then(t => { if (withToken) body.token = t; return (withToken ? apiUrlUtilisateur_() : Promise.resolve(APP_SCRIPT_URL)).then(url => _apiFetch_(action, body, url)); });
 }
-function _apiFetch_(action, body) {
+function _apiFetch_(action, body, urlApi) {
   const hasAbort = typeof AbortController === "function";
   const controller = hasAbort ? new AbortController() : null;
   const timer = setTimeout(() => { if (controller) controller.abort(); }, API_TIMEOUTS[action] || API_TIMEOUT_MS);
@@ -150,7 +178,7 @@ function _apiFetch_(action, body) {
   };
   if (controller) options.signal = controller.signal;
 
-  return fetch(APP_SCRIPT_URL, options)
+  return fetch(urlApi || APP_SCRIPT_URL, options)
     .then(res => {
       if (!res.ok) {
         const err = apiError("HTTP " + res.status, DEPLOY_HINT);

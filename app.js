@@ -2341,7 +2341,7 @@ function buildSmsCollegue(row) {
   if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
     lignes.push("", "Si tu souhaite faire du covoiturage, pas de soucis dis moi juste comment tu veux qu'on s'organise");
   }
-  lignes.push("", "A plus Clément !");
+  lignes.push("", "A plus " + ((window.RT_AUTH && RT_AUTH.prenom) || "") + " !");   // b56 : prénom de l'utilisateur connecté
 
   return lignes.join("\n");
 }
@@ -2456,7 +2456,7 @@ function contactClub_(row, cote) {
 function messageRelance_(row, cote, montant) {
   const rec = cleanText(get(row, "Recevant court") || get(row, "Recevant")), vis = cleanText(get(row, "Visiteur court") || get(row, "Visiteur / événement"));
   const quand = get(row, "Date match"), comp = cleanText(get(row, "Libellé compétition"));
-  const moi = (window.RT_AUTH && RT_AUTH.prenom) || "Clément";
+  const moi = (window.RT_AUTH && RT_AUTH.prenom) || "l'arbitre";
   return `Bonjour,\nje suis ${moi}, arbitre de la rencontre ${rec} – ${vis} du ${quand}${comp ? " (" + comp + ")" : ""}.\nL'indemnité d'arbitrage de ${formatMoney(montant)} à la charge de votre club ne m'est pas encore parvenue. Pouvez-vous me confirmer la date du virement ?\nMerci d'avance, bonne journée.`;
 }
 function renderRelanceClub_(row, regime) {
@@ -9432,3 +9432,44 @@ function renderClassementMatch_(row) {
     </details>
   </div>`;
 }
+
+/* ======================= b55.1 — iPhone : version toujours à jour + barres fixes fiables =======================
+   1) L'app installée sur l'écran d'accueil garde la page en mémoire : sans rechargement complet, elle
+      reste sur une ancienne version (ancien CSS → barre du bas au milieu, en-tête absent). À l'ouverture
+      et à chaque retour au premier plan, on compare la version en ligne et on recharge si elle a changé.
+   2) Filet iOS : si le « viewport visuel » ne coïncide pas avec le viewport de mise en page (zoom,
+      clavier refermé, bug Safari), on recale la barre du bas sur le bas réel de l'écran. */
+(function () {
+  const verifierVersion = () => {
+    if (!navigator.onLine) return;
+    fetch("./index.html?verif=" + Date.now(), { cache: "no-store" })
+      .then(r => r.ok ? r.text() : "")
+      .then(t => {
+        const m = t.match(/name="rt-version" content="([^"]+)"/);
+        const enLigne = m && m[1], locale = window.RT_VERSION;
+        if (!enLigne || !locale || enLigne === locale) return;
+        let deja = ""; try { deja = sessionStorage.getItem("rt-maj-tentee") || ""; } catch (e) {}
+        if (deja === enLigne) return;   // une seule tentative par version (pas de boucle)
+        try { sessionStorage.setItem("rt-maj-tentee", enLigne); } catch (e) {}
+        try { setStatus("Mise à jour de l'application…", ""); } catch (e) {}
+        location.replace(location.pathname + "?v=" + encodeURIComponent(enLigne));
+      })
+      .catch(() => {});
+  };
+  window.addEventListener("load", () => setTimeout(verifierVersion, 1500));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") verifierVersion(); });
+
+  const vv = window.visualViewport;
+  if (vv) {
+    const caler = () => {
+      const nav = document.querySelector("nav.tabs");
+      if (!nav) return;
+      if (!estTel_()) { nav.style.transform = ""; return; }
+      const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
+      nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
+    };
+    vv.addEventListener("resize", caler); vv.addEventListener("scroll", caler);
+    window.addEventListener("scroll", caler, { passive: true }); window.addEventListener("orientationchange", () => setTimeout(caler, 300));
+    document.addEventListener("focusout", () => setTimeout(caler, 350));
+  }
+})();
