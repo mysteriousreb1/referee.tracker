@@ -3652,13 +3652,17 @@ async function rbValider_(zone) {
     const r = state.allRows.find(y => get(y, "UID") === uid);
     try {
       const params = { uid };
+      // b57 (audit F06) — CUMUL en centimes par côté : ancien reçu + TOUS les crédits choisis de ce côté.
+      const cumul = { recevant: Math.round(toNumber(get(r, "Reçu recevant")) * 100), visiteur: Math.round(toNumber(get(r, "Reçu visiteur")) * 100) };
       lots.forEach(ch => {
         const t = ch.p.t, d = rbIso_(t.date), mode = rbMode_(t.n);
         if (ch.x.cote === "visiteur") {
-          params.recu_visiteur = String(((Math.round(toNumber(get(r, "Reçu visiteur")) * 100)) + ch.cents) / 100);
+          cumul.visiteur += ch.cents;
+          params.recu_visiteur = String(cumul.visiteur / 100);
           if (d) params.date_recu_visiteur = d; params.mode_visiteur = mode;
         } else {
-          params.recu_recevant = String(((Math.round(toNumber(get(r, "Reçu recevant")) * 100)) + ch.cents) / 100);
+          cumul.recevant += ch.cents;
+          params.recu_recevant = String(cumul.recevant / 100);
           if (d) { params.date_recu_recevant = d; params.date_reception = d; } params.mode_recevant = mode;
         }
       });

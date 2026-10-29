@@ -24,23 +24,36 @@ let _apiUrlP = null, _apiUrlSub = "";
 function rtSubDuJeton_() {
   try { const t = (SB.session || {}).access_token || ""; let b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return String(JSON.parse(atob(b)).sub || ""); } catch (e) { return ""; }
 }
-function apiUrlUtilisateur_() {
+/* b57 (audit F09) — le moteur de l'utilisateur vient TOUJOURS d'une lecture fraîche de « profils »
+   (au plus 5 min de cache en mémoire). Le cache local ne sert qu'aux LECTURES pendant que la lecture
+   fraîche arrive. Profil absent = compte non configuré : AUCUN repli vers le moteur principal. */
+const RT_PROFIL_TTL_MS = 5 * 60 * 1000;
+let _apiUrlT = 0;
+function rtErreurProfil_(msg) { const e = new Error(msg); e.profilAbsent = true; return e; }
+function apiUrlUtilisateur_(pourEcriture) {
   const sub = rtSubDuJeton_();
-  if (!sub) return Promise.resolve(APP_SCRIPT_URL);
-  if (_apiUrlP && _apiUrlSub === sub) return _apiUrlP;
-  _apiUrlSub = sub;
+  if (!sub) return Promise.reject(rtErreurProfil_("AUTH_REQUIRED"));
   const cle = "rt-api-url:" + sub;
+  if (_apiUrlP && _apiUrlSub === sub && Date.now() - _apiUrlT < RT_PROFIL_TTL_MS) return _apiUrlP;
+  if (_apiUrlSub !== sub) { window.RT_AUTH.prenom = ""; }   // changement de compte : rien ne survit
+  _apiUrlSub = sub; _apiUrlT = Date.now();
   let cache = null; try { cache = JSON.parse(localStorage.getItem(cle) || "null"); } catch (e) {}
   if (cache && cache.prenom) window.RT_AUTH.prenom = cache.prenom;
   const frais = SB.get("profils?select=api_url,prenom&limit=1").then(l => {
     const p = (l && l[0]) || {};
-    const url = RT_API_RE_.test(String(p.api_url || "")) ? p.api_url : APP_SCRIPT_URL;
-    if (p.prenom) window.RT_AUTH.prenom = String(p.prenom).slice(0, 40);
-    try { localStorage.setItem(cle, JSON.stringify({ url, prenom: window.RT_AUTH.prenom || "" })); } catch (e) {}
-    return url;
-  }).catch(() => (cache && RT_API_RE_.test(cache.url || "")) ? cache.url : APP_SCRIPT_URL);
-  _apiUrlP = (cache && RT_API_RE_.test(cache.url || "")) ? Promise.resolve(cache.url) : frais;
-  return _apiUrlP;
+    if (!RT_API_RE_.test(String(p.api_url || ""))) {
+      try { localStorage.removeItem(cle); } catch (e) {}
+      throw rtErreurProfil_("Compte pas encore configuré : ton moteur Referee Tracker n'est pas installé. Contacte l'administrateur.");
+    }
+    window.RT_AUTH.prenom = p.prenom ? String(p.prenom).slice(0, 40) : "";
+    try { localStorage.setItem(cle, JSON.stringify({ url: p.api_url, prenom: window.RT_AUTH.prenom })); } catch (e) {}
+    return p.api_url;
+  });
+  frais.catch(() => { _apiUrlP = null; });   // échec : on relira au prochain appel
+  _apiUrlP = frais;
+  // Lecture uniquement : le cache local peut servir en attendant (jamais pour une écriture).
+  if (!pourEcriture && cache && RT_API_RE_.test(cache.url || "")) return frais.catch(e => { if (e.profilAbsent) throw e; return cache.url; });
+  return frais;
 }
 const API_TIMEOUT_MS = 60000;   // Apps Script peut mettre ~1 min au tout premier appel (démarrage à froid)
 const TOKEN_KEY = "rt_session_token";
@@ -140,7 +153,7 @@ function apiCall(action, extra = {}, withToken = true) {
   // arrive : on patiente (jusqu'à ~2 min) au lieu d'afficher une erreur.
   let attentes = 0;
   const essai = n => _apiCallUnique(action, corps, withToken).then(res => {
-    if (res && res.success === false && /toujours en cours/i.test(res.error || "") && attentes++ < 25) {
+    if (res && res.success === false && (res.occupe || /toujours en cours/i.test(res.error || "")) && attentes++ < 25) {   // b57 (F07) : serveur occupé → même rid, nouvel essai
       return new Promise(ok => setTimeout(ok, 4000)).then(() => essai(n));
     }
     // b45 (A10) — l'action a bien eu lieu mais sa réponse a expiré côté serveur :
@@ -161,7 +174,8 @@ function _apiCallUnique(action, extra = {}, withToken = true) {
   const body = { action, ...extra };
   // b47 — le jeton d'accès Supabase (renouvelé si besoin) part dans le corps, jamais dans l'URL.
   const jetonP = withToken ? SB.token().catch(() => { throw apiError("AUTH_REQUIRED", ""); }) : Promise.resolve("");
-  return jetonP.then(t => { if (withToken) body.token = t; return (withToken ? apiUrlUtilisateur_() : Promise.resolve(APP_SCRIPT_URL)).then(url => _apiFetch_(action, body, url)); });
+  const ecr = !(typeof LECTURES !== "undefined" && LECTURES[action]);
+  return jetonP.then(t => { if (withToken) body.token = t; return (withToken ? apiUrlUtilisateur_(ecr) : Promise.resolve(APP_SCRIPT_URL)).then(url => _apiFetch_(action, body, url)); });
 }
 function _apiFetch_(action, body, urlApi) {
   const hasAbort = typeof AbortController === "function";
@@ -332,6 +346,12 @@ const SB = {
   /* b47 — session reçue dans l'URL (lien de réinitialisation : #access_token=…&type=recovery). */
   depuisHash() {
     const h = String(location.hash || "");
+    // b57 (audit F10) — lien d'invitation / de réinitialisation expiré ou déjà utilisé.
+    if (/error_code=|error=/.test(h) && !/access_token=/.test(h)) {
+      const pe = new URLSearchParams(h.replace(/^#/, ""));
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      return { erreur: pe.get("error_code") || pe.get("error") || "lien_invalide" };
+    }
     if (!/access_token=/.test(h)) return null;
     const p = new URLSearchParams(h.replace(/^#/, ""));
     const s = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_in: Number(p.get("expires_in") || 3600) };
@@ -654,7 +674,8 @@ function _statsLocal(extra) {
     return { success: true, stats };
   });
 }
-/* b30 — moteur de paiement local (rt-paiements.js = Paiement.gs + Echeancier.gs).
+/* b57 — le moteur de paiement navigateur (rt-paiements.js) est retiré : voir payment.update dans jsonp().
+   Historique : b30 — moteur de paiement local (rt-paiements.js = Paiement.gs + Echeancier.gs).
    b45 (A18) — UN SEUL MAÎTRE pour une saisie de paiement faite sur le site :
    Supabase. Plus de seconde écriture Apps Script en arrière-plan. L'écriture
    est CONDITIONNELLE (derniere_maj lue = version attendue) : si un autre
@@ -672,47 +693,13 @@ function sb_valeurColonne_(col, v) {
   if (/^(attendu|recu)_(recevant|visiteur)$|^montant_recu$|^indemnite|^km_/.test(col)) { const n = Number(String(v).replace(/\s/g, "").replace(",", ".")); return isNaN(n) ? null : n; }
   return String(v);
 }
-function _paiementLocal(extra) {
-  if (typeof RT_PAIEMENTS === "undefined" || !SB.actif || typeof state === "undefined" || typeof rawOf_ !== "function" || !extra || !extra.uid) return null;
-  const i = (state.allRows || []).findIndex(r => String(r && r.UID !== undefined ? r.UID : (r && r._raw ? r._raw.UID : "")) === String(extra.uid) || (typeof get === "function" && get(r, "UID") === String(extra.uid)));
-  if (i < 0) return null;
-  const avant = rawOf_(state.allRows[i]);
-  let local;
-  try { local = RT_PAIEMENTS.mettreAJour(Object.assign({}, avant), extra); } catch (e) { return Promise.resolve({ success: false, error: e.message }); }
-  const patch = {};
-  Object.keys(SB_MATCH_COLS).forEach(h => {
-    const a = avant[h], b = local.row[h];
-    if (String(a == null ? "" : a) !== String(b == null ? "" : b)) patch[SB_MATCH_COLS[h]] = sb_valeurColonne_(SB_MATCH_COLS[h], b);
-  });
-  const rowSortie = Object.assign({}, local.row);
-  if (rowSortie["Dernière MAJ"] instanceof Date) rowSortie["Dernière MAJ"] = rowSortie["Dernière MAJ"].toLocaleString("fr-FR");
-  const uid = String(extra.uid);
-  const version = SB_VERSIONS.has(uid) ? SB_VERSIONS.get(uid) : undefined;
-  const filtre = "matchs?uid=eq." + encodeURIComponent(uid) + (version === undefined ? "" : (version === null ? "&derniere_maj=is.null" : "&derniere_maj=eq." + encodeURIComponent(version)));
-  const t0 = performance.now();
-  return SB.write("PATCH", filtre, patch).then(lignes => {
-    if (!Array.isArray(lignes) || lignes.length !== 1) {
-      // Conflit de version (ou ligne disparue) : on ne force rien.
-      try { cacheVider(); } catch (e) {}
-      try { if (typeof loadData === "function") loadData(); } catch (e) {}
-      return { success: false, conflit: true, error: "Ce match a été modifié ailleurs entre-temps (autre onglet, appareil ou mise à jour automatique). La liste a été rechargée : refais la saisie." };
-    }
-    SB_VERSIONS.set(uid, lignes[0].derniere_maj || null);
-    window.RT_CACHE_INFO = window.RT_CACHE_INFO || {};
-    window.RT_CACHE_INFO["payment.update"] = { timestamp: Date.now(), ms: Math.round(performance.now() - t0), source: "supabase" };
-    return { success: true, result: local.result, row: rowSortie, source: "local" };
-  }).catch(err => {
-    if (/AUTH_REQUIRED/.test(err.message || "")) { Session.clear(); showLogin("Session expirée, reconnecte-toi."); throw apiError("Session expirée", ""); }
-    // Supabase injoignable : Apps Script devient l'unique écrivain de cette saisie (pas de double écriture).
-    console.warn("[Paiement] écriture Supabase impossible, enregistrement par Apps Script :", err.message);
-    return null;
-  });
-}
 function jsonp(action, extra = {}) {
   if (action === "stats") { const local = _statsLocal(extra); if (local) return local; }
   if (action === "payment.update") {
-    const local = _paiementLocal(extra);
-    if (local) return local.then(res => res || _jsonpReseau(action, extra).then(r => { if (r && r.success !== false) { cacheVider(); sbSyncArrierePlan("matchs"); } return r; }));
+    /* b57 (audit F04/F05) — UN SEUL moteur et UN SEUL écrivain pour les paiements : le serveur
+       (Paiements.gs). Plus de calcul navigateur divergent, plus de repli vers un second écrivain.
+       L'appel porte un rid : un délai dépassé puis un rejeu n'exécute l'action qu'une fois. */
+    return _jsonpReseau(action, extra).then(r => { if (r && r.success !== false) { cacheVider(); sbSyncArrierePlan("matchs"); } return r; });
   }
   // b25 — lecture Supabase : rapide, pas de revalidation différée ; le cache
   // local n'est qu'un repli hors ligne.
@@ -941,12 +928,14 @@ function buildLoginOverlay() {
 }
 
 /* b47 — arrivée par le lien de réinitialisation : formulaire « nouveau mot de passe ». */
-function showRecovery() {
+function showRecovery(type) {
   buildLoginOverlay();
   document.getElementById("rtLogin").classList.add("is-visible");
   document.getElementById("rtLoginForm").style.display = "none";
   document.getElementById("rtResetForm").style.display = "";
-  document.getElementById("rtResetSub").textContent = "Choisis ton nouveau mot de passe.";
+  document.getElementById("rtResetSub").textContent = (type === "invite" || type === "signup")
+    ? "Bienvenue sur Referee Tracker ! Choisis ton mot de passe (12 caractères minimum) pour activer ton compte."
+    : "Choisis ton nouveau mot de passe.";
   document.getElementById("rtResetStep1").style.display = "none";
   document.getElementById("rtResetStep2").style.display = "";
   document.getElementById("rtBackBtn").style.display = "none";
@@ -976,6 +965,8 @@ async function logout() {
   // b47 (A14) — 1) Apps Script oublie le jeton, 2) Supabase révoque la session, 3) purge locale, 4) rechargement.
   const token = Session.token;
   try { await Promise.race([apiCall("logout", { token }, false), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}
+  // b57 (audit F08) — l'appareil cesse de recevoir les notifications de ce compte AVANT la fin de session.
+  try { if (typeof PUSH !== "undefined" && PUSH.supporte()) await Promise.race([PUSH.desactiver(), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}
   try { await SB.signOut(); } catch (e) {}
   Session.clear();
   location.reload();
@@ -1469,12 +1460,24 @@ const PUSH = {
     if (this.standaloneIos()) return { ok: false, texte: "Sur iPhone, ouvre l'app depuis l'écran d'accueil pour activer les notifications." };
     try { const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription(); return { ok: !!sub, texte: sub ? "Activées sur cet appareil." : (Notification.permission === "denied" ? "Refusées dans les réglages du téléphone (Réglages → Notifications → Referee Tracker)." : "Désactivées.") }; } catch (e) { return { ok: false, texte: "" }; }
   },
-  async _enregistrer(j) {
+  async _enregistrer(j, dejaRecree) {
+    // b57 (audit F08) — un succès n'est annoncé que si le serveur a bien rattaché l'abonnement à CE compte.
+    let ok = true;
     await SB.write("POST", "push_subscriptions?on_conflict=endpoint", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, appareil: navigator.userAgent.slice(0, 120) }).catch(async err => {
-      // doublon : on met à jour les clés
-      if (/409|duplicate/i.test(err.message || "")) return SB.write("PATCH", "push_subscriptions?endpoint=eq." + encodeURIComponent(j.endpoint), { p256dh: j.keys.p256dh, auth: j.keys.auth });
-      throw err;
+      if (!/409|duplicate/i.test(err.message || "")) throw err;
+      const lignes = await SB.write("PATCH", "push_subscriptions?endpoint=eq." + encodeURIComponent(j.endpoint), { p256dh: j.keys.p256dh, auth: j.keys.auth });
+      ok = Array.isArray(lignes) && lignes.length === 1;
     });
+    if (!ok) {
+      // L'abonnement de cet appareil appartient encore à un AUTRE compte (déconnexion non faite) :
+      // on le jette et on en crée un neuf, rattaché au compte connecté.
+      if (dejaRecree) throw new Error("Abonnement de l'appareil non rattaché à ton compte");
+      const r = await navigator.serviceWorker.getRegistration("./");
+      const ancien = r && await r.pushManager.getSubscription();
+      if (ancien) await ancien.unsubscribe();
+      const neuf = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
+      return this._enregistrer(neuf.toJSON(), true);
+    }
     try { localStorage.setItem("rt_push_endpoint", j.endpoint); localStorage.setItem("rt_push_verif", String(Date.now())); } catch (e) {}
   },
   async activer() {
@@ -1682,7 +1685,12 @@ document.addEventListener("DOMContentLoaded", () => {
   buildLoginOverlay();
   let arrivee = null;
   try { arrivee = SB.depuisHash(); } catch (e) { arrivee = null; }
-  if (arrivee && arrivee.type === "recovery") showRecovery();
+  if (arrivee && arrivee.erreur) {
+    // b57 (F10) : jamais d'entrée silencieuse avec un lien invalide.
+    showLogin(/expired/i.test(arrivee.erreur) ? "Ce lien a expiré ou a déjà servi. Utilise « Mot de passe oublié » avec ton e-mail pour en recevoir un nouveau." : "Lien invalide. Utilise « Mot de passe oublié » avec ton e-mail.");
+  }
+  // b57 (F10) — invitation : le mot de passe est OBLIGATOIREMENT choisi avant d'entrer dans l'app.
+  else if (arrivee && (arrivee.type === "recovery" || arrivee.type === "invite" || arrivee.type === "signup")) showRecovery(arrivee.type);
   else if (SB.actif) startApp();
   else showLogin("");
 

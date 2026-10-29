@@ -38,7 +38,7 @@ jobs:
       - name: Syntaxe JavaScript
         run: |
           set -e
-          for f in app.js rt-auth.js rt-stats.js rt-paiements.js sw.js; do
+          for f in app.js rt-auth.js rt-stats.js sw.js; do
             [ -f "$f" ] && node --check "$f" && echo "OK $f"
           done
 
