@@ -1698,6 +1698,103 @@ const CONSENT = {
   }
 };
 
+/* =====================================================================
+   b59 — Assistant de 1re connexion : l'arbitre saisit SON profil, pré-rempli
+   (nom lu sur ses convocations, prénom, e-mail). Tant qu'il n'est pas validé,
+   le moteur ne traite aucune convocation.
+   ===================================================================== */
+const ONBOARD = {
+  etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5" }, sug: null, reception: "",
+  NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Pré-région", "Régional", "Championnat de France", "Fédéral", "Autre"],
+  ouvrir() {
+    if (document.getElementById("rtOnb")) return;
+    const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = '<div class="rt-consent-box rt-onb"><div class="rt-onb-prog" id="rtOnbProg"></div><div id="rtOnbBody"></div><p class="rt-consent-msg" id="rtOnbMsg"></p><div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="rtOnbPrev">Retour</button><button type="button" class="rt-btn" id="rtOnbNext">Suivant</button></div></div>';
+    document.body.appendChild(d);
+    document.getElementById("rtOnbPrev").addEventListener("click", () => this.aller(this.etape - 1));
+    document.getElementById("rtOnbNext").addEventListener("click", () => this.suivant());
+    try { const p = (Profil && Profil.config && Profil.config.profil) || {}; ["nom_ffbb", "niveau", "adresse", "code_postal", "ville"].forEach(k => { if (p[k]) this.data[k] = p[k]; }); } catch (e) {}
+    this.data.prenom = (window.RT_AUTH && window.RT_AUTH.prenom) || "";
+    SB.get("profils?select=prenom,adresse_reception&limit=1").then(l => { const p = (l && l[0]) || {}; if (p.prenom && !this.data.prenom) this.data.prenom = p.prenom; this.reception = p.adresse_reception || ""; if (this.etape === 0 || this.etape === 3) this.rendre(); }).catch(() => {});
+    jsonp("onboarding.suggestions").then(r => { this.sug = (r && r.data) || { noms: [] }; if (!this.data.nom_ffbb && this.sug.noms && this.sug.noms[0]) this.data.nom_ffbb = this.sug.noms[0].nom; if (this.sug.prenom && !this.data.prenom) this.data.prenom = this.sug.prenom; if (this.etape === 0) this.rendre(); }).catch(() => { this.sug = { noms: [] }; if (this.etape === 0) this.rendre(); });
+    this.aller(0);
+  },
+  champ(id, label, val, extra) { return '<div class="rt-field"><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + esc(val || "") + '" ' + (extra || "") + '></div>'; },
+  lire() {
+    const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
+    const m = { onbNom: "nom_ffbb", onbPrenom: "prenom", onbNiveau: "niveau", onbAdr: "adresse", onbCp: "code_postal", onbVille: "ville", onbVnom: "vnom", onbConso: "conso", onbCv: "cv" };
+    Object.keys(m).forEach(id => { const x = v(id); if (x !== undefined) this.data[m[id]] = x; });
+  },
+  aller(n) { this.lire(); this.etape = Math.max(0, Math.min(4, n)); this.rendre(); },
+  rendre() {
+    const D = this.data, e = this.etape, b = document.getElementById("rtOnbBody"); if (!b) return;
+    document.getElementById("rtOnbProg").innerHTML = [0, 1, 2, 3, 4].map(i => '<span class="' + (i <= e ? "on" : "") + '"></span>').join("");
+    document.getElementById("rtOnbMsg").textContent = "";
+    document.getElementById("rtOnbPrev").style.visibility = e === 0 ? "hidden" : "visible";
+    document.getElementById("rtOnbNext").textContent = e === 4 ? "Terminer" : "Suivant";
+    if (e === 0) {
+      const s = this.sug;
+      const chips = !s ? '<p class="rt-help">Lecture de tes convocations…</p>' : (s.noms && s.noms.length ? '<p class="rt-help">Noms lus sur tes ' + s.convocations + ' dernière(s) convocation(s) — touche le tien :</p><div class="rt-onb-chips">' + s.noms.map(x => '<button type="button" class="rt-chip" data-nom="' + esc(x.nom) + '">' + esc(x.nom) + '</button>').join("") + '</div>' : '<p class="rt-help">Aucune convocation reçue pour l\'instant : saisis ton nom tel qu\'il figure sur tes convocations.</p>');
+      b.innerHTML = '<h2>Bienvenue ' + esc(D.prenom || "") + ' 👋</h2><p>Quelques réglages pour que l\'app calcule tout à ta place. Tout reste modifiable ensuite dans Mon profil.</p>' + chips +
+        this.champ("onbNom", "Ton NOM PRÉNOM exactement comme sur tes convocations", D.nom_ffbb, 'autocapitalize="characters" placeholder="ex. MARTIN JULIE"') +
+        this.champ("onbPrenom", "Ton prénom (signature des SMS)", D.prenom, 'autocomplete="given-name"') +
+        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><select id="onbNiveau"><option value="">—</option>' + this.NIVEAUX.map(n => '<option' + (n === D.niveau ? " selected" : "") + '>' + n + '</option>').join("") + '</select></div>';
+      b.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { document.getElementById("onbNom").value = c.dataset.nom; }));
+    } else if (e === 1) {
+      b.innerHTML = '<h2>Ton point de départ</h2><p>Sert à calculer tes kilomètres et ton carburant. Il n\'est visible que par toi.</p>' +
+        this.champ("onbAdr", "Adresse", D.adresse, 'autocomplete="street-address" placeholder="ex. 12 rue des Lilas"') +
+        this.champ("onbCp", "Code postal", D.code_postal, 'inputmode="numeric" autocomplete="postal-code" maxlength="5"') +
+        this.champ("onbVille", "Ville", D.ville, 'autocomplete="address-level2"');
+    } else if (e === 2) {
+      b.innerHTML = '<h2>Ton véhicule</h2><p>Pour le coût réel de tes déplacements. Valeurs proposées : moyenne d\'une citadine.</p>' +
+        this.champ("onbVnom", "Modèle", D.vnom, 'placeholder="ex. Peugeot 208"') +
+        this.champ("onbConso", "Consommation (L/100 km)", D.conso, 'inputmode="decimal"') +
+        this.champ("onbCv", "Puissance fiscale (CV, sur la carte grise)", D.cv, 'inputmode="numeric"');
+    } else if (e === 3) {
+      const adr = this.reception || "(adresse communiquée par l'administrateur)";
+      b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations FFBB vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
+        '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : ffbb » → Transférer.</p></details>' +
+        '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur contient ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
+        '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
+        '<p class="rt-help">Transfère aussi une fois tes convocations déjà reçues cette saison : l\'app reconstruit ta saison.</p>';
+    } else {
+      b.innerHTML = '<h2>Notifications</h2><p>Sois prévenu d\'une nouvelle désignation, d\'un paiement sur place ou d\'une échéance dépassée.</p>' +
+        '<button type="button" class="rt-btn" id="onbPush">Activer les notifications</button><p class="rt-help" id="onbPushEtat"></p>' +
+        '<p class="rt-help">Sur iPhone, ouvre d\'abord l\'app depuis l\'écran d\'accueil (Partager → Sur l\'écran d\'accueil).</p>';
+      const bt = document.getElementById("onbPush");
+      bt.addEventListener("click", async () => { const et = document.getElementById("onbPushEtat"); try { await PUSH.activer(); et.textContent = "Notifications activées ✓"; bt.disabled = true; } catch (err) { et.textContent = err.message || "Impossible d'activer ici."; } });
+    }
+  },
+  valider() {
+    const D = this.data, e = this.etape;
+    if (e === 0 && String(D.nom_ffbb).trim().split(/\s+/).filter(w => w.length >= 2).length < 2) return "Indique ton NOM et ton PRÉNOM comme sur tes convocations.";
+    if (e === 1 && (!D.adresse || !/^\d{5}$/.test(D.code_postal) || !D.ville)) return "Adresse incomplète (rue, code postal à 5 chiffres, ville).";
+    if (e === 2) { const c = Number(String(D.conso).replace(",", ".")), v = Number(D.cv); if (!(c > 2 && c < 30)) return "Consommation entre 2 et 30 L/100 km."; if (!(v >= 1 && v <= 60)) return "Puissance fiscale entre 1 et 60 CV."; }
+    return "";
+  },
+  async suivant() {
+    this.lire();
+    const err = this.valider(); const msg = document.getElementById("rtOnbMsg");
+    if (err) { msg.textContent = err; return; }
+    if (this.etape < 4) return this.aller(this.etape + 1);
+    const bt = document.getElementById("rtOnbNext"); bt.disabled = true; msg.textContent = "Enregistrement…";
+    const D = this.data;
+    try {
+      const r = await jsonp("onboarding.save", { profil: { nom_ffbb: D.nom_ffbb, niveau: D.niveau, adresse: D.adresse, code_postal: D.code_postal, ville: D.ville }, vehicule: { nom: D.vnom, conso: D.conso, cv: D.cv }, prenom: D.prenom });
+      if (!r || r.success === false) throw new Error((r && r.error) || "Enregistrement refusé");
+      if (r.config) { Profil.config = r.config; try { localStorage.setItem(CFG_KEY, JSON.stringify(r.config)); } catch (e) {} }
+      if (D.prenom) window.RT_AUTH.prenom = D.prenom;
+      document.getElementById("rtOnb").remove();
+      try { setStatus("Profil enregistré : tes convocations vont être lues dans les 10 minutes.", "ok"); } catch (e) {}
+    } catch (e) {
+      bt.disabled = false;
+      // Erreur sur une étape précise → on y retourne.
+      if (/NOM/.test(e.message)) this.aller(0); else if (/[Aa]dresse/.test(e.message)) this.aller(1); else if (/Consommation|Puissance/.test(e.message)) this.aller(2);
+      document.getElementById("rtOnbMsg").textContent = e.message;
+    }
+  }
+};
+
 function startApp() {
   try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
@@ -1727,6 +1824,7 @@ function startApp() {
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
       if (res.home && res.home.lat) HOME = res.home;
+      if (res.onboarding && res.onboarding.fait === false) setTimeout(() => ONBOARD.ouvrir(), 300);   // b59
       Profil.email = res.email || "";
       if (res.config) {
         Profil.config = res.config;

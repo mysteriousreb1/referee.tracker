@@ -3975,3 +3975,15 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-consent-chk input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
 .rt-consent-msg { color: #c62828; min-height: 1.2em; margin: 4px 0; }
 .rt-consent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+
+/* b59 — assistant de 1re connexion */
+.rt-onb h2 { margin: 6px 0 6px; }
+.rt-onb-prog { display: flex; gap: 6px; margin-bottom: 10px; }
+.rt-onb-prog span { flex: 1; height: 4px; border-radius: 2px; background: rgba(127,127,127,.25); }
+.rt-onb-prog span.on { background: var(--accent, #c62828); }
+.rt-onb-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.rt-chip { border: 1px solid var(--accent, #c62828); background: transparent; color: inherit; border-radius: 999px; padding: 8px 12px; font: inherit; min-height: 44px; }
+.rt-onb-adr { font-size: 1.1rem; font-weight: 700; word-break: break-all; padding: 10px; border-radius: 10px; background: rgba(127,127,127,.12); }
+.rt-onb select { width: 100%; min-height: 44px; font-size: 16px; }
+.rt-onb details { margin: 6px 0; }
+.rt-btn-ghost { background: transparent; border: 1px solid rgba(127,127,127,.4); color: inherit; border-radius: 10px; padding: 10px 16px; font: inherit; min-height: 44px; }
