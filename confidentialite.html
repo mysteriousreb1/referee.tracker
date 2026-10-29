@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Politique de confidentialité — Referee Tracker</title>
+  <style>
+    :root { color-scheme: light dark; --fg:#111; --bg:#fff; --mut:#555; --line:#e5e5e5; --acc:#c62828; }
+    @media (prefers-color-scheme: dark) { :root { --fg:#eee; --bg:#111; --mut:#aaa; --line:#333; } }
+    body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+    h1 { font-size:1.6rem; margin:.2em 0 .1em; } h2 { font-size:1.15rem; margin:1.8em 0 .4em; border-top:1px solid var(--line); padding-top:1em; }
+    p, li { color:var(--fg); } small, .mut { color:var(--mut); }
+    table { width:100%; border-collapse:collapse; font-size:.95rem; } th, td { text-align:left; border-bottom:1px solid var(--line); padding:6px 8px 6px 0; vertical-align:top; }
+    a { color:var(--acc); }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Retour à Referee Tracker</a></p>
+  <h1>Politique de confidentialité</h1>
+  <p class="mut">Version du 30 octobre 2026 — phase bêta</p>
+
+  <h2>1. Qui est responsable de vos données ?</h2>
+  <p>Referee Tracker est édité par <strong>Clément REBHOLZ</strong> (particulier, phase bêta non commerciale).
+  Contact pour toute question ou demande sur vos données : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a>.</p>
+
+  <h2>2. À quoi servent vos données ?</h2>
+  <ul>
+    <li>Lire les convocations d'arbitrage que vous transférez, créer vos matchs et votre agenda ;</li>
+    <li>calculer vos kilomètres, frais de carburant, indemnités et échéances de paiement ;</li>
+    <li>suivre les paiements reçus et vous envoyer des notifications utiles ;</li>
+    <li>assurer la sécurité, les sauvegardes et le support de l'application.</li>
+  </ul>
+  <p>Vos données ne sont <strong>jamais vendues</strong>, ni utilisées pour de la publicité, ni partagées avec d'autres arbitres.</p>
+
+  <h2>3. Quelles données ?</h2>
+  <table>
+    <tr><th>Catégorie</th><th>Exemples</th></tr>
+    <tr><td>Identité et compte</td><td>nom tel qu'il figure sur vos convocations, e-mail, prénom, niveau</td></tr>
+    <tr><td>Localisation</td><td>adresse de départ (calcul des distances)</td></tr>
+    <tr><td>Matchs</td><td>contenu des convocations : date, salle, équipes, rôle, indemnité</td></tr>
+    <tr><td>Paiements</td><td>montants attendus et reçus, dates, relevés bancaires si vous les importez</td></tr>
+    <tr><td>Optionnel</td><td>évaluations, e-Licence, contacts, hôtels, rapports que vous ajoutez</td></tr>
+    <tr><td>Technique</td><td>abonnement aux notifications, journaux techniques</td></tr>
+  </table>
+  <p><strong>Personnes citées sur vos convocations</strong> (collègues arbitres, correspondants des clubs, observateurs) : seuls le nom, le club et le téléphone figurant sur la convocation sont conservés, visibles par vous seul, pour organiser le match et votre paiement. Ces personnes peuvent demander la suppression de leurs coordonnées à l'adresse ci-dessus.</p>
+
+  <h2>4. Sur quelle base ?</h2>
+  <ul>
+    <li>Vos propres données : <strong>exécution du service</strong> que vous avez demandé (conditions d'utilisation acceptées) ;</li>
+    <li>données des personnes citées sur les convocations : <strong>intérêt légitime</strong> (organiser le match, être payé), limité aux informations de la convocation.</li>
+  </ul>
+
+  <h2>5. Combien de temps ?</h2>
+  <table>
+    <tr><th>Données</th><th>Durée</th></tr>
+    <tr><td>Matchs, paiements, relevés</td><td>saison en cours + 3 saisons (suivi des revenus)</td></tr>
+    <tr><td>Téléphones des personnes citées</td><td>saison en cours + 1 saison, puis effacement automatique</td></tr>
+    <tr><td>Journaux techniques</td><td>12 mois</td></tr>
+    <tr><td>Sauvegardes</td><td>8 jours glissants</td></tr>
+    <tr><td>Après suppression du compte</td><td>effacement sous 30 jours, sauvegardes comprises</td></tr>
+  </table>
+
+  <h2>6. Qui y a accès ?</h2>
+  <p>Vous seul dans l'application. L'administrateur (Clément REBHOLZ) uniquement pour la maintenance et le support.
+  Prestataires techniques (sous-traitants) :</p>
+  <table>
+    <tr><th>Prestataire</th><th>Rôle</th><th>Localisation</th></tr>
+    <tr><td>Supabase</td><td>base de données, connexion, notifications</td><td>voir l'hébergement du projet ; garanties contractuelles</td></tr>
+    <tr><td>Google (Gmail, Drive, Sheets, Apps Script, Agenda)</td><td>réception des convocations, traitement, agenda</td><td>UE / États-Unis (cadre UE–États-Unis)</td></tr>
+    <tr><td>Cloudflare</td><td>réception et acheminement des e-mails du domaine</td><td>mondial, garanties contractuelles</td></tr>
+    <tr><td>GitHub Pages</td><td>hébergement du site (aucune donnée personnelle stockée)</td><td>États-Unis</td></tr>
+    <tr><td>OpenStreetMap / OSRM</td><td>cartes et calcul d'itinéraire</td><td>UE</td></tr>
+  </table>
+  <p>Les fonctions d'intelligence artificielle sont <strong>désactivées</strong> pendant la bêta.</p>
+
+  <h2>7. Sécurité</h2>
+  <p>Connexion par mot de passe personnel (12 caractères minimum), chiffrement des échanges (HTTPS), séparation stricte des données de chaque arbitre,
+  accès administrateur protégé par double authentification, sauvegardes quotidiennes. En cas de violation de données présentant un risque, la CNIL
+  est notifiée sous 72 heures et vous êtes informé.</p>
+
+  <h2>8. Vos droits</h2>
+  <p>Vous pouvez à tout moment demander l'accès, la rectification, l'export ou la suppression de vos données, vous opposer à un traitement ou en demander la limitation,
+  en écrivant à <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a>. Réponse sous un mois.
+  Vous pouvez aussi saisir la CNIL (<a href="https://www.cnil.fr" rel="noopener">cnil.fr</a>).</p>
+
+  <h2>9. Cookies et stockage</h2>
+  <p>Aucun cookie publicitaire ni traceur. L'application stocke sur votre appareil uniquement ce qui est nécessaire à son fonctionnement (session de connexion, cache d'affichage).</p>
+</main>
+</body>
+</html>

@@ -1191,6 +1191,7 @@ function renderProfile() {
       </details>
       <p class="rt-help">Session valable 30 jours, prolongée à chaque visite.</p>
       <button type="button" class="rt-btn-danger" id="rtLogoutBtn">Se déconnecter</button>
+      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Politique de confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Vos données (export, suppression) : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a></p>
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
@@ -1643,7 +1644,62 @@ function pushResyncInstaller_() {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") PUSH.resync(); });
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
 }
+/* b58 — CGU + politique de confidentialité acceptées avant tout usage (preuve en base, RLS). */
+const RT_CGU_VERSION = "2026-10-30";
+const CONSENT = {
+  _ok: false,
+  async verifier() {
+    if (this._ok || !SB.actif) return true;
+    const sub = rtSubDuJeton_();
+    try { if (localStorage.getItem("rt-cgu:" + sub) === RT_CGU_VERSION) { this._ok = true; return true; } } catch (e) {}
+    let l = null;
+    try { l = await SB.get("consentements?select=version&version=eq." + RT_CGU_VERSION + "&limit=1"); } catch (e) { return true; }   // panne réseau : on ne bloque pas
+    if (Array.isArray(l) && l.length) { this._ok = true; try { localStorage.setItem("rt-cgu:" + sub, RT_CGU_VERSION); } catch (e) {} return true; }
+    this.afficher();
+    return false;
+  },
+  afficher() {
+    if (document.getElementById("rtConsent")) return;
+    const d = document.createElement("div");
+    d.id = "rtConsent";
+    d.className = "rt-consent";
+    d.setAttribute("role", "dialog");
+    d.setAttribute("aria-modal", "true");
+    d.innerHTML = `<div class="rt-consent-box">
+      <h2>Bienvenue sur Referee Tracker</h2>
+      <p>Avant de commencer, merci de lire et d'accepter :</p>
+      <ul>
+        <li><a href="./cgu.html" target="_blank" rel="noopener">les conditions d'utilisation</a> ;</li>
+        <li><a href="./confidentialite.html" target="_blank" rel="noopener">la politique de confidentialité</a> (vos données et celles des personnes citées sur vos convocations).</li>
+      </ul>
+      <label class="rt-consent-chk"><input type="checkbox" id="rtConsentChk"> J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité.</label>
+      <p class="rt-consent-msg" id="rtConsentMsg"></p>
+      <div class="rt-consent-actions">
+        <button type="button" class="rt-btn" id="rtConsentOk" disabled>Accepter et continuer</button>
+        <button type="button" class="rt-btn-danger" id="rtConsentNo">Refuser et me déconnecter</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    const chk = document.getElementById("rtConsentChk"), ok = document.getElementById("rtConsentOk");
+    chk.addEventListener("change", () => { ok.disabled = !chk.checked; });
+    document.getElementById("rtConsentNo").addEventListener("click", () => logout());
+    ok.addEventListener("click", async () => {
+      ok.disabled = true;
+      try {
+        const sub = rtSubDuJeton_();
+        await SB.write("POST", "consentements?on_conflict=user_id,version", { user_id: sub, version: RT_CGU_VERSION }).catch(err => { if (!/409|duplicate/i.test(err.message || "")) throw err; });
+        this._ok = true;
+        try { localStorage.setItem("rt-cgu:" + sub, RT_CGU_VERSION); } catch (e) {}
+        d.remove();
+      } catch (e) {
+        document.getElementById("rtConsentMsg").textContent = "Enregistrement impossible (" + (e.message || "réseau") + "). Réessaie.";
+        ok.disabled = false;
+      }
+    });
+  }
+};
+
 function startApp() {
+  try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
   // On affiche AVANT de parler au serveur : `loadData` passe par le cache,
   // donc le contenu est à l'écran immédiatement au lieu d'attendre la réponse

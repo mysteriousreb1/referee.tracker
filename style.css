@@ -3965,3 +3965,13 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
   input, select, textarea { font-size: 16px !important; }
   nav.tabs { will-change: transform; }
 }
+
+/* b58 — consentement CGU / confidentialité */
+.rt-consent { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.rt-consent-box { background: var(--card, #fff); color: var(--text, #111); max-width: 520px; width: 100%; border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); max-height: 90vh; overflow: auto; }
+.rt-consent-box h2 { margin: 0 0 8px; font-size: 1.25rem; }
+.rt-consent-box a { color: var(--accent, #c62828); }
+.rt-consent-chk { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; font-weight: 600; }
+.rt-consent-chk input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
+.rt-consent-msg { color: #c62828; min-height: 1.2em; margin: 4px 0; }
+.rt-consent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
