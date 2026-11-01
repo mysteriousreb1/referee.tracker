@@ -1,4 +1,4 @@
-/* Referee Tracker — interface d'administration (b60).
+/* Referee Tracker — interface d'administration (b62).
    Accès : compte présent dans la table `admins` + double authentification (TOTP, session aal2).
    Toutes les données passent par l'Edge Function « admin », qui journalise chaque action. */
 "use strict";
@@ -86,6 +86,7 @@
         "<td>" + etat + "</td><td>" + u.matchs + "</td><td>" + fmt(u.derniere_maj) + "</td>" +
         "<td>" + esc(p.adresse_reception || "—") + "<br><span class=\"mut\">" + (p.api_url ? "moteur ✓" : "<span class=\"warn\">pas de moteur</span>") + "</span></td>" +
         '<td><div class="row"><button data-act="matchs" data-id="' + u.id + '">Matchs</button><button data-act="profil" data-id="' + u.id + '">Profil</button>' +
+        '<button data-act="lien" data-id="' + u.id + '">Lien mot de passe</button>' +
         (u.admin ? "" : '<button data-act="' + (u.banni ? "reactiver" : "suspendre") + '" data-id="' + u.id + '">' + (u.banni ? "Réactiver" : "Suspendre") + "</button>") + "</div></td></tr>";
     }).join("");
   }
@@ -108,6 +109,9 @@
           try { await admin("profil.set", { user_id: u.id, prenom: $("pPrenom").value.trim(), adresse_reception: $("pRecep").value.trim(), api_url: $("pApi").value.trim() || undefined }); $("pMsg").textContent = "Enregistré ✓"; charger(); }
           catch (e) { $("pMsg").textContent = e.message; }
         });
+      } else if (b.dataset.act === "lien") {
+        if (!confirm("Envoyer à " + u.email + " le mail « définis ton mot de passe » (lien de connexion) ?")) return;
+        await admin("user.lien", { user_id: u.id }); $("msg").textContent = "Lien envoyé à " + u.email + ".";
       } else if (b.dataset.act === "suspendre" || b.dataset.act === "reactiver") {
         if (!confirm((b.dataset.act === "suspendre" ? "Suspendre l'accès de " : "Réactiver ") + u.email + " ?")) return;
         await admin("user." + b.dataset.act, { user_id: u.id }); charger();
@@ -119,6 +123,12 @@
     const email = $("invEmail").value.trim();
     if (!email || !confirm("Envoyer une invitation à " + email + " ?")) return;
     try { await admin("user.inviter", { email }); $("invMsg").textContent = "Invitation envoyée à " + email + "."; $("invEmail").value = ""; charger(); }
+    catch (e) { $("invMsg").textContent = e.message; }
+  });
+  $("btnCreate").addEventListener("click", async () => {
+    const email = $("invEmail").value.trim();
+    if (!email || !confirm("Créer le compte " + email + " SANS envoyer de mail ? (tu enverras le lien mot de passe plus tard)")) return;
+    try { const j = await admin("user.creer", { email }); $("invMsg").textContent = "Compte créé (" + j.user_id + "), aucun mail envoyé. Prépare le moteur puis « Lien mot de passe »."; $("invEmail").value = ""; charger(); }
     catch (e) { $("invMsg").textContent = e.message; }
   });
   $("btnJournal").addEventListener("click", async () => {

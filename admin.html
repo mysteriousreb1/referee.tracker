@@ -56,7 +56,8 @@
     <section id="vAdmin" class="hidden">
       <div class="card">
         <div class="row"><h2 style="margin:0;flex:1">Arbitres</h2><button id="btnRefresh">Actualiser</button></div>
-        <div class="row" style="margin-top:10px;max-width:640px"><input id="invEmail" type="email" placeholder="E-mail à inviter" /><button id="btnInvite">Inviter</button></div>
+        <div class="row" style="margin-top:10px;max-width:640px"><input id="invEmail" type="email" placeholder="E-mail de l'arbitre" /><button id="btnCreate">Créer sans mail</button><button id="btnInvite">Inviter (mail immédiat)</button></div>
+        <p class="mut">Parcours conseillé : « Créer sans mail » → installer son moteur (rt-beta.sh) → « Lien mot de passe » dans la ligne de l'arbitre.</p>
         <p class="mut" id="invMsg"></p>
         <div class="tbl"><table id="tbl"><thead><tr><th>Arbitre</th><th>État</th><th>Matchs</th><th>Dernière MAJ</th><th>Réception / moteur</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
       </div>
@@ -69,6 +70,6 @@
   </main>
 
   <dialog id="dlg"><div class="row"><h3 id="dlgTitre" style="flex:1;margin:0"></h3><button id="dlgClose">Fermer</button></div><div id="dlgBody"></div></dialog>
-  <script src="./admin.js?v=2026-10-30-b60"></script>
+  <script src="./admin.js?v=2026-11-01-b62"></script>
 </body>
 </html>
