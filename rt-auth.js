@@ -1180,6 +1180,17 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
+      <h3>Agenda sur ton téléphone</h3>
+      <p class="rt-help">Tes matchs dans Calendrier (iPhone), Google Agenda ou Outlook, mis à jour automatiquement, sans compte Google. Lien personnel : ne le partage pas.</p>
+      <button type="button" class="rt-btn" id="pfIcs">Obtenir mon lien d'abonnement</button>
+      <div id="pfIcsZone" class="rt-help" hidden>
+        <p><a id="pfIcsOuvrir" href="#" class="rt-btn-ghost">Ajouter à Calendrier (iPhone / Mac)</a> <button type="button" class="rt-btn-ghost" id="pfIcsCopier">Copier le lien</button></p>
+        <p>Google Agenda : Paramètres → Ajouter un agenda → À partir de l'URL → coller le lien. Outlook : Ajouter un calendrier → S'abonner à partir du web.</p>
+        <input id="pfIcsLien" readonly>
+      </div>
+    </section>
+
+    <section class="rt-sect">
       <h3>Sécurité</h3>
       <details class="rt-details">
         <summary>Changer mon mot de passe</summary>
@@ -1195,6 +1206,18 @@ function renderProfile() {
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
+  // b63 — agenda par abonnement (.ics, Edge Function « ics »), sans Google.
+  document.getElementById("pfIcs").addEventListener("click", async () => {
+    const b = document.getElementById("pfIcs"); b.disabled = true;
+    try {
+      const t = await SB.token();
+      const r = await fetch(SB_URL + "/functions/v1/ics", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t } });
+      const j = await r.json(); if (!j.url) throw new Error(j.error || "Lien indisponible");
+      document.getElementById("pfIcsLien").value = j.url; document.getElementById("pfIcsOuvrir").href = j.webcal;
+      document.getElementById("pfIcsZone").hidden = false; b.hidden = true;
+    } catch (e) { toast("Agenda : " + e.message); b.disabled = false; }
+  });
+  document.getElementById("pfIcsCopier").addEventListener("click", async () => { try { await navigator.clipboard.writeText(document.getElementById("pfIcsLien").value); toast("Lien copié"); } catch (e) { document.getElementById("pfIcsLien").select(); } });
   document.getElementById("pfSaveProfil").addEventListener("click", saveProfil);
   document.getElementById("pfSaveTarifs").addEventListener("click", saveTarifs);
   document.getElementById("pfAddVeh").addEventListener("click", addVehicule);
