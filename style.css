@@ -3987,3 +3987,17 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-onb select { width: 100%; min-height: 44px; font-size: 16px; }
 .rt-onb details { margin: 6px 0; }
 .rt-btn-ghost { background: transparent; border: 1px solid rgba(127,127,127,.4); color: inherit; border-radius: 10px; padding: 10px 16px; font: inherit; min-height: 44px; }
+
+/* b64 — Mon profil compacté : lignes réglage (libellé à gauche, boutons à droite) et résumé-bouton. */
+.rt-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px dashed var(--line, #DCE3EF); }
+.rt-kv:first-of-type { border-top: 0; padding-top: 4px; }
+.rt-kv > div:first-child { min-width: 0; flex: 1; }
+.rt-kv > div:first-child b { display: block; font-size: 13.5px; }
+.rt-kv > div:first-child .rt-help { display: block; margin: 2px 0 0; }
+.rt-kv-btns { display: flex; flex: 0 0 auto; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.rt-kv .rt-btn-ghost, .rt-kv .rt-btn { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.rt-kv .rt-btn-ghost.is-on { border-color: var(--red, #E4002B); color: var(--red, #E4002B); font-weight: 700; }
+.rt-summary-btn { display: inline-block; list-style: none; cursor: pointer; }
+.rt-summary-btn::-webkit-details-marker { display: none; }
+#tkForm[open] .rt-summary-btn { margin-bottom: 12px; }
+

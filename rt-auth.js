@@ -1034,22 +1034,19 @@ function renderProfile() {
 
   body.innerHTML = `
     <section class="rt-sect">
-      <h3>Identité</h3>
+      <h3>Identité &amp; adresse</h3>
+      <p class="rt-help">Le nom et l'e-mail FFBB servent à te reconnaître dans le bloc arbitre d'une convocation ; l'adresse est le point de départ de tous les kilomètres.</p>
       <div class="rt-field"><label for="pfEmailC">Email de connexion</label>
         <input id="pfEmailC" type="email" value="${esc(p.email_connexion)}" disabled></div>
-      <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
-        <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="JPR Groupe Rouge REG"></div>
-      <div class="rt-field"><label for="pfNom">Nom tel qu'il figure sur les convocations</label>
-        <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}"></div>
-      <div class="rt-field"><label for="pfMailFfbb">Email connu de la FFBB</label>
-        <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}"></div>
-      <p class="rt-help">Ces deux dernières valeurs servent à te reconnaître dans le bloc arbitre d'une convocation.</p>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Adresse de départ</h3>
-      <p class="rt-help">Point de départ de tous les calculs de kilomètres.</p>
-      <div class="rt-field"><label for="pfAdr">Adresse</label>
+      <div class="rt-row">
+        <div class="rt-field"><label for="pfNom">Nom sur les convocations</label>
+          <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}" placeholder="NOM Prénom"></div>
+        <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
+          <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="JPR Groupe Rouge REG"></div>
+      </div>
+      <div class="rt-field"><label for="pfMailFfbb">Email connu de la FFBB${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
+        <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
+      <div class="rt-field"><label for="pfAdr">Adresse de départ</label>
         <input id="pfAdr" type="text" value="${esc(p.adresse)}"></div>
       <div class="rt-row">
         <div class="rt-field"><label for="pfCp">Code postal</label>
@@ -1062,8 +1059,6 @@ function renderProfile() {
 
     <section class="rt-sect">
       <h3>Véhicules</h3>
-      <p class="rt-help">Historique daté : un match reste calculé avec la voiture
-        en service à sa date. Ajouter un véhicule ne change rien au passé.</p>
       <ul class="rt-veh-list">
         ${vs.map((v, i) => `
           <li class="rt-veh${v === actuel ? " is-current" : ""}">
@@ -1076,6 +1071,7 @@ function renderProfile() {
       </ul>
       <details class="rt-details">
         <summary>Ajouter un véhicule</summary>
+        <p class="rt-help">Historique daté : un match reste calculé avec la voiture en service à sa date.</p>
         <div class="rt-row">
           <div class="rt-field"><label for="vhNom">Modèle</label>
             <input id="vhNom" type="text" placeholder="Audi A3 35 TFSI"></div>
@@ -1088,26 +1084,20 @@ function renderProfile() {
           <div class="rt-field"><label for="vhCv">Chevaux fiscaux</label>
             <input id="vhCv" type="text" placeholder="8"></div>
         </div>
-        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité FFBB
-          (toujours ${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
+        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité FFBB (${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
         <button type="button" class="rt-btn" id="pfAddVeh">Ajouter</button>
       </details>
     </section>
 
     <section class="rt-sect">
-      <h3>Tarifs</h3>
-      <div class="rt-row">
+      <h3>Frais kilométriques</h3>
+      <details class="rt-details">
+        <summary>Indemnité FFBB : <b>${esc(t.indemnite_km)} €/km</b></summary>
         <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
-      </div>
-      <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
-      <p class="rt-help">L'entretien du véhicule (€/km) se règle dans « Carburant &amp; entretien » ci-dessous, par période.</p>
-      <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Carburant &amp; entretien</h3>
-      <p class="rt-help">Chaque ligne s'applique dès sa date. Matchs passés et à venir recalculés à l'enregistrement.</p>
+        <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
+        <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
+      </details>
       <details class="rt-details">
         <summary>Carburant : <b>${esc(coutsResume_("prix"))}</b></summary>
         ${coutsListe_("prix")}
@@ -1131,67 +1121,67 @@ function renderProfile() {
             <input id="ceKm" type="text" inputmode="numeric" placeholder="8000"></div>
         </div>
         <button type="button" class="rt-btn" id="ceAdd">Ajouter cet entretien</button>
-        <p class="rt-help">€/km = coût annuel / km par an.</p>
+        <p class="rt-help">€/km = coût annuel / km par an. Chaque ligne s'applique dès sa date ; les matchs sont recalculés à l'enregistrement.</p>
       </details>
     </section>
 
     <section class="rt-sect">
-      <h3>Notifications sur cet appareil</h3>
-      <p class="rt-help" id="pfPushAide">Nouveau match, annulation, paiement en retard, échéance dépassée : toujours actives sur ce téléphone, remises en route automatiquement après un redémarrage.</p>
-      <div class="rt-row">
-        <button type="button" class="rt-btn" id="pfPushOn" hidden>Activer les notifications</button>
-        <button type="button" class="rt-btn" id="pfPushTest">Tester</button>
-        <span class="rt-help" id="pfPushEtat" style="margin:0"></span>
-      </div>
-      <p class="rt-help" id="pfPushDetail" style="margin-top:6px"></p>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Jour de match (téléphone)</h3>
-      <p class="rt-help">« Départ conseillé » sur l'Accueil dans les 3 h avant le match (heure de RDV moins le trajet estimé). Mode test : désactivable ici.</p>
-      <div class="rt-row">
-        <button type="button" class="rt-btn" id="pfDepartOn">Activé</button>
-        <button type="button" class="rt-btn" id="pfDepartOff">Désactivé</button>
-      </div>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Apparence</h3>
-      <p class="rt-help">Thème de l'interface — mémorisé sur cet appareil.</p>
-      <div class="rt-row">
-        <button type="button" class="rt-btn" id="pfThemeClair">Clair</button>
-        <button type="button" class="rt-btn" id="pfThemeSombre">Sombre</button>
-      </div>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Signaler un problème</h3>
-      <p class="rt-help">Le ticket part dans l'onglet TICKETS du classeur et t'arrive par mail. Un audit complet t'est envoyé chaque lundi matin.</p>
-      <div class="rt-row">
-        <div class="rt-field"><label for="tkCat">Type</label>
-          <select id="tkCat">${["Bug / affichage", "Calcul faux", "Paiement", "Import mail", "Idée d'amélioration", "Autre"].map(x => `<option>${esc(x)}</option>`).join("")}</select></div>
-        <div class="rt-field"><label for="tkGrav">Gravité</label>
-          <select id="tkGrav"><option>Gênant</option><option>Bloquant</option><option>Mineur</option></select></div>
-      </div>
-      <div class="rt-field"><label for="tkDesc">Que se passe-t-il ?</label>
-        <textarea id="tkDesc" rows="3" placeholder="Ex. Paiements : le montant à recevoir d'octobre ne correspond pas à l'échéancier"></textarea></div>
-      <button type="button" class="rt-btn" id="tkEnvoyer">Envoyer le ticket</button>
-      <details class="rt-details" id="tkHist"><summary>Mes tickets</summary><div id="tkListe"><p class="rt-help">Chargement…</p></div></details>
-    </section>
-
-    <section class="rt-sect">
-      <h3>Agenda sur ton téléphone</h3>
-      <p class="rt-help">Tes matchs dans Calendrier (iPhone), Google Agenda ou Outlook, mis à jour automatiquement, sans compte Google. Lien personnel : ne le partage pas.</p>
-      <button type="button" class="rt-btn" id="pfIcs">Obtenir mon lien d'abonnement</button>
+      <h3>Agenda</h3>
+      <p class="rt-help">Tes matchs dans Calendrier (iPhone), Google Agenda ou Outlook, mis à jour automatiquement. Lien personnel : ne le partage pas.</p>
+      <button type="button" class="rt-btn" id="pfIcs">Ajouter mes matchs à mon agenda</button>
       <div id="pfIcsZone" class="rt-help" hidden>
-        <p><a id="pfIcsOuvrir" href="#" class="rt-btn-ghost">Ajouter à Calendrier (iPhone / Mac)</a> <button type="button" class="rt-btn-ghost" id="pfIcsCopier">Copier le lien</button></p>
+        <p><a id="pfIcsOuvrir" href="#" class="rt-btn-ghost">Ouvrir dans Calendrier (iPhone / Mac)</a> <button type="button" class="rt-btn-ghost" id="pfIcsCopier">Copier le lien</button></p>
         <p>Google Agenda : Paramètres → Ajouter un agenda → À partir de l'URL → coller le lien. Outlook : Ajouter un calendrier → S'abonner à partir du web.</p>
         <input id="pfIcsLien" readonly>
       </div>
     </section>
 
     <section class="rt-sect">
-      <h3>Sécurité</h3>
+      <h3>Cet appareil</h3>
+      <div class="rt-kv">
+        <div><b>Notifications</b><span class="rt-help" id="pfPushAide">Nouveau match, annulation, paiement en retard.</span></div>
+        <div class="rt-kv-btns">
+          <button type="button" class="rt-btn" id="pfPushOn" hidden>Activer</button>
+          <button type="button" class="rt-btn-ghost" id="pfPushTest">Tester</button>
+        </div>
+      </div>
+      <p class="rt-help" id="pfPushEtat" style="margin:0"></p>
+      <p class="rt-help" id="pfPushDetail" style="margin:0 0 4px"></p>
+      <div class="rt-kv">
+        <div><b>Départ conseillé</b><span class="rt-help">Sur l'Accueil, dans les 3 h avant un match.</span></div>
+        <div class="rt-kv-btns">
+          <button type="button" class="rt-btn-ghost" id="pfDepartOn">Activé</button>
+          <button type="button" class="rt-btn-ghost" id="pfDepartOff">Désactivé</button>
+        </div>
+      </div>
+      <div class="rt-kv">
+        <div><b>Thème</b></div>
+        <div class="rt-kv-btns">
+          <button type="button" class="rt-btn-ghost" id="pfThemeClair">Clair</button>
+          <button type="button" class="rt-btn-ghost" id="pfThemeSombre">Sombre</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="rt-sect">
+      <h3>Aide</h3>
+      <details class="rt-details" id="tkForm">
+        <summary class="rt-btn-ghost rt-summary-btn">Signaler un problème</summary>
+        <div class="rt-row">
+          <div class="rt-field"><label for="tkCat">Type</label>
+            <select id="tkCat">${["Bug / affichage", "Calcul faux", "Paiement", "Import mail", "Idée d'amélioration", "Autre"].map(x => `<option>${esc(x)}</option>`).join("")}</select></div>
+          <div class="rt-field"><label for="tkGrav">Gravité</label>
+            <select id="tkGrav"><option>Gênant</option><option>Bloquant</option><option>Mineur</option></select></div>
+        </div>
+        <div class="rt-field"><label for="tkDesc">Que se passe-t-il ?</label>
+          <textarea id="tkDesc" rows="3" placeholder="Ex. Paiements : le montant à recevoir d'octobre ne correspond pas à l'échéancier"></textarea></div>
+        <button type="button" class="rt-btn" id="tkEnvoyer">Envoyer</button>
+        <details class="rt-details" id="tkHist"><summary>Mes tickets</summary><div id="tkListe"><p class="rt-help">Chargement…</p></div></details>
+      </details>
+    </section>
+
+    <section class="rt-sect">
+      <h3>Compte</h3>
       <details class="rt-details">
         <summary>Changer mon mot de passe</summary>
         <div class="rt-field"><label for="pwAnc">Mot de passe actuel</label>
@@ -1200,9 +1190,8 @@ function renderProfile() {
           <input id="pwNouv" type="password" autocomplete="new-password" placeholder="12 caractères minimum"></div>
         <button type="button" class="rt-btn" id="pfChangePwd">Modifier</button>
       </details>
-      <p class="rt-help">Session valable 30 jours, prolongée à chaque visite.</p>
       <button type="button" class="rt-btn-danger" id="rtLogoutBtn">Se déconnecter</button>
-      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Politique de confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Vos données (export, suppression) : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a></p>
+      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Tes données (export, suppression) : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a></p>
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
@@ -1245,10 +1234,11 @@ function renderProfile() {
   if (dOn) dOn.addEventListener("click", () => { try { localStorage.setItem("rt_depart", "1"); } catch (e) {} majDepart(); toast("Départ conseillé activé."); });
   if (dOff) dOff.addEventListener("click", () => { try { localStorage.setItem("rt_depart", "0"); } catch (e) {} majDepart(); toast("Départ conseillé désactivé."); });
   majDepart();
-  const tc = document.getElementById("pfThemeClair");
-  if (tc) tc.addEventListener("click", () => setTheme("light"));
-  const ts = document.getElementById("pfThemeSombre");
-  if (ts) ts.addEventListener("click", () => setTheme("dark"));
+  const tc = document.getElementById("pfThemeClair"), ts = document.getElementById("pfThemeSombre");
+  const majTheme = () => { const d = document.documentElement.getAttribute("data-theme") === "dark"; if (tc) tc.classList.toggle("is-on", !d); if (ts) ts.classList.toggle("is-on", d); };
+  if (tc) tc.addEventListener("click", () => { setTheme("light"); majTheme(); });
+  if (ts) ts.addEventListener("click", () => { setTheme("dark"); majTheme(); });
+  majTheme();
   body.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", () => delVehicule(Number(b.dataset.del))));
 }
