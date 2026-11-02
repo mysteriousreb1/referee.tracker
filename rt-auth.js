@@ -1042,7 +1042,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfNom">Nom sur les convocations</label>
           <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}" placeholder="NOM Prénom"></div>
         <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
-          <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="JPR Groupe Rouge REG"></div>
+          <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="ex. Régional 2 – JPR Rouge"></div>
       </div>
       <div class="rt-field"><label for="pfMailFfbb">Email connu de la FFBB${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
         <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
@@ -1718,7 +1718,7 @@ const CONSENT = {
    ===================================================================== */
 const ONBOARD = {
   etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5" }, sug: null, reception: "",
-  NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Pré-région", "Régional", "Championnat de France", "Fédéral", "Autre"],
+  NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Régional 3", "Régional 2 – JPR Rouge", "Régional 1", "Championnat de France", "Haut niveau / Fédéral"],
   ouvrir() {
     if (document.getElementById("rtOnb")) return;
     const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
@@ -1751,7 +1751,7 @@ const ONBOARD = {
       b.innerHTML = '<h2>Bienvenue ' + esc(D.prenom || "") + ' 👋</h2><p>Quelques réglages pour que l\'app calcule tout à ta place. Tout reste modifiable ensuite dans Mon profil.</p>' + chips +
         this.champ("onbNom", "Ton NOM PRÉNOM exactement comme sur tes convocations", D.nom_ffbb, 'autocapitalize="characters" placeholder="ex. MARTIN JULIE"') +
         this.champ("onbPrenom", "Ton prénom (signature des SMS)", D.prenom, 'autocomplete="given-name"') +
-        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><select id="onbNiveau"><option value="">—</option>' + this.NIVEAUX.map(n => '<option' + (n === D.niveau ? " selected" : "") + '>' + n + '</option>').join("") + '</select></div>';
+        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><input id="onbNiveau" list="onbNiveauxListe" value="' + esc(D.niveau) + '" placeholder="ex. Régional 2 – JPR Rouge"><datalist id="onbNiveauxListe">' + this.NIVEAUX.map(n => '<option value="' + esc(n) + '">').join("") + '</datalist></div>';
       b.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { document.getElementById("onbNom").value = c.dataset.nom; }));
     } else if (e === 1) {
       b.innerHTML = '<h2>Ton point de départ</h2><p>Sert à calculer tes kilomètres et ton carburant. Il n\'est visible que par toi.</p>' +
