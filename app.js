@@ -19,6 +19,7 @@ const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", 
 /* b53 — mode téléphone (≤ 767 px) : navigation 4 onglets, Matchs fusionnés, Argent, trésorerie compacte. */
 const estTel_ = () => window.innerWidth <= 767;
 let state = {
+  cartesOuvertes: new Set(),   // b67 : UID des cartes de match dépliées (survit aux re-rendus)
   allRows: [],
   filteredRows: [],
   serverStats: null,
@@ -480,7 +481,7 @@ const RECH = {
     el.innerHTML = `<div class="rt-search-backdrop"></div>
       <section class="rt-search" role="dialog" aria-modal="true" aria-label="Recherche">
         <header class="rt-search-head"><div><span class="rt-search-kicker">Recherche · ${escapeHtml(this.TITRES[page] || "")}</span><h3>Que cherches-tu ?</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer">✕</button></header>
-        <div class="rt-search-field"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(document.getElementById("searchInput") ? document.getElementById("searchInput").value : "")}" autocomplete="off"></div>
+        <div class="rt-search-field"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(f.search || "")}" autocomplete="off"></div>
         <div class="rt-search-sec"><label>Saison</label><div class="rt-chips" id="rtSearchSaisons">${saisons.map(sa => `<button type="button" class="rt-chip${sa === f.season ? " is-on" : ""}" data-saison="${escapeHtml(sa)}">${sa === "Toutes les saisons" ? "Toutes" : escapeHtml(sa)}</button>`).join("")}</div></div>
         <div class="rt-search-grid">
           <div class="rt-search-sec"><label for="rtSearchNiveau">Niveau</label><select id="rtSearchNiveau">${opts(vals("Niveau administratif"), f.niveau)}</select></div>
@@ -495,7 +496,6 @@ const RECH = {
     const maj = () => {
       const nf = { season: el.querySelector(".rt-chip.is-on").dataset.saison, search: normaliserRecherche(el.querySelector("#rtSearchInput").value), niveau: (el.querySelector("#rtSearchNiveau") || {}).value || "", statut: (el.querySelector("#rtSearchStatut") || {}).value || "", format: (el.querySelector("#rtSearchFormat") || {}).value || "" };
       const saisonChange = this.appliquer(nf);
-      const si = document.getElementById("searchInput"); if (si) si.value = el.querySelector("#rtSearchInput").value;
       if (saisonChange && typeof loadStats === "function") loadStats();
       renderAll(); this.majBouton();
       const n = state.filteredRows.filter(r => r._format !== "Alerte").length;
@@ -546,12 +546,19 @@ function setActiveTab(tab) {
   renderTab_(tab);
   RECH.majBouton();
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
-  if (tab === "progression" && !state.qcmStats) loadQcmStats();
+  if (progressionVisible_() && !state.qcmStats) loadQcmStats();
+}
+/* b67 — sur PC, Progression est une sous-vue de la page Analyse (state.activeTab === "stats") :
+   les chargements asynchrones doivent re-rendre dans les deux cas. */
+function progressionVisible_() {
+  return state.activeTab === "progression" || (state.activeTab === "stats" && state.statsSubView === "progression");
 }
 
 /* ---------------- Chargement données ---------------- */
 
 function loadData() {
+  if (state._loadEnCours) return;   // b67 : ↻, tirer-pour-rafraîchir, retour en ligne… ne se cumulent plus
+  state._loadEnCours = true;
   setStatus(state.allRows.length ? "Actualisation des données…" : "Chargement des données…", "");
   jsonp("matchs")
     .then(res => {
@@ -591,7 +598,8 @@ function loadData() {
       _plus(chargerResultatsFfbb_, "Résultats FFBB (classements)", 1600);   // b55
       // b19 : page Indispos supprimée (pas de connexion FBI possible).
     })
-    .catch(showApiError);
+    .catch(showApiError)
+    .then(() => { state._loadEnCours = false; });
 }
 
 /* Filet de sécurité au démarrage.
@@ -666,8 +674,9 @@ function loadPrixCarburant() {
 function loadClassements() {
   jsonp("classements")
     .then(res => {
+      const avant = JSON.stringify(state.classements || []);   // b67 : re-rendu seulement si le contenu change
       state.classements = (res && res.success) ? (res.data || []) : [];
-      renderAllSoon_();
+      if (JSON.stringify(state.classements) !== avant) renderAllSoon_();
     })
     .catch(() => { state.classements = state.classements || []; });
 }
@@ -678,8 +687,9 @@ function loadEnjeux() {
   state._enjeuxEnCours = true;
   jsonp("enjeux")
     .then(res => {
+      const avantE = JSON.stringify(state.enjeux || {});
       state.enjeux = (res && res.success && res.enjeux && res.enjeux.data) || {};
-      if (Object.keys(state.enjeux).length) renderAllSoon_();
+      if (Object.keys(state.enjeux).length && JSON.stringify(state.enjeux) !== avantE) renderAllSoon_();
     })
     .catch(() => { state.enjeux = state.enjeux || {}; })
     .then(() => { state._enjeuxEnCours = false; });
@@ -981,11 +991,11 @@ function renderReglement() {
             <p>L'IA répond à partir du règlement FIBA, des interprétations et du manuel technique. Si la situation est ambiguë, elle te demande une précision avant de trancher.</p>
             <div class="regl-ex">${REGL_EXEMPLES_.map(x => `<button type="button" class="regl-ex-btn" data-ex="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("")}</div>
           </div>`}
-        <div class="regl-status" id="reglStatus" role="status"></div>
+        <div class="regl-status" id="reglStatus" role="status">${state._reglEnCours ? `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…` : ""}</div>
       </div>
       <form class="regl-form" id="reglForm">
         <textarea id="reglInput" rows="1" placeholder="Décris la situation ou pose ta question…" aria-label="Question de règlement"></textarea>
-        <button type="submit" class="regl-send" id="reglSend" aria-label="Envoyer" title="Envoyer (Entrée)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+        <button type="submit" class="regl-send" id="reglSend"${state._reglEnCours ? " disabled" : ""} aria-label="Envoyer" title="Envoyer (Entrée)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
       </form>
     </div>`;
   attachReglementListeners_(root);
@@ -1137,6 +1147,8 @@ async function askReglement_(question, precisions) {
   if (!precisions) state._reglementHist.push({ role: "user", text: question, ts: Date.now() });
   reglHistSave_();
   renderReglement();
+  if (state._reglEnCours) return;   // b67 : une question à la fois (pas de double appel IA)
+  state._reglEnCours = question;
   const status = document.getElementById("reglStatus");
   if (status) status.innerHTML = `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…`;
   const btn = document.getElementById("reglSend"); if (btn) btn.disabled = true;
@@ -1148,6 +1160,7 @@ async function askReglement_(question, precisions) {
     const r = res && res.result;
     if (!res || !res.success || !r || !r.ok) throw new Error((r && r.error) || (res && res.error) || "Erreur inconnue");
     if (r.type === "questions" && r.questions && r.questions.length) {
+      state._reglEnCours = "";
       if (status) status.textContent = "";
       if (btn) btn.disabled = false;
       reglQuestions_(question, r);
@@ -1159,6 +1172,7 @@ async function askReglement_(question, precisions) {
   } catch (err) {
     state._reglementHist.push({ role: "ia", text: "⚠ " + (err.message || "Erreur") + " — renvoie ta question, elle sera retentée.", q: question, ts: Date.now() });
   }
+  state._reglEnCours = "";
   reglHistSave_();
   renderReglement();
 }
@@ -1304,10 +1318,18 @@ function renderAll() {
 /* Regroupe les rendus demandés au même instant (stats, carburant,
    classements arrivent presque ensemble au démarrage). */
 let _renderSoonId = 0;
+/* b67 — jamais de re-rendu pendant une saisie (le rendu remplace l'innerHTML : le texte tapé disparaîtrait).
+   Le rendu est différé jusqu'à la sortie du champ. */
+function saisieEnCours_() {
+  const a = document.activeElement;
+  return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest("main.content"));
+}
 function renderAllSoon_() {
+  if (saisieEnCours_()) { state._renderDiffere = true; return; }
   if (_renderSoonId) return;
   _renderSoonId = requestAnimationFrame(function () { _renderSoonId = 0; renderAll(); });
 }
+document.addEventListener("focusout", () => { if (state._renderDiffere) { state._renderDiffere = false; setTimeout(renderAllSoon_, 150); } });
 
 /* Badges de notification sur les onglets Alertes / Paiements (19/09/2026).
    Même logique de filtre que renderAlertes()/paiementEnRetard() pour rester
@@ -1315,7 +1337,7 @@ function renderAllSoon_() {
    compteur est à 0 pour ne pas alourdir la barre de navigation inutile. */
 function renderTabBadges_() {
   try { alertesSync_(); } catch (e) {}
-  const rows = state.filteredRows || [];
+  const rows = (state.allRows || []).filter(r => r._season === getCurrentSeason());   // b67 : saison courante, quel que soit le filtre de la page
   const sessEl = document.querySelector(".tabs-foot span:last-child");
   if (sessEl && typeof Session !== "undefined" && Session && Session.email) {
     sessEl.textContent = Session.email;   // b49 — plus de « Session : » ; l'e-mail seul, tronqué par le CSS
@@ -1371,14 +1393,38 @@ function setStatsSubView_(view) {
 /* b54 — Sur PC/tablette, les sections Export et Progression vivent dans la page Analyse :
    on déplace leurs <section> dans le panel Stats (les rendus continuent d'écrire dans #export / #progression). */
 function analyseInstallerSections_() {
-  if (estTel_()) return;
+  const main = document.querySelector("main.content");
   [["export", "statsExport"], ["progression", "statsProgression"]].forEach(([id, hote]) => {
     const sec = document.getElementById(id), h = document.getElementById(hote);
-    if (!sec || !h || sec.parentNode === h) return;
+    const t = document.querySelector(`nav.tabs .tab[data-tab="${id}"]`);
+    if (!sec || !h) return;
+    if (estTel_()) {   // b67 : retour au gabarit téléphone (rotation, fenêtre réduite) — la section redevient un onglet
+      if (sec.parentNode === h && main) { sec.classList.add("panel"); sec.classList.remove("analyse-section"); main.appendChild(sec); if (t) t.classList.remove("tab-pc-hide"); }
+      return;
+    }
+    if (sec.parentNode === h) return;
     sec.classList.remove("panel"); sec.classList.add("analyse-section"); h.appendChild(sec);
-    const t = document.querySelector(`nav.tabs .tab[data-tab="${id}"]`); if (t) t.classList.add("tab-pc-hide");
+    if (t) t.classList.add("tab-pc-hide");
   });
 }
+/* b67 — bascule téléphone ⇄ PC à chaud : les gabarits (cartes, sous-vues Analyse, menu Plus) dépendent de estTel_(). */
+(function () {
+  let _rz = 0; state._tel = undefined;
+  window.addEventListener("resize", () => {
+    clearTimeout(_rz);
+    _rz = setTimeout(() => {
+      const tel = estTel_();
+      if (state._tel === undefined) { state._tel = tel; return; }
+      if (state._tel === tel) return;
+      state._tel = tel;
+      try { analyseInstallerSections_(); } catch (e) {}
+      if (!tel && ANALYSE_PC_.indexOf(state.activeTab) >= 0 && state.activeTab !== "rapprochement") setActiveTab(state.activeTab);
+      else if (tel && state.activeTab === "stats" && ANALYSE_PC_.indexOf(state.statsSubView) >= 0) setActiveTab(state.statsSubView);
+      else renderAll();
+    }, 250);
+  });
+  window.addEventListener("load", () => { state._tel = estTel_(); });
+})();
 function renderRapprochementAnalyse_() {
   const h = document.getElementById("statsRapprochement"); if (!h) return;
   h.innerHTML = `<h2 class="section-title">Rapprochement bancaire</h2>
@@ -1475,7 +1521,7 @@ function renderMatchPanel(rootId, format, label) {
 const PASSES_OUVERTS = {};
 
 function attachPastToggle(root) {
-  root.querySelectorAll("details.past-block").forEach(function (bloc) {
+  root.querySelectorAll("details.past-block, details[data-panel]").forEach(function (bloc) {   // b67 : toute section dépliable nommée
     bloc.addEventListener("toggle", function () {
       PASSES_OUVERTS[bloc.dataset.panel] = bloc.open;
     });
@@ -1962,8 +2008,8 @@ function renderMatchCard(row) {
     : [get(row, "Visiteur / événement"), get(row, "Ville")].filter(Boolean).join(" · ");
   const etatPaie = isBenevole ? ["Bénévole", "gray"] : isPaid ? ["Payé", "green"] : paiement === "Annulé" ? ["Annulé", "gray"] : [paiement, paiement === "À recevoir" ? "gold" : "orange"];
   return `
-    <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}" data-uid="${uid}">
-      <div class="card-head mrow" role="button" tabindex="0" aria-expanded="false">
+    <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}${state.cartesOuvertes.has(uid) ? " open" : ""}" data-uid="${uid}">
+      <div class="card-head mrow" role="button" tabindex="0" aria-expanded="${state.cartesOuvertes.has(uid) ? "true" : "false"}">
         <div class="mrow-date"><strong>${escapeHtml(date)}</strong><span>${escapeHtml([jourCourt, time].filter(Boolean).join(" · "))}</span></div>
         <div class="mrow-logo">${logoCompetition(row)}</div>
         <div class="mrow-main">
@@ -2264,9 +2310,9 @@ function libelleNiveauSms(row) {
 
 /* "20:30", "20h30", "20 h 30" → { h, m } ; null si illisible. */
 function parseHeure(value) {
-  const m = String(value || "").match(/(\d{1,2})\s*[:hH.]\s*(\d{2})/);
+  const m = String(value || "").match(/(\d{1,2})\s*(?:[:hH.]\s*(\d{2})|[hH](?!\d))/);   // b67 : « 20h » accepté (= 20:00)
   if (!m) return null;
-  const h = Number(m[1]), min = Number(m[2]);
+  const h = Number(m[1]), min = Number(m[2] || 0);
   if (h > 23 || min > 59) return null;
   return { h: h, m: min };
 }
@@ -2606,13 +2652,18 @@ function renderManualStatus_(uid, statutManuel) {
     </details>`;
 }
 
+/* b67 — les cartes ouvertes sont mémorisées dans l'état (state.cartesOuvertes) : un re-rendu en arrière-plan
+   (stats, carburant, classements, enjeux… jusqu'à 60 s après l'ouverture) ne les referme plus. */
 function attachCardListeners(root) {
   root.querySelectorAll(".card-head").forEach(head => {
     const toggle = () => {
       const card = head.closest(".match-card");
-      card.classList.toggle("open");
-      if (card.classList.contains("open")) {
-        const uid = card.dataset.uid;
+      if (card.dataset.ignoreClick) { delete card.dataset.ignoreClick; return; }   // b67 : clic synthétisé après un appui long
+      const uid = card.dataset.uid;
+      const open = card.classList.toggle("open");
+      head.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) state.cartesOuvertes.add(uid); else state.cartesOuvertes.delete(uid);
+      if (open) {
         const mapEl = card.querySelector(".card-map");
         if (mapEl) initMapFor(uid, mapEl.dataset.addr);
       }
@@ -2620,6 +2671,7 @@ function attachCardListeners(root) {
     head.addEventListener("click", toggle);
     head.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   });
+  root.querySelectorAll(".match-card.open .card-map").forEach(m => { const c = m.closest(".match-card"); if (c) initMapFor(c.dataset.uid, m.dataset.addr); });
 }
 
 /* ---------------- Paiements ---------------- */
@@ -2689,11 +2741,11 @@ function renderMoisPaiements_() {
   const liste = (rows, avecAtt) => rows.length ? `<ul class="rb-ms mp-liste">${rows.map(x => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(rbEquipes_(x.r))}</strong><small>Match ${escapeHtml(rbFmtDate_(x.r._date))} · ${escapeHtml(PAYEURS_LIB_[x.cl] || "")}${avecAtt && x.att ? " · échéance " + escapeHtml(rbFmtDate_(x.att)) : ""} · ${escapeHtml(codeCompetition(x.r) || "")}</small></span><span class="rb-m-v">${formatMoney(x.r._reste)}</span></label></li>`).join("")}</ul>` : `<p class="card-sub">Aucune mission.</p>`;
   return `
     <div class="mp-tuiles">
-      <details class="mp-tuile mp-tuile--mois">
+      <details class="mp-tuile mp-tuile--mois" data-panel="mp-mois"${PASSES_OUVERTS["mp-mois"] ? " open" : ""}>
         <summary><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) dont l'échéance tombe ce mois-ci · voir le détail</span></summary>
         ${liste(m.det.mois, true)}
       </details>
-      ${t.ret > 0 ? `<details class="mp-tuile mp-tuile--retard">
+      ${t.ret > 0 ? `<details class="mp-tuile mp-tuile--retard" data-panel="mp-retard"${PASSES_OUVERTS["mp-retard"] ? " open" : ""}>
         <summary><label>En retard</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s) dont l'échéance est dépassée · voir le détail</span></summary>
         ${liste(m.det.ret, true)}
       </details>` : ""}
@@ -4247,7 +4299,7 @@ function loadNiveaux() {
     })
     .finally(() => {
       state._niveauxEnCours = false;
-      if (state.activeTab === "progression") renderProgression();
+      if (progressionVisible_()) renderProgression();
     });
 }
 
@@ -4265,7 +4317,7 @@ function loadEvaluations() {
     })
     .finally(() => {
       state._evaluationsEnCours = false;
-      if (state.activeTab === "progression") renderProgression();
+      if (progressionVisible_()) renderProgression();
     });
 }
 
@@ -4818,6 +4870,7 @@ function renderProgression() {
     ouvrirModaleEdition_({ titre: "Rattacher à un match", champs: [{ id: "uid", label: "Match", type: "select", value: "", options: [""].concat(cands.map(r => get(r, "UID") + " · " + hotelMatchLabel_(r))) }],
       onSave: v => majEval(ev.id, { uid: String(v.uid || "").split(" · ")[0] }, "Match rattaché") });
   }));
+  attachPastToggle(root);   // b67 : « Mes exams » garde son état déplié après un re-rendu
 }
 
 /* Onglet Contacts & Procédures (19/09/2026) — carnet de contacts (clubs,
@@ -5375,7 +5428,7 @@ function loadQcmStats() {
       if (res && res.success) {
         state.qcmStats = res.stats;
         if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();
-        if (state.activeTab === "progression") renderAllSoon_();
+        if (progressionVisible_()) renderProgression();
       }
     })
     .catch(err => { state._qcmStatsEnCours = false; console.warn("Stats QCM indisponibles :", err && err.message); });
@@ -5396,6 +5449,7 @@ function loadQcmBank() {
     .catch(err => {
       state._qcmBankEnCours = false; state._qcmBankErreur = Date.now();
       console.warn("Banque QCM indisponible :", err && err.message);
+      if (state.activeTab === "qcm" && !state.qcmSession) renderQcm();   // b67 : afficher l'erreur au lieu de « Chargement… » à vie
     });
 }
 
@@ -5508,12 +5562,13 @@ function renderQcm() {
       <div class="qz-mode">
         <h3>Entraînement</h3>
         <p>20 questions, sans chrono. Correction après chaque question avec l'extrait du règlement. Pause, retour et abandon possibles. Enregistré dans l'historique d'entraînement, sans effet sur ta moyenne.</p>
-        <button class="small-btn" id="btnQcmTrain"${pret ? "" : " disabled"}>${pret ? "Commencer l'entraînement" : "Chargement…"}</button>
+        <button class="small-btn" id="btnQcmTrain"${pret ? "" : " disabled"}>${pret ? "Commencer l'entraînement" : state._qcmBankErreur ? "Indisponible" : "Chargement…"}</button>
+        ${!pret && state._qcmBankErreur ? `<p class="card-sub">Banque de questions indisponible (réseau ?). <button type="button" class="small-btn secondary" id="btnQcmRetry">Réessayer</button></p>` : ""}
       </div>
       <div class="qz-mode">
         <h3>Exam</h3>
         <p>20 questions, 10 minutes. Aucune correction avant la fin, toutes les questions sont obligatoires. Résultat enregistré et utilisé dans Progression.</p>
-        <button class="small-btn" id="btnQcmExam"${pret ? "" : " disabled"}>${pret ? "Lancer l'exam" : "Chargement…"}</button>
+        <button class="small-btn" id="btnQcmExam"${pret ? "" : " disabled"}>${pret ? "Lancer l'exam" : state._qcmBankErreur ? "Indisponible" : "Chargement…"}</button>
       </div>
     </div>
 
@@ -5551,6 +5606,7 @@ function renderQcm() {
   `;
 
   const t = document.getElementById("btnQcmTrain"); if (t) t.addEventListener("click", () => demarrerSerieQcm("train"));
+  const rb = document.getElementById("btnQcmRetry"); if (rb) rb.addEventListener("click", () => { state._qcmBankErreur = 0; loadQcmBank(); renderQcm(); });
   const e = document.getElementById("btnQcmExam"); if (e) e.addEventListener("click", () => demarrerSerieQcm("exam"));
   /* b19 — suppression fiable : la ligne disparaît tout de suite, le serveur
      confirme (deleted:true), puis on relit les stats sans passer par le cache. */
@@ -8485,11 +8541,16 @@ function ouvrirMatch(uid) {
   const r = state.allRows.find(x => get(x, "UID") === uid);
   const tab = (r && r._format === "3x3" && !estTel_()) ? "troisx3" : "matchs";
   if (estTel_() && r && r._format === "3x3" && state.telFormat === "5x5") state.telFormat = "tous";
+  // b67 — un match passé vit dans le bloc « Passés » replié, et la page cible peut filtrer une autre saison :
+  // on déplie le bloc, on aligne les filtres de la page sur la saison du match et on mémorise la carte ouverte.
+  if (r && r._isPast) { PASSES_OUVERTS[tab] = true; PASSES_OUVERTS.matchs = true; }
+  if (r) { const f = Object.assign(RECH.defaut(), { season: r._season || getCurrentSeason() }); RECH.parPage[tab] = f; if (state.activeTab === tab) RECH.appliquer(f); }
+  state.cartesOuvertes.add(uid);
   setActiveTab(tab);
+  if (state.activeTab === tab) renderAll();
   setTimeout(() => {
-    document.querySelectorAll("#" + tab + " .match-card").forEach(c => {
-      if (c.dataset.uid === uid) { c.classList.add("open"); c.scrollIntoView({ behavior: "smooth", block: "start" }); }
-    });
+    const c = document.querySelector("#" + tab + ' .match-card[data-uid="' + (window.CSS && CSS.escape ? CSS.escape(uid) : uid) + '"]');
+    if (c) { c.classList.add("open"); c.scrollIntoView({ behavior: "smooth", block: "start" }); }
   }, 0);
 }
 
@@ -8824,7 +8885,7 @@ function attachLicCarte_(root) {
 /* Clé e-Marque V2 : jamais dans le code ni le cache. Lue sur demande, affichée 30 s. */
 function renderEmarque_() {
   const m = state.emarque;
-  if (m === undefined) { chargerEmarque_(); }
+  if (m === undefined && !state._emqEnCours) { state._emqEnCours = true; chargerEmarque_().finally(() => { state._emqEnCours = false; }); }   // b67 : une seule requête en vol
   const etat = !m ? `<span class="card-sub">Chargement…</span>`
     : m.erreur ? `<span class="card-sub">${escapeHtml(m.erreur)}</span>`
     : m.defini ? `<code class="emq-cle" id="emqCle">${escapeHtml(m.clair || m.masque)}</code>`
@@ -9296,6 +9357,7 @@ function attachPersoListeners_(root) {
   const fermerSheet = () => { const s = document.getElementById("rtSheet"); if (s) s.remove(); };
   function ouvrirSheet(card) {
     fermerSheet();
+    card.dataset.ignoreClick = "1"; setTimeout(() => { delete card.dataset.ignoreClick; }, 800);   // b67 : le clic qui suit l'appui long ne bascule pas la carte
     const uid = card.dataset.uid; const row = (typeof rowByUid_ === "function") ? rowByUid_(uid) : null;
     const actions = [...card.querySelectorAll(".actions a, .actions button")].filter(b => !/annul|supprim/i.test(b.textContent));
     const titre = row ? (cleanText(get(row, "Recevant")) + (get(row, "Visiteur / événement") ? " – " + cleanText(get(row, "Visiteur / événement")) : "")) : "Match";
@@ -9469,11 +9531,16 @@ function renderClassementMatch_(row) {
       const nav = document.querySelector("nav.tabs");
       if (!nav) return;
       if (!estTel_()) { nav.style.transform = ""; return; }
+      // b67 — clavier ouvert (champ actif ou viewport visuel réduit de 25 %) : la barre sort de l'écran au lieu de
+      // venir se coller au-dessus du clavier, exactement là où iOS fait défiler le champ en cours de saisie.
+      const a = document.activeElement, clavier = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio") || vv.height < window.innerHeight * 0.75;
+      if (clavier) { nav.style.transform = "translateY(200%)"; return; }
       const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
       nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
     };
     vv.addEventListener("resize", caler); vv.addEventListener("scroll", caler);
     window.addEventListener("scroll", caler, { passive: true }); window.addEventListener("orientationchange", () => setTimeout(caler, 300));
     document.addEventListener("focusout", () => setTimeout(caler, 350));
+    document.addEventListener("focusin", () => setTimeout(caler, 50));   // b67 : réagir dès l'ouverture du clavier
   }
 })();

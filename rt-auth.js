@@ -1022,6 +1022,7 @@ function toast(message, erreur) {
   toast._t = setTimeout(() => { t.className = "rt-toast"; }, 4000);
 }
 
+function profilEnSaisie_() { const a = document.activeElement; return !!(a && a.closest && a.closest("#rtProfileBody") && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
 function renderProfile() {
   const body = document.getElementById("rtProfileBody");
   if (!body) return;
@@ -1409,8 +1410,9 @@ function showProfile() {
   renderProfile();
   document.getElementById("rtProfile").classList.add("is-visible");
 
+  // b67 — ne jamais reconstruire le formulaire pendant une saisie (le champ en cours se viderait).
   jsonp("couts.get").then(res => {
-    if (res && res.success && res.couts) { Couts = res.couts; renderProfile(); }
+    if (res && res.success && res.couts) { Couts = res.couts; if (!profilEnSaisie_()) renderProfile(); }
   }).catch(() => { /* on garde la dernière valeur connue */ });
 
   if (!Profil.config) {
@@ -1419,7 +1421,7 @@ function showProfile() {
         if (res && res.success && res.config) {
           Profil.config = res.config;
           try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
-          renderProfile();
+          if (!profilEnSaisie_()) renderProfile();
           return;
         }
         // Cas le plus fréquent : Config.gs pas encore déployé côté Apps Script.
@@ -1842,7 +1844,7 @@ function startApp() {
       if (res.config) {
         Profil.config = res.config;
         try { localStorage.setItem(CFG_KEY, JSON.stringify(res.config)); } catch (e) {}
-        if (document.getElementById("rtProfile")) renderProfile();
+        if (document.getElementById("rtProfile") && !profilEnSaisie_()) renderProfile();
       }
     })
     .catch(() => { /* jsonp a déjà réaffiché l'écran de connexion si besoin */ });

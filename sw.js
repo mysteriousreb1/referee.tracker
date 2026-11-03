@@ -1,8 +1,40 @@
-/* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop).
-   Pas de cache réseau ici (le site gère son propre cache) : ce fichier ne sert
-   qu'à afficher les notifications et à ouvrir l'app au tap. */
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
+/* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop)
+   + b66 : cache de l'application (ouverture instantanée, lecture hors-ligne de la coquille).
+   Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
+const VERSION = "2026-11-03-b67";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
+const CACHE = "rt-" + VERSION;
+const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION,
+  "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,
+  "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png"];
+
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(CACHE).then(c => Promise.allSettled(COQUILLE.map(u => c.add(u)))).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("rt-") && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", e => {
+  const req = e.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  const memeOrigine = url.origin === self.location.origin;
+  const police = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/.test(url.origin);
+  if (!memeOrigine && !police) return;                       // Supabase, Apps Script, API : jamais interceptés
+  if (memeOrigine && url.searchParams.has("verif")) return;  // contrôle de version de l'app : toujours réseau
+  // 1) Fichiers versionnés (?v=) et polices : cache d'abord (contenu immuable pour une version donnée).
+  if (req.mode !== "navigate" && ((memeOrigine && url.searchParams.has("v")) || police)) {
+    e.respondWith(caches.match(req, { ignoreVary: true }).then(hit => hit || fetch(req).then(r => {
+      if (r && (r.ok || r.type === "opaque")) caches.open(CACHE).then(c => c.put(req, r.clone()));
+      return r;
+    })));
+    return;
+  }
+  // 2) Pages et autres fichiers du site : réseau d'abord, cache en secours (hors-ligne).
+  e.respondWith(fetch(req).then(r => {
+    if (r && r.ok) caches.open(CACHE).then(c => c.put(req, r.clone()));
+    return r;
+  }).catch(() => caches.match(req, { ignoreSearch: req.mode === "navigate" }).then(hit => hit || (req.mode === "navigate" ? caches.match("./index.html") : undefined))));
+});
 self.addEventListener("push", e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
