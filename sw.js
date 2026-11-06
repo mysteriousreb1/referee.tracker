@@ -1,7 +1,7 @@
 /* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop)
    + b66 : cache de l'application (ouverture instantanée, lecture hors-ligne de la coquille).
    Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
-const VERSION = "2026-11-03-b67";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
+const VERSION = "2026-11-06-b69";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
 const CACHE = "rt-" + VERSION;
 const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION,
   "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,

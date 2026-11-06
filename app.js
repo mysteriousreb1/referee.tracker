@@ -73,12 +73,7 @@ function applyTheme(theme) {
   if (moon) moon.style.display = theme === "dark" ? "" : "none";
 }
 
-function toggleTheme() {
-  const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-  const next = current === "dark" ? "light" : "dark";
-  applyTheme(next);
-  try { localStorage.setItem("rt-theme", next); } catch (e) { /* stockage indisponible : on ignore, le choix ne persiste pas */ }
-}
+/* b69 (A6) — toggleTheme supprimé : le thème se règle dans le profil (rt-auth.js → applyTheme). */
 
 
 /* b21 — le retry réseau vit uniquement dans rt-auth.js (apiCall). */
@@ -140,9 +135,6 @@ function bindUi() {
   });
   setupMoreMenu_();
 
-  const themeBtn = document.getElementById("themeToggleBtn");
-  if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
-
   const statsSubOverviewBtn = document.getElementById("statsSubOverviewBtn");
   const statsSubAvanceeBtn = document.getElementById("statsSubAvanceeBtn");
   if (statsSubOverviewBtn) statsSubOverviewBtn.addEventListener("click", () => setStatsSubView_("overview"));
@@ -163,99 +155,9 @@ function bindUi() {
     loadData();
   });
 
-  document.getElementById("seasonSelect").addEventListener("change", e => {
-    state.selectedSeason = e.target.value;
-    state.serverStats = null;   // les stats en mémoire portent sur l'ancienne saison
-    buildQuickFilterSelects_();
-    loadStats();
-    renderAll();
-  });
-
-  // Recherche : anti-rebond 180 ms (un rendu par pause de frappe, pas par touche) ; Échap efface.
-  let rechercheTimer = 0;
-  const searchEl = document.getElementById("searchInput");
-  const appliquerRecherche = () => {
-    state.search = normaliserRecherche(searchEl.value);
-    state.searchTokens = state.search ? state.search.split(" ") : [];
-    updateFilterBadge_();
-    renderAll();
-  };
-  searchEl.addEventListener("input", () => { clearTimeout(rechercheTimer); rechercheTimer = setTimeout(appliquerRecherche, 180); });
-  searchEl.addEventListener("keydown", e => {
-    if (e.key === "Escape" && searchEl.value) { searchEl.value = ""; clearTimeout(rechercheTimer); appliquerRecherche(); }
-  });
-
-  // Loupe header (téléphone) : déplie/replie la barre Saison/Recherche/Filtre.
-  // Sur PC la barre est toujours visible (bouton masqué en CSS), toggle sans effet.
-  const searchToggle = document.getElementById("searchToggleBtn");
-  const toolbarSearch = document.getElementById("toolbarSearch");
-  // b49 — la loupe de l'en-tête ouvre le panneau Recherche (RECH) ; l'ancienne barre
-  // repliable n'est plus utilisée (toolbarSearch reste masqué par le CSS).
-  if (searchToggle && toolbarSearch && false) {
-    searchToggle.addEventListener("click", () => {
-      const open = toolbarSearch.classList.toggle("search-open");
-      searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      searchToggle.classList.toggle("active", open);
-      if (open) { const i = document.getElementById("searchInput"); if (i) i.focus(); }
-    });
-  }
-
-  // Filtres rapides Niveau / Paiement / Format (19/09/2026), repliés dans un
-  // menu déroulant "Filtre" (20/09/2026) pour alléger la barre de recherche.
-  document.getElementById("filterNiveauSelect").addEventListener("change", e => {
-    state.filterNiveau = e.target.value;
-    updateFilterBadge_();
-    renderAll();
-  });
-  document.getElementById("filterStatutSelect").addEventListener("change", e => {
-    state.filterStatut = e.target.value;
-    updateFilterBadge_();
-    renderAll();
-  });
-  document.getElementById("filterFormatSelect").addEventListener("change", e => {
-    state.filterFormat = e.target.value;
-    updateFilterBadge_();
-    renderAll();
-  });
-
-  const filterBtn = document.getElementById("filterDropdownBtn");
-  const filterPanel = document.getElementById("filterDropdownPanel");
-  if (filterBtn && filterPanel) {
-    filterBtn.addEventListener("click", ev => {
-      ev.stopPropagation();
-      const open = filterPanel.hasAttribute("hidden");
-      if (open) filterPanel.removeAttribute("hidden"); else filterPanel.setAttribute("hidden", "");
-      filterBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-    filterPanel.addEventListener("click", ev => ev.stopPropagation());
-    document.addEventListener("click", () => {
-      if (!filterPanel.hasAttribute("hidden")) {
-        filterPanel.setAttribute("hidden", "");
-        filterBtn.setAttribute("aria-expanded", "false");
-      }
-    });
-    document.addEventListener("keydown", ev => {
-      if (ev.key === "Escape" && !filterPanel.hasAttribute("hidden")) {
-        filterPanel.setAttribute("hidden", "");
-        filterBtn.setAttribute("aria-expanded", "false");
-      }
-    });
-  }
-
-  const filterResetBtn = document.getElementById("filterResetBtn");
-  if (filterResetBtn) {
-    filterResetBtn.addEventListener("click", () => {
-      state.filterNiveau = "";
-      state.filterStatut = "";
-      state.filterFormat = "";
-      ["filterNiveauSelect", "filterStatutSelect", "filterFormatSelect"].forEach(id => {
-        const sel = document.getElementById(id);
-        if (sel) sel.value = "";
-      });
-      updateFilterBadge_();
-      renderAll();
-    });
-  }
+  /* b69 (A6) — l'ancienne barre Saison / Recherche / Filtre (#toolbarSearch) est masquée partout
+     (display:none !important) : ses écouteurs ont été retirés. La recherche et les filtres
+     passent par le panneau RECH (loupe), par page. */
 }
 
 /* Nombre de filtres actifs affiché en pastille sur le bouton "Filtre". */
@@ -478,41 +380,55 @@ const RECH = {
     const avecFormat = ["paiements", "stats", "export", "hotel"].includes(page);
     const el = document.createElement("div");
     el.id = "rtSearchLayer"; el.className = "rt-search-layer";
+    /* b69 (E) — panneau revu : champ grand, suggestions (<datalist>), historique en chips, chips saison,
+       sélecteurs alignés, compteur toujours visible, bouton principal plein, fermeture claire. */
+    const hist = rechHistLire_();
+    const sugg = rechSuggestions_(rowsSaison.length ? rowsSaison : state.allRows);
+    const nbSel = 1 + (avecPaiement ? 1 : 0) + (avecFormat ? 1 : 0);
     el.innerHTML = `<div class="rt-search-backdrop"></div>
       <section class="rt-search" role="dialog" aria-modal="true" aria-label="Recherche">
-        <header class="rt-search-head"><div><span class="rt-search-kicker">Recherche · ${escapeHtml(this.TITRES[page] || "")}</span><h3>Que cherches-tu ?</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer">✕</button></header>
-        <div class="rt-search-field"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(f.search || "")}" autocomplete="off"></div>
+        <header class="rt-search-head"><div><span class="rt-search-kicker">Recherche · ${escapeHtml(this.TITRES[page] || "")} <em>· filtres propres à cette page</em></span><h3>Que cherches-tu ?</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <div class="rt-search-field"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" list="rtSearchSugg" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(f.search || "")}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rt-search-clear" id="rtSearchClear" aria-label="Effacer"${f.search ? "" : " hidden"}>✕</button></div>
+        <datalist id="rtSearchSugg">${sugg.map(v => `<option value="${escapeHtml(v)}"></option>`).join("")}</datalist>
+        ${hist.length ? `<div class="rt-search-sec rt-search-hist"><div class="rt-search-sec-h"><label>Recherches récentes</label><button type="button" class="rt-search-link" id="rtSearchHistClear">Effacer</button></div><div class="rt-chips rt-chips--hist">${hist.map(h => `<button type="button" class="rt-chip rt-chip--hist" data-hist="${escapeHtml(h)}">${escapeHtml(h)}</button>`).join("")}</div></div>` : ""}
         <div class="rt-search-sec"><label>Saison</label><div class="rt-chips" id="rtSearchSaisons">${saisons.map(sa => `<button type="button" class="rt-chip${sa === f.season ? " is-on" : ""}" data-saison="${escapeHtml(sa)}">${sa === "Toutes les saisons" ? "Toutes" : escapeHtml(sa)}</button>`).join("")}</div></div>
-        <div class="rt-search-grid">
+        <div class="rt-search-grid rt-search-grid--${nbSel}">
           <div class="rt-search-sec"><label for="rtSearchNiveau">Niveau</label><select id="rtSearchNiveau">${opts(vals("Niveau administratif"), f.niveau)}</select></div>
           ${avecPaiement ? `<div class="rt-search-sec"><label for="rtSearchStatut">Paiement</label><select id="rtSearchStatut">${opts(vals("Statut paiement"), f.statut)}</select></div>` : ""}
           ${avecFormat ? `<div class="rt-search-sec"><label for="rtSearchFormat">Format</label><select id="rtSearchFormat">${opts(["5x5", "3x3"], f.format)}</select></div>` : ""}
         </div>
-        <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount"></span><div><button type="button" class="rt-btn" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
+        <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount" aria-live="polite"></span><div><button type="button" class="rt-btn rt-btn-ghost" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
       </section>`;
     document.body.appendChild(el);
     requestAnimationFrame(() => el.classList.add("is-open"));
     this.ouvert = true;
     const maj = () => {
-      const nf = { season: el.querySelector(".rt-chip.is-on").dataset.saison, search: normaliserRecherche(el.querySelector("#rtSearchInput").value), niveau: (el.querySelector("#rtSearchNiveau") || {}).value || "", statut: (el.querySelector("#rtSearchStatut") || {}).value || "", format: (el.querySelector("#rtSearchFormat") || {}).value || "" };
+      const nf = { season: el.querySelector(".rt-chip.is-on[data-saison]").dataset.saison, search: normaliserRecherche(el.querySelector("#rtSearchInput").value), niveau: (el.querySelector("#rtSearchNiveau") || {}).value || "", statut: (el.querySelector("#rtSearchStatut") || {}).value || "", format: (el.querySelector("#rtSearchFormat") || {}).value || "" };
       const saisonChange = this.appliquer(nf);
       if (saisonChange && typeof loadStats === "function") loadStats();
       renderAll(); this.majBouton();
       const n = state.filteredRows.filter(r => r._format !== "Alerte").length;
-      el.querySelector("#rtSearchCount").textContent = n + " mission" + (n > 1 ? "s" : "");
+      el.querySelector("#rtSearchCount").innerHTML = `<strong>${n}</strong> mission${n > 1 ? "s" : ""}` + (this.actifs() ? ` · ${this.actifs()} filtre${this.actifs() > 1 ? "s" : ""}` : "");
+      const clr = el.querySelector("#rtSearchClear"); if (clr) clr.hidden = !el.querySelector("#rtSearchInput").value;
     };
     let t = 0;
-    el.querySelector("#rtSearchInput").addEventListener("input", () => { clearTimeout(t); t = setTimeout(maj, 160); });
-    el.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { el.querySelectorAll(".rt-chip").forEach(x => x.classList.remove("is-on")); c.classList.add("is-on"); maj(); }));
+    const inp = el.querySelector("#rtSearchInput");
+    inp.addEventListener("input", () => { clearTimeout(t); t = setTimeout(maj, 160); });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(t); maj(); rechHistAjouter_(inp.value); this.fermer(); } });
+    inp.addEventListener("change", () => { clearTimeout(t); maj(); });   // choix dans la datalist
+    el.querySelector("#rtSearchClear").addEventListener("click", () => { inp.value = ""; maj(); inp.focus(); });
+    el.querySelectorAll(".rt-chip[data-saison]").forEach(c => c.addEventListener("click", () => { el.querySelectorAll(".rt-chip[data-saison]").forEach(x => x.classList.remove("is-on")); c.classList.add("is-on"); maj(); }));
+    el.querySelectorAll(".rt-chip--hist").forEach(c => c.addEventListener("click", () => { inp.value = c.dataset.hist; clearTimeout(t); maj(); rechHistAjouter_(c.dataset.hist); }));
+    const hc = el.querySelector("#rtSearchHistClear"); if (hc) hc.addEventListener("click", () => { rechHistVider_(); const z = el.querySelector(".rt-search-hist"); if (z) z.remove(); });
     el.querySelectorAll("select").forEach(sel => sel.addEventListener("change", maj));
-    el.querySelector("#rtSearchReset").addEventListener("click", () => { el.querySelector("#rtSearchInput").value = ""; el.querySelectorAll(".rt-chip").forEach(x => x.classList.toggle("is-on", x.dataset.saison === getCurrentSeason())); el.querySelectorAll("select").forEach(x => x.value = ""); maj(); });
-    el.querySelector("#rtSearchOk").addEventListener("click", () => this.fermer());
+    el.querySelector("#rtSearchReset").addEventListener("click", () => { inp.value = ""; el.querySelectorAll(".rt-chip[data-saison]").forEach(x => x.classList.toggle("is-on", x.dataset.saison === getCurrentSeason())); el.querySelectorAll("select").forEach(x => x.value = ""); maj(); });
+    el.querySelector("#rtSearchOk").addEventListener("click", () => { rechHistAjouter_(inp.value); this.fermer(); });
     el.querySelector("#rtSearchClose").addEventListener("click", () => this.fermer());
     el.querySelector(".rt-search-backdrop").addEventListener("click", () => this.fermer());
     this._esc = e => { if (e.key === "Escape") this.fermer(); };
     document.addEventListener("keydown", this._esc);
     maj();
-    if (window.innerWidth > 767) setTimeout(() => { const i = el.querySelector("#rtSearchInput"); if (i) i.focus(); }, 60);
+    if (window.innerWidth > 767) setTimeout(() => { if (inp) inp.focus(); }, 60);
   },
   fermer() {
     const el = document.getElementById("rtSearchLayer");
@@ -528,11 +444,17 @@ function setActiveTab(tab) {
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
-  if (!estTel_() && ANALYSE_PC_.indexOf(tab) >= 0 && tab !== "rapprochement") { state.statsSubView = tab; tab = "stats"; }   // b54 : Export / Progression = page Analyse
-  if (tab === "rapprochement") { state.statsSubView = "rapprochement"; tab = "stats"; }
+  // b68 — PC : Export, Progression, Rapports, Estimation, Rapprochement ont leur entrée dans la barre gauche.
+  // Estimation et Rapprochement restent des sous-vues de la page Analyse (même panneau), la barre surligne leur entrée.
+  const demande = tab;
+  if (tab === "rapprochement" || tab === "estimation") { state.statsSubView = tab; tab = "stats"; }
+  else if (tab === "stats" && (state.statsSubView === "rapprochement" || state.statsSubView === "estimation" || ANALYSE_PC_.indexOf(state.statsSubView) >= 0)) state.statsSubView = "overview";
+  if (estTel_() && tab === "stats" && state.statsSubView === "rapprochement") state.statsSubView = "overview";   // rapprochement = PC seulement
+  const navTab = (tab === "stats" && (demande === "rapprochement" || demande === "estimation")) ? demande : tab;
   RECH.changerPage(state.activeTab, tab);   // b36 : filtres propres à chaque page
   state.activeTab = tab;
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab || (b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
+  const entreeDirecte = !!document.querySelector(`nav.tabs .tab[data-tab="${navTab}"]`);
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === navTab || (!entreeDirecte && b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
   const plus = document.getElementById("tabMoreBtn");   // b18 : « Plus » allumé si l'onglet ouvert est dedans
   if (plus) plus.classList.toggle("is-current", !!document.querySelector(`.tab-secondary[data-tab="${tab}"]`));
   document.querySelectorAll(".tab-more-item").forEach(i => i.classList.toggle("active", i.dataset.goto === tab));
@@ -755,7 +677,8 @@ function normaliserRecherche(v) {
    chercher un n° de rencontre, un statut de paiement, une catégorie,
    un numéro de téléphone ou une date en toutes lettres. */
 const CHAMPS_RECHERCHE = [
-  "Recevant", "Visiteur / événement", "Salle", "Adresse", "Ville",
+  "Recevant", "Visiteur / événement", "Recevant court", "Visiteur court", "Code club recevant", "Code club visiteur",   // b69 (E1) : noms courts (SIG…) et codes club
+  "Salle", "Adresse", "Ville",
   "Collègue nom", "Collègue rôle", "Collègue téléphone",
   "Libellé compétition", "Niveau administratif", "Code compétition",
   "N° rencontre", "Mon rôle", "Statut paiement", "Format", "Genre",
@@ -790,8 +713,29 @@ function indexRecherche_(row) {
    caractères, pour éviter que « as » ne matche la moitié de la base). */
 function motTrouve_(hay, mot) {
   if (!hay) return false;
+  // b69 (E4) — un jeton court (< 3 caractères : « as », « u13 » non, « sg », « 67 ») doit être un MOT entier,
+  // sinon « as » trouve la moitié de la base (« b-as-ket », « str-as-bourg »).
+  if (mot.length < 3) return (" " + hay.texte + " ").indexOf(" " + mot + " ") >= 0;
   if (hay.texte.indexOf(mot) >= 0) return true;
-  return mot.length >= 3 && hay.compact.indexOf(mot) >= 0;
+  return hay.compact.indexOf(mot) >= 0;
+}
+
+/* b69 (E6) — historique des recherches (8 dernières, navigateur) et suggestions. */
+const RECH_HIST_KEY_ = "rt_rech_hist";
+function rechHistLire_() { try { const a = JSON.parse(localStorage.getItem(RECH_HIST_KEY_) || "[]"); return Array.isArray(a) ? a.filter(x => typeof x === "string" && x.trim()).slice(0, 8) : []; } catch (e) { return []; } }
+function rechHistAjouter_(q) {
+  q = String(q || "").trim(); if (q.length < 2) return;
+  const a = [q].concat(rechHistLire_().filter(x => x.toLowerCase() !== q.toLowerCase())).slice(0, 8);
+  try { localStorage.setItem(RECH_HIST_KEY_, JSON.stringify(a)); } catch (e) { /* stockage indisponible */ }
+}
+function rechHistVider_() { try { localStorage.removeItem(RECH_HIST_KEY_); } catch (e) {} }
+function rechSuggestions_(rows) {
+  const vu = new Set(), out = [];
+  const add = v => { v = cleanText(v); const k = v.toLowerCase(); if (v && v.length >= 2 && !vu.has(k)) { vu.add(k); out.push(v); } };
+  (rows || []).forEach(r => { add(get(r, "Recevant court") || get(r, "Recevant")); add(get(r, "Visiteur court") || (r._format === "3x3" ? "" : get(r, "Visiteur / événement"))); });
+  (rows || []).forEach(r => add(get(r, "Salle")));
+  (rows || []).forEach(r => add(get(r, "Collègue nom")));
+  return out.slice(0, 120);
 }
 
 function correspondRecherche_(row, mots) {
@@ -937,13 +881,7 @@ function safeRender_(fn, panelId, label) {
    bas, exemples au démarrage, chrono de réponse, gestion des documents du
    corpus (liste, dépôt .txt/.md/.pdf, retrait, rechargement) depuis l'app. */
 const REGL_LS_KEY = "rt-reglement-hist-v1";
-const REGL_EXEMPLES_ = [
-  "Un joueur au sol garde le ballon, que siffle-t-on ?",
-  "Différence entre faute technique et antisportive ?",
-  "Faute sur un tireur à 3 points qui réussit son tir : combien de lancers ?",
-  "Le ballon touche l'arrière du panneau : dehors ou en jeu ?",
-  "Temps-mort demandé pendant un lancer franc : quand l'accorder ?"
-];
+/* b69 (F) — plus de questions pré-faites : une ligne d'aide discrète sous le titre. */
 function reglHistLoad_() {
   if (!state._reglementHist) {
     try { state._reglementHist = JSON.parse(localStorage.getItem(REGL_LS_KEY) || "[]") || []; } catch (e) { state._reglementHist = []; }
@@ -988,8 +926,7 @@ function renderReglement() {
         : `<div class="regl-empty">
             <div class="regl-empty-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7"/><path d="M9 11h5"/></svg></div>
             <h3>Pose ta question de règlement</h3>
-            <p>L'IA répond à partir du règlement FIBA, des interprétations et du manuel technique. Si la situation est ambiguë, elle te demande une précision avant de trancher.</p>
-            <div class="regl-ex">${REGL_EXEMPLES_.map(x => `<button type="button" class="regl-ex-btn" data-ex="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("")}</div>
+            <p class="regl-empty-hint">Pose une situation de match, l'IA répond avec les articles du règlement FIBA.</p>
           </div>`}
         <div class="regl-status" id="reglStatus" role="status">${state._reglEnCours ? `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…` : ""}</div>
       </div>
@@ -1223,7 +1160,6 @@ function attachReglementListeners_(root) {
   });
   const docs = root.querySelector("#reglDocsBtn");
   if (docs) docs.addEventListener("click", reglDocsModal_);
-  root.querySelectorAll(".regl-ex-btn").forEach(b => b.addEventListener("click", () => askReglement_(b.dataset.ex)));
   const form = root.querySelector("#reglForm");
   if (form) form.addEventListener("submit", e => {
     e.preventDefault();
@@ -1377,7 +1313,8 @@ const ANALYSE_VUES_ = { overview: ["statsSubOverviewBtn", "statsFinancier"], ava
   progression: ["statsSubProgressionBtn", "statsProgression"], rapprochement: ["statsSubRapprochementBtn", "statsRapprochement"], export: ["statsSubExportBtn", "statsExport"] };
 const ANALYSE_PC_ = ["progression", "rapprochement", "export"];   // b54 : sous-vues PC/tablette uniquement
 function setStatsSubView_(view) {
-  if (estTel_() && ANALYSE_PC_.indexOf(view) >= 0) view = "overview";
+  if (estTel_() && view === "rapprochement") view = "overview";
+  if (view === "progression" || view === "export") { setActiveTab(view); return; }   // b68 : vrais onglets
   state.statsSubView = view;
   Object.keys(ANALYSE_VUES_).forEach(k => {
     const b = document.getElementById(ANALYSE_VUES_[k][0]); if (b) b.classList.toggle("active", k === view);
@@ -1393,18 +1330,14 @@ function setStatsSubView_(view) {
 /* b54 — Sur PC/tablette, les sections Export et Progression vivent dans la page Analyse :
    on déplace leurs <section> dans le panel Stats (les rendus continuent d'écrire dans #export / #progression). */
 function analyseInstallerSections_() {
+  // b68 — Export et Progression sont des onglets à part entière sur tous les formats (entrées de la barre gauche sur PC).
   const main = document.querySelector("main.content");
   [["export", "statsExport"], ["progression", "statsProgression"]].forEach(([id, hote]) => {
     const sec = document.getElementById(id), h = document.getElementById(hote);
     const t = document.querySelector(`nav.tabs .tab[data-tab="${id}"]`);
     if (!sec || !h) return;
-    if (estTel_()) {   // b67 : retour au gabarit téléphone (rotation, fenêtre réduite) — la section redevient un onglet
-      if (sec.parentNode === h && main) { sec.classList.add("panel"); sec.classList.remove("analyse-section"); main.appendChild(sec); if (t) t.classList.remove("tab-pc-hide"); }
-      return;
-    }
-    if (sec.parentNode === h) return;
-    sec.classList.remove("panel"); sec.classList.add("analyse-section"); h.appendChild(sec);
-    if (t) t.classList.add("tab-pc-hide");
+    if (sec.parentNode === h && main) { sec.classList.add("panel"); sec.classList.remove("analyse-section"); main.appendChild(sec); }
+    if (t) t.classList.remove("tab-pc-hide");
   });
 }
 /* b67 — bascule téléphone ⇄ PC à chaud : les gabarits (cartes, sous-vues Analyse, menu Plus) dépendent de estTel_(). */
@@ -1417,9 +1350,7 @@ function analyseInstallerSections_() {
       if (state._tel === undefined) { state._tel = tel; return; }
       if (state._tel === tel) return;
       state._tel = tel;
-      try { analyseInstallerSections_(); } catch (e) {}
-      if (!tel && ANALYSE_PC_.indexOf(state.activeTab) >= 0 && state.activeTab !== "rapprochement") setActiveTab(state.activeTab);
-      else if (tel && state.activeTab === "stats" && ANALYSE_PC_.indexOf(state.statsSubView) >= 0) setActiveTab(state.statsSubView);
+      if (tel && state.activeTab === "stats" && state.statsSubView === "rapprochement") setActiveTab("stats");
       else renderAll();
     }, 250);
   });
@@ -1667,8 +1598,8 @@ function renderAccueil() {
     <div class="acc-kpis">
       <div class="acc-kpi"><span class="acc-kpi-val">${nb}</span><span class="acc-kpi-lbl">match${nb > 1 ? "s" : ""} ce week-end</span></div>
       <div class="acc-kpi"><span class="acc-kpi-val">${formatNumber(km, "")}</span><span class="acc-kpi-lbl">km ce week-end</span></div>
-      <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoney(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
-      <div class="acc-kpi"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoney(totalDu)}</span><span class="acc-kpi-lbl">en retard${impayes.length ? " · " + impayes.length : ""}</span></div>
+      <div class="acc-kpi acc-kpi--net"><span class="acc-kpi-val">${formatMoneyC(netEstime)}</span><span class="acc-kpi-lbl">net estimé ce week-end</span></div>
+      <div class="acc-kpi"><span class="acc-kpi-val ${totalDu > 0 ? "acc-cost" : ""}">${formatMoneyC(totalDu)}</span><span class="acc-kpi-lbl">en retard${impayes.length ? " · " + impayes.length : ""}</span></div>
     </div>`;
 
   // --- Bandeau de bienvenue compact ---
@@ -1735,13 +1666,13 @@ function renderAccueil() {
   const saisonHtml = `<div class="acc-season">
     <div class="acc-s"><span class="acc-s-val">${saison.length}</span><span class="acc-s-lbl">Matchs saison</span></div>
     <div class="acc-s"><span class="acc-s-val">${aVenir.length}</span><span class="acc-s-lbl">À venir</span></div>
-    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoney(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span><span class="acc-s-sub">encaissés depuis le début de la saison ${escapeHtml(state.selectedSeason || "")}</span></div>
-    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoney(attS)}</span><span class="acc-s-lbl">En attente</span><span class="acc-s-sub">reste à percevoir sur la saison · ${saison.filter(r => (r._reste || 0) > 0).length} mission(s)</span></div>
+    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoneyC(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span><span class="acc-s-sub">encaissés depuis le début de la saison ${escapeHtml(state.selectedSeason || "")}</span></div>
+    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoneyC(attS)}</span><span class="acc-s-lbl">En attente</span><span class="acc-s-sub">reste à percevoir sur la saison · ${saison.filter(r => (r._reste || 0) > 0).length} mission(s)</span></div>
   </div>`;
   root.innerHTML = `
     ${bienvenue}
     ${saisonHtml}
-    <div class="acc-grid">
+    <div class="acc-grid${compteurs ? "" : " acc-grid--solo"}">
       ${hero}
       ${compteurs}
     </div>
@@ -2082,21 +2013,33 @@ function renderEnjeuClassement_(row) {
 }
 
 function renderMoneyStrip(gross, cost, net) {
+  /* b69 (C6) — PC : l'indemnité est déjà dans l'en-tête (.mrow-side) et dans le bloc paiement, on ne la répète pas ;
+     carburant et net sont des ESTIMATIONS (prix moyen, conso du véhicule) ; la couleur suffit, pas de signe « − ». */
+  const tel = estTel_();
   return `
-    <div class="money-strip">
-      <div class="money-cell gross"><label>Indemnité</label><strong>${formatMoney(gross)}</strong></div>
-      <div class="money-cell cost"><label>Carburant réel</label><strong>−${formatMoney(cost)}</strong></div>
-      <div class="money-cell net"><label>Net réel</label><strong>${formatMoney(net)}</strong></div>
+    <div class="money-strip${tel ? "" : " money-strip--2"}">
+      ${tel ? `<div class="money-cell gross"><label>Indemnité</label><strong>${formatMoney(gross)}</strong></div>` : ""}
+      <div class="money-cell cost"><label>Carburant estimé</label><strong>${formatMoney(cost)}</strong></div>
+      <div class="money-cell net"><label>Net estimé</label><strong>${formatMoney(net)}</strong></div>
     </div>
   `;
 }
 
+function competitionUtile_(row) {
+  const lib = cleanText(get(row, "Libellé compétition"));
+  if (!lib) return "";
+  let badge = ""; try { badge = niveauCarte(row).badge; } catch (e) { /* rien */ }
+  const n = v => normaliserRecherche(v);
+  return badge && n(lib) === n(badge) ? "" : lib;
+}
 function renderDetails(row) {
   const groupes = [
     ["Rencontre", [
-      ["Compétition", get(row, "Libellé compétition"), true],
+      // b69 (C6) — « Compétition » seulement si elle n'est pas déjà le badge (DM2 vs « DM2 (Poule A) » reste utile) ;
+      // Recevant / Visiteur retirés partout (déjà dans le titre et le sous-titre), sauf 3×3 où le titre est l'événement.
+      ["Compétition", competitionUtile_(row), true],
       ["N° rencontre", get(row, "N° rencontre")], ["Code e-Marque", get(row, "Code e-Marque")],
-      ...(estTel_() && row._format !== "3x3" ? [] : [["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]])   // b55 : déjà dans le titre sur téléphone
+      ...(row._format !== "3x3" ? [] : [["Recevant", get(row, "Recevant"), true], ["Visiteur / événement", get(row, "Visiteur / événement"), true]])
     ]],
     ["Lieu et trajet", [
       ["Salle", get(row, "Salle"), true], ["Adresse", get(row, "Adresse"), true],
@@ -2742,14 +2685,14 @@ function renderMoisPaiements_() {
   return `
     <div class="mp-tuiles">
       <details class="mp-tuile mp-tuile--mois" data-panel="mp-mois"${PASSES_OUVERTS["mp-mois"] ? " open" : ""}>
-        <summary><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoney(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) dont l'échéance tombe ce mois-ci · voir le détail</span></summary>
+        <summary><label>À recevoir en ${escapeHtml(m.mois)}</label><strong>${formatMoneyC(t.mois)}</strong><span class="sub">${t.nbMois} mission(s) dont l'échéance tombe ce mois-ci · voir le détail</span></summary>
         ${liste(m.det.mois, true)}
       </details>
       ${t.ret > 0 ? `<details class="mp-tuile mp-tuile--retard" data-panel="mp-retard"${PASSES_OUVERTS["mp-retard"] ? " open" : ""}>
-        <summary><label>En retard</label><strong>${formatMoney(t.ret)}</strong><span class="sub">${t.nbRet} mission(s) dont l'échéance est dépassée · voir le détail</span></summary>
+        <summary><label>En retard</label><strong>${formatMoneyC(t.ret)}</strong><span class="sub">${t.nbRet} mission(s) dont l'échéance est dépassée · voir le détail</span></summary>
         ${liste(m.det.ret, true)}
       </details>` : ""}
-      ${m.predOk ? `<div class="mp-tuile mp-tuile--fixe"><label>Prévu ce mois (délais réels)</label><strong>${formatMoney(m.predMois)}</strong><span class="sub">d'après le délai moyen constaté de chaque payeur</span></div>` : ""}
+      ${m.predOk ? `<div class="mp-tuile mp-tuile--fixe"><label>Prévu ce mois (délais réels)</label><strong>${formatMoneyC(m.predMois)}</strong><span class="sub">d'après le délai moyen constaté de chaque payeur</span></div>` : ""}
     </div>
     <div class="table-card mp-wrap"><div class="table-wrap"><table class="cf-table mp-table">
       <thead><tr><th>Payeur</th><th>Retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Reste dû</th><th>Reçu</th><th>Délai moyen</th></tr></thead>
@@ -2820,8 +2763,8 @@ function renderPaiements() {
   root.innerHTML = `
     <h2 class="section-title">Paiements</h2>
     <div class="kpi-grid pay-kpis">
-      <div class="kpi hero pay-kpi-attente"><label>À percevoir</label><strong>${formatMoney(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
-      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoney(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
+      <div class="kpi hero pay-kpi-attente"><label>À percevoir</label><strong>${formatMoneyC(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
+      <div class="kpi"><label>Déjà reçu</label><strong>${formatMoneyC(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
     </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
     <div class="rb-pc-only pay-vers-analyse"><button type="button" class="small-btn secondary" data-goto-analyse="rapprochement">Rapprochement bancaire → page Analyse</button> <button type="button" class="small-btn secondary" data-goto-analyse="export">Export annuel → page Analyse</button></div>
@@ -2891,7 +2834,7 @@ function paDonnees_(rows) {
   const kNow = monthKeyOf(new Date());
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const delais = [];
-  let recuTot = 0, duEchu = 0, recuEchu = 0, resteTot = 0;
+  let recuTot = 0, duEchu = 0, recuEchu = 0, resteTot = 0, sansDate = 0, nbSansDate = 0, horsEchelle = 0;
   rows.forEach(r => {
     if (r._benevole) return;
     const cl = payeurAffiche_(r);
@@ -2902,11 +2845,16 @@ function paDonnees_(rows) {
       if (r._date && !v.estime) { const j = Math.round((v.d - r._date) / 86400000); if (j >= 0 && j < 400) delais.push(j); }
     });
     const att = parseFrDate(get(r, "Date attendue") || get(r, "Date paiement"));
-    // b20 — un reste dont l'échéance est passée n'est plus « attendu » dans un
-    // mois révolu : il est compté EN RETARD dans le mois en cours.
-    if (r._reste > 0 && att) {
-      if (att < now) { if (mois[kNow]) mois[kNow].retard += r._reste; }
-      else { const k = monthKeyOf(att); if (mois[k]) mois[k].attendu += r._reste; }
+    // b69 (C2) — chaque créance échue reste dans SON mois d'échéance (segment « en retard ») :
+    // plus de déversement dans le mois courant qui écrasait l'échelle. Sans date : hors échelle, compté à part.
+    if (r._reste > 0) {
+      if (!att) { sansDate += r._reste; nbSansDate++; }
+      else {
+        const k = monthKeyOf(att);
+        if (!mois[k]) horsEchelle += r._reste;
+        else if (att < now) mois[k].retard += r._reste;
+        else mois[k].attendu += r._reste;
+      }
     }
     if (att && att <= now) { duEchu += r._amount; recuEchu += r._encaisse; }
     resteTot += r._reste || 0;
@@ -2915,7 +2863,7 @@ function paDonnees_(rows) {
   const avecVersement = liste.filter(x => x.total > 0);
   const meilleur = avecVersement.slice().sort((a, b) => b.total - a.total)[0] || null;
   const moyDelai = delais.length ? Math.round(delais.reduce((a, b) => a + b, 0) / delais.length) : null;
-  return { liste, recuTot, resteTot, meilleur, moyMois: avecVersement.length ? recuTot / avecVersement.length : 0, nbMoisVerses: avecVersement.length, moyDelai, taux: duEchu > 0 ? recuEchu / duEchu : null };
+  return { liste, recuTot, resteTot, meilleur, moyMois: avecVersement.length ? recuTot / avecVersement.length : 0, nbMoisVerses: avecVersement.length, moyDelai, taux: duEchu > 0 ? recuEchu / duEchu : null, sansDate, nbSansDate, horsEchelle };
 }
 function paCategories_(rows, axe) {
   const g = {};
@@ -2933,23 +2881,31 @@ function renderAnalysePaiements_(rows) {
   if (!valides.length) return "";
   const D = paDonnees_(valides);
   const axe = state.paieAnaAxe || "payeur";
-  const max = Math.max(1, ...D.liste.map(x => x.total + x.attendu + x.retard));
+  // b69 — échelle « ronde » : 4 graduations sur un pas lisible (50, 100, 200, 250, 500…).
+  const brut = Math.max(1, ...D.liste.map(x => x.total + x.attendu + x.retard));
+  const pasBrut = brut / 4, p10 = Math.pow(10, Math.floor(Math.log10(pasBrut)));
+  const pas = [1, 2, 2.5, 5, 10].map(m => m * p10).find(v => v >= pasBrut) || 10 * p10;
+  const max = Math.max(pas * 4, brut);
   const moisCourant = monthKeyOf(new Date());
   const lib = k => { const [y, m] = k.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""); };
-  const kEur = v => v >= 1000 ? (v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k€" : Math.round(v) + " €";
+  // b69 (C5) — euros entiers (« 1 234 € ») ; « k€ » seulement à partir de 10 000.
+  const kEur = v => v >= 10000 ? (v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k€" : Math.round(v).toLocaleString("fr-FR") + " €";
+  // b69 (C1) — pile : reçu en bas, puis retard, puis attendu (lecture naturelle) ; 4 lignes de grille légères avec valeur à gauche.
   const barres = D.liste.map(x => {
     const segs = PA_ORDRE_.filter(c => x.recu[c] > 0).map(c =>
       `<span class="pa-seg pa-c-${c}" style="height:${(x.recu[c] / max * 100).toFixed(2)}%" title="${escapeHtml(PAYEURS_LIB_[c])} : ${escapeHtml(formatMoney(x.recu[c]))}"></span>`).join("");
     const att = x.attendu > 0 ? `<span class="pa-seg pa-att" style="height:${(x.attendu / max * 100).toFixed(2)}%" title="Encore attendu : ${escapeHtml(formatMoney(x.attendu))}"></span>` : "";
     const ret = x.retard > 0 ? `<span class="pa-seg pa-ret" style="height:${(x.retard / max * 100).toFixed(2)}%" title="En retard : ${escapeHtml(formatMoney(x.retard))}"></span>` : "";
     const ouvert = x.attendu + x.retard;
-    const val = x.total > 0 ? kEur(x.total) + (ouvert > 0 ? `<em> +${kEur(ouvert)}</em>` : "") : (ouvert > 0 ? `<em>${kEur(ouvert)}</em>` : "");
+    const val = x.total > 0 ? kEur(x.total) + (ouvert > 0 ? `<em>+${kEur(ouvert)}</em>` : "") : (ouvert > 0 ? `<em>${kEur(ouvert)}</em>` : "");
     return `<div class="pa-col${x.k === moisCourant ? " is-now" : ""}" title="${escapeHtml(monthLabelOf(x.k))} — reçu ${escapeHtml(formatMoney(x.total))}${x.attendu > 0 ? " · attendu " + escapeHtml(formatMoney(x.attendu)) : ""}${x.retard > 0 ? " · en retard " + escapeHtml(formatMoney(x.retard)) : ""}">
       <span class="pa-val">${val}</span>
-      <span class="pa-pile">${att}${ret}${segs}</span>
+      <span class="pa-pile">${segs}${ret}${att}</span>
       <span class="pa-mois">${escapeHtml(lib(x.k))}</span></div>`;
   }).join("");
-  const legende = PA_ORDRE_.map(c => `<span class="pa-leg"><i class="pa-c-${c}"></i>${escapeHtml(PAYEURS_LIB_[c])}</span>`).join("") + `<span class="pa-leg"><i class="pa-att"></i>Encore attendu</span><span class="pa-leg"><i class="pa-ret"></i>En retard</span>`;
+  const vide = !D.liste.some(x => x.total + x.attendu + x.retard > 0);
+  const grille = vide ? "" : [4, 3, 2, 1].map(i => `<span class="pa-grid-l" style="bottom:${(i / 4 * 100).toFixed(1)}%"><i>${escapeHtml(kEur(max * i / 4))}</i></span>`).join("");
+  const legende = PA_ORDRE_.map(c => `<span class="pa-leg"><i class="pa-c-${c}"></i>${escapeHtml(PAYEURS_LIB_[c])}</span>`).join("") + `<span class="pa-leg"><i class="pa-ret"></i>En retard</span><span class="pa-leg"><i class="pa-att"></i>Encore attendu</span>`;
   const cats = paCategories_(valides, axe);
   const maxDu = Math.max(1, ...cats.map(c => c.du));
   const lignes = cats.map(c => {
@@ -2963,14 +2919,17 @@ function renderAnalysePaiements_(rows) {
     <section class="pa-wrap">
       <h2 class="section-title">Analyse des paiements</h2>
       <div class="pa-kpis">
-        <div class="pa-kpi"><label>Reçu sur la saison</label><strong>${formatMoney(D.recuTot)}</strong><span>${D.meilleur ? "meilleur mois : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
-        <div class="pa-kpi"><label>Reste à percevoir</label><strong>${formatMoney(D.resteTot)}</strong><span>missions jouées ou à venir, non soldées</span></div>
+        <div class="pa-kpi"><label>Reçu sur la saison</label><strong>${formatMoneyC(D.recuTot)}</strong><span>${D.meilleur ? "meilleur mois : " + escapeHtml(monthLabelOf(D.meilleur.k)) + " (" + escapeHtml(formatMoney(D.meilleur.total)) + ")" : "aucun versement daté"}</span></div>
+        <div class="pa-kpi"><label>Reste à percevoir</label><strong>${formatMoneyC(D.resteTot)}</strong><span>missions jouées ou à venir, non soldées</span></div>
         <div class="pa-kpi"><label>Délai moyen de paiement</label><strong>${D.moyDelai === null ? "—" : D.moyDelai + " j"}</strong><span>du match au versement</span></div>
         <div class="pa-kpi"><label>Taux d'encaissement</label><strong>${D.taux === null ? "—" : Math.round(D.taux * 100) + " %"}</strong><span>sur les échéances déjà passées</span></div>
       </div>
       <div class="pa-card">
-        <div class="pa-card-head"><h3>Versements reçus par mois</h3><div class="pa-legende">${legende}</div></div>
-        <div class="pa-chart" role="img" aria-label="Versements reçus par mois">${barres}</div>
+        <div class="pa-card-head"><h3>Versements reçus par mois</h3><span class="pa-card-sub">reçu, en retard et attendu, au mois de l'échéance</span></div>
+        <div class="pa-chart-wrap"><div class="pa-grid" aria-hidden="true">${grille}</div>${vide ? `<div class="pa-vide">Aucun versement daté ni échéance sur la période.</div>` : ""}<div class="pa-chart" role="img" aria-label="Versements reçus par mois">${barres}</div></div>
+        <div class="pa-legende">${legende}</div>
+        ${D.sansDate > 0 ? `<p class="pa-note">${D.nbSansDate} mission(s) sans date d'échéance, pour ${escapeHtml(formatMoney(D.sansDate))} : hors graphique (comptées dans « reste à percevoir »).</p>` : ""}
+        ${D.horsEchelle > 0 ? `<p class="pa-note">${escapeHtml(formatMoney(D.horsEchelle))} attendus en dehors des mois affichés.</p>` : ""}
         ${D.liste.some(x => x.estime > 0) ? `<p class="pa-note">Certains anciens paiements n'ont pas de date de réception : ils sont placés au mois de leur échéance.</p>` : ""}
       </div>
       <div class="pa-card">
@@ -3180,7 +3139,11 @@ function rbDate_(v) {
 function rbFmtDate_(d) { return d ? d.toLocaleDateString("fr-FR") : "—"; }
 
 function rbCsv_(txt) {
-  const sep = ((txt.split("\n")[0] || "").match(/;/g) || []).length >= ((txt.split("\n")[0] || "").match(/,/g) || []).length ? ";" : ",";
+  // b69 (D2) — séparateur détecté parmi ; , et tabulation, sur les 5 premières lignes non vides.
+  const tete = txt.split(/\r?\n/).filter(l => l.trim()).slice(0, 5).join("\n");
+  const nb = ch => (tete.split(ch).length - 1);
+  const cands = [[";", nb(";")], ["\t", nb("\t")], [",", nb(",")]].sort((a, b) => b[1] - a[1]);
+  const sep = cands[0][1] > 0 ? cands[0][0] : ";";
   const rows = []; let row = [], cur = "", q = false;
   for (let i = 0; i < txt.length; i++) {
     const c = txt[i];
@@ -3223,13 +3186,57 @@ function rbChargerXlsx_() {
 }
 
 function rbDevinerCols_() {
-  const h = (RB.brut[RB.entete] || []).map(rbNorm_);
+  const h = RB.entete >= 0 ? (RB.brut[RB.entete] || []).map(rbNorm_) : [];
   const f = re => { const i = h.findIndex(x => re.test(x)); return i >= 0 ? i : -1; };
   RB.cols = {
     date: f(/date/), libelle: f(/libell|intitul|descr|motif|detail|operation|reference/),
     credit: f(/credit/), debit: f(/debit/), montant: f(/montant|amount|somme/)
   };
   if (RB.cols.credit >= 0) RB.cols.montant = -1;
+  // b69 (D2) — en-tête absent ou incomplet : colonnes devinées d'après le contenu (date / montant / libellé).
+  if (RB.cols.date < 0 || (RB.cols.credit < 0 && RB.cols.montant < 0)) rbDevinerColsDonnees_();
+  // Préférences mémorisées pour ce format de relevé (même en-tête) : colonnes choisies à la main.
+  const prefs = rbPrefsLire_();
+  if (prefs.sig && prefs.sig === rbSigEntete_() && prefs.cols) Object.keys(prefs.cols).forEach(k => { if (k in RB.cols && Number.isInteger(prefs.cols[k])) RB.cols[k] = prefs.cols[k]; });
+}
+function rbDevinerColsDonnees_() {
+  const lignes = RB.brut.slice(RB.entete + 1, RB.entete + 61).filter(r => r && r.length);
+  if (!lignes.length) return;
+  const nCol = Math.max(...lignes.map(r => r.length));
+  const stats = [];
+  for (let j = 0; j < nCol; j++) {
+    let dates = 0, nums = 0, pos = 0, lon = 0, txt = 0;
+    lignes.forEach(r => {
+      const v = r[j]; if (v == null || v === "") return;
+      if (rbDate_(v)) { dates++; return; }
+      const c = rbCents_(v);
+      if (c !== null) { nums++; if (c > 0) pos++; return; }
+      txt++; lon += String(v).length;
+    });
+    stats.push({ j, dates, nums, pos, txt, lon: txt ? lon / txt : 0 });
+  }
+  const n = lignes.length;
+  if (RB.cols.date < 0) { const d = stats.filter(s => s.dates >= n * 0.5).sort((a, b) => b.dates - a.dates)[0]; if (d) RB.cols.date = d.j; }
+  if (RB.cols.credit < 0 && RB.cols.montant < 0) {
+    const numCols = stats.filter(s => s.j !== RB.cols.date && s.nums >= n * 0.3 && s.dates < n * 0.3).sort((a, b) => a.j - b.j);
+    if (numCols.length >= 2) { RB.cols.debit = numCols[0].j; RB.cols.credit = numCols[1].j; RB.cols.montant = -1; }
+    else if (numCols.length === 1) RB.cols.montant = numCols[0].j;
+  }
+  if (RB.cols.libelle < 0) { const l = stats.filter(s => s.j !== RB.cols.date && s.txt >= n * 0.5).sort((a, b) => b.lon - a.lon)[0]; if (l) RB.cols.libelle = l.j; }
+}
+/* b69 (D5) — préférences du rapprochement, dans le navigateur : colonnes, en-tête, tolérance, signature de l'en-tête. */
+const RB_PREFS_KEY_ = "rt_rb_prefs";
+function rbPrefsLire_() { try { return JSON.parse(localStorage.getItem(RB_PREFS_KEY_) || "{}") || {}; } catch (e) { return {}; } }
+function rbPrefsEcrire_(patch) {
+  const p = Object.assign(rbPrefsLire_(), patch || {});
+  try { localStorage.setItem(RB_PREFS_KEY_, JSON.stringify(p)); } catch (e) { /* stockage indisponible */ }
+}
+function rbSigEntete_() { return RB.entete >= 0 ? (RB.brut[RB.entete] || []).map(x => rbNorm_(x).trim()).join("|").slice(0, 300) : ""; }
+function rbNomsColonnes_() {
+  if (RB.entete >= 0) return (RB.brut[RB.entete] || []).map((x, j) => String(x || "Col. " + (j + 1)));
+  const n = Math.max(0, ...RB.brut.slice(0, 20).map(r => (r || []).length));
+  const ex = RB.brut[0] || [];
+  return Array.from({ length: n }, (_, j) => "Col. " + (j + 1) + (ex[j] != null && String(ex[j]).trim() ? " — " + String(ex[j]).slice(0, 18) : ""));
 }
 
 function rbH_(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36) + str.length.toString(36); }
@@ -3316,7 +3323,19 @@ function rbEntrees_(p, items) {
   const cl = new Set(items.map(x => x.cls));
   const diff = p.t.cents - items.reduce((a, x) => a + x.c, 0);
   const missions = items.map(x => { const r = state.allRows.find(y => get(y, "UID") === x.uid); return r ? rbEquipes_(r) + " (" + rbFmtDate_(r._date) + ")" : x.uid; }).join(" + ");
-  return (p.t.parts || [p.t]).map((t, i) => ({ hash: t.hash, date: rbIso_(t.date), libelle: t.libelle, montant: t.cents / 100, classe: cl.size === 1 ? [...cl][0] : "mixte", missions, uids: items.map(x => x.uid), ecart: i === 0 ? diff / 100 : 0 }));
+  // b69 (A5) — le côté pointé (recevant / visiteur) est mémorisé : « Annuler » ne remet à zéro que ce côté.
+  const cotes = items.map(x => x.uid + "|" + (x.cote === "visiteur" ? "visiteur" : "recevant")).join(";");
+  return (p.t.parts || [p.t]).map((t, i) => ({ hash: t.hash, date: rbIso_(t.date), libelle: t.libelle, montant: t.cents / 100, classe: cl.size === 1 ? [...cl][0] : "mixte", missions, uids: items.map(x => x.uid), cotes, fichier: String(RB.fichier || "").slice(0, 80), ecart: i === 0 ? diff / 100 : 0 }));
+}
+/* b69 — côtés à remettre à zéro pour une entrée d'historique : { uid: { recevant: true, visiteur: true } }.
+   Sans information de côté (ancien pointage), les deux côtés sont remis à zéro comme avant. */
+function rbCotesUndo_(h) {
+  const out = {};
+  (h.uids || []).forEach(u => { out[u] = { recevant: false, visiteur: false }; });
+  const txt = String(h.cotes || "").trim();
+  if (!txt) { Object.keys(out).forEach(u => { out[u].recevant = true; out[u].visiteur = true; }); return out; }
+  txt.split(";").forEach(s => { const [u, c] = s.split("|"); if (!u) return; out[u] = out[u] || { recevant: false, visiteur: false }; out[u][c === "visiteur" ? "visiteur" : "recevant"] = true; });
+  return out;
 }
 async function rbMemoriser_(entrees) {
   if (!entrees.length) return;
@@ -3353,13 +3372,29 @@ function rbHistHtml_() {
   const colonnes = ["ligue", "cd", "ffbb", "club", "mixte"].filter(k => cls.has(k));
   const trim = Object.keys(par).sort((a, b) => b.split(" ")[1] - a.split(" ")[1] || b.localeCompare(a));
   const ecarts = {}; RB.hist.forEach(h => { if (Math.abs(h.ecart) >= 0.005) { const e = ecarts[h.classe] = ecarts[h.classe] || { n: 0, s: 0 }; e.n++; e.s += h.ecart; } });
-  return `<details class="rb-hist"${RB.histOpen ? " open" : ""}><summary>Historique des virements pointés (${RB.hist.length})</summary>
+  /* b69 (D) — récap + historique des rapprochements (date, fichier, virements, montant pointé). */
+  const totalPointe = RB.hist.reduce((a, h) => a + (Number(h.montant) || 0), 0);
+  const sessions = {};
+  RB.hist.forEach(h => { const jour = String(h.pointe || "").slice(0, 10) || "?"; const k = jour + "|" + (h.fichier || ""); const o = sessions[k] = sessions[k] || { jour, fichier: h.fichier || "", n: 0, montant: 0 }; o.n++; o.montant += Number(h.montant) || 0; });
+  const sess = Object.values(sessions).sort((a, b) => b.jour.localeCompare(a.jour)).slice(0, 12);
+  const fmtJour = j => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(j); return m ? m[3] + "/" + m[2] + "/" + m[1] : (j === "?" ? "—" : j); };
+  return `<details class="rb-hist"${RB.histOpen ? " open" : ""}><summary>Historique des rapprochements (${RB.hist.length} virement${RB.hist.length > 1 ? "s" : ""} pointé${RB.hist.length > 1 ? "s" : ""})</summary>
+    <div class="rb-recap">
+      <div class="rb-recap-k"><strong>${escapeHtml(formatMoneyC(totalPointe))}</strong><span>pointés au total</span></div>
+      <div class="rb-recap-k"><strong>${RB.hist.length}</strong><span>virement${RB.hist.length > 1 ? "s" : ""}</span></div>
+      <div class="rb-recap-k"><strong>${sess.length ? escapeHtml(fmtJour(sess[0].jour)) : "—"}</strong><span>dernier rapprochement</span></div>
+    </div>
+    ${sess.length ? `<div class="table-card"><div class="table-wrap"><table class="cf-table mp-table rb-sess"><thead><tr><th>Date</th><th>Fichier</th><th class="num">Virements</th><th class="num">Montant pointé</th></tr></thead><tbody>
+      ${sess.map(x => `<tr><td>${escapeHtml(fmtJour(x.jour))}</td><td class="rb-sess-f">${escapeHtml(x.fichier || "—")}</td><td class="num">${x.n}</td><td class="num"><strong>${escapeHtml(formatMoney(x.montant))}</strong></td></tr>`).join("")}
+    </tbody></table></div></div>` : ""}
+    <h4 class="rb-hist-h">Par trimestre et par payeur</h4>
     <div class="table-card"><div class="table-wrap"><table class="cf-table mp-table"><thead><tr><th>Trimestre</th>${colonnes.map(k => `<th>${RB_CLS_LIB_[k]}</th>`).join("")}<th>Total</th></tr></thead><tbody>
       ${trim.map(q => `<tr><td>${escapeHtml(q)}</td>${colonnes.map(k => `<td class="num">${par[q][k] ? formatMoney(par[q][k]) : "—"}</td>`).join("")}<td class="num"><strong>${formatMoney(colonnes.reduce((a, k) => a + (par[q][k] || 0), 0))}</strong></td></tr>`).join("")}
     </tbody></table></div></div>
     <div class="rb-note">Encaissements pointés par trimestre (indemnités brutes, hors remboursements EBC et autres revenus).</div>
     ${Object.keys(ecarts).length ? `<div class="rb-note"><strong>Écarts constatés (virement − dû) :</strong> ${Object.keys(ecarts).map(k => `${RB_CLS_LIB_[k] || k} : ${ecarts[k].n} virement(s), cumul ${(ecarts[k].s > 0 ? "+" : "") + money(ecarts[k].s)}`).join(" · ")}. Un écart récurrent chez un même payeur peut révéler une erreur de barème ou de kilométrage.</div>` : ""}
-    <button type="button" class="rb-part" id="rbExport">Exporter l'historique en CSV</button>
+    <div class="rb-hist-act"><button type="button" class="small-btn secondary" id="rbExport">Exporter l'historique en CSV</button></div>
+    <h4 class="rb-hist-h">Derniers virements pointés</h4>
     <ul class="rb-ms">${RB.hist.slice(0, 60).map(h => `<li class="rb-m"><label><span class="rb-m-t"><strong>${escapeHtml(h.libelle || "(sans libellé)")}</strong><small>${escapeHtml(h.date)} · ${escapeHtml(RB_CLS_LIB_[h.classe] || h.classe)} · ${escapeHtml(h.missions)}</small></span><span class="rb-m-v">${formatMoney(h.montant)}</span><button type="button" class="rb-undo" data-rb-undo="${escapeHtml(h.hash)}">Annuler</button></label></li>`).join("")}</ul>
   </details>`;
 }
@@ -3375,21 +3410,40 @@ function rbHtmlProp_(p, i) {
     <span class="rb-b rb-b-${valide ? "ok" : c}">${valide ? "Validé" : lib}</span></div>
     ${p.warn ? `<div class="rb-warn">${escapeHtml(p.warn)}</div>` : ""}
     ${(p.expl || []).length ? `<div class="rb-expl">${p.expl.map(x => `<span>${escapeHtml(x)}</span>`).join("")}</div>` : ""}
-    ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.id, p.coches.has(x.id), p.faits.has(x.id))).join("")}</ul>` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.id)}"${p.faits.has(q.id) ? " disabled" : ""}>${p.faits.has(q.id) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom) + (q.cote === "visiteur" ? " (part visiteuse)" : "")}</button>`).join("")}` : "")}
+    ${alt ? `${sel}<ul class="rb-ms">${alt.items.map(x => rbLigneMatch_(x.id, p.coches.has(x.id), p.faits.has(x.id))).join("")}</ul>${c === "ambigu" && !valide ? rbPartielHtml_(p, i) : ""}` : (p.note ? `<div class="rb-note">${escapeHtml(p.note)}</div>${(p.part || []).map(q => `<button type="button" class="rb-part" data-rb-part="${i}" data-rb-uid2="${escapeHtml(q.id)}"${p.faits.has(q.id) ? " disabled" : ""}>${p.faits.has(q.id) ? "Enregistré" : "Enregistrer " + formatMoney(p.t.cents / 100) + " en paiement partiel — " + escapeHtml(q.nom) + (q.cote === "visiteur" ? " (part visiteuse)" : "")}</button>`).join("")}` : "")}
+  </div>`;
+}
+/* b69 (D4) — paiement partiel à la main sur une carte « plusieurs possibilités » : montant prérempli (virement), créance au choix. */
+function rbPartielHtml_(p, i) {
+  const vus = new Set(); const choix = [];
+  p.alts.forEach(a => a.items.forEach(x => { if (!vus.has(x.id) && !p.faits.has(x.id)) { vus.add(x.id); choix.push(x); } }));
+  if (!choix.length) return "";
+  return `<div class="rb-partiel">
+    <span class="rb-partiel-t">Ou enregistrer un paiement partiel à la main</span>
+    <select data-rb-part-sel aria-label="Créance">${choix.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.lib)}${x.cote === "visiteur" ? " (part visiteuse)" : ""} — dû ${escapeHtml(formatMoney(x.c / 100))}</option>`).join("")}</select>
+    <label class="rb-partiel-m"><span>€</span><input type="number" step="0.01" min="0.01" data-rb-part-montant value="${(p.t.cents / 100).toFixed(2)}" aria-label="Montant"></label>
+    <button type="button" class="rb-part rb-part--inline" data-rb-part="${i}">Enregistrer en partiel</button>
   </div>`;
 }
 
 function rbHtml_() {
   const colSel = (k, lab) => {
-    const h = RB.brut[RB.entete] || [];
-    return `<label class="field rb-f"><span>${lab}</span><select data-rb-col="${k}"><option value="-1">—</option>${h.map((x, j) => `<option value="${j}"${RB.cols[k] === j ? " selected" : ""}>${escapeHtml(String(x || "Col. " + (j + 1)))}</option>`).join("")}</select></label>`;
+    const h = rbNomsColonnes_();
+    return `<label class="field rb-f"><span>${lab}</span><select data-rb-col="${k}"><option value="-1">—</option>${h.map((x, j) => `<option value="${j}"${RB.cols[k] === j ? " selected" : ""}>${escapeHtml(x)}</option>`).join("")}</select></label>`;
   };
+  /* b69 (D) — zone de dépôt (glisser-déposer + bouton), comme l'import d'évaluations ; import bloqué tant que l'historique n'est pas chargé. */
+  const pret = RB.histOk, chargement = !RB.histOk && !RB.histErr;
   const zoneFichier = `
-    <p class="rb-aide">Charge l'export Excel/CSV de tes mouvements bancaires. Le fichier est lu dans ton navigateur et n'est jamais envoyé. Seuls les virements d'arbitrage que tu valides sont mémorisés (date, montant, libellé tronqué) pour ne pas être reproposés.</p>
-    <div class="rb-bar"><label class="btn rb-file"><input type="file" id="rbFile" accept=".xlsx,.xls,.csv,.txt" hidden>Choisir le relevé</label>
-    ${RB.fichier ? `<span class="rb-fn">${escapeHtml(RB.fichier)}</span>` : ""}
-    <label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label></div>
-    ${RB.msg ? `<div class="rb-note">${escapeHtml(RB.msg)}</div>` : ""}`;
+    <div class="rb-drop${pret ? "" : " is-off"}" id="rbDrop" tabindex="0" role="button" aria-label="Déposer un relevé bancaire">
+      <span class="rb-drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 20h16"/></svg></span>
+      <p class="rb-drop-t">${chargement ? "Chargement de l'historique des virements pointés…" : pret ? `Glisse ton relevé ici, ou <label for="rbFile" class="rb-drop-link">choisis un fichier</label>` : "Historique indisponible : import bloqué pour éviter de reproposer des virements déjà pointés."}</p>
+      <p class="rb-drop-sub">CSV, TSV ou Excel (.xlsx), export de ta banque. Lu dans ton navigateur, jamais envoyé. Seuls les virements que tu valides sont mémorisés (date, montant, libellé tronqué).</p>
+      <input type="file" id="rbFile" accept=".xlsx,.xls,.csv,.txt,.tsv" hidden${pret ? "" : " disabled"}>
+      ${RB.fichier ? `<span class="rb-fn">${escapeHtml(RB.fichier)}</span>` : ""}
+      ${!pret && RB.histErr ? `<button type="button" class="small-btn secondary" id="rbHistRetry">Réessayer</button>` : ""}
+    </div>
+    <div class="rb-bar"><label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label><span class="rb-fn">écart accepté entre un virement et le dû</span></div>
+    ${RB.msg ? `<div class="rb-note rb-note--msg">${escapeHtml(RB.msg)}</div>` : ""}`;
   if (!RB.brut.length) return zoneFichier + rbHistHtml_();
   const sel = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).length, 0);
   const tot = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).reduce((s, u) => { const r = state.allRows.find(x => get(x, "UID") === u); return s + (r ? r._reste : 0); }, 0), 0);
@@ -3427,7 +3481,7 @@ function rbHtml_() {
    5. Pré-coché seulement en confiance HAUTE ; tout le reste se valide à la main.
    =================================================================== */
 const RB_CLS_INST_ = { cd: 1, ligue: 1, ffbb: 1 };
-const RB_PERIODE_MAX_ = 12;      // créances max dans une période pour la recherche de sous-ensemble
+const RB_PERIODE_MAX_ = 20;   // b69 (D3) : 12 → 20, mois CD67 chargés      // créances max dans une période pour la recherche de sous-ensemble
 
 /* ---- mémoire des payeurs : serveur (RB_PAYEURS) + cache local ---- */
 const RBMEM = {
@@ -3686,7 +3740,8 @@ function rbLigneMatch_(id, coche, fait) {
 }
 
 /* ---- validation : montants exacts par côté ---- */
-async function rbValider_(zone) {
+async function rbValider_(zone, btn) {
+  if (RB.busy) return;   // b69 (A2) — pas de double validation
   const choix = [];   // { id, uid, cote, cents, date, mode }
   RB.props.forEach(p => {
     const alt = p.alts[p.sel]; if (!alt) return;
@@ -3694,6 +3749,7 @@ async function rbValider_(zone) {
   });
   if (!choix.length) return;
   RB.busy = true; const erreurs = [];
+  if (btn) { btn.disabled = true; btn.dataset.libelle = btn.textContent; btn.textContent = "Validation…"; }
   // Regroupement par mission : un seul payment.update par uid (recevant + visiteur en une fois).
   const parUid = {};
   choix.forEach(ch => { (parUid[ch.x.uid] = parUid[ch.x.uid] || []).push(ch); });
@@ -3723,7 +3779,6 @@ async function rbValider_(zone) {
       lots.forEach(ch => ch.p.faits.add(ch.x.id));
     } catch (e) { erreurs.push((r ? rbEquipes_(r) : uid) + " : " + (e.message || String(e))); }
   }
-  RB.busy = false;
   const entrees = [];
   RB.props.forEach(p => {
     const items = p.alts[p.sel] ? p.alts[p.sel].items.filter(x => p.coches.has(x.id)) : [];
@@ -3748,6 +3803,8 @@ async function rbValider_(zone) {
     if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
   } catch (e) { /* le paiement est déjà enregistré côté serveur */ }
   await rbMemoriser_(entrees);
+  RB.busy = false;
+  if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = btn.dataset.libelle || "Valider la sélection"; }
   state._lastLoadTs = Date.now(); AN.statsCache = {};
   setStatus(erreurs.length ? `${uids.length - erreurs.length} validé(s), ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${uids.length} mission(s) mise(s) à jour (montants exacts par payeur)`, erreurs.length ? "error" : "ok");
   RB.ouvert = true; renderAll(); loadStats(true);
@@ -3758,29 +3815,48 @@ function attachRapprochement_(root) {
   const fold = zone.closest("details");
   if (fold) fold.addEventListener("toggle", e => { if (e.target === fold) RB.ouvert = fold.open; });
   zone.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("rb-hist")) RB.histOpen = e.target.open; }, true);
-  const majMois = () => { const mz = document.getElementById("moisZone"); if (mz) mz.innerHTML = renderMoisPaiements_(); };
+  // b69 (A4) — les tuiles Paiements redessinées gardent leur état ouvert/fermé.
+  const majMois = () => { const mz = document.getElementById("moisZone"); if (mz) { mz.innerHTML = renderMoisPaiements_(); attachPastToggle(mz); } };
   RBMEM.charger();
+  if (!RB._prefsLues) { RB._prefsLues = true; const pr = rbPrefsLire_(); if (typeof pr.tol === "number" && pr.tol >= 0 && pr.tol <= 5) RB.tol = pr.tol; }
   if (!RB.histOk) rbChargerHist_().then(() => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); majMois(); });
   const redessiner = () => { const z = document.getElementById("rbZone"); if (z) z.innerHTML = rbHtml_(); };
+  /* b69 (D2) — lecture d'un relevé : Windows-1252 (CM/CIC/CE/LCL) détecté, TSV, en-tête introuvable signalé sans perdre la 1re ligne. */
+  const lireFichier = async f => {
+    if (!RB.histOk) { RB.msg = "Historique des virements pointés non chargé : import bloqué pour ne pas reproposer des virements déjà pointés. Réessaie dans un instant."; redessiner(); return; }
+    RB.msg = ""; RB.fichier = f.name;
+    if (f.size > 8e6) { RB.msg = "Fichier trop volumineux (8 Mo max)."; RB.brut = []; redessiner(); return; }
+    try {
+      if (/\.(csv|txt|tsv)$/i.test(f.name) || /^text\//.test(f.type || "")) {
+        let txt = await f.text();
+        if (txt.includes("�")) { try { txt = new TextDecoder("windows-1252").decode(await f.arrayBuffer()); } catch (e) { /* décodeur absent : on garde l'UTF-8 */ } }
+        RB.brut = rbCsv_(txt);
+      } else {
+        RB.brut = await rbLireXlsxIsole_(await f.arrayBuffer());
+      }
+      RB.entete = RB.brut.slice(0, 30).findIndex(r => r.filter(x => /date|libell|montant|credit|crédit|debit|débit|operation|opération|intitul/i.test(String(x))).length >= 2);
+      rbDevinerCols_(); rbExtraire_(); rbRapprocher_();
+      if (RB.entete < 0) RB.msg = "En-tête non reconnu : vérifie le fichier" + (RB.lignes.length ? " (colonnes devinées d'après le contenu, contrôle-les ci-dessous)." : " et choisis les colonnes ci-dessous.");
+      else if (!RB.lignes.length) RB.msg = "Aucun virement entrant détecté : vérifie les colonnes ci-dessous.";
+    } catch (err) { RB.msg = "Lecture impossible : " + err.message; RB.brut = []; RB.props = []; }
+    redessiner();
+  };
+  const dz = zone.querySelector("#rbDrop");
+  if (dz) {
+    ["dragenter", "dragover"].forEach(ev => zone.addEventListener(ev, e => { const d = e.target.closest && e.target.closest("#rbDrop"); if (!d) return; e.preventDefault(); e.stopPropagation(); d.classList.add("is-dragover"); }));
+    ["dragleave", "drop"].forEach(ev => zone.addEventListener(ev, e => { const d = e.target.closest && e.target.closest("#rbDrop"); if (!d) return; e.preventDefault(); e.stopPropagation(); d.classList.remove("is-dragover"); }));
+    zone.addEventListener("drop", e => { const d = e.target.closest && e.target.closest("#rbDrop"); if (!d) return; const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) lireFichier(f); });
+    zone.addEventListener("keydown", e => { const d = e.target.closest && e.target.closest("#rbDrop"); if (d && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); const i = d.querySelector("#rbFile"); if (i && !i.disabled) i.click(); } });
+  }
   zone.addEventListener("change", async e => {
     const t = e.target;
-    if (t.id === "rbFile" && t.files && t.files[0]) {
-      const f = t.files[0]; RB.msg = ""; RB.fichier = f.name;
-      if (f.size > 8e6) { RB.msg = "Fichier trop volumineux (8 Mo max)."; RB.brut = []; redessiner(); return; }
-      try {
-        if (/\.(csv|txt)$/i.test(f.name)) RB.brut = rbCsv_(await f.text());
-        else {
-          RB.brut = await rbLireXlsxIsole_(await f.arrayBuffer());
-        }
-        RB.entete = Math.max(0, RB.brut.slice(0, 30).findIndex(r => r.filter(x => /date|libell|montant|credit|crédit|debit|débit|operation|opération|intitul/i.test(String(x))).length >= 2));
-        if (!RB.histOk) await rbChargerHist_();
-        rbDevinerCols_(); rbExtraire_(); rbRapprocher_();
-        if (!RB.lignes.length) RB.msg = "Aucun virement entrant détecté : vérifie les colonnes ci-dessous.";
-      } catch (err) { RB.msg = "Lecture impossible : " + err.message; RB.brut = []; RB.props = []; }
-      redessiner(); return;
+    if (t.id === "rbFile" && t.files && t.files[0]) { await lireFichier(t.files[0]); return; }
+    if (t.id === "rbTol") { RB.tol = Math.min(5, Math.max(0, Number(t.value) || 0)); rbPrefsEcrire_({ tol: RB.tol }); if (RB.lignes.length) rbRapprocher_(); redessiner(); return; }
+    if (t.dataset.rbCol) {
+      RB.cols[t.dataset.rbCol] = Number(t.value); if (t.dataset.rbCol === "credit" && Number(t.value) >= 0) RB.cols.montant = -1;
+      rbPrefsEcrire_({ sig: rbSigEntete_(), cols: RB.cols, entete: RB.entete });
+      rbExtraire_(); rbRapprocher_(); redessiner(); return;
     }
-    if (t.id === "rbTol") { RB.tol = Math.min(5, Math.max(0, Number(t.value) || 0)); if (RB.lignes.length) rbRapprocher_(); redessiner(); return; }
-    if (t.dataset.rbCol) { RB.cols[t.dataset.rbCol] = Number(t.value); if (t.dataset.rbCol === "credit" && Number(t.value) >= 0) RB.cols.montant = -1; rbExtraire_(); rbRapprocher_(); redessiner(); return; }
     if (t.classList.contains("rb-alt")) { const p = RB.props[Number(t.dataset.rbI)]; p.sel = Number(t.value); p.coches = new Set(p.alts[p.sel].items.map(x => x.id)); redessiner(); return; }
     if (t.dataset.rbUid) {
       const card = t.closest("[data-rb-card]"); const p = RB.props[Number(card.dataset.rbCard)];
@@ -3789,16 +3865,22 @@ function attachRapprochement_(root) {
     }
   });
   zone.addEventListener("click", async e => {
-    if (e.target.id === "rbValider") { rbValider_(zone); return; }
+    if (e.target.id === "rbValider") { rbValider_(zone, e.target); return; }
     if (e.target.id === "rbExport") { rbExportCsv_(); return; }
+    if (e.target.id === "rbHistRetry") { e.target.disabled = true; await rbChargerHist_(); redessiner(); return; }
     const ub = e.target.closest("[data-rb-undo]");
     if (ub) {
       const h = RB.hist.find(x => x.hash === ub.dataset.rbUndo); if (!h) return;
-      if (!confirm("Annuler ce pointage ? Les missions liées (" + h.missions + ") repasseront à « à recevoir » (montant reçu remis à 0).")) return;
+      const cotes = rbCotesUndo_(h);
+      const partiel = Object.keys(cotes).some(u => !(cotes[u].recevant && cotes[u].visiteur));
+      if (!confirm("Annuler ce pointage ? Les missions liées (" + h.missions + ") repasseront à « à recevoir »" + (partiel ? " : seul le côté pointé par ce virement est remis à 0, l'autre côté est conservé." : " (montant reçu remis à 0).")) ) return;
       ub.disabled = true;
       try {
-        for (const uid of h.uids) {
-          const res = await jsonp("payment.update", { uid, recu_recevant: "0.00", recu_visiteur: "0.00", liberer_statut: "1" });
+        for (const uid of Object.keys(cotes)) {
+          const params = { uid, liberer_statut: "1" };
+          if (cotes[uid].recevant) params.recu_recevant = "0.00";
+          if (cotes[uid].visiteur) params.recu_visiteur = "0.00";
+          const res = await jsonp("payment.update", params);
           if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
         }
         const u = await jsonp("bank.undo", { hash: h.hash }); if (!u || u.success === false) throw new Error("annulation non mémorisée");
@@ -3810,18 +3892,26 @@ function attachRapprochement_(root) {
       return;
     }
     const b = e.target.closest("[data-rb-part]"); if (!b) return;
-    const p = RB.props[Number(b.dataset.rbPart)], id = b.dataset.rbUid2;
+    const p = RB.props[Number(b.dataset.rbPart)];
+    const selPart = b.closest("[data-rb-card]") && b.closest("[data-rb-card]").querySelector("[data-rb-part-sel]");
+    const id = b.dataset.rbUid2 || (selPart ? selPart.value : "");
     const x = (RB.creances || []).find(c => c.id === id); const r = x && state.allRows.find(y => get(y, "UID") === x.uid); if (!p || !x || !r) return;
+    // b69 (A3/D4) — montant saisi à la main si un champ existe sur la carte (cartes « ambigu »), sinon le virement entier ; confirmation avant écriture.
+    const inp = b.closest("[data-rb-card]") && b.closest("[data-rb-card]").querySelector("[data-rb-part-montant]");
+    let cents = inp ? Math.round((Number(String(inp.value).replace(",", ".")) || 0) * 100) : p.t.cents;
+    if (!(cents > 0)) { setStatus("Indique un montant supérieur à 0", "error"); return; }
+    if (cents > x.c) { if (!confirm("Le montant saisi (" + money(cents / 100) + ") dépasse le reste dû de cette créance (" + money(x.c / 100) + "). Enregistrer quand même ?")) return; }
+    if (!confirm("Enregistrer " + money(cents / 100) + " en paiement partiel sur « " + x.lib + " »" + (x.cote === "visiteur" ? " (part visiteuse)" : "") + " ?\nVirement du " + rbFmtDate_(p.t.date) + " : " + money(p.t.cents / 100) + ".")) return;
     b.disabled = true;
     try {
       // b50 — paiement partiel : le montant du virement sur LA créance choisie (côté recevant ou visiteur).
       const params = { uid: x.uid };
-      if (x.cote === "visiteur") { params.recu_visiteur = String((Math.round(toNumber(get(r, "Reçu visiteur")) * 100) + p.t.cents) / 100); params.mode_visiteur = rbMode_(p.t.n); if (p.t.date) params.date_recu_visiteur = rbIso_(p.t.date); }
-      else { params.recu_recevant = String((Math.round(toNumber(get(r, "Reçu recevant")) * 100) + p.t.cents) / 100); params.mode_recevant = rbMode_(p.t.n); if (p.t.date) { params.date_recu_recevant = rbIso_(p.t.date); params.date_reception = rbIso_(p.t.date); } }
+      if (x.cote === "visiteur") { params.recu_visiteur = String((Math.round(toNumber(get(r, "Reçu visiteur")) * 100) + cents) / 100); params.mode_visiteur = rbMode_(p.t.n); if (p.t.date) params.date_recu_visiteur = rbIso_(p.t.date); }
+      else { params.recu_recevant = String((Math.round(toNumber(get(r, "Reçu recevant")) * 100) + cents) / 100); params.mode_recevant = rbMode_(p.t.n); if (p.t.date) { params.date_recu_recevant = rbIso_(p.t.date); params.date_reception = rbIso_(p.t.date); } }
       const res = await jsonp("payment.update", params);
       if (!res || res.success === false) throw new Error((res && res.error) || "refusé");
       p.faits.add(id);
-      await rbMemoriser_(rbEntrees_(p, [{ uid: x.uid, c: x.c, cls: x.cls }]));
+      await rbMemoriser_(rbEntrees_(p, [{ uid: x.uid, c: cents, cls: x.cls, cote: x.cote }]));
       const frais = await jsonpFrais("matchs");
       if (frais && frais.success !== false && (frais.data || []).length) state.allRows = normalizeRows(frais.data);
       AN.statsCache = {}; setStatus("Paiement partiel enregistré", "ok"); RB.ouvert = true; renderAll(); loadStats(true);
@@ -5480,12 +5570,38 @@ function qcmExtrait_(q, max) {
   return max && t.length > max ? t.slice(0, max).replace(/\s+\S*$/, "") + "…" : t;
 }
 
-function demarrerSerieQcm(mode) {
+/* b69 (F) — suivi local par thème (feuille du règlement) : { theme: { n, ko } }, pour le plan d'entraînement. */
+const QCM_THEMES_KEY_ = "rt_qcm_themes";
+function qcmThemesLire_() { try { const o = JSON.parse(localStorage.getItem(QCM_THEMES_KEY_) || "{}"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; } }
+function qcmThemesAjouter_(details) {
+  const o = qcmThemesLire_();
+  (details || []).forEach(d => { const t = qcmTheme_(d.q); const e = o[t] = o[t] || { n: 0, ko: 0 }; e.n++; if (!d.ok) e.ko++; });
+  try { localStorage.setItem(QCM_THEMES_KEY_, JSON.stringify(o)); } catch (e) { /* stockage indisponible */ }
+}
+/* Thèmes les moins réussis : historique local (taux d'échec, ≥ 2 questions vues) complété par les faiblesses serveur. */
+function qcmPointsFaibles_() {
+  const loc = qcmThemesLire_(), s = state.qcmStats;
+  const score = {};
+  Object.keys(loc).forEach(t => { const e = loc[t]; if (e.n >= 2 && e.ko > 0) score[t] = { theme: t, taux: e.ko / e.n, ko: e.ko, n: e.n }; });
+  ((s && s.faiblesses_top) || []).forEach(f => { if (!f || !f.theme) return; const t = String(f.theme); if (score[t] || (loc[t] && loc[t].n >= 2)) return; score[t] = { theme: t, taux: Math.min(1, 0.4 + 0.1 * (Number(f.n) || 0)), ko: Number(f.n) || 0, n: 0 }; });
+  return Object.values(score).sort((a, b) => b.taux - a.taux || b.ko - a.ko).slice(0, 3);
+}
+function qcmArticle_(theme) { const m = /^Art\.\s*(\d+[A-Za-z]?)/i.exec(theme || ""); return m ? "Art. " + m[1] : ""; }
+function demarrerSerieQcm(mode, themes) {
   if (!state.qcmBank || !state.qcmBank.length) { setStatus("Banque de questions non chargée, réessaie dans un instant", "error"); return; }
   const exam = mode === "exam";
+  // b69 — série ciblée : questions des thèmes faibles d'abord, complétées au hasard jusqu'à 20.
+  let tirage;
+  if (themes && themes.length) {
+    const set = new Set(themes);
+    const cibles = melanger_(state.qcmBank.filter(q => set.has(qcmTheme_(q))));
+    const autres = melanger_(state.qcmBank.filter(q => !set.has(qcmTheme_(q))));
+    tirage = cibles.slice(0, 20).concat(autres).slice(0, 20);
+  } else tirage = melanger_(state.qcmBank).slice(0, 20);
   state.qcmSession = {
     mode: exam ? "exam" : "train",
-    questions: melanger_(state.qcmBank).slice(0, 20),
+    cible: themes && themes.length ? themes.slice() : null,
+    questions: tirage,
     reponses: {}, valides: {}, i: 0, pause: false,
     debut: Date.now(),
     fin: exam ? Date.now() + QCM_DUREE_SEC * 1000 : null,
@@ -5528,6 +5644,7 @@ async function terminerSerieQcm_(auto) {
   });
   const dureeMin = Math.round(((Date.now() - s.debut) / 60000) * 10) / 10;
   s.resultat = { bonnes, total: s.questions.length, details, auto: Boolean(auto), duree: dureeMin, mode: s.mode };
+  qcmThemesAjouter_(details);   // b69 : suivi local par thème (plan d'entraînement)
   renderQcm();
   const estExam = s.mode === "exam";
   try {
@@ -5591,6 +5708,7 @@ function renderQcm() {
       </tr>`).join("")}</tbody>
     </table></div></div>`
     : (s && !(s.entrainements && s.entrainements.length) ? empty("Aucune série enregistrée pour l'instant.") : "")}
+    ${renderQcmPlan_(pret)}
     ${s && s.entrainements && s.entrainements.length ? `
     <h2 class="section-title">Historique d'entraînement <span class="count">${s.entrainements.length}</span></h2>
     <div class="table-card"><div class="table-wrap"><table>
@@ -5606,6 +5724,7 @@ function renderQcm() {
   `;
 
   const t = document.getElementById("btnQcmTrain"); if (t) t.addEventListener("click", () => demarrerSerieQcm("train"));
+  const pf = document.getElementById("btnQcmFaibles"); if (pf) pf.addEventListener("click", () => demarrerSerieQcm("train", qcmPointsFaibles_().map(x => x.theme)));
   const rb = document.getElementById("btnQcmRetry"); if (rb) rb.addEventListener("click", () => { state._qcmBankErreur = 0; loadQcmBank(); renderQcm(); });
   const e = document.getElementById("btnQcmExam"); if (e) e.addEventListener("click", () => demarrerSerieQcm("exam"));
   /* b19 — suppression fiable : la ligne disparaît tout de suite, le serveur
@@ -5626,6 +5745,41 @@ function renderQcm() {
   }));
 }
 
+/* b69 (F) — plan d'entraînement personnalisé, calculé dans le navigateur (thèmes faibles, 3 conseils, série ciblée). */
+function renderQcmPlan_(pret) {
+  const faibles = qcmPointsFaibles_();
+  const s = state.qcmStats, loc = qcmThemesLire_();
+  const vues = Object.values(loc).reduce((a, e) => a + (e.n || 0), 0);
+  if (!faibles.length) {
+    return `<h2 class="section-title">Plan d'entraînement personnalisé</h2>
+      <div class="qz-plan qz-plan--vide"><p>${vues || (s && s.nb) ? "Aucun point faible identifié pour l'instant : continue les séries, le plan se construit à partir de tes erreurs." : "Joue une première série : le plan se construit à partir de tes erreurs, thème par thème."}</p></div>`;
+  }
+  const dispo = state.qcmBank ? state.qcmBank.filter(q => faibles.some(f => f.theme === qcmTheme_(q))).length : 0;
+  const t1 = faibles[0], art = qcmArticle_(t1.theme);
+  const moy = s && s.nb ? Number(s.moyenne_pct) : null;
+  const conseils = [
+    `Rejoue une série ciblée sur « ${t1.theme} »${t1.n ? ` (${t1.ko} erreur${t1.ko > 1 ? "s" : ""} sur ${t1.n} question${t1.n > 1 ? "s" : ""})` : ""}.`,
+    art ? `Relis l'${art} du règlement FIBA avant la prochaine série, puis vérifie-le dans l'onglet Règlement avec une situation concrète.` : `Relis le chapitre « ${t1.theme} » du règlement avant la prochaine série.`,
+    moy === null ? "Passe un exam blanc (20 questions, 10 min) pour fixer un point de départ dans Progression."
+      : moy < 80 ? `Ta moyenne est à ${moy} % : vise 2 entraînements par semaine avant le prochain exam blanc.`
+      : `Moyenne à ${moy} % : garde le rythme, un exam blanc toutes les deux semaines suffit à entretenir.`
+  ];
+  return `<h2 class="section-title">Plan d'entraînement personnalisé</h2>
+    <div class="qz-plan">
+      <div class="qz-plan-col">
+        <div class="qz-plan-h">Thèmes les moins réussis</div>
+        <ol class="qz-plan-themes">${faibles.map(f => `<li><span class="qz-plan-th">${escapeHtml(f.theme)}</span><span class="qz-plan-taux${f.taux >= .5 ? " is-ko" : ""}">${f.n ? Math.round((1 - f.taux) * 100) + " % de réussite" : f.ko + " erreur" + (f.ko > 1 ? "s" : "") + " en exam"}</span></li>`).join("")}</ol>
+      </div>
+      <div class="qz-plan-col">
+        <div class="qz-plan-h">3 recommandations</div>
+        <ul class="qz-plan-reco">${conseils.map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
+      </div>
+      <div class="qz-plan-act">
+        <button type="button" class="small-btn" id="btnQcmFaibles"${pret && dispo ? "" : " disabled"}>Lancer une série sur mes points faibles</button>
+        <span class="qz-plan-sub">${pret ? (dispo ? `${Math.min(20, dispo)} question${Math.min(20, dispo) > 1 ? "s" : ""} ciblée${Math.min(20, dispo) > 1 ? "s" : ""}${dispo < 20 ? ", complétées au hasard" : ""}` : "Aucune question de la banque sur ces thèmes") : "Banque de questions en cours de chargement"}</span>
+      </div>
+    </div>`;
+}
 function renderQcmOptionsHtml_(q, s, verrouille) {
   const choisi = s.reponses[q.id] || [];
   return q.answers.map((a, idx) => {
@@ -5676,7 +5830,7 @@ function renderQcmSession_(root) {
 
   root.innerHTML = `
     <div class="qz-top">
-      <div class="qz-top-l"><strong>${exam ? "Exam" : "Entraînement"}</strong> · Question ${s.i + 1}/${n}
+      <div class="qz-top-l"><strong>${exam ? "Exam" : (s.cible ? "Série ciblée" : "Entraînement")}</strong> · Question ${s.i + 1}/${n}
         ${exam ? `<span class="qz-chrono" id="qcmChrono">${formatChronoQcm_(s.fin - Date.now())}</span>` : ""}</div>
       <div class="qz-top-r">
         ${s.i > 0 ? `<button type="button" class="small-btn secondary" id="qzPrev">Précédent</button>` : ""}
@@ -5958,23 +6112,64 @@ function sigAlerte_(r) {
 function idAlerte_(r) {
   return get(r, "UID") || (get(r, "Date match") + "|" + (rencontreLabel(r) || ""));
 }
+/* b69 (G) — Alertes en 3 sections :
+   « À régler maintenant » (import raté / PDF non reconnu, arbitre non trouvé, date ou heure illisible, trop-perçu),
+   « À faire avant le match » (km / adresse / collègue manquants sur un match FUTUR, statut « À vérifier » d'un match passé),
+   « Infos » repliée (barème CD67 appliqué, indemnité estimée, convocation FBI à compléter, 3×3 à vérifier…).
+   Exclus : matchs passés Reçu/Bénévole, lignes Alerte de plus de 30 jours, warnings « INFO: ». Les retards de
+   paiement vivent dans Paiements (plus comptés dans le badge Alertes). */
+function warningsAlerte_(r) { return warningsReels(r).filter(w => !/^INFO\s*:/i.test(w)); }
+function ageAlerteJours_(r) {
+  const d = r._date || parseFrDate(get(r, "Dernière MAJ")) || parseFrDate(get(r, "Date import"));
+  return d ? (Date.now() - d.getTime()) / 86400000 : 0;
+}
 function estAlerte_(r) {
   if (r._ignore || /annul/i.test(cleanText(get(r, "Statut")))) return false;   // b18
-  return (r._format === "Alerte" ||
-    hasWarningReel(r) ||
-    cleanText(get(r, "Statut paiement")) === "À vérifier" ||
-    paiementEnRetard(r)) && !estAlerteParasite_(r);
+  if (estAlerteParasite_(r)) return false;
+  if (r._format === "Alerte") return ageAlerteJours_(r) <= 30;
+  const statut = cleanText(get(r, "Statut paiement"));
+  if (r._isPast && (statut === "Reçu" || statut === BENEVOLE)) return false;
+  return warningsAlerte_(r).length > 0 || statut === "À vérifier";
+}
+const ALERTE_TYPES_ = [
+  // [test, section, titre, quoi faire]
+  [/arbitre non trouv|mon nom absent/i, "regler", "Arbitre non trouvé dans la convocation", "Vérifie que la convocation te concerne ; corrige la mission ou ignore l'alerte."],
+  [/trop-per|montant reçu supérieur/i, "regler", "Trop-perçu", "Le montant reçu dépasse l'indemnité due : contrôle le paiement et corrige le montant."],
+  [/date (de match |3x3 )?(illisible|non lue|non trouvée|improbable)|date : ia/i, "regler", "Date de match illisible", "Ouvre le match et saisis la bonne date (puis l'agenda se met à jour)."],
+  [/heure (de match |de rdv 3x3 )?(illisible|non trouvée)/i, "regler", "Heure illisible", "Ouvre le match et renseigne l'heure du match ou du rendez-vous."],
+  [/pdf|non reconnu|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
+  [/convocation fbi/i, "infos", "Convocation FBI à compléter", "Équipes, rôle et collègue absents du mail : complète-les dès que tu les connais."],
+  [/kilom|km /i, "avant", "Kilométrage manquant ou à vérifier", "Renseigne ou contrôle les km A/R avant le match : l'indemnité kilométrique en dépend."],
+  [/adresse/i, "avant", "Adresse de la salle manquante", "Complète l'adresse pour l'itinéraire Waze et le calcul des km."],
+  [/coll[èe]gue/i, "avant", "Collègue manquant", "Ajoute ton collègue (nom, téléphone) pour le covoiturage et le contact d'avant-match."],
+  [/barème cd67|calculé via barème/i, "infos", "Barème CD67 appliqué", "Indemnité calculée d'après le barème : rien à faire, sauf si la convocation indique un autre montant."],
+  [/indemnité (estimée|: ia|fixe 3x3|manquante|à compléter)|journée ou demi-journée/i, "infos", "Indemnité estimée", "Compare avec la convocation ou la fiche de frais et corrige le montant si besoin."],
+  [/3x3/i, "infos", "Mission 3×3 à vérifier", "Lecture automatique incertaine : vérifie le format, le lieu et l'heure."],
+  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, CD67, Ligue, FFBB) dans le bloc paiement du match."]
+];
+function classerAlerte_(r) {
+  const ws = warningsAlerte_(r);
+  if (r._format === "Alerte") {
+    const w = ws[0] || "";
+    const t = ALERTE_TYPES_.find(x => x[0].test(w));
+    return { section: "regler", titre: t && t[1] === "regler" ? t[2] : "Import raté ou PDF non reconnu", faire: t && t[1] === "regler" ? t[3] : "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte.", warnings: ws };
+  }
+  let best = null;
+  ws.forEach(w => {
+    const t = ALERTE_TYPES_.find(x => x[0].test(w));
+    let sec = t ? t[1] : "infos";
+    if (sec === "avant" && r._isPast) sec = "infos";   // km / adresse / collègue sur un match passé : information seulement
+    const rang = sec === "regler" ? 0 : sec === "avant" ? 1 : 2;
+    if (!best || rang < best.rang) best = { rang, section: sec, titre: t ? t[2] : w, faire: t ? t[3] : "Vérifie ce point sur la fiche du match.", warnings: ws };
+  });
+  const aVerifier = cleanText(get(r, "Statut paiement")) === "À vérifier";
+  if (aVerifier && r._isPast && (!best || best.rang > 1)) best = { rang: 1, section: "avant", titre: "Paiement à vérifier", faire: "Le match est passé : confirme le montant reçu ou relance le payeur depuis le bloc paiement.", warnings: ws };
+  if (!best) best = { rang: 2, section: "infos", titre: aVerifier ? "Paiement à vérifier" : "À vérifier", faire: aVerifier ? "Statut à confirmer après le match." : "Vérifie ce point sur la fiche du match.", warnings: ws };
+  return best;
 }
 function motifAlerte_(r) {
-  if (r._format === "Alerte" || hasWarningReel(r)) {
-    const w = warningsReels(r).join(" | ");
-    return "Warning : " + (w || "import en alerte, à vérifier dans le Sheet");
-  }
-  if (cleanText(get(r, "Statut paiement")) === "À vérifier") return "Statut de paiement à vérifier";
-  const prevu = get(r, "Date attendue") || get(r, "Date paiement");
-  const du = toNumber(get(r, "Indemnité totale"));
-  const recu = toNumber(get(r, "Reçu recevant")) + toNumber(get(r, "Reçu visiteur")) || toNumber(get(r, "Montant reçu"));
-  return "Paiement en retard" + (prevu ? " (attendu le " + prevu + ")" : "") + " : reçu " + money(recu) + " sur " + money(du);
+  const c = classerAlerte_(r);
+  return c.titre + (c.warnings.length ? " : " + c.warnings.join(" | ") : "");
 }
 function alertesSplit_(rows) {
   const tr = alertesTraitees_();
@@ -5986,80 +6181,104 @@ function alertesSplit_(rows) {
   });
   return { actives, traitees };
 }
-
+/* Lignes « Alerte » au warning identique (chiffres normalisés) regroupées en une carte ×N. */
+function alertesGrouper_(rows) {
+  const groupes = [], parCle = {};
+  rows.forEach(r => {
+    if (r._format !== "Alerte") { groupes.push({ rows: [r], r }); return; }
+    const k = "A|" + warningsAlerte_(r).join("|").toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ").slice(0, 160);
+    if (parCle[k]) parCle[k].rows.push(r); else { parCle[k] = { rows: [r], r }; groupes.push(parCle[k]); }
+  });
+  return groupes;
+}
 function renderAlertes() {
   alertesSync_();
   const root = document.getElementById("alertes");
   const { actives, traitees } = alertesSplit_(state.filteredRows);
   const base = actives;
-
-  const aCorriger = [], aTrancher = [], enRetard = [];
-  base.forEach(r => {
-    if (r._format === "Alerte" || hasWarningReel(r)) aCorriger.push(r);
-    else if (cleanText(get(r, "Statut paiement")) === "À vérifier") aTrancher.push(r);
-    else if (paiementEnRetard(r)) enRetard.push(r);
-  });
-  const groupes = [
-    ["À corriger", "Imports ratés ou warnings de traitement à lever.", aCorriger, "corriger",
-      '<path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/>'],
-    ["Statut à trancher", "Missions dont le paiement reste à qualifier.", aTrancher, "trancher",
-      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
-    ["Retard de paiement", "Échéance dépassée : contrôle et éventuelle relance à effectuer manuellement.", enRetard, "retard",
-      '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 10v4"/><path d="M12 16h.01"/>']
+  const sections = { regler: [], avant: [], infos: [] };
+  base.forEach(r => sections[classerAlerte_(r).section].push(r));
+  const defs = [
+    ["regler", "À régler maintenant", "Imports ratés, convocations illisibles, trop-perçus : à traiter sans attendre.", '<path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/>'],
+    ["avant", "À faire avant le match", "Informations manquantes sur un match à venir, paiements à confirmer après un match passé.", '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ["infos", "Infos", "Calculs automatiques et lectures incertaines : à parcourir, rien d'urgent.", '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>']
   ];
-  const item = (r, traite) => `<div class="alerte-item">${renderMatchCard(r)}
-      <div class="alerte-motif"><span class="alerte-motif-txt">${escapeHtml(motifAlerte_(r))}</span>
-      <span class="alerte-btns">
-      ${r._format === "Alerte" ? `<button type="button" class="small-btn secondary alerte-danger" data-alerte-ignorer="${escapeHtml(get(r, "UID"))}" title="Mail hors sujet : sort définitivement de l'app (rien n'est supprimé du Sheet)">Ignorer définitivement</button>` : ""}
-      ${mission3x3Suspecte_(r) ? `<button type="button" class="small-btn secondary alerte-danger" data-mission-ecarter="${escapeHtml(get(r, "UID"))}" title="Import erroné : passe en Annulé et retire l'événement d'agenda">Écarter (import erroné)</button>` : ""}
-      <button type="button" class="small-btn secondary" data-alerte-${traite ? "retablir" : "traitee"}="${escapeHtml(idAlerte_(r))}">${traite ? "Rétablir" : "Marquer traité"}</button></span></div></div>`;
-
-  const vide = !base.length
-    ? empty("Aucune alerte active. Rien à corriger, rien à relancer.") : "";
+  const fmtDate = r => r._date ? r._date.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }).replace(".", "") : "";
+  const carte = (g, traite) => {
+    const r = g.r, n = g.rows.length, c = classerAlerte_(r);
+    const estLigneAlerte = r._format === "Alerte";
+    const uid = get(r, "UID");
+    const sujet = estLigneAlerte ? (cleanText(get(r, "Libellé compétition")) || cleanText(get(r, "Visiteur / événement")) || "Mail d'alerte") : (rencontreLabel(r) || "Mission");
+    const meta = estLigneAlerte ? [fmtDate(r), "mail d'alerte"].filter(Boolean).join(" · ") : [fmtDate(r), fmtHeure(get(r, "Heure/RDV")), (() => { try { return niveauCarte(r).badge; } catch (e) { return ""; } })(), get(r, "Ville")].filter(Boolean).join(" · ");
+    const autres = c.warnings.length > 1 ? c.warnings.slice(1) : [];
+    const ids = g.rows.map(x => idAlerte_(x));
+    return `<article class="al-card al-card--${c.section}${traite ? " is-traitee" : ""}" data-al-ids="${escapeHtml(ids.join("\u001f"))}">
+      <div class="al-main">
+        <div class="al-top"><span class="al-titre">${escapeHtml(c.titre)}</span>${n > 1 ? `<span class="al-n">×${n}</span>` : ""}</div>
+        <div class="al-sujet">${escapeHtml(sujet)}${n > 1 ? ` <span class="al-sujet-plus">et ${n - 1} autre${n > 2 ? "s" : ""} mail${n > 2 ? "s" : ""}</span>` : ""}</div>
+        ${meta ? `<div class="al-meta">${escapeHtml(meta)}</div>` : ""}
+        <div class="al-faire">${escapeHtml(c.faire)}</div>
+        ${c.warnings.length && (estLigneAlerte || c.titre !== c.warnings[0]) ? `<div class="al-detail">${escapeHtml(c.warnings[0])}${autres.length ? " · " + escapeHtml(autres.join(" · ")) : ""}</div>` : (autres.length ? `<div class="al-detail">${escapeHtml(autres.join(" · "))}</div>` : "")}
+      </div>
+      <div class="al-btns">
+        ${!estLigneAlerte ? `<button type="button" class="small-btn" data-al-ouvrir="${escapeHtml(uid)}">Ouvrir le match</button>` : ""}
+        <button type="button" class="small-btn secondary" data-al-${traite ? "retablir" : "traitee"}="${escapeHtml(ids.join("\u001f"))}">${traite ? "Rétablir" : "Marquer traité"}</button>
+        ${estLigneAlerte && !traite ? `<button type="button" class="small-btn secondary alerte-danger" data-al-ignorer="${escapeHtml(g.rows.map(x => get(x, "UID")).join("\u001f"))}" title="Mail hors sujet : sort définitivement de l'app (rien n'est supprimé du Sheet)">Ignorer${n > 1 ? " les " + n : ""}</button>` : ""}
+        ${!estLigneAlerte && mission3x3Suspecte_(r) && !traite ? `<button type="button" class="small-btn secondary alerte-danger" data-al-ecarter="${escapeHtml(uid)}" title="Import erroné : passe en Annulé et retire l'événement d'agenda">Écarter</button>` : ""}
+      </div>
+    </article>`;
+  };
+  const section = ([k, titre, sub, ico]) => {
+    const rows = sections[k];
+    const groupes = alertesGrouper_(rows.slice().sort(sortByDateAsc));
+    const ids = rows.map(r => idAlerte_(r));
+    const corps = groupes.length ? `<div class="al-list">${groupes.map(g => carte(g, false)).join("")}</div>` : `<p class="al-vide">Rien ici.</p>`;
+    const head = `<div class="alerte-bloc-head">
+        <span class="alerte-bloc-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ico}</svg></span>
+        <h2 class="section-title alerte-groupe">${escapeHtml(titre)} <span class="count">${groupes.length}</span></h2>
+        ${rows.length ? `<button type="button" class="small-btn secondary al-tout" data-al-tout="${escapeHtml(ids.join("\u001f"))}">Tout marquer traité</button>` : ""}
+      </div>
+      <div class="alerte-groupe-sub">${escapeHtml(sub)}</div>`;
+    if (k === "infos") {
+      if (!rows.length) return "";
+      return `<details class="alerte-bloc alerte-bloc--infos al-fold" data-panel="alertes-infos"${PASSES_OUVERTS["alertes-infos"] ? " open" : ""}>
+        <summary class="al-fold-sum">${head}</summary>${corps}</details>`;
+    }
+    return `<section class="alerte-bloc alerte-bloc--${k}">${head}${corps}</section>`;
+  };
+  const nbUrgent = sections.regler.length + sections.avant.length;
   root.innerHTML = `
     <h2 class="section-title">Alertes <span class="count">${base.length}</span></h2>
-    ${vide}
-    ${groupes.filter(g => g[2].length).map(g => `
-      <section class="alerte-bloc alerte-bloc--${g[3]}">
-        <div class="alerte-bloc-head">
-          <span class="alerte-bloc-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${g[4]}</svg></span>
-          <h2 class="section-title alerte-groupe">${escapeHtml(g[0])} <span class="count">${g[2].length}</span></h2>
-        </div>
-        <div class="alerte-groupe-sub">${escapeHtml(g[1])}</div>
-        <div class="cards">${g[2].slice().sort(sortByDateAsc).map(r => item(r, false)).join("")}</div>
-      </section>
-    `).join("")}
-    ${traitees.length ? foldable_("Alertes traitées", `<div class="cards">${traitees.slice().sort(sortByDateAsc).map(r => item(r, true)).join("")}</div>`, { count: traitees.length }) : ""}`;
-  attachCardListeners(root);
-  attachPaymentListeners(root);
-  attachContactListeners(root);
+    ${!base.length ? empty("Aucune alerte active. Rien à corriger, rien à compléter.") : (!nbUrgent ? `<p class="al-ok">Rien d'urgent : seules des informations sont disponibles ci-dessous.</p>` : "")}
+    ${defs.map(section).join("")}
+    ${traitees.length ? foldable_("Alertes traitées", `<div class="al-list">${alertesGrouper_(traitees.slice().sort(sortByDateAsc)).map(g => carte(g, true)).join("")}</div>`, { count: traitees.length }) : ""}`;
+  attachPastToggle(root);
   const maj = () => { renderAlertes(); renderTabBadges_(); };
-  root.querySelectorAll("[data-alerte-traitee]").forEach(b => b.addEventListener("click", () => {
-    const id = b.getAttribute("data-alerte-traitee");
-    const r = state.filteredRows.find(x => idAlerte_(x) === id);
-    if (r) { alertesSetTraitee_(id, sigAlerte_(r)); maj(); }
-  }));
-  root.querySelectorAll("[data-alerte-retablir]").forEach(b => b.addEventListener("click", () => {
-    alertesSetTraitee_(b.getAttribute("data-alerte-retablir"), null); maj();
-  }));
-  const nettoyer = (b, action, question) => b.addEventListener("click", async () => {
-    const uid = b.getAttribute(action === "alerte.ignorer" ? "data-alerte-ignorer" : "data-mission-ecarter");
-    if (!uid || !confirm(question)) return;
+  const idsDe = v => String(v || "").split("\u001f").filter(Boolean);
+  root.querySelectorAll("[data-al-ouvrir]").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.getAttribute("data-al-ouvrir"))));
+  const traiter = ids => { ids.forEach(id => { const r = state.filteredRows.find(x => idAlerte_(x) === id); if (r) alertesSetTraitee_(id, sigAlerte_(r)); }); maj(); };
+  root.querySelectorAll("[data-al-traitee]").forEach(b => b.addEventListener("click", () => traiter(idsDe(b.getAttribute("data-al-traitee")))));
+  root.querySelectorAll("[data-al-tout]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); const ids = idsDe(b.getAttribute("data-al-tout")); if (ids.length && confirm("Marquer " + ids.length + " alerte(s) comme traitée(s) ?")) traiter(ids); }));
+  root.querySelectorAll("[data-al-retablir]").forEach(b => b.addEventListener("click", () => { idsDe(b.getAttribute("data-al-retablir")).forEach(id => alertesSetTraitee_(id, null)); maj(); }));
+  const nettoyer = (b, action, uids, question) => b.addEventListener("click", async () => {
+    if (!uids.length || !confirm(question)) return;
     b.disabled = true;
     try {
-      const res = await jsonp(action, { uid });
-      if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
-      if (!res.result) throw new Error("Apps Script b19 pas encore déployé");
-      remplacerLigne_(uid, res.row);
-      setStatus(action === "alerte.ignorer" ? "Alerte ignorée" : "Mission écartée", "ok");
+      for (const uid of uids) {
+        const res = await jsonp(action, { uid });
+        if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+        if (!res.result) throw new Error("Apps Script b19 pas encore déployé");
+        remplacerLigne_(uid, res.row);
+      }
+      setStatus(action === "alerte.ignorer" ? (uids.length > 1 ? uids.length + " alertes ignorées" : "Alerte ignorée") : "Mission écartée", "ok");
       renderAll();
     } catch (err) {
       b.disabled = false;
       setStatus("Erreur : " + err.message + (/inconnue|unknown/i.test(err.message) ? " (code.gs b18 pas encore déployé)" : ""), "error");
     }
   });
-  root.querySelectorAll("[data-alerte-ignorer]").forEach(b => nettoyer(b, "alerte.ignorer", "Ignorer définitivement cette alerte ? Elle sortira de l'app (la ligne reste dans le Sheet, statut « Ignoré »)."));
-  root.querySelectorAll("[data-mission-ecarter]").forEach(b => nettoyer(b, "mission.ecarter", "Écarter cette mission ? Elle passe en « Annulé » et son événement d'agenda est supprimé."));
+  root.querySelectorAll("[data-al-ignorer]").forEach(b => { const u = idsDe(b.getAttribute("data-al-ignorer")); nettoyer(b, "alerte.ignorer", u, (u.length > 1 ? "Ignorer définitivement ces " + u.length + " alertes ?" : "Ignorer définitivement cette alerte ?") + " Elle(s) sortira(ont) de l'app (la ligne reste dans le Sheet, statut « Ignoré »)."); });
+  root.querySelectorAll("[data-al-ecarter]").forEach(b => nettoyer(b, "mission.ecarter", [b.getAttribute("data-al-ecarter")], "Écarter cette mission ? Elle passe en « Annulé » et son événement d'agenda est supprimé."));
 }
 
 document.addEventListener("click", async e => {
@@ -7079,6 +7298,12 @@ function parseFrDate(value) {
 
 function formatDateShort(date) { return date ? date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : ""; }
 function formatMoney(v) { return (Number(v) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }); }
+/* b69 (C5) — montant « compact » pour les tuiles : 0 décimale si entier (« 1 234 € »), 2 sinon (« 41,50 € »). Les lignes gardent formatMoney (2 décimales). */
+function formatMoneyC(v) {
+  const n = Number(v) || 0;
+  const entier = Math.abs(n - Math.round(n)) < 0.005;
+  return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: entier ? 0 : 2, maximumFractionDigits: entier ? 0 : 2 }).replace(/\u202f/g, "\u00a0");
+}
 function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
 function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + suffix; }
 function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }

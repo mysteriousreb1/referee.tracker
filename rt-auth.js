@@ -298,7 +298,7 @@ const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, proced
    n'est plus la référence pour celles-ci). Hôtels (facture Drive), paiements,
    évaluations (IA) restent sur Apps Script. */
 const SB_ECRITURES = { addContact: 1, updateContact: 1, deleteContact: 1, addProcedure: 1, updateProcedure: 1, deleteProcedure: 1, addNiveau: 1, deleteNiveau: 1, addFormation: 1, deleteFormation: 1, addQcmSession: 1, deleteQcmSession: 1 };
-const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court"};
+const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court", "Alerte traitée": "alerte_traitee_sig"};
 const SB_DATES = { date_match: 1, date_paiement: 1, date_reception: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_attendue: 1 };
 const SB = {
   get session() { try { return JSON.parse(localStorage.getItem(SB_STORE) || "null"); } catch (e) { return null; } },
@@ -337,6 +337,15 @@ const SB = {
     const r = await this._fetch(SB_URL + "/auth/v1/user", { method: "PUT", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ password }) }, 15000);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.msg || j.error_description || j.error || ("Supabase HTTP " + r.status));
+    return j;
+  },
+  /* b69 — première connexion : le code à usage unique est validé par l'Edge « premiere-connexion » qui renvoie un
+     token_hash de récupération ; on l'échange ici contre une session (verifyOtp), puis l'arbitre choisit son mot de passe. */
+  async verifyOtp(token_hash, type) {
+    const r = await this._fetch(SB_URL + "/auth/v1/verify", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ type: type || "recovery", token_hash }) }, 15000);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) throw new Error(j.msg || j.error_description || j.error || "Code refusé");
+    this.save(j);
     return j;
   },
   /* b47 — e-mail lu dans le jeton d'accès courant (sans appel réseau). */
@@ -822,7 +831,29 @@ function buildLoginOverlay() {
       <input id="rtPwd" name="password" type="password" autocomplete="current-password" required>
       <button type="submit" id="rtLoginBtn">Se connecter</button>
       <div class="rt-login-msg" id="rtLoginMsg" role="status"></div>
+      <button type="button" class="rt-btn-ghost rt-login-first" id="rtFirstBtn">Ma première connexion</button>
       <button type="button" class="rt-link" id="rtForgotBtn">Mot de passe oublié ?</button>
+    </form>
+
+    <form class="rt-login-card" id="rtFirstForm" style="display:none" autocomplete="off">
+      <h1>Première connexion</h1>
+      <p class="rt-login-sub" id="rtFirstSub">Saisis l'e-mail de ton inscription et le code reçu par mail (format XXXX-XXXX).</p>
+      <div id="rtFirstStep1">
+        <label for="rtFirstEmail">E-mail de connexion</label>
+        <input id="rtFirstEmail" type="email" autocomplete="username" inputmode="email">
+        <label for="rtFirstCode">Code à usage unique</label>
+        <input id="rtFirstCode" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="9">
+        <button type="button" id="rtFirstGo">Vérifier le code</button>
+      </div>
+      <div id="rtFirstStep2" style="display:none">
+        <label for="rtFirstPwd">Choisis ton mot de passe</label>
+        <input id="rtFirstPwd" type="password" autocomplete="new-password" placeholder="12 caractères minimum">
+        <label for="rtFirstPwd2">Confirme-le</label>
+        <input id="rtFirstPwd2" type="password" autocomplete="new-password">
+        <button type="button" id="rtFirstDo">Créer mon mot de passe</button>
+      </div>
+      <div class="rt-login-msg" id="rtFirstMsg" role="status"></div>
+      <button type="button" class="rt-link" id="rtFirstBack">Retour à la connexion</button>
     </form>
 
     <form class="rt-login-card" id="rtResetForm" style="display:none" autocomplete="off">
@@ -925,6 +956,7 @@ function buildLoginOverlay() {
       .catch(err => msgReset(err.message || "Échec", true))
       .finally(() => { b.disabled = false; });
   });
+  cablerPremiereConnexion_();   // b69
 }
 
 /* b47 — arrivée par le lien de réinitialisation : formulaire « nouveau mot de passe ». */
@@ -1718,8 +1750,53 @@ const CONSENT = {
    (nom lu sur ses convocations, prénom, e-mail). Tant qu'il n'est pas validé,
    le moteur ne traite aucune convocation.
    ===================================================================== */
+/* b69 — « Ma première connexion » : code reçu par mail → Edge premiere-connexion → session → mot de passe → assistant. */
+function cablerPremiereConnexion_() {
+  const f = document.getElementById("rtFirstForm"), lf = document.getElementById("rtLoginForm"), rf = document.getElementById("rtResetForm");
+  if (!f) return;
+  const msg = (t, err) => { const m = document.getElementById("rtFirstMsg"); if (m) { m.textContent = t; m.className = "rt-login-msg" + (err ? " is-error" : ""); } };
+  const montrer = on => { f.style.display = on ? "" : "none"; lf.style.display = on ? "none" : ""; if (rf) rf.style.display = "none"; if (on) setTimeout(() => { const e = document.getElementById("rtFirstEmail"); if (e) e.focus(); }, 50); };
+  document.getElementById("rtFirstBtn").addEventListener("click", () => montrer(true));
+  document.getElementById("rtFirstBack").addEventListener("click", () => montrer(false));
+  const codeEl = document.getElementById("rtFirstCode");
+  codeEl.addEventListener("input", () => { let v = codeEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8); if (v.length > 4) v = v.slice(0, 4) + "-" + v.slice(4); codeEl.value = v; });
+  document.getElementById("rtFirstGo").addEventListener("click", async () => {
+    const b = document.getElementById("rtFirstGo"), email = document.getElementById("rtFirstEmail").value.trim().toLowerCase(), code = codeEl.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return msg("E-mail invalide.", true);
+    if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return msg("Le code a la forme XXXX-XXXX (voir le mail « Ton compte est prêt »).", true);
+    b.disabled = true; msg("Vérification du code…");
+    try {
+      const r = await fetch(SB_URL + "/functions/v1/premiere-connexion", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email, code }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || !j.token_hash) throw new Error(j.error === "TROP_ESSAIS" ? "Trop d'essais : réessaie dans 15 minutes." : "Code refusé : vérifie l'e-mail et le code, ou demande un nouveau code à l'administrateur.");
+      await SB.verifyOtp(j.token_hash, "recovery");
+      Session.save("", email);
+      try { localStorage.setItem("rt_premiere_connexion", "1"); } catch (e) {}
+      document.getElementById("rtFirstStep1").style.display = "none"; document.getElementById("rtFirstStep2").style.display = "";
+      msg("Code accepté. Choisis maintenant ton mot de passe."); setTimeout(() => { const p = document.getElementById("rtFirstPwd"); if (p) p.focus(); }, 50);
+    } catch (e) { msg(e.message || "Échec", true); }
+    finally { b.disabled = false; }
+  });
+  document.getElementById("rtFirstDo").addEventListener("click", async () => {
+    const b = document.getElementById("rtFirstDo"), p1 = document.getElementById("rtFirstPwd").value, p2 = document.getElementById("rtFirstPwd2").value;
+    if (p1.length < 12) return msg("12 caractères minimum.", true);
+    if (!/[A-Z]/.test(p1) || !/[a-z]/.test(p1) || !/\d/.test(p1)) return msg("Au moins une majuscule, une minuscule et un chiffre.", true);
+    if (p1 !== p2) return msg("Les deux mots de passe ne correspondent pas.", true);
+    b.disabled = true; msg("Enregistrement…");
+    try {
+      const u = await SB.setPassword(p1);
+      Session.save("", (u && u.email) || SB.emailDuJeton() || "");
+      msg("Mot de passe créé. Bienvenue !");
+      setTimeout(() => { hideLogin(); startApp(); }, 600);
+    } catch (e) { msg(e.message || "Échec", true); b.disabled = false; }
+  });
+}
+
 const ONBOARD = {
-  etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5" }, sug: null, reception: "",
+  etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
+  N_ETAPES: 6,   // b69 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 notifications
+  COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
+  LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
   NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Régional 3", "Régional 2 – JPR Rouge", "Régional 1", "Championnat de France", "Haut niveau / Fédéral"],
   ouvrir() {
     if (document.getElementById("rtOnb")) return;
@@ -1730,23 +1807,26 @@ const ONBOARD = {
     document.getElementById("rtOnbNext").addEventListener("click", () => this.suivant());
     try { const p = (Profil && Profil.config && Profil.config.profil) || {}; ["nom_ffbb", "niveau", "adresse", "code_postal", "ville"].forEach(k => { if (p[k]) this.data[k] = p[k]; }); } catch (e) {}
     this.data.prenom = (window.RT_AUTH && window.RT_AUTH.prenom) || "";
-    SB.get("profils?select=prenom,adresse_reception&limit=1").then(l => { const p = (l && l[0]) || {}; if (p.prenom && !this.data.prenom) this.data.prenom = p.prenom; this.reception = p.adresse_reception || ""; if (this.etape === 0 || this.etape === 3) this.rendre(); }).catch(() => {});
+    SB.get("profils?select=prenom,adresse_reception,zones&limit=1").then(l => { const p = (l && l[0]) || {}; if (p.prenom && !this.data.prenom) this.data.prenom = p.prenom; this.reception = p.adresse_reception || ""; const z = p.zones || {}; if (z.cd) this.data.zcd = z.cd; if (z.ligue) this.data.zligue = z.ligue; if (z.cf !== undefined) this.data.zcf = !!z.cf; if (this.etape === 0 || this.etape === 3 || this.etape === 4) this.rendre(); }).catch(() => {});
+    try { const z = Profil && Profil.config && Profil.config.profil && Profil.config.profil.zones; if (z && z.cd) { this.data.zcd = z.cd; this.data.zligue = z.ligue || ""; this.data.zcf = !!z.cf; } } catch (e) {}
     jsonp("onboarding.suggestions").then(r => { this.sug = (r && r.data) || { noms: [] }; if (!this.data.nom_ffbb && this.sug.noms && this.sug.noms[0]) this.data.nom_ffbb = this.sug.noms[0].nom; if (this.sug.prenom && !this.data.prenom) this.data.prenom = this.sug.prenom; if (this.etape === 0) this.rendre(); }).catch(() => { this.sug = { noms: [] }; if (this.etape === 0) this.rendre(); });
     this.aller(0);
   },
   champ(id, label, val, extra) { return '<div class="rt-field"><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + esc(val || "") + '" ' + (extra || "") + '></div>'; },
   lire() {
     const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
-    const m = { onbNom: "nom_ffbb", onbPrenom: "prenom", onbNiveau: "niveau", onbAdr: "adresse", onbCp: "code_postal", onbVille: "ville", onbVnom: "vnom", onbConso: "conso", onbCv: "cv" };
+    const m = { onbNom: "nom_ffbb", onbPrenom: "prenom", onbNiveau: "niveau", onbAdr: "adresse", onbCp: "code_postal", onbVille: "ville", onbVnom: "vnom", onbConso: "conso", onbCv: "cv", onbZcd: "zcd", onbZligue: "zligue" };
     Object.keys(m).forEach(id => { const x = v(id); if (x !== undefined) this.data[m[id]] = x; });
+    const cf = document.getElementById("onbZcf"); if (cf) this.data.zcf = !!cf.checked;
+    const lig = document.getElementById("onbZligueOn"); if (lig && !lig.checked) this.data.zligue = "";
   },
-  aller(n) { this.lire(); this.etape = Math.max(0, Math.min(4, n)); this.rendre(); },
+  aller(n) { this.lire(); this.etape = Math.max(0, Math.min(this.N_ETAPES - 1, n)); this.rendre(); },
   rendre() {
     const D = this.data, e = this.etape, b = document.getElementById("rtOnbBody"); if (!b) return;
-    document.getElementById("rtOnbProg").innerHTML = [0, 1, 2, 3, 4].map(i => '<span class="' + (i <= e ? "on" : "") + '"></span>').join("");
+    document.getElementById("rtOnbProg").innerHTML = Array.from({ length: this.N_ETAPES }, (_, i) => '<span class="' + (i <= e ? "on" : "") + '"></span>').join("");
     document.getElementById("rtOnbMsg").textContent = "";
     document.getElementById("rtOnbPrev").style.visibility = e === 0 ? "hidden" : "visible";
-    document.getElementById("rtOnbNext").textContent = e === 4 ? "Terminer" : "Suivant";
+    document.getElementById("rtOnbNext").textContent = e === this.N_ETAPES - 1 ? "Terminer" : "Suivant";
     if (e === 0) {
       const s = this.sug;
       const chips = !s ? '<p class="rt-help">Lecture de tes convocations…</p>' : (s.noms && s.noms.length ? '<p class="rt-help">Noms lus sur tes ' + s.convocations + ' dernière(s) convocation(s) — touche le tien :</p><div class="rt-onb-chips">' + s.noms.map(x => '<button type="button" class="rt-chip" data-nom="' + esc(x.nom) + '">' + esc(x.nom) + '</button>').join("") + '</div>' : '<p class="rt-help">Aucune convocation reçue pour l\'instant : saisis ton nom tel qu\'il figure sur tes convocations.</p>');
@@ -1766,6 +1846,15 @@ const ONBOARD = {
         this.champ("onbConso", "Consommation (L/100 km)", D.conso, 'inputmode="decimal"') +
         this.champ("onbCv", "Puissance fiscale (CV, sur la carte grise)", D.cv, 'inputmode="numeric"');
     } else if (e === 3) {
+      const D2 = this.data, opt = (l, v) => l.map(x => '<option value="' + x[0] + '"' + (x[0] === v ? " selected" : "") + '>' + esc(x[1]) + '</option>').join("");
+      b.innerHTML = '<h2>Qui te paie ?</h2><p>Tes désignations viennent de trois niveaux. Choisis les tiens : l\'app applique les bons barèmes et les bonnes périodes de paiement.</p>' +
+        '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>Comité départemental</strong><span class="rt-tag">obligatoire</span></div><p class="rt-help">Championnats départementaux, 3x3, jeunes. Payé par le comité ou le club selon la rencontre.</p><select id="onbZcd">' + opt(this.COMITES, D2.zcd) + '</select></div>' +
+        '<div class="rt-onb-zone' + (D2.zligue ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZligueOn"' + (D2.zligue ? " checked" : "") + '> <strong>Ligue régionale</strong></label><span class="rt-tag">arbitre régional</span></div><p class="rt-help">RM2 / RF2 / PNM / PNF, U15-U18 régionaux… Payé par la ligue par virement, par périodes.</p><select id="onbZligue"' + (D2.zligue ? "" : " disabled") + '>' + opt(this.LIGUES, D2.zligue || "LRGEB") + '</select></div>' +
+        '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la FFBB par virement.</p></div>';
+      const lo = document.getElementById("onbZligueOn"), ls = document.getElementById("onbZligue");
+      lo.addEventListener("change", () => { ls.disabled = !lo.checked; lo.closest(".rt-onb-zone").classList.toggle("is-on", lo.checked); if (lo.checked && !ls.value) ls.value = "LRGEB"; });
+      document.getElementById("onbZcf").addEventListener("change", ev => ev.target.closest(".rt-onb-zone").classList.toggle("is-on", ev.target.checked));
+    } else if (e === 4) {
       const adr = this.reception || "(adresse communiquée par l'administrateur)";
       b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations FFBB vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
         '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : ffbb » → Transférer.</p></details>' +
@@ -1785,28 +1874,74 @@ const ONBOARD = {
     if (e === 0 && String(D.nom_ffbb).trim().split(/\s+/).filter(w => w.length >= 2).length < 2) return "Indique ton NOM et ton PRÉNOM comme sur tes convocations.";
     if (e === 1 && (!D.adresse || !/^\d{5}$/.test(D.code_postal) || !D.ville)) return "Adresse incomplète (rue, code postal à 5 chiffres, ville).";
     if (e === 2) { const c = Number(String(D.conso).replace(",", ".")), v = Number(D.cv); if (!(c > 2 && c < 30)) return "Consommation entre 2 et 30 L/100 km."; if (!(v >= 1 && v <= 60)) return "Puissance fiscale entre 1 et 60 CV."; }
+    if (e === 3 && !D.zcd) return "Choisis ton comité départemental.";
     return "";
   },
   async suivant() {
     this.lire();
     const err = this.valider(); const msg = document.getElementById("rtOnbMsg");
     if (err) { msg.textContent = err; return; }
-    if (this.etape < 4) return this.aller(this.etape + 1);
+    if (this.etape < this.N_ETAPES - 1) return this.aller(this.etape + 1);
     const bt = document.getElementById("rtOnbNext"); bt.disabled = true; msg.textContent = "Enregistrement…";
     const D = this.data;
     try {
-      const r = await jsonp("onboarding.save", { profil: { nom_ffbb: D.nom_ffbb, niveau: D.niveau, adresse: D.adresse, code_postal: D.code_postal, ville: D.ville }, vehicule: { nom: D.vnom, conso: D.conso, cv: D.cv }, prenom: D.prenom });
+      const r = await jsonp("onboarding.save", { profil: { nom_ffbb: D.nom_ffbb, niveau: D.niveau, adresse: D.adresse, code_postal: D.code_postal, ville: D.ville, zones: { cd: D.zcd, ligue: D.zligue || "", cf: !!D.zcf } }, vehicule: { nom: D.vnom, conso: D.conso, cv: D.cv }, prenom: D.prenom });
       if (!r || r.success === false) throw new Error((r && r.error) || "Enregistrement refusé");
       if (r.config) { Profil.config = r.config; try { localStorage.setItem(CFG_KEY, JSON.stringify(r.config)); } catch (e) {} }
       if (D.prenom) window.RT_AUTH.prenom = D.prenom;
       document.getElementById("rtOnb").remove();
       try { setStatus("Profil enregistré : tes convocations vont être lues dans les 10 minutes.", "ok"); } catch (e) {}
+      setTimeout(() => { try { TOUR.ouvrir(); } catch (e) {} }, 400);   // b69 : visite guidée obligatoire une fois
     } catch (e) {
       bt.disabled = false;
       // Erreur sur une étape précise → on y retourne.
       if (/NOM/.test(e.message)) this.aller(0); else if (/[Aa]dresse/.test(e.message)) this.aller(1); else if (/Consommation|Puissance/.test(e.message)) this.aller(2);
       document.getElementById("rtOnbMsg").textContent = e.message;
     }
+  }
+};
+
+/* b69 — visite guidée (obligatoire une fois après la première connexion, relançable depuis Mon profil). */
+const TOUR = {
+  etape: 0,
+  obligatoire() { try { return localStorage.getItem("rt_premiere_connexion") === "1"; } catch (e) { return false; } },
+  etapes() {
+    const tel = window.innerWidth < 768;
+    return [
+      { cible: null, titre: "Bienvenue dans Referee Tracker", texte: "Une minute pour voir l'essentiel. Tout ce que tu vois est calculé à partir de tes convocations : tu n'as rien à saisir." },
+      { cible: '.tab[data-tab="accueil"]', titre: "Accueil", texte: "Ton prochain match en grand (RDV, salle, collègue, itinéraire), les matchs du week-end et les chiffres de la saison." },
+      { cible: '.tab[data-tab="matchs"]', titre: "Matchs", texte: "Chaque convocation lue automatiquement : touche une carte pour le détail, Waze, le collègue, le code e-Marque, le classement des équipes." },
+      { cible: '.tab[data-tab="paiements"]', titre: tel ? "Argent" : "Paiements", texte: "Ce qu'on te doit, par qui et pour quand. Quand l'argent arrive, marque-le reçu : les retards se calculent tout seuls." },
+      { cible: tel ? "#tabMoreBtn" : '.tab[data-tab="alertes"]', titre: tel ? "Plus" : "Alertes", texte: (tel ? "Alertes, hôtel, QCM, règlement, statistiques, mon espace : tout le reste est ici. " : "") + "Les alertes te disent ce qui demande une action de ta part, rien d'autre." },
+      { cible: "#searchToggleBtn", titre: "Recherche", texte: "Un club, une salle, un collègue, une date : la loupe filtre la page en cours." },
+      { cible: "#rtProfileBtn", titre: "Mon profil", texte: "Ton adresse, tes véhicules, tes barèmes, l'agenda sur ton téléphone, les notifications et le bouton pour signaler un problème." },
+      { cible: null, titre: "Dernière chose", texte: "Transfère tes convocations vers ton adresse Referee Tracker (voir le mail « Ton compte est prêt »). Dès la première reçue, tout s'affiche ici dans les 10 minutes." }
+    ];
+  },
+  ouvrir() {
+    if (document.getElementById("rtTour")) return;
+    const d = document.createElement("div"); d.id = "rtTour"; d.className = "rt-tour"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = '<div class="rt-tour-card"><div class="rt-tour-prog" id="rtTourProg"></div><h2 id="rtTourTitre"></h2><p id="rtTourTexte"></p><div class="rt-tour-actions"><button type="button" class="rt-btn-ghost" id="rtTourPrev">Retour</button><button type="button" class="rt-btn" id="rtTourNext">Suivant</button></div></div>';
+    document.body.appendChild(d);
+    document.getElementById("rtTourPrev").addEventListener("click", () => this.aller(this.etape - 1));
+    document.getElementById("rtTourNext").addEventListener("click", () => { if (this.etape >= this.etapes().length - 1) this.fermer(); else this.aller(this.etape + 1); });
+    this.etape = 0; this.aller(0);
+  },
+  aller(n) {
+    const L = this.etapes(); this.etape = Math.max(0, Math.min(L.length - 1, n)); const e = L[this.etape];
+    document.querySelectorAll(".rt-tour-target").forEach(x => x.classList.remove("rt-tour-target"));
+    const c = e.cible ? document.querySelector(e.cible) : null;
+    if (c) { c.classList.add("rt-tour-target"); try { c.scrollIntoView({ block: "nearest", inline: "center" }); } catch (err) {} }
+    document.getElementById("rtTourProg").innerHTML = L.map((_, i) => '<span class="' + (i <= this.etape ? "on" : "") + '"></span>').join("");
+    document.getElementById("rtTourTitre").textContent = e.titre; document.getElementById("rtTourTexte").textContent = e.texte;
+    document.getElementById("rtTourPrev").style.visibility = this.etape === 0 ? "hidden" : "visible";
+    document.getElementById("rtTourNext").textContent = this.etape === L.length - 1 ? "C'est parti" : "Suivant";
+    const card = document.querySelector("#rtTour .rt-tour-card"); if (card) { const r = c ? c.getBoundingClientRect() : null; card.classList.toggle("is-top", !!(r && r.top > window.innerHeight / 2)); }
+  },
+  fermer() {
+    document.querySelectorAll(".rt-tour-target").forEach(x => x.classList.remove("rt-tour-target"));
+    const d = document.getElementById("rtTour"); if (d) d.remove();
+    try { localStorage.setItem("rt_tour_fait", "1"); localStorage.removeItem("rt_premiere_connexion"); } catch (e) {}
   }
 };
 
@@ -1840,6 +1975,7 @@ function startApp() {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
       if (res.home && res.home.lat) HOME = res.home;
       if (res.onboarding && res.onboarding.fait === false) setTimeout(() => ONBOARD.ouvrir(), 300);   // b59
+      else { let t = ""; try { t = localStorage.getItem("rt_tour_fait") || ""; } catch (e) {} if (!t && TOUR.obligatoire()) setTimeout(() => TOUR.ouvrir(), 800); }   // b69
       Profil.email = res.email || "";
       if (res.config) {
         Profil.config = res.config;
