@@ -1,7 +1,7 @@
 /* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur.  */
 /* =====================================================
    REFEREE TRACKER — Design system
-   Identité FFBB : bleu marine profond + rouge signal + or.
+   Identité : bleu marine profond + rouge signal + or.
    Display condensé sportif (Barlow Condensed), corps Inter,
    data en JetBrains Mono pour l'ancrage "chiffres".
    ===================================================== */
@@ -45,7 +45,7 @@
 /* ---------- Thème sombre (19/09/2026) ----------
    Activé via [data-theme="dark"] sur <html> (toggle JS + localStorage).
    Même hiérarchie de tokens que le clair : navy/rouge/or conservés pour
-   l'identité FFBB, seuls fond/surfaces/texte basculent en ardoise foncée. */
+   l'identité visuelle, seuls fond/surfaces/texte basculent en ardoise foncée. */
 :root[data-theme="dark"] {
   --navy-900: #0A1F44;
   --navy-800: #0E2A5C;
@@ -4258,3 +4258,127 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-tour-prog span.on { background: var(--gold, #F5B400); }
 .rt-tour-actions { display: flex; justify-content: space-between; gap: 10px; }
 .rt-tour-target { position: relative; z-index: 9001 !important; box-shadow: 0 0 0 4px var(--gold, #F5B400), 0 0 0 9px rgba(245,180,0,.35) !important; border-radius: 14px; background: var(--surface, #fff); }
+
+/* ---------- b70 — messages d'état : jamais sous la loupe, fermables à la main ---------- */
+@media (min-width: 768px) { #statusBar.status-bar { right: 96px; bottom: 26px; max-width: min(460px, calc(100vw - 140px)); } }
+#statusBar.status-bar { padding-right: 38px !important; }
+#statusBar .status-close { position: absolute; top: 4px; right: 6px; width: 26px; height: 26px; border: 0; background: transparent; color: inherit; opacity: .55; font-size: 18px; line-height: 26px; border-radius: 8px; cursor: pointer; }
+#statusBar .status-close:hover { opacity: 1; background: rgba(0,0,0,.08); }
+
+/* ---------- b70 — QCM : lecture confortable ---------- */
+.qz-q { max-width: 820px; margin: 0 auto; }
+.qz-top { max-width: 820px; margin: 0 auto; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.qz-bar { max-width: 820px; margin: 12px auto 22px; height: 6px; }
+.qz-qnum { font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); margin: 0 0 8px; }
+.qz-qnum span { color: var(--muted); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.qz-qtext { font-size: 18px; line-height: 1.55; font-weight: 600; margin: 0 0 18px; white-space: pre-line; }
+.qz-opts { border: 0; background: transparent; display: grid; gap: 10px; overflow: visible; }
+.qz-opt { border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); padding: 14px 16px; transition: border-color .15s, background .15s, transform .15s; }
+.qz-opt:first-child { border-top: 1.5px solid var(--line); }
+.qz-opt:hover { border-color: var(--navy-600); transform: translateY(-1px); }
+.qz-opt.is-selected { border-color: var(--navy-600); background: var(--surface-2); box-shadow: 0 0 0 3px rgba(22,59,122,.12); }
+.qz-opt.is-correct { border-color: var(--green); }
+.qz-opt.is-wrong { border-color: var(--red); }
+.qz-mark { width: 32px; height: 32px; font-size: 14px; }
+.qz-txt { font-size: 15.5px; }
+.qz-actions { max-width: 820px; margin: 20px auto 0; }
+.qz-actions #qzNext { min-width: 200px; padding: 12px 22px; font-size: 15px; border-radius: 12px; }
+.qz-fb { margin-top: 16px; border-radius: 14px; padding: 14px 18px; }
+@media (max-width: 767px) { .qz-qtext { font-size: 16.5px; } .qz-actions #qzNext { width: 100%; } }
+.tab.tab-masque, .tab-more-item.tab-masque { display: none !important; }
+.rt-h4 { margin: 14px 0 4px; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- b70 — Rapports : assistant de rédaction ---------- */
+.rapp-h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 800; color: var(--text); }
+.rapp-assist { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.rapp-assist-form .field { margin-bottom: 10px; }
+.rapp-assist-form textarea, .rapp-assist-form input[type=text] { width: 100%; }
+.rapp-assist-aide { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid var(--gold); background: var(--surface-2); border-radius: 0 10px 10px 0; font-size: 13.5px; color: var(--muted); }
+.rapp-assist-out { position: sticky; top: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); padding: 14px; }
+.rapp-assist-out-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.rapp-assist-out textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; }
+@media (max-width: 900px) { .rapp-assist { grid-template-columns: 1fr; } .rapp-assist-out { position: static; } }
+
+/* ---------- b70 — Contacts & Procédures : liste aérée, moins massive ---------- */
+.cc-grid { grid-template-columns: 1fr; gap: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
+.cc-card { border: 0; border-left: 0; border-radius: 0; border-bottom: 1px solid var(--line); padding: 12px 16px; align-items: center; gap: 14px; background: transparent; transition: background .12s; }
+.cc-card:last-child { border-bottom: 0; }
+.cc-card:hover { background: var(--surface-2); }
+.cc-card.imp-1, .cc-card.imp-2, .cc-card.imp-3, .cc-card.imp-4 { border-left: 0; }
+.cc-av { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; letter-spacing: .02em; color: var(--navy-700, #163B7A); background: rgba(22,59,122,.10); }
+:root[data-theme="dark"] .cc-av { color: #cfe0ff; background: rgba(120,160,255,.16); }
+.cc-main { gap: 2px; }
+.cc-titre strong { font-size: 14.5px; }
+.cc-sub { font-size: 12.5px; }
+.cc-note { font-size: 12px; }
+.cc-side { flex-direction: row; align-items: center; gap: 6px; }
+.ct-group { margin: 22px 0 8px; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.ct-group::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.pr-card .pr-det summary { font-size: 12px; }
+.cc-card.imp-1 .cc-titre::before, .cc-card.imp-2 .cc-titre::before, .cc-card.imp-3 .cc-titre::before { content: ""; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+.cc-card.imp-1 .cc-titre::before { background: #dc2626; } .cc-card.imp-2 .cc-titre::before { background: #f59e0b; } .cc-card.imp-3 .cc-titre::before { background: #3b82f6; }
+@media (min-width: 1100px) { .cc-grid { grid-template-columns: 1fr 1fr; } .cc-card:nth-last-child(-n+2) { border-bottom: 0; } .cc-card:nth-child(odd) { border-right: 1px solid var(--line); } }
+.comp-logo--france { background: linear-gradient(135deg, #1e3a8a, #0A1F44); color: #fff; }
+.comp-logo--pn { background: linear-gradient(135deg, #7c2d12, #9a3412); color: #fff; }
+.comp-logo--region { background: linear-gradient(135deg, #0f766e, #115e59); color: #fff; }
+.comp-logo--dep { background: linear-gradient(135deg, #475569, #334155); color: #fff; }
+.comp-logo--3x3 { background: linear-gradient(135deg, #b45309, #92400e); color: #fff; }
+
+/* b71 — relecture IA des rapports */
+.rapp-ia { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--border, rgba(127,127,127,.35)); border-radius: 12px; }
+.rapp-ia-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.rapp-ia-prop { margin-top: 10px; display: grid; gap: 10px; }
+.rapp-ia-bloc { padding: 10px 12px; border-radius: 10px; background: rgba(127,127,127,.08); }
+.rapp-ia-bloc ul { margin: 6px 0 0 18px; padding: 0; font-size: 13.5px; line-height: 1.45; }
+.rapp-ia-manques { border-left: 3px solid #F5B400; }
+.rapp-ia-prop textarea { width: 100%; font: inherit; font-size: 13.5px; line-height: 1.5; border-radius: 10px; padding: 10px; }
+
+/* b71 — grille régionale d'observation */
+.lg-card { padding: 16px; margin-top: 14px; }
+.lg-titre { margin: 0 0 4px; font-size: 16px; }
+.lg-fams { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.lg-fam { padding: 10px 12px; border-radius: 12px; background: rgba(127,127,127,.08); display: flex; flex-direction: column; gap: 2px; }
+.lg-fam-n { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.lg-fam strong { font-size: 22px; font-family: "JetBrains Mono", monospace; }
+.lg-fam strong small { font-size: 11px; opacity: .6; margin-left: 2px; }
+.lg-fam-d { font-size: 12px; font-weight: 700; }
+.lg-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 12px; }
+.lg-sum-b { padding: 10px 12px; border-radius: 10px; font-size: 13.5px; }
+.lg-sum-b ul { margin: 6px 0 0 16px; padding: 0; }
+.lg-sum-warn { background: rgba(245,180,0,.12); border-left: 3px solid #F5B400; }
+.lg-sum-ok { background: rgba(46,204,113,.1); border-left: 3px solid #2ecc71; }
+.lg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lg-table th, .lg-table td { padding: 7px 8px; border-bottom: 1px solid rgba(127,127,127,.18); vertical-align: middle; }
+.lg-table th.lg-c small { display: block; font-weight: 500; opacity: .7; font-size: 10.5px; }
+.lg-famrow td { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .7; padding-top: 12px; }
+.lg-num { display: inline-block; min-width: 22px; font-family: "JetBrains Mono", monospace; opacity: .6; }
+.lg-c { text-align: center; white-space: nowrap; font-weight: 600; }
+.lg-tb { color: #1f9d55; } .lg-b { color: #2b6cb0; } .lg-ame { color: #c27c0e; } .lg-ins { color: #c0392b; } .lg-na { opacity: .4; font-weight: 400; }
+.lg-up { color: #1f9d55; } .lg-down { color: #c0392b; } .lg-eq { opacity: .5; }
+@media (max-width: 900px) { .lg-fams { grid-template-columns: repeat(2, 1fr); } .lg-sum { grid-template-columns: 1fr; } }
+
+/* b71 — carte de France (assistant, zones de paiement) */
+.rt-carte { position: relative; margin: 0 auto 14px; max-width: 320px; }
+.rt-carte-svg { width: 100%; height: auto; display: block; }
+.rt-carte-halo rect { fill: transparent; transition: fill .4s; }
+.rt-carte.is-cf .rt-carte-halo rect { fill: rgba(245,180,0,.10); animation: rtCarteHalo 2.2s ease-in-out infinite; }
+@keyframes rtCarteHalo { 0%, 100% { fill: rgba(245,180,0,.06); } 50% { fill: rgba(245,180,0,.16); } }
+.rt-carte-deps path { fill: var(--surface-2, #e3e8f2); stroke: var(--bg, #fff); stroke-width: 1.2; cursor: pointer; opacity: 0; transform-origin: center; transform: scale(.96); animation: rtCarteIn .5s ease-out forwards; transition: fill .35s ease, stroke .35s; }
+@keyframes rtCarteIn { to { opacity: 1; transform: none; } }
+.rt-carte-deps path:hover { fill: #b9c6e4; }
+.rt-carte-deps path.is-lg { fill: #4f6fb5; }
+.rt-carte-deps path.is-cd { fill: #F5B400; stroke: #0A1F44; stroke-width: 1.6; animation: rtCarteIn .5s ease-out forwards, rtCartePulse 1.8s ease-in-out .5s infinite; }
+@keyframes rtCartePulse { 0%, 100% { fill: #F5B400; } 50% { fill: #ffd04d; } }
+.rt-carte.is-cf .rt-carte-deps path:not(.is-cd):not(.is-lg) { fill: #2f4c86; }
+.rt-carte-leg { display: flex; justify-content: center; gap: 10px; margin-top: 6px; font-size: 11px; }
+.rt-carte-l { opacity: .45; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(127,127,127,.3); transition: opacity .3s; }
+.rt-carte-l.on { opacity: 1; }
+.rt-carte-l-cd.on { background: #F5B400; color: #0A1F44; border-color: #F5B400; }
+.rt-carte-l-lg.on { background: #4f6fb5; color: #fff; border-color: #4f6fb5; }
+.rt-carte-l-cf.on { background: #2f4c86; color: #fff; border-color: #2f4c86; }
+:root[data-theme="dark"] .rt-carte-deps path { stroke: #0f172a; }
+
+/* b71 — collègues automatiques */
+.cc-auto { margin-top: 22px; padding-top: 10px; border-top: 1px dashed rgba(127,127,127,.3); }
+.cc-auto-sub { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+.cc-auto-card { border-style: dashed; }

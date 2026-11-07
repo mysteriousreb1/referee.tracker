@@ -1,4 +1,4 @@
-/* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
+/* © 2026 Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
 /* =====================================================
    REFEREE TRACKER — INTERFACE GITHUB PAGES
    Connectée à Google Apps Script via rt-auth.js (POST authentifié).
@@ -245,7 +245,7 @@ function setupMoreMenu_() {
   /* b18 — téléphone : barre du bas à 5 entrées (Accueil, 5×5, 3×3,
      Paiements, Plus). Hôtel et Alertes rejoignent le panneau « Plus ». */
   /* b19 — iPhone : Alertes et Export ne sont pas proposés (voir CSS). */
-  const SECONDARY = ["stats", "hotel", "qcm", "progression", "reglement", "monespace", "alertes", "export"];
+  const SECONDARY = ["stats", "hotel", "qcm", "progression", "rapports", "reglement", "monespace", "alertes", "export"];   // b70 : Rapports dans « Plus »
   // b53 — téléphone : 3×3 fusionné dans « Matchs », « Paiements » devient « Argent ».
   const t3 = nav.querySelector('.tab[data-tab="troisx3"]'); if (t3) t3.classList.add("tab-tel-hide");
   const lab = (t, txt) => { const e = nav.querySelector(`.tab[data-tab="${t}"] .tab-label`); if (e && estTel_()) e.textContent = txt; };
@@ -300,8 +300,9 @@ function setupMoreMenu_() {
 
 /* b19 — « Mon espace » regroupe e-Licence, Rapports, Procédures, Contacts
    (sous-onglets, comme Stats). Indispos supprimé. */
-const MON_ESPACE_ = [["elicence", "e-Licence"], ["rapports", "Rapports"], ["procedures", "Procédures"], ["contacts", "Contacts"]];
-const ONGLETS_MON_ESPACE_ = ["elicence", "rapports", "contacts"];
+// b70 — Rapports devient une page à part entière (barre gauche PC, menu « Plus » téléphone).
+const MON_ESPACE_ = [["elicence", "e-Licence"], ["procedures", "Procédures"], ["contacts", "Contacts"]];
+const ONGLETS_MON_ESPACE_ = ["elicence", "contacts"];
 function monEspaceBar_(actif) {
   return `<h2 class="section-title">Mon espace</h2><div class="tabs-mini me-tabs">${MON_ESPACE_.map(([k, l]) =>
     `<button type="button" class="tabs-mini-btn${k === actif ? " active" : ""}" data-me="${k}">${l}</button>`).join("")}</div>`;
@@ -440,17 +441,19 @@ const RECH = {
 };
 function setActiveTab(tab) {
   if (tab === "monespace") {
-    const d = state.meLast || "elicence";
+    const d = (state.meLast && state.meLast !== "rapports") ? state.meLast : "elicence";
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
   // b68 — PC : Export, Progression, Rapports, Estimation, Rapprochement ont leur entrée dans la barre gauche.
   // Estimation et Rapprochement restent des sous-vues de la page Analyse (même panneau), la barre surligne leur entrée.
   const demande = tab;
-  if (tab === "rapprochement" || tab === "estimation") { state.statsSubView = tab; tab = "stats"; }
+  if (tab === "rapprochement") { state.paiementsVue = estTel_() ? "paiements" : "rapprochement"; tab = "paiements"; }   // b70 : fonction de Paiements
+  else if (tab === "paiements" && demande === "paiements") state.paiementsVue = "paiements";
+  if (tab === "estimation") { state.statsSubView = tab; tab = "stats"; }
   else if (tab === "stats" && (state.statsSubView === "rapprochement" || state.statsSubView === "estimation" || ANALYSE_PC_.indexOf(state.statsSubView) >= 0)) state.statsSubView = "overview";
   if (estTel_() && tab === "stats" && state.statsSubView === "rapprochement") state.statsSubView = "overview";   // rapprochement = PC seulement
-  const navTab = (tab === "stats" && (demande === "rapprochement" || demande === "estimation")) ? demande : tab;
+  const navTab = (tab === "stats" && demande === "estimation") ? demande : tab;
   RECH.changerPage(state.activeTab, tab);   // b36 : filtres propres à chaque page
   state.activeTab = tab;
   const entreeDirecte = !!document.querySelector(`nav.tabs .tab[data-tab="${navTab}"]`);
@@ -515,9 +518,7 @@ function loadData() {
       const _plus = (fn, nom, ms) => setTimeout(() => { try { fn(); } catch (e) { console.warn(nom + " indisponible :", e); } }, ms);
       _plus(loadStats, "Stats serveur", 300);
       _plus(loadPrixCarburant, "Prix carburant", 1200);
-      _plus(loadClassements, "Classements FFBB", 2200);
-      _plus(loadEnjeux, "Enjeux FFBB", 3500);
-      _plus(chargerResultatsFfbb_, "Résultats FFBB (classements)", 1600);   // b55
+      if (CLASSEMENTS_ACTIFS_) { _plus(loadClassements, "Classements", 2200); _plus(loadEnjeux, "Enjeux", 3500); _plus(chargerResultatsFfbb_, "Résultats (classements)", 1600); }   // b70 : désactivé (source non autorisée, données périmées)
       // b19 : page Indispos supprimée (pas de connexion FBI possible).
     })
     .catch(showApiError)
@@ -1240,8 +1241,10 @@ function harmoniserTitres_() {
 function renderTab_(tab) {
   const e = TAB_RENDERERS_[tab];
   if (!e) return;
+  // b70 — page Analyse : la sous-vue affichée (zones masquées/visibles) est TOUJOURS resynchronisée,
+  // y compris pour « Vue d'ensemble » (avant : Estimation restait visible après un retour sur Analyse).
+  if (tab === "stats") { safeRender_(() => setStatsSubView_(state.statsSubView || "overview"), "stats", "Analyse"); return; }
   safeRender_(e[0], tab, e[1]);
-  if (tab === "stats" && (state.statsSubView || "overview") !== "overview") safeRender_(() => setStatsSubView_(state.statsSubView), "stats", "Analyse");   // b54 : sous-vue courante de la page Analyse
 }
 
 function renderAll() {
@@ -1281,12 +1284,17 @@ function renderTabBadges_() {
     sessEl.title = "Tu es connecté avec ce compte. La session reste ouverte tant que tu utilises le site (30 jours d'inactivité maximum).";
   }
 
-  const nbAlertes = alertesSplit_(rows).actives.length;
+  // b70 — le menu Alertes n'apparaît que s'il y a quelque chose d'important « À régler » ; le badge ne compte que ça.
+  const actives = alertesSplit_(rows).actives;
+  let nbAlertes = 0; try { nbAlertes = actives.filter(r => classerAlerte_(r).section === "regler").length; } catch (e) { nbAlertes = actives.length; }
   const badgeAlertes = document.getElementById("badgeAlertes");
   if (badgeAlertes) {
     badgeAlertes.textContent = nbAlertes > 99 ? "99+" : String(nbAlertes);
     badgeAlertes.hidden = nbAlertes === 0;
   }
+  const montrerAlertes = nbAlertes > 0 || state.activeTab === "alertes";
+  const tabAl = document.querySelector('nav.tabs .tab[data-tab="alertes"]'); if (tabAl) tabAl.classList.toggle("tab-masque", !montrerAlertes);
+  const plusAl = document.querySelector('.tab-more-item[data-goto="alertes"]'); if (plusAl) plusAl.classList.toggle("tab-masque", !montrerAlertes);
 
 
   const nbPaiements = rows.filter(paiementEnRetard).length;
@@ -1313,9 +1321,12 @@ const ANALYSE_VUES_ = { overview: ["statsSubOverviewBtn", "statsFinancier"], ava
   progression: ["statsSubProgressionBtn", "statsProgression"], rapprochement: ["statsSubRapprochementBtn", "statsRapprochement"], export: ["statsSubExportBtn", "statsExport"] };
 const ANALYSE_PC_ = ["progression", "rapprochement", "export"];   // b54 : sous-vues PC/tablette uniquement
 function setStatsSubView_(view) {
-  if (estTel_() && view === "rapprochement") view = "overview";
+  if (view === "rapprochement") { setActiveTab("rapprochement"); return; }   // b70 : dans Paiements
   if (view === "progression" || view === "export") { setActiveTab(view); return; }   // b68 : vrais onglets
   state.statsSubView = view;
+  // b70 — sur PC, Estimation et Rapprochement sont des pages à part entière (barre gauche) : pas de barre « Vue d'ensemble / Analyse avancée » au-dessus.
+  const barre = document.getElementById("statsSubTabs");
+  if (barre) barre.style.display = (!estTel_() && (view === "estimation" || view === "rapprochement")) ? "none" : "";
   Object.keys(ANALYSE_VUES_).forEach(k => {
     const b = document.getElementById(ANALYSE_VUES_[k][0]); if (b) b.classList.toggle("active", k === view);
     const z = document.getElementById(ANALYSE_VUES_[k][1]); if (z) z.style.display = k === view ? "" : "none";
@@ -1359,7 +1370,7 @@ function analyseInstallerSections_() {
 function renderRapprochementAnalyse_() {
   const h = document.getElementById("statsRapprochement"); if (!h) return;
   h.innerHTML = `<h2 class="section-title">Rapprochement bancaire</h2>
-    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (Ligue, CD67, FFBB, clubs).</p>
+    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (ligue, comité, fédération, clubs).</p>
     <div id="rbZone">${rbHtml_()}</div>`;
   attachRapprochement_(h);
 }
@@ -1815,31 +1826,7 @@ function logoSuivant_(img) {
    img/competitions/ est lue sur GitHub (API publique, 1 fois par jour, mise
    en cache). Déposer « DMU18.png » dans le dossier suffit : plus besoin de
    toucher au code. Le nom du fichier = le code de compétition. */
-(function logosDecouvrir_() {
-  const CLE = "rt_logos_v1";
-  const appliquer = noms => {
-    let ajout = 0;
-    (noms || []).forEach(n => {
-      const m = String(n).match(/^([A-Za-z0-9]+)\.(png|jpe?g|webp|svg)$/i);
-      if (m && !LOGOS_DISPONIBLES[m[1].toUpperCase()]) { LOGOS_DISPONIBLES[m[1].toUpperCase()] = n; ajout++; }
-    });
-    return ajout;
-  };
-  let cache = null;
-  try { cache = JSON.parse(localStorage.getItem(CLE) || "null"); } catch (e) {}
-  if (cache && cache.noms) appliquer(cache.noms);
-  if (cache && Date.now() - cache.t < 86400000) return;
-  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
-  const depot = m ? m[1] + "/" + (location.pathname.split("/")[1] || "") : "mysteriousreb1/referee.tracker";
-  fetch("https://api.github.com/repos/" + depot + "/contents/img/competitions", { cache: "no-store" })
-    .then(r => r.ok ? r.json() : null)
-    .then(j => {
-      if (!Array.isArray(j)) return;
-      const noms = j.filter(x => x.type === "file").map(x => x.name);
-      try { localStorage.setItem(CLE, JSON.stringify({ t: Date.now(), noms })); } catch (e) {}
-      if (appliquer(noms) && typeof renderAllSoon_ === "function") renderAllSoon_();
-    }).catch(() => {});
-})();
+/* b70 — découverte des logos retirée (aucun logo tiers). */
 
 /* b18 — Codes sans logo propre : on réutilise le logo de la famille. */
 const LOGOS_ALIAS_ = { "CMUT": "CPE", "ENCOU": "CPE" };
@@ -1847,17 +1834,9 @@ function logoCompetition(row) {
   const slug = slugCompetition(row);
   const alt = cleanText(get(row, "Libellé compétition")) || slug;
   if (!slug) return "";
-  const fichier = LOGOS_DISPONIBLES[slug] || LOGOS_DISPONIBLES[LOGOS_ALIAS_[slug]];
-  /* b18 — Logo absent du dépôt (DM4, DMU18, PRM…) : pastille texte directe.
-     Avant, le site essayait 12 variantes de nom à chaque affichage
-     → ~150 erreurs 404 par session. Ajouter le fichier dans
-     img/competitions/ ET dans LOGOS_DISPONIBLES pour qu'il s'affiche. */
-  if (!fichier) return `<span class="comp-logo comp-logo--txt" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
-  const cands = [fichier];
-  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
-               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
-               data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
-               loading="lazy" decoding="async">`;
+  // b70 — plus aucun logo de compétition (visuels appartenant à la fédération) : pastille texte uniforme, colorée par famille.
+  const fam = /^N[MF]/.test(slug) ? "france" : /^(PN|PR)[MF]/.test(slug) ? "pn" : /^R[MF]/.test(slug) ? "region" : /^D[MF]/.test(slug) ? "dep" : /3X3/.test(slug) ? "3x3" : "autre";
+  return `<span class="comp-logo comp-logo--txt comp-logo--${fam}" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
 }
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.
@@ -1977,7 +1956,7 @@ function renderMatchCard(row) {
    pour au moins une des 2 équipes (silencieux sinon — le module classement
    est neuf, les anciens matchs n'ont pas de code club enregistré). */
 function renderEnjeuClassement_(row) {
-  if (row._isPast) return "";
+  if (!CLASSEMENTS_ACTIFS_ || row._isPast) return "";
   const en = state.enjeux && state.enjeux[get(row, "UID")];
   const raisonTxt = (en && en.raison && !(en.rec || en.vis) && niveauRencontre(row) === "france")
     ? "" : "";   // b52 — plus de message technique quand le classement n'est pas disponible
@@ -2359,7 +2338,7 @@ function renderActions(row) {
     links.push(`<button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Contact fait" : "Contact fait"}</button>`);
   }
   if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
-    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
+    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">Portail officiels</a>`);
   }
   /* b19 — événement annulé à la dernière minute (sur place, 3x3 ou 5x5) :
      disponible 3 jours autour du match tant que rien n'a été payé. */
@@ -2389,7 +2368,7 @@ function paiementRegime_(row) {
 }
 
 function paiementPayeur_(regime) {
-  return ({ cd67: "CD67", region: "Région", federation: "FFBB" })[regime] || "Organisme payeur";
+  return ({ cd67: "CD67", region: "Région", federation: "Fédération" })[regime] || "Organisme payeur";
 }
 
 function dateInputValue_(v) {
@@ -2566,7 +2545,7 @@ function renderPaymentControl(row) {
         <form class="payment-regime-form" data-uid="${uid}">
           <select name="regime" aria-label="Régime de paiement">
             <option value="">Choisir le régime…</option>
-            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">FFBB</option>
+            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">Fédération</option>
             <option value="parts_egales">Deux clubs à parts égales</option><option value="recevante">Club recevant</option>
           </select>
           <button type="submit" class="small-btn">Valider</button>
@@ -2626,7 +2605,7 @@ function attachCardListeners(root) {
 /* b19 — 5 payeurs affichés. Clés internes inchangées pour le rapprochement
    bancaire (ffbb = CF séniors, club = clubs) ; « cfj » = CF jeunes, payés
    à parts égales par les 2 clubs (NMU15, NMU18, NFU15, NFU18). */
-const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67 (CD67)", ffbb: "CF Séniors (FFBB)", cfj: "CF Jeunes (2 clubs)", club: "Clubs (coupes, amicaux)" };
+const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67 (CD67)", ffbb: "CF Séniors (fédération)", cfj: "CF Jeunes (2 clubs)", club: "Clubs (coupes, amicaux)" };
 const PAYEURS_ORDRE_ = ["cd", "ligue", "ffbb", "cfj", "club"];
 function payeurAffiche_(r) {
   const c = rbClasse_(r);
@@ -2760,14 +2739,26 @@ function renderPaiements() {
     </details>`;
   };
   const retards = rows.filter(paiementEnRetard);
+  // b70 — le rapprochement bancaire est une fonction de la page Paiements (plus une page à part).
+  const vue = state.paiementsVue === "rapprochement" ? "rapprochement" : "paiements";
+  const barre = `<div class="tabs-mini" id="payVues"><button type="button" class="tabs-mini-btn${vue === "paiements" ? " active" : ""}" data-pay-vue="paiements">Paiements</button><button type="button" class="tabs-mini-btn${vue === "rapprochement" ? " active" : ""}" data-pay-vue="rapprochement">Rapprochement bancaire</button></div>`;
+  if (vue === "rapprochement") {
+    root.innerHTML = `${barre}<h2 class="section-title">Rapprochement bancaire</h2>
+    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (ligue, comité, fédération, clubs).</p>
+    <div id="rbZone">${rbHtml_()}</div>`;
+    attachRapprochement_(root);
+    root.querySelectorAll("[data-pay-vue]").forEach(b => b.addEventListener("click", () => { state.paiementsVue = b.dataset.payVue; renderPaiements(); }));
+    return;
+  }
   root.innerHTML = `
+    ${barre}
     <h2 class="section-title">Paiements</h2>
     <div class="kpi-grid pay-kpis">
       <div class="kpi hero pay-kpi-attente"><label>À percevoir</label><strong>${formatMoneyC(totalDu)}</strong><span class="sub">${rows.filter(r => (r._reste || 0) > 0).length} mission(s) jouées ou désignées, pas encore soldées · saison ${escapeHtml(state.selectedSeason || "")}</span></div>
       <div class="kpi"><label>Déjà reçu</label><strong>${formatMoneyC(totalRecu)}</strong><span class="sub">${rows.filter(r => (r._encaisse || 0) > 0).length} paiement(s) encaissé(s)${benevoles.length ? " · " + benevoles.length + " bénévole(s)" : ""}</span></div>
     </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
-    <div class="rb-pc-only pay-vers-analyse"><button type="button" class="small-btn secondary" data-goto-analyse="rapprochement">Rapprochement bancaire → page Analyse</button> <button type="button" class="small-btn secondary" data-goto-analyse="export">Export annuel → page Analyse</button></div>
+    <div class="rb-pc-only pay-vers-analyse"><button type="button" class="small-btn secondary" data-goto-analyse="export">Export annuel → page Export</button></div>
     <h2 class="section-title">Missions par statut</h2>
     ${retards.length ? bloc("En retard (échéance dépassée)", retards, false) : ""}
     ${order.filter(k => grouped[k]).map(status => bloc(status, grouped[status], false)).join("")}
@@ -2778,6 +2769,7 @@ function renderPaiements() {
   attachContactListeners(root);
   attachPastToggle(root);
   root.querySelectorAll("[data-goto-analyse]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.gotoAnalyse)));
+  root.querySelectorAll("[data-pay-vue]").forEach(b => b.addEventListener("click", () => { state.paiementsVue = b.dataset.payVue; renderPaiements(); }));
   attachAnalysePaiements_(root, rows);
 }
 
@@ -3308,7 +3300,7 @@ function rbTokensRow_(r) {
 }
 
 /* ---- Historique des virements pointés (feuille VIREMENTS_POINTES) ---- */
-const RB_CLS_LIB_ = { ligue: "Ligue", cd: "Comité", ffbb: "FFBB", club: "Clubs", mixte: "Mixte" };
+const RB_CLS_LIB_ = { ligue: "Ligue", cd: "Comité", ffbb: "Fédération", club: "Clubs", mixte: "Mixte" };
 async function rbChargerHist_() {
   try {
     const res = await jsonpFrais("bank.list");
@@ -3628,7 +3620,7 @@ function rbResoudreV2_(t, creances, pris, tolC) {
       else if (a.mode === "partie de période" && alts.filter(z => z.mode === "partie de période").length === 1) conf = a.manquent && a.manquent.length <= 1 ? "haute" : "moyenne";
       else if (alts.length === 1) conf = "moyenne";
       else conf = "ambigu";
-      explications.push("Payeur : " + ({ cd: "Comité 67", ligue: "Ligue (LRGEB)", ffbb: "FFBB" })[payeur.cls] + " (" + payeur.src + ")" + (a.periode ? " · échéance " + a.periode : "") + " · " + a.mode);
+      explications.push("Payeur : " + ({ cd: "Comité 67", ligue: "Ligue (LRGEB)", ffbb: "Fédération" })[payeur.cls] + " (" + payeur.src + ")" + (a.periode ? " · échéance " + a.periode : "") + " · " + a.mode);
       if (a.noteManque) explications.push(a.noteManque);
     }
   } else if (payeur.src === "anonyme") {
@@ -3946,7 +3938,7 @@ function renderCashFlow_(cf) {
       <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
       <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
     </div>
-    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
+    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la fédération, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
     ${spark}
     ${cfTableau_()}
         <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
@@ -4469,7 +4461,8 @@ async function evalQueueAvance_() {
   try {
     const base64 = await fileToBase64_(f);
     const res = await jsonp("evaluation.upload", { filename: f.name, mimeType: f.type || "application/pdf", base64 });
-    if (!res || !res.success) throw new Error((res && res.error) || "Erreur d'envoi");
+    // b70 — un moteur d'avant b70 répond sans « success » mais avec le résultat : on ne le compte pas en échec.
+    if (!res || (res.success === false) || (!res.success && !res.filename && !res.doublon)) throw new Error((res && res.error) || "Erreur d'envoi");
     const r = res.result || res;
     if (r.doublon) EVAL_QUEUE_.doublons.push(f.name);
     else EVAL_QUEUE_.faits.push({ nom: f.name, type: r.type, note: r.note20, match: r.matchLabel });
@@ -4611,6 +4604,49 @@ function buildEvalCharts_(evals) {
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 20, ticks: { stepSize: 5, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
 }
+/* ===================== b71 — GRILLE RÉGIONALE D'OBSERVATION (modèle 2026/2027) =====================
+   La fiche régionale comporte 20 critères numérotés, notés par mention. On la reconnaît à ses numéros
+   (≥ 15 critères « n. … »), on regroupe les critères en 5 familles et on suit chaque critère d'une
+   observation à l'autre : l'arbitre voit exactement quelles lignes progressent ou reculent. */
+const LRGEB_FAM_ = [
+  ["Jugement", [1, 2, 3, 4, 5]],
+  ["Gestion & relation", [6, 7, 8]],
+  ["Mécanique", [9, 10, 11, 12, 13]],
+  ["Communication & équipe", [14, 15, 16]],
+  ["Attitude & cohérence", [17, 18, 19, 20]]
+];
+const LRGEB_MENTIONS_ = [["insuffisant", 5, "ins"], ["ameliorer", 10, "ame"], ["tres bien", 20, "tb"], ["superieur", 20, "tb"], ["bien", 15, "b"], ["standard", 15, "b"]];
+function lrgebMention_(v) {
+  const t = String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  for (const [m, n, c] of LRGEB_MENTIONS_) if (t.includes(m)) return { n, c, lib: String(v).trim() };
+  const x = Number(String(v).replace(",", ".")); if (!isNaN(x) && x > 0 && x <= 20) return { n: x <= 5 ? x * 4 : x, c: x >= 16 ? "tb" : x >= 12 ? "b" : x >= 8 ? "ame" : "ins", lib: String(v).trim() };
+  return null;
+}
+function lrgebGrille_(ev) {
+  const out = {}; let n = 0;
+  (ev.grille || []).forEach(g => { const m = String(g.critere || "").match(/^\s*(\d{1,2})\s*[.)\-–]/); if (!m) return; const k = Number(m[1]); if (k < 1 || k > 20) return; out[k] = { critere: String(g.critere).replace(/^\s*\d{1,2}\s*[.)\-–]\s*/, ""), mention: lrgebMention_(g.valeur) }; n++; });
+  return n >= 15 ? out : null;
+}
+function renderLrgebGrille_(evals) {
+  const obs = (evals || []).map(ev => ({ ev, g: lrgebGrille_(ev) })).filter(x => x.g).sort((a, b) => (evalDate_(a.ev) || 0) - (evalDate_(b.ev) || 0));
+  if (!obs.length) return "";
+  const dern = obs.slice(-4);   // 4 dernières observations au modèle régional
+  const lib = k => { for (const o of dern) if (o.g[k]) return o.g[k].critere; return "Critère " + k; };
+  const cell = (o, k) => { const m = o.g[k] && o.g[k].mention; return m ? `<td class="lg-c lg-${m.c}" title="${escapeHtml(m.lib)}">${escapeHtml(m.lib.length > 14 ? m.lib.slice(0, 13) + "…" : m.lib)}</td>` : `<td class="lg-c lg-na">—</td>`; };
+  const tendance = k => { if (dern.length < 2) return ""; const a = dern[dern.length - 2].g[k], b = dern[dern.length - 1].g[k]; if (!a || !b || !a.mention || !b.mention) return ""; const d = b.mention.n - a.mention.n; return d > 0 ? `<span class="lg-up" title="en progrès">▲</span>` : d < 0 ? `<span class="lg-down" title="en recul">▼</span>` : `<span class="lg-eq" title="stable">=</span>`; };
+  const famScore = (o, nums) => { const v = nums.map(k => o.g[k] && o.g[k].mention ? o.g[k].mention.n : null).filter(x => x !== null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null; };
+  const der = dern[dern.length - 1];
+  const aTravailler = Object.keys(der.g).map(Number).filter(k => der.g[k].mention && der.g[k].mention.n <= 10).map(k => lib(k));
+  const progres = dern.length >= 2 ? Object.keys(der.g).map(Number).filter(k => { const a = dern[dern.length - 2].g[k], b = der.g[k]; return a && b && a.mention && b.mention && b.mention.n > a.mention.n; }).map(k => lib(k)) : [];
+  return `<div class="table-card lg-card">
+    <div class="lg-head"><div><h3 class="lg-titre">Grille régionale d'observation</h3><p class="card-sub">Modèle 2026/2027 · 20 critères · ${obs.length} observation${obs.length > 1 ? "s" : ""} au même modèle${obs.length > 4 ? " (4 dernières affichées)" : ""}. Lecture : une ligne par critère, une colonne par observation, flèche = évolution entre les deux dernières.</p></div></div>
+    <div class="lg-fams">${LRGEB_FAM_.map(([nom, nums]) => { const v = famScore(der, nums), prev = dern.length >= 2 ? famScore(dern[dern.length - 2], nums) : null; return `<div class="lg-fam"><span class="lg-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : v.toFixed(1)}<small>/20</small></strong>${prev !== null && v !== null ? `<span class="lg-fam-d ${v > prev ? "lg-up" : v < prev ? "lg-down" : "lg-eq"}">${v > prev ? "+" : ""}${(v - prev).toFixed(1)}</span>` : ""}</div>`; }).join("")}</div>
+    ${aTravailler.length || progres.length ? `<div class="lg-sum">${aTravailler.length ? `<div class="lg-sum-b lg-sum-warn"><b>À travailler (dernière observation)</b><ul>${aTravailler.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}${progres.length ? `<div class="lg-sum-b lg-sum-ok"><b>En progrès depuis l'observation précédente</b><ul>${progres.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}</div>` : ""}
+    <div class="table-wrap"><table class="lg-table"><thead><tr><th>Critère</th>${dern.map(o => `<th class="lg-c">${escapeHtml((o.ev.dateEval || o.ev.dateMatch || "").slice(0, 5) || "?")}<small>${escapeHtml(o.ev.championnat || "")}</small></th>`).join("")}<th class="lg-c">Évol.</th></tr></thead>
+    <tbody>${LRGEB_FAM_.map(([nom, nums]) => `<tr class="lg-famrow"><td colspan="${dern.length + 2}">${escapeHtml(nom)}</td></tr>` + nums.map(k => `<tr><td class="lg-lib"><span class="lg-num">${k}</span>${escapeHtml(lib(k))}</td>${dern.map(o => cell(o, k)).join("")}<td class="lg-c">${tendance(k)}</td></tr>`).join("")).join("")}</tbody></table></div>
+    <p class="card-sub" style="margin:8px 0 0">Mentions telles qu'écrites par l'observateur. Barème indicatif : Insuffisant 5 · À améliorer 10 · Bien 15 · Très bien 20.</p>
+  </div>`;
+}
 /* b24 — carte d'évaluation : note telle qu'écrite, détails structurés, ré-analyse. */
 function renderEvalCard_(ev) {
   const t = ev.type || "Observation de match"; const estMatch = t === "Observation de match";
@@ -4748,6 +4784,7 @@ function renderProgression() {
 
     ${renderEvalSynthese_(evaluations)}
     ${renderPlanDeveloppement_(evaluations)}
+    ${renderLrgebGrille_(evaluations)}
     ${renderEvalCharts_(evaluations)}
 
     <div class="table-card ev-depot">
@@ -4802,7 +4839,7 @@ function renderProgression() {
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un niveau</span></span></summary>
       <div class="past-body">
-        <p class="card-sub" style="margin:0 0 10px">Copie les valeurs depuis le tableau "Niveaux" de ton extranet officiels FFBB.</p>
+        <p class="card-sub" style="margin:0 0 10px">Copie les valeurs depuis le tableau « Niveaux » de ton portail officiels.</p>
         <form id="niveauForm" class="toolbar" style="grid-template-columns: repeat(4, 1fr); align-items:end; margin-top:10px; row-gap:12px">
           <div class="field"><label for="niveauType">Type d'officiel</label><input id="niveauType" type="text" value="Arbitre" /></div>
           <div class="field"><label for="niveauNiveau">Niveau</label><input id="niveauNiveau" type="text" placeholder="Ex. Championnats de France Jeunes" required /></div>
@@ -5152,7 +5189,9 @@ function renderContactsPanel_() {
   const cle = c => String(tri === "nom" ? c.nom : tri === "role" ? c.role : tri === "championnat" ? c.championnat : c.organisation || "").trim();
   const cmp = (a, b) => String(cle(a) || "~").localeCompare(String(cle(b) || "~"), "fr", { sensitivity: "base" }) || String(a.nom || "").localeCompare(String(b.nom || ""), "fr", { sensitivity: "base" });
   filtres.sort(cmp);
-  const carte = c => `<article class="cc-card">
+  const ini = c => String(c.nom || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
+  const carte = c => `<article class="cc-card cc-row">
+      <span class="cc-av" aria-hidden="true">${escapeHtml(ini(c))}</span>
       <div class="cc-main">
         <div class="cc-titre"><strong>${escapeHtml(c.nom || "—")}</strong>${c.championnat ? `<span class="badge">${escapeHtml(c.championnat)}</span>` : ""}</div>
         <div class="cc-sub">${escapeHtml([c.role, c.organisation].filter(Boolean).join(" · ") || "—")}</div>
@@ -5171,6 +5210,7 @@ function renderContactsPanel_() {
       liste = groupes.map(g => `<h3 class="ct-group">${escapeHtml(g.t)} <span class="count">${g.l.length}</span></h3><div class="cc-grid">${g.l.map(carte).join("")}</div>`).join("");
     }
   } else liste = empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.");
+  const collegues = q ? "" : renderColleguesAuto_(contacts);
   return `
     <div class="cc-bar">
       <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.contactsSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
@@ -5180,7 +5220,52 @@ function renderContactsPanel_() {
       <input id="contactsSearchInput" type="search" placeholder="Rechercher un nom, un club, un numéro…" value="${escapeHtml(state.contactsSearch || "")}" aria-label="Rechercher" />
       <select id="contactsTriSel" aria-label="Trier par">${[["organisation", "Par organisation"], ["nom", "Par nom"], ["role", "Par rôle"], ["championnat", "Par championnat"]].map(o => `<option value="${o[0]}"${o[0] === tri ? " selected" : ""}>${o[1]}</option>`).join("")}</select>
     </div>
-    ${liste}`;
+    ${liste}
+    ${collegues}`;
+}
+/* ===================== b71 — FICHES COLLÈGUES AUTOMATIQUES =====================
+   Construites dans le navigateur depuis les convocations de l'arbitre (nom, rôle, téléphone du collègue
+   désigné) : nombre de rencontres ensemble, dernière, compétitions. Données déjà dans son espace, jamais
+   partagées ni agrégées entre comptes. Un clic « Ajouter » crée un vrai contact (modifiable, supprimable). */
+function colleguesDepuisConvocations_() {
+  const norm = n => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z\s-]/g, " ").replace(/\s+/g, " ").trim();
+  const par = {};
+  (state.allRows || []).forEach(r => {
+    if (!r._isActive || r._format === "Alerte") return;
+    const nom = String(get(r, "Collègue nom") || "").trim(); if (!nom || /pas encore|inconnu|^-+$/i.test(nom)) return;
+    const k = norm(nom); if (k.length < 3) return;
+    const c = par[k] = par[k] || { nom, tel: "", role: "", n: 0, derniere: null, comps: {}, prochaine: null };
+    c.n++;
+    const tel = String(get(r, "Collègue téléphone") || "").replace(/[^\d+]/g, ""); if (tel.length >= 10 && !c.tel) c.tel = tel;
+    const role = String(get(r, "Collègue rôle") || "").trim(); if (role && !c.role) c.role = role;
+    const comp = String(get(r, "Niveau administratif") || get(r, "Code compétition") || "").trim(); if (comp) c.comps[comp] = (c.comps[comp] || 0) + 1;
+    if (r._date) { const auj = new Date(); if (r._date <= auj) { if (!c.derniere || r._date > c.derniere) c.derniere = r._date; } else if (!c.prochaine || r._date < c.prochaine) c.prochaine = r._date; }
+  });
+  return Object.values(par).sort((a, b) => b.n - a.n || String(a.nom).localeCompare(String(b.nom), "fr"));
+}
+function renderColleguesAuto_(contacts) {
+  const L = colleguesDepuisConvocations_(); if (!L.length) return "";
+  const normC = n => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z]/g, "");
+  const deja = new Set((contacts || []).map(c => normC(c.nom)));
+  const ouvert = !!state.ccColleguesOuvert;
+  const aff = ouvert ? L : L.slice(0, 6);
+  const ini = n => String(n || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
+  const fmtD = d => d ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "";
+  return `<section class="cc-auto">
+    <h3 class="ct-group">Collègues de tes convocations <span class="count">${L.length}</span><span class="card-sub cc-auto-sub">construit automatiquement depuis tes désignations · visible par toi seul</span></h3>
+    <div class="cc-grid">${aff.map(c => { const estLa = deja.has(normC(c.nom)); const comps = Object.keys(c.comps).sort((a, b) => c.comps[b] - c.comps[a]).slice(0, 3).join(" · ");
+      return `<article class="cc-card cc-row cc-auto-card">
+        <span class="cc-av" aria-hidden="true">${escapeHtml(ini(c.nom))}</span>
+        <div class="cc-main">
+          <div class="cc-titre"><strong>${escapeHtml(c.nom)}</strong>${c.role ? `<span class="badge">${escapeHtml(c.role)}</span>` : ""}</div>
+          <div class="cc-sub">${c.n} rencontre${c.n > 1 ? "s" : ""} ensemble${c.derniere ? " · dernière le " + fmtD(c.derniere) : ""}${c.prochaine ? " · prochaine le " + fmtD(c.prochaine) : ""}</div>
+          ${comps ? `<div class="cc-note">${escapeHtml(comps)}</div>` : ""}
+        </div>
+        <div class="cc-side">${boutonsContact_("", c.tel, "")}
+          ${estLa ? `<span class="badge green">dans tes contacts</span>` : `<button type="button" class="small-btn secondary" data-collegue-ajouter="${escapeHtml(c.nom)}">Ajouter</button>`}</div>
+      </article>`; }).join("")}</div>
+    ${L.length > 6 ? `<p style="margin:8px 0 0"><button type="button" class="action-link" id="ccColleguesPlus">${ouvert ? "Réduire" : "Voir les " + L.length + " collègues"}</button></p>` : ""}
+  </section>`;
 }
 
 function mailsDe_(t) { const r = String(t || "").match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []; return r.filter((m, i) => r.indexOf(m) === i).slice(0, 3); }
@@ -5272,6 +5357,16 @@ function attachContactsPanelListeners_(root) {
     });
   }));
 
+  // b71 — collègues automatiques → contact réel (préremplissage, l'arbitre valide).
+  root.querySelectorAll("[data-collegue-ajouter]").forEach(b => b.addEventListener("click", () => {
+    const c = colleguesDepuisConvocations_().find(x => x.nom === b.dataset.collegueAjouter); if (!c) return;
+    const comps = Object.keys(c.comps).sort((x, y) => c.comps[y] - c.comps[x]).slice(0, 3).join(", ");
+    ouvrirModaleEdition_({
+      titre: "Ajouter " + c.nom + " à mes contacts", champs: CONTACT_CHAMPS_({ nom: c.nom, role: c.role || "Arbitre", organisation: "Collègue arbitre", telephone: c.tel, championnat: comps, notes: c.n + " rencontre(s) ensemble" + (c.derniere ? ", dernière le " + c.derniere.toLocaleDateString("fr-FR") : "") }),
+      onSave: async v => { const res = await jsonp("addContact", v); if (!res || !res.success) throw new Error((res && res.error) || "Erreur"); state.contacts = null; loadContacts(); setStatus("Contact enregistré", "ok"); }
+    });
+  }));
+  const ccp = root.querySelector("#ccColleguesPlus"); if (ccp) ccp.addEventListener("click", () => { state.ccColleguesOuvert = !state.ccColleguesOuvert; renderContacts(); });
   const ca = root.querySelector("#contactAjouter");
   if (ca) ca.addEventListener("click", () => ouvrirModaleEdition_({
     titre: "Nouveau contact", champs: CONTACT_CHAMPS_({}),
@@ -5780,6 +5875,11 @@ function renderQcmPlan_(pret) {
       </div>
     </div>`;
 }
+/* b70 — les questions extraites des PDF gardent des retours à la ligne au milieu des phrases : on les recolle
+   (un saut simple → espace ; un saut double reste un paragraphe). */
+function qcmTexte_(t) {
+  return String(t || "").replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{2,}/g, "\u2029").replace(/\n/g, " ").replace(/\u2029/g, "\n\n").replace(/ {2,}/g, " ").trim();
+}
 function renderQcmOptionsHtml_(q, s, verrouille) {
   const choisi = s.reponses[q.id] || [];
   return q.answers.map((a, idx) => {
@@ -5793,7 +5893,7 @@ function renderQcmOptionsHtml_(q, s, verrouille) {
     return `<label class="${cls}">
       <input type="${q.multiple ? "checkbox" : "radio"}" name="qz-${q.id}" data-idx="${idx}"${sel ? " checked" : ""}${verrouille ? " disabled" : ""} />
       <span class="qz-mark">${QCM_LETTRES[idx] || idx + 1}</span>
-      <span class="qz-txt">${escapeHtml(a)}</span>
+      <span class="qz-txt">${escapeHtml(qcmTexte_(a))}</span>
     </label>`;
   }).join("");
 }
@@ -5841,7 +5941,8 @@ function renderQcmSession_(root) {
     <div class="qz-bar"><div style="width:${Math.round(((s.i + (valide ? 1 : 0)) / n) * 100)}%"></div></div>
 
     <div class="qz-q">
-      <p class="qz-qtext">${escapeHtml(q.question)}</p>
+      <div class="qz-qnum">Question ${s.i + 1} <span>sur ${n}</span></div>
+      <p class="qz-qtext">${escapeHtml(qcmTexte_(q.question))}</p>
       ${q.multiple ? `<p class="qz-hint">Plusieurs réponses possibles</p>` : ""}
       <div class="qz-opts">${renderQcmOptionsHtml_(q, s, valide)}</div>
       ${valide ? `<div class="qz-fb ${ok ? "ok" : "ko"}">
@@ -6145,7 +6246,7 @@ const ALERTE_TYPES_ = [
   [/barème cd67|calculé via barème/i, "infos", "Barème CD67 appliqué", "Indemnité calculée d'après le barème : rien à faire, sauf si la convocation indique un autre montant."],
   [/indemnité (estimée|: ia|fixe 3x3|manquante|à compléter)|journée ou demi-journée/i, "infos", "Indemnité estimée", "Compare avec la convocation ou la fiche de frais et corrige le montant si besoin."],
   [/3x3/i, "infos", "Mission 3×3 à vérifier", "Lecture automatique incertaine : vérifie le format, le lieu et l'heure."],
-  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, CD67, Ligue, FFBB) dans le bloc paiement du match."]
+  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, comité, ligue, fédération) dans le bloc paiement du match."]
 ];
 function classerAlerte_(r) {
   const ws = warningsAlerte_(r);
@@ -6700,7 +6801,7 @@ function ensureHtml2Canvas_() {
   return new Promise((resolve, reject) => {
     if (window.html2canvas) return resolve(window.html2canvas);
     const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.src = "./vendor/html2canvas.min.js";   // b70 : auto-hébergé
     s.onload = () => resolve(window.html2canvas);
     s.onerror = () => reject(new Error("html2canvas indisponible"));
     document.head.appendChild(s);
@@ -6852,7 +6953,7 @@ function generateExportPdf() {
   doc.text("REFEREE TRACKER", 12, 12);
   doc.setTextColor(gold[0], gold[1], gold[2]);
   doc.setFontSize(10);
-  doc.text(pdfSafe(`Arbitrage FFBB — ${exportPeriodLabel()}`), 12, 19);
+  doc.text(pdfSafe(`Arbitrage — ${exportPeriodLabel()}`), 12, 19);
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
@@ -7280,10 +7381,13 @@ function setStatus(message, type) {
   const bar = document.getElementById("statusBar");
   bar.textContent = message;
   bar.className = "status-bar show" + (type ? " " + type : "");
+  // b70 — croix de fermeture (une erreur ne doit jamais rester collée à l'écran).
+  const x = document.createElement("button"); x.type = "button"; x.className = "status-close"; x.setAttribute("aria-label", "Fermer le message"); x.textContent = "×";
+  x.addEventListener("click", () => { bar.classList.remove("show"); clearTimeout(_statusTimer); });
+  bar.appendChild(x);
   clearTimeout(_statusTimer);
-  // Succès et infos : disparaissent seuls (plus de bandeau jaune permanent).
-  // Les erreurs restent jusqu'au message suivant.
-  if (type !== "error") _statusTimer = setTimeout(() => bar.classList.remove("show"), type === "ok" ? 2600 : 3500);
+  // Succès et infos : disparaissent seuls. Les erreurs restent 20 s, ou jusqu'à la croix.
+  _statusTimer = setTimeout(() => bar.classList.remove("show"), type === "error" ? 20000 : type === "ok" ? 2600 : 3500);
 }
 
 function parseFrDate(value) {
@@ -7372,7 +7476,10 @@ function renderAnalyse() {
 
   // Saison retenue pour l'ensemble de l'onglet Analyse
   AN.saison = resoudreSaison_(state.selectedSeason || AN.saison, toutes);   // b35 : suit la saison globale (menu recherche à venir)
-  const rows = filtrerParSaison_(toutes, AN.saison);
+  // b70 — « ce que l'arbitrage rapporte vraiment » = missions déjà jouées. Les désignations à venir sont dans Estimation,
+  // jamais comptées ici (avant : 33 missions « faites » dont 9 à venir, chiffres incohérents avec Estimation/Paiements).
+  const aujA = new Date(); aujA.setHours(0, 0, 0, 0);
+  const rows = filtrerParSaison_(toutes, AN.saison).filter(r => !r._date || r._date < aujA);
 
   if (!rows.length) {
     root.innerHTML = `
@@ -7532,6 +7639,7 @@ function injecterStatsAvancees(stats) {
   const el = document.getElementById("analyseAvancee");
   if (!el) return;
   el.innerHTML = renderStatsAvancees(stats);
+  el.querySelectorAll("[data-goto-analyse]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.gotoAnalyse)));   // b70
   buildChartJourSemaine(stats);
 }
 
@@ -7785,6 +7893,20 @@ function renderStatsAvancees(stats) {
 }
 
 function renderProjection(proj) {
+  // b70 — une seule estimation de fin de saison dans toute l'app : celle de la page Estimation (même calcul, même chiffre).
+  try {
+    const e = calculerEstimation_();
+    if (e && e.netC !== undefined) return `
+    <div class="analysis-hero" style="margin-top:14px;padding:18px 20px">
+      <div class="eyebrow">Estimation fin de saison ${e.Y}/${e.Y + 1}</div>
+      <div class="big" style="font-size:32px">${formatMoney(e.netC)}</div>
+      <div class="breakdown">
+        <span><b>${formatMoney(e.recuSaison)}</b> déjà encaissés</span>
+        <span><b>${formatMoney(e.aToucherFin)}</b> encore à toucher</span>
+        <span><button type="button" class="action-link" data-goto-analyse="estimation">Voir le détail →</button></span>
+      </div>
+    </div>`;
+  } catch (err) { /* repli : projection serveur */ }
   return `
     <div class="analysis-hero" style="margin-top:14px;padding:18px 20px">
       <div class="eyebrow">Projection fin de saison ${escapeHtml(proj.saison)} · ${proj.pourcentage_saison_ecoule.toFixed(0)} % écoulés</div>
@@ -7953,7 +8075,7 @@ function renderAnalyseHero(brut, carburant, net, partGardee, nb, kmTotal, heures
       <div class="eyebrow">Ce que l'arbitrage rapporte vraiment · ${escapeHtml(state.selectedSeason)}</div>
       <div class="big">${formatMoney(net)}</div>
       <div class="breakdown">
-        <span><b>${formatMoney(brut)}</b> encaissés</span>
+        <span><b>${formatMoney(brut)}</b> d'indemnités acquises</span>
         <span>−<b>${formatMoney(carburant)}</b> de carburant</span>
         <span><b>${nb}</b> mission(s)</span>
         <span><b>${formatNumber(kmTotal, " km")}</b> parcourus</span>
@@ -8973,7 +9095,7 @@ function renderPersoTab_(id, titre, fn) {
   const root = document.getElementById(id);
   if (!root) return;
   if (state.contacts === null && !state._contactsErreur && id === "rapports") loadContacts();
-  root.innerHTML = `${monEspaceBar_(id)}${fn()}`;
+  root.innerHTML = `${id === "rapports" ? `<h2 class="section-title">${escapeHtml(titre)}</h2>` : monEspaceBar_(id)}${fn()}`;
   attachPersoListeners_(root);
 }
 function loadElicence() { persoCharger_("elic", "elicence", r => { state.elicence = r.data || {}; }); }
@@ -8993,7 +9115,7 @@ function renderElicencePanel_() {
   const saison = e.saisonCourante || getCurrentSeason();
   const aDoc = !!(e.doc || e.docUrl);
   const ancienne = e.ancienneSaison ? `<p class="elic-vide">Nouvelle saison ${escapeHtml(saison)} : ta licence ${escapeHtml(e.ancienneSaison)} a été retirée. Dépose la licence de cette saison.</p>` : "";
-  const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel FFBB ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
+  const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
     : e.carte && (e.carte.nom || e.carte.numero_licence) ? licCarteBloc_(e)
     : `<div class="elic-officiel">
         <div class="elic-officiel-head">
@@ -9024,7 +9146,7 @@ function licCarteHtml_(e, grand) {
   return `<div class="lic-card${grand ? " lic-card--grand" : ""}" role="img" aria-label="Licence ${escapeHtml(saison)} de ${escapeHtml([c.prenom, c.nom].filter(Boolean).join(" "))}">
     <div class="lic-shine" aria-hidden="true"></div>
     <div class="lic-top">
-      <span class="lic-fed">FFBB</span>
+      <span class="lic-fed">Licence officielle</span>
       <div class="lic-club"><small>N° association ${escapeHtml(c.numero_association || "—")}</small><strong>${escapeHtml(c.club || "")}</strong></div>
       <div class="lic-saison"><b>${escapeHtml(a1 || "")}</b><b>${escapeHtml(a2 || "")}</b></div>
     </div>
@@ -9193,9 +9315,9 @@ function chargerPdfJs_() {
   if (_pdfjsP) return _pdfjsP;
   _pdfjsP = new Promise((ok, ko) => {
     const sc = document.createElement("script");
-    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    sc.src = "./vendor/pdf.min.js";   // b70 : auto-hébergé
     sc.integrity = "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"; sc.crossOrigin = "anonymous";
-    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "./vendor/pdf.worker.min.js"; ok(window.pdfjsLib); };
     sc.onerror = () => { _pdfjsP = null; ko(new Error("Lecteur PDF indisponible")); };
     document.head.appendChild(sc);
   });
@@ -9287,12 +9409,15 @@ function matchsPourRapports_() {
 /* --- Partie 1 : modèles vierges (générés ici, en PDF) --- */
 const RAPP_TYPES_SAISIE_ = ["Incident(s) disciplinaire(s)", "Faute(s) disqualifiante(s)", "Réclamation", "Incident(s) matériel(s)", "Commotion cérébrale", "Autre rapport"];
 const RAPP_MES_TYPES_ = RAPP_TYPES_SAISIE_.concat(["Rapport d'incident", "Rapport technique / disqualifiante", "Rapport de comportement"]);
+/* b70 — les formulaires officiels ne sont plus hébergés ici (documents de la fédération) : on renvoie vers leur source.
+   Renseigne `url` quand tu as le lien exact ; à défaut, la page d'accueil du site officiel. */
+const RAPP_OFFICIEL_SITE_ = "https://www.ffbb.com/";
 const RAPP_OFFICIELS_ = [
-  { id: "disciplinaire", fichier: "docs/rapports/incident-disciplinaire.pdf", titre: "Incident(s) disciplinaire(s)", desc: "FFBB — Commission fédérale de discipline." },
-  { id: "disqualifiante", fichier: "docs/rapports/faute-disqualifiante.pdf", titre: "Faute(s) disqualifiante(s)", desc: "FFBB — Commission fédérale de discipline." },
-  { id: "reclamation", fichier: "docs/rapports/reclamation.pdf", titre: "Réclamation", desc: "FFBB — Commission fédérale 5x5." },
-  { id: "materiel", fichier: "docs/rapports/incident-materiel.pdf", titre: "Incident(s) matériel(s)", desc: "FFBB — Commission fédérale équipements." },
-  { id: "commotion", fichier: "docs/rapports/commotion-cerebrale.pdf", titre: "Protocole commotion cérébrale", desc: "FFBB — Commission fédérale médicale." }
+  { id: "disciplinaire", titre: "Incident(s) disciplinaire(s)", desc: "Commission fédérale de discipline.", url: "" },
+  { id: "disqualifiante", titre: "Faute(s) disqualifiante(s)", desc: "Commission fédérale de discipline.", url: "" },
+  { id: "reclamation", titre: "Réclamation", desc: "Commission fédérale 5x5.", url: "" },
+  { id: "materiel", titre: "Incident(s) matériel(s)", desc: "Commission fédérale équipements.", url: "" },
+  { id: "commotion", titre: "Protocole commotion cérébrale", desc: "Commission fédérale médicale.", url: "" }
 ];
 const RAPP_MODELES_ = [
   { id: "incident", titre: "Rapport d'incident / comportement", desc: "Faits, personnes concernées, décision prise, témoins, signature." },
@@ -9339,12 +9464,22 @@ function renderRapportsPanel_() {
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
-  const vue = state.rappVue || "formulaires";
+  const vue = state.rappVue || "assistant";
   const sous = `<div class="tabs-mini rapp-seg" role="tablist">
-    <button type="button" class="tabs-mini-btn${vue === "formulaires" ? " active" : ""}" data-rapp-vue="formulaires">Formulaires vierges</button>
+    <button type="button" class="tabs-mini-btn${vue === "assistant" ? " active" : ""}" data-rapp-vue="assistant">Assistant de rédaction</button>
+    <button type="button" class="tabs-mini-btn${vue === "formulaires" ? " active" : ""}" data-rapp-vue="formulaires">Formulaires</button>
     <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
   </div>`;
-  if (vue === "formulaires") return sous + `<div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
+  if (vue === "assistant") return sous + renderRapportAssistant_(ms);
+  if (vue === "formulaires") return sous + `
+    <h3 class="rapp-h3">Formulaires officiels</h3>
+    <p class="card-sub" style="margin:0 0 10px">Les formulaires officiels sont à télécharger sur le site de ta fédération (ils ne sont pas copiés ici). Prépare le texte avec l'assistant, puis recopie-le sur le formulaire.</p>
+    <div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
+      <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
+      <div class="rapp-act"><a class="small-btn secondary" href="${escapeHtml(safeUrl_(m.url || RAPP_OFFICIEL_SITE_))}" target="_blank" rel="noopener">Ouvrir sur le site officiel</a> <button type="button" class="small-btn" data-rapp-assist="${m.id}">Préparer le texte</button></div>
+    </div>`).join("")}</div>
+    <h3 class="rapp-h3">Modèles Referee Tracker (PDF générés ici)</h3>
+    <div class="rapp-modeles">${RAPP_MODELES_.map(m => `<div class="rapp-modele">
       <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
       <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
     </div>`).join("")}</div>`;
@@ -9375,6 +9510,132 @@ function renderRapportsPanel_() {
       <thead><tr><th>Date</th><th>Match</th><th>Rôle</th><th>Statut</th><th></th></tr></thead>
       <tbody>${anciens.map(r => `<tr><td>${escapeHtml(dmy_(r.cree))}</td><td>${escapeHtml(r.match)}</td><td>${escapeHtml(r.role)}</td><td>${escapeHtml(r.statut)}</td><td class="rapp-act">${actions(r)}</td></tr>`).join("")}</tbody>
     </table></div></div>`, { count: anciens.length }) : ""}`;
+}
+/* ===================== b70 — ASSISTANT DE RÉDACTION DES RAPPORTS =====================
+   Principe : l'app pose les questions, l'arbitre répond avec ses mots, le texte est assemblé
+   dans l'ordre attendu par les commissions (rencontre → faits → décision → suites → observations).
+   Aucune phrase inventée : seules les réponses saisies apparaissent. L'arbitre relit, corrige,
+   copie sur le formulaire officiel ou télécharge le PDF. Brouillon gardé sur l'appareil. */
+const RAPP_ASSIST_TYPES_ = {
+  disciplinaire: { titre: "Incident(s) disciplinaire(s)", aide: "Comportement d'un joueur, entraîneur, accompagnateur ou spectateur avant, pendant ou après la rencontre.", champs: ["moment", "score", "personnes", "faits", "decision", "suites", "temoins", "obs"] },
+  disqualifiante: { titre: "Faute(s) disqualifiante(s)", aide: "Chaque faute disqualifiante sifflée fait l'objet d'un rapport : qui, quand, quoi, et la procédure appliquée.", champs: ["moment", "score", "personnes", "faits", "decision", "suites", "temoins", "obs"] },
+  reclamation: { titre: "Réclamation", aide: "Une équipe a déposé une réclamation : décris les faits contestés, l'heure de la réserve et ce que tu as appliqué.", champs: ["moment", "score", "personnes", "faits", "decision", "temoins", "obs"] },
+  materiel: { titre: "Incident(s) matériel(s)", aide: "Salle, panneaux, chronomètre, feuille de marque, sécurité : ce qui manquait ou a cassé, et comment la rencontre s'est poursuivie.", champs: ["moment", "faits", "decision", "suites", "obs"] },
+  commotion: { titre: "Commotion cérébrale (protocole)", aide: "Joueur suspecté de commotion : circonstances, signes observés, décision de sortie, information du banc.", champs: ["moment", "score", "personnes", "faits", "decision", "suites", "obs"] },
+  autre: { titre: "Autre rapport", aide: "Tout autre fait que tu dois signaler.", champs: ["moment", "score", "personnes", "faits", "decision", "suites", "temoins", "obs"] }
+};
+const RAPP_ASSIST_LIB_ = {
+  moment: ["Moment précis", "Ex. 3e quart-temps, 4 min 12 s restantes, ballon mort"],
+  score: ["Score à cet instant", "Ex. 42-38 pour l'équipe A"],
+  personnes: ["Personnes concernées", "Nom, n° de licence si connu, équipe, rôle (joueur n° 8, entraîneur, spectateur…)"],
+  faits: ["Les faits, dans l'ordre", "Ce que tu as vu et entendu, au passé, sans interprétation. Une phrase par fait. Cite les propos entre guillemets."],
+  decision: ["Décision prise sur le terrain", "Sanction sifflée, règle appliquée, consultation du collègue, arrêt du chronomètre…"],
+  suites: ["Suites immédiates", "Sortie de la personne, reprise du jeu, intervention du responsable de salle ou des forces de l'ordre, blessure constatée…"],
+  temoins: ["Témoins et officiels présents", "Collègue(s), officiels de table, responsable de salle, délégué, observateur"],
+  obs: ["Observations complémentaires", "Tout élément utile à la commission (attitude après coup, excuses, antécédents dans la rencontre…)"]
+};
+function rappAssistCle_(uid, type) { return "rt-rapp-brouillon:" + (uid || "sans-match") + ":" + type; }
+function renderRapportAssistant_(ms) {
+  const a = state.rappAssist = state.rappAssist || { type: "disciplinaire", uid: ms[0] ? get(ms[0], "UID") : "", data: {} };
+  if (!RAPP_ASSIST_TYPES_[a.type]) a.type = "disciplinaire";
+  const T = RAPP_ASSIST_TYPES_[a.type];
+  try { const b = localStorage.getItem(rappAssistCle_(a.uid, a.type)); if (b && !Object.keys(a.data).length) a.data = JSON.parse(b); } catch (e) {}
+  return `<div class="rapp-assist">
+    <div class="rapp-assist-form">
+      <p class="card-sub" style="margin:0 0 10px">L'assistant structure ton rapport : tu réponds, il met en forme. Rien n'est inventé, tu relis et tu corriges avant de recopier.</p>
+      <div class="rapp-form-grid">
+        <div class="field rapp-f-match"><label for="raMatch">Rencontre</label><select id="raMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}"${get(r, "UID") === a.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
+        <div class="field"><label for="raType">Type de rapport</label><select id="raType">${Object.keys(RAPP_ASSIST_TYPES_).map(k => `<option value="${k}"${k === a.type ? " selected" : ""}>${escapeHtml(RAPP_ASSIST_TYPES_[k].titre)}</option>`).join("")}</select></div>
+      </div>
+      <p class="rapp-assist-aide">${escapeHtml(T.aide)}</p>
+      ${T.champs.map(c => `<div class="field"><label for="ra_${c}">${escapeHtml(RAPP_ASSIST_LIB_[c][0])}</label>
+        ${c === "faits" || c === "obs" || c === "personnes" ? `<textarea id="ra_${c}" rows="${c === "faits" ? 6 : 3}" data-ra="${c}" placeholder="${escapeHtml(RAPP_ASSIST_LIB_[c][1])}">${escapeHtml(a.data[c] || "")}</textarea>` : `<input id="ra_${c}" type="text" data-ra="${c}" value="${escapeHtml(a.data[c] || "")}" placeholder="${escapeHtml(RAPP_ASSIST_LIB_[c][1])}">`}</div>`).join("")}
+    </div>
+    <div class="rapp-assist-out">
+      <div class="rapp-assist-out-head"><strong>Texte du rapport</strong><span class="card-sub">se met à jour pendant la saisie</span></div>
+      <textarea id="raTexte" rows="22" spellcheck="true">${escapeHtml(a.texteFige || rappAssistTexte_(a, ms))}</textarea>
+      <div class="rapp-act"><button type="button" class="small-btn" id="raCopier">Copier le texte</button> <button type="button" class="small-btn secondary" id="raPdf">Télécharger en PDF</button> <button type="button" class="small-btn secondary" id="raVider">Effacer le brouillon</button></div>
+      <!-- b71 — relecture IA : proposition à côté, jamais appliquée sans un clic de l'arbitre. -->
+      <div class="rapp-ia">
+        <div class="rapp-ia-head"><strong>Relecture par l'assistant</strong><span class="card-sub">orthographe, formulation neutre, structure attendue par la commission · rien n'est inventé</span></div>
+        <div class="rapp-act"><button type="button" class="small-btn" id="raRelire">Relire mon rapport</button>${a.texteFige ? ' <button type="button" class="small-btn secondary" id="raOriginal">Revenir à mon texte</button>' : ""}</div>
+        <div id="raIaZone" hidden></div>
+      </div>
+      <p class="card-sub" style="margin-top:8px">Le texte reste à recopier ou coller sur le formulaire officiel, que tu signes toi-même.</p>
+    </div>
+  </div>`;
+}
+function rappAssistTexte_(a, ms) {
+  const T = RAPP_ASSIST_TYPES_[a.type], d = a.data || {};
+  const r = (ms || []).find(x => get(x, "UID") === a.uid);
+  const L = [];
+  L.push(T.titre.toUpperCase());
+  L.push("");
+  if (r) {
+    L.push("RENCONTRE");
+    L.push("Date : " + (get(r, "Date match") || "") + (get(r, "Heure/RDV") ? " à " + get(r, "Heure/RDV") : ""));
+    L.push("Compétition : " + [get(r, "Niveau administratif"), get(r, "Code compétition"), get(r, "Catégorie")].filter(Boolean).join(" · "));
+    L.push("Équipes : " + (get(r, "Recevant") || "?") + " — " + (get(r, "Visiteur / événement") || "?"));
+    if (get(r, "Salle") || get(r, "Ville")) L.push("Lieu : " + [get(r, "Salle"), get(r, "Ville")].filter(Boolean).join(", "));
+    if (get(r, "N° rencontre")) L.push("N° de rencontre : " + get(r, "N° rencontre"));
+    const prof = (typeof Profil !== "undefined" && Profil.config && Profil.config.profil) || {};
+    L.push("Arbitre rédacteur : " + (prof.nom_ffbb || "") + (get(r, "Collègue nom") ? " · Collègue : " + get(r, "Collègue nom") : ""));
+    L.push("");
+  }
+  const bloc = (titre, txt) => { if (!String(txt || "").trim()) return; L.push(titre); L.push(String(txt).trim()); L.push(""); };
+  if (d.moment || d.score) bloc("CIRCONSTANCES", [d.moment ? "Moment : " + d.moment : "", d.score ? "Score : " + d.score : ""].filter(Boolean).join("\n"));
+  bloc("PERSONNES CONCERNÉES", d.personnes);
+  bloc("EXPOSÉ DES FAITS", d.faits);
+  bloc("DÉCISION PRISE", d.decision);
+  bloc("SUITES IMMÉDIATES", d.suites);
+  bloc("TÉMOINS ET OFFICIELS PRÉSENTS", d.temoins);
+  bloc("OBSERVATIONS", d.obs);
+  L.push("Fait le " + new Date().toLocaleDateString("fr-FR") + ", certifié sincère et conforme aux faits constatés.");
+  return L.join("\n");
+}
+function attachRapportAssistant_(root) {
+  const z = root.querySelector(".rapp-assist"); if (!z) return;
+  const a = state.rappAssist, ms = matchsPourRapports_();
+  const maj = () => { a.texteFige = null; const t = root.querySelector("#raTexte"); if (t) t.value = rappAssistTexte_(a, ms); try { localStorage.setItem(rappAssistCle_(a.uid, a.type), JSON.stringify(a.data)); } catch (e) {} const o = root.querySelector("#raOriginal"); if (o) o.remove(); };
+  // b71 — relecture IA (Code.gs rapport.relire → Ia.gs, poste « rapports »).
+  const relire = root.querySelector("#raRelire"), zone = root.querySelector("#raIaZone");
+  if (relire) relire.addEventListener("click", async () => {
+    const t = root.querySelector("#raTexte"); const texte = (t && t.value || "").trim();
+    if (texte.length < 40) { setStatus("Rédige d'abord les faits : la relecture a besoin de matière.", "error"); return; }
+    relire.disabled = true; relire.textContent = "Relecture en cours…"; zone.hidden = true;
+    try {
+      const res = await jsonp("rapport.relire", { type: a.type, texte, reponses: JSON.stringify(a.data || {}) });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Relecture indisponible");
+      const r = res.result || res;
+      zone.innerHTML = `<div class="rapp-ia-prop">
+        ${r.manques && r.manques.length ? `<div class="rapp-ia-bloc rapp-ia-manques"><strong>À compléter avant d'envoyer</strong><ul>${r.manques.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul></div>` : ""}
+        ${r.remarques && r.remarques.length ? `<div class="rapp-ia-bloc"><strong>Ce que l'assistant a changé</strong><ul>${r.remarques.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul></div>` : `<div class="rapp-ia-bloc"><strong>Seulement l'orthographe et la ponctuation</strong><p class="card-sub">Aucun changement de fond.</p></div>`}
+        <textarea id="raTexteIa" rows="16" spellcheck="true">${escapeHtml(r.texte)}</textarea>
+        <div class="rapp-act"><button type="button" class="small-btn" id="raAdopter">Utiliser cette version</button> <button type="button" class="small-btn secondary" id="raIgnorer">Garder mon texte</button></div>
+        <p class="card-sub">${r.repli ? "Relecture faite par le modèle de secours. " : ""}Relis chaque phrase : tu restes seul responsable du contenu signé.</p>
+      </div>`;
+      zone.hidden = false;
+      zone.querySelector("#raAdopter").addEventListener("click", () => { a.texteFige = zone.querySelector("#raTexteIa").value; t.value = a.texteFige; zone.hidden = true; setStatus("Version adoptée. Tes réponses d'origine restent dans le formulaire.", "ok"); if (!root.querySelector("#raOriginal")) { const b = document.createElement("button"); b.type = "button"; b.className = "small-btn secondary"; b.id = "raOriginal"; b.textContent = "Revenir à mon texte"; relire.after(document.createTextNode(" "), b); b.addEventListener("click", () => { maj(); setStatus("Texte d'origine rétabli", "ok"); }); } });
+      zone.querySelector("#raIgnorer").addEventListener("click", () => { zone.hidden = true; });
+    } catch (err) { setStatus("Relecture : " + err.message, "error"); }
+    relire.disabled = false; relire.textContent = "Relire mon rapport";
+  });
+  const orig = root.querySelector("#raOriginal"); if (orig) orig.addEventListener("click", () => { maj(); setStatus("Texte d'origine rétabli", "ok"); });
+  root.querySelectorAll("[data-ra]").forEach(el => el.addEventListener("input", () => { a.data[el.dataset.ra] = el.value; maj(); }));
+  const sel = (id, fn) => { const el = root.querySelector(id); if (el) el.addEventListener("change", () => { fn(el.value); a.data = {}; rerenderPerso_(); }); };
+  sel("#raMatch", v => { a.uid = v; });
+  sel("#raType", v => { a.type = v; });
+  const cop = root.querySelector("#raCopier"); if (cop) cop.addEventListener("click", async () => { const t = root.querySelector("#raTexte"); try { await navigator.clipboard.writeText(t.value); setStatus("Texte copié", "ok"); } catch (e) { t.select(); } });
+  const vid = root.querySelector("#raVider"); if (vid) vid.addEventListener("click", () => { if (!confirm("Effacer ce brouillon ?")) return; a.data = {}; try { localStorage.removeItem(rappAssistCle_(a.uid, a.type)); } catch (e) {} rerenderPerso_(); });
+  const pdf = root.querySelector("#raPdf"); if (pdf) pdf.addEventListener("click", () => {
+    try {
+      const J = window.jspdf && window.jspdf.jsPDF; if (!J) throw new Error("Générateur PDF indisponible");
+      const d = new J({ unit: "mm", format: "a4" }); d.setFontSize(10.5);
+      const lignes = d.splitTextToSize(pdfSafe(root.querySelector("#raTexte").value), 180);
+      let y = 18; lignes.forEach(l => { if (y > 282) { d.addPage(); y = 18; } d.text(l, 15, y); y += 5.2; });
+      d.save("rapport-" + a.type + "-" + new Date().toISOString().slice(0, 10) + ".pdf");
+    } catch (err) { setStatus("PDF : " + err.message, "error"); }
+  });
 }
 function initSignature_(root) {
   const cv = root.querySelector("#rappSign");
@@ -9462,6 +9723,8 @@ function attachPersoListeners_(root) {
     } catch (err) { setStatus("Erreur : " + err.message, "error"); }
   });
   root.querySelectorAll("[data-rapp-vue]").forEach(b => b.addEventListener("click", () => { state.rappVue = b.dataset.rappVue; rerenderPerso_(); }));
+  root.querySelectorAll("[data-rapp-assist]").forEach(b => b.addEventListener("click", () => { state.rappVue = "assistant"; state.rappAssist = Object.assign(state.rappAssist || { uid: "", data: {} }, { type: b.dataset.rappAssist, data: {} }); rerenderPerso_(); }));
+  attachRapportAssistant_(root);
   attachDropZones_(root);
   const rf = root.querySelector("#rappForm");
   if (rf) {
@@ -9691,7 +9954,11 @@ function cltPos_(row, cote) {
   const c = classementMatch_(row); const t = c && c[cote];
   return t && t.j ? ` <span class="acc-pos">${t.pos}<sup>e</sup></span>` : "";
 }
+/* b70 — classements de championnat coupés : la seule source était un collecteur tournant sur un Mac (données figées au 16/10,
+   et site tiers qui refuse les lectures automatisées). Réactiver uniquement avec une source officielle autorisée. */
+const CLASSEMENTS_ACTIFS_ = false;
 function renderClassementMatch_(row) {
+  if (!CLASSEMENTS_ACTIFS_) return "";
   if (row._isPast && row._date && Date.now() - row._date.getTime() > 7 * 86400000) return "";
   const c = classementMatch_(row);
   if (!c || (!c.rec && !c.vis) || !c.tableau.some(t => t.j)) return "";

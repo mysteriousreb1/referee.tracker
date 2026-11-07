@@ -1,11 +1,14 @@
 /* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop)
    + b66 : cache de l'application (ouverture instantanée, lecture hors-ligne de la coquille).
    Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
-const VERSION = "2026-11-06-b69";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
+const VERSION = "2026-11-08-b71";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
 const CACHE = "rt-" + VERSION;
 const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION,
   "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,
-  "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png"];
+  "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png",
+  // b70 — polices et bibliothèques auto-hébergées (plus aucune requête tierce)
+  "./fonts/fonts.css?v=2026-11-08-b71", "./fonts/montserrat-latin-500-normal.woff2", "./fonts/montserrat-latin-600-normal.woff2", "./fonts/montserrat-latin-700-normal.woff2", "./fonts/montserrat-latin-800-normal.woff2",
+  "./fonts/jetbrains-mono-latin-500-normal.woff2", "./fonts/jetbrains-mono-latin-700-normal.woff2", "./vendor/leaflet.css", "./vendor/leaflet.js", "./vendor/chart.umd.min.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.allSettled(COQUILLE.map(u => c.add(u)))).then(() => self.skipWaiting()));
@@ -18,8 +21,8 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const memeOrigine = url.origin === self.location.origin;
-  const police = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/.test(url.origin);
-  if (!memeOrigine && !police) return;                       // Supabase, Apps Script, API : jamais interceptés
+  const police = memeOrigine && /^\/(fonts|vendor)\//.test(url.pathname);   // b70 : auto-hébergées
+  if (!memeOrigine) return;                       // Supabase, Apps Script, API : jamais interceptés
   if (memeOrigine && url.searchParams.has("verif")) return;  // contrôle de version de l'app : toujours réseau
   // 1) Fichiers versionnés (?v=) et polices : cache d'abord (contenu immuable pour une version donnée).
   if (req.mode !== "navigate" && ((memeOrigine && url.searchParams.has("v")) || police)) {

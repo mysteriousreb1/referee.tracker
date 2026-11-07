@@ -222,3 +222,4 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
   .search { width: 240px; }
 }
 @media (max-width: 820px) { .cfg-grid { grid-template-columns: 1fr; } .tiles { grid-template-columns: repeat(2, 1fr); } .hbars { grid-template-columns: 100px 1fr 50px; } .kv { grid-template-columns: 1fr; } }
+.badge.blue { color: #1d4ed8; background: rgba(59,130,246,.14); } :root[data-theme="dark"] .badge.blue { color: #bfdbfe; }

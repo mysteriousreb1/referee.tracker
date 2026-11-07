@@ -1,27 +1,24 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <!-- © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. -->
-  <meta name="author" content="Clément REBHOLZ" />
-  <meta name="copyright" content="© 2026 Clément REBHOLZ" />
+  <!-- © 2026 Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'éditeur (voir mentions-legales.html). -->
+  <meta name="author" content="Referee Tracker" />
+  <meta name="copyright" content="© 2026 Referee Tracker" />
   <meta charset="utf-8" />
   <!-- b47 (A15) — Content Security Policy : seules les origines listées peuvent charger du code, des styles, des images ou être contactées. Aucun script inline : la version du site est lue dans la balise meta rt-version. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com https://raw.githubusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://jlstedchnmdteazuqbly.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.github.com https://raw.githubusercontent.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; upgrade-insecure-requests" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://jlstedchnmdteazuqbly.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; upgrade-insecure-requests" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Referee Tracker</title>
   <meta name="theme-color" content="#0B1F3B" />
-  <meta name="rt-version" content="2026-11-06-b69" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,500;0,600;0,700;0,800;1,800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
-  <link rel="preconnect" href="https://unpkg.com" crossorigin />
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <meta name="rt-version" content="2026-11-08-b71" />
+  <!-- b70 — zéro requête tierce : polices et bibliothèques auto-hébergées (RGPD : aucune IP transmise à Google/CDN). -->
+  <link rel="stylesheet" href="./fonts/fonts.css?v=2026-11-08-b71" />
+  <link rel="stylesheet" href="./vendor/leaflet.css" />
   <link rel="preconnect" href="https://script.google.com" crossorigin />
-  <link rel="stylesheet" href="./style.css?v=2026-11-06-b69" />
-  <link rel="manifest" href="./manifest.json?v=2026-11-06-b69" />
-  <link rel="icon" href="./favicon-32.png?v=2026-11-06-b69" sizes="32x32" type="image/png" />
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-11-06-b69" />
+  <link rel="stylesheet" href="./style.css?v=2026-11-08-b71" />
+  <link rel="manifest" href="./manifest.json?v=2026-11-08-b71" />
+  <link rel="icon" href="./favicon-32.png?v=2026-11-08-b71" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-11-08-b71" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -32,7 +29,7 @@
     <header class="app-header">
       <div class="header-inner">
         <div class="brand" id="brandHome" role="link" tabindex="0" aria-label="Retour à l'accueil" title="Accueil">
-          <img class="brand-logo" src="./img/logo-icon.png?v=2026-11-06-b69" alt="" width="44" height="40" decoding="async" />
+          <img class="brand-logo" src="./img/logo-icon.png?v=2026-11-08-b71" alt="" width="44" height="40" decoding="async" />
           <div class="brand-text">
             <h1>Referee<span>Tracker</span></h1>
           </div>
@@ -109,11 +106,10 @@
         <button class="tab" data-tab="paiements" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v.01M18 14v.01"/></svg></span><span class="tab-label">Paiements</span><span class="tab-badge" id="badgePaiements" hidden>0</span></button>
         <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Analyse</span></button>
         <button class="tab tab-tel-hide" data-tab="estimation" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M3 17l6-6 4 4 8-8'/><path d='M14 7h7v7'/></svg></span><span class="tab-label">Estimation</span></button>
-        <button class="tab tab-tel-hide" data-tab="rapprochement" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='3' y='5' width='18' height='14' rx='2'/><path d='M3 10h18'/><path d='M7 15h4'/></svg></span><span class="tab-label">Rapprochement</span></button>
         <button class="tab" data-tab="hotel" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19V7"/><path d="M3 14h18v5"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.5"/></svg></span><span class="tab-label">Hôtel</span></button>
         <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span><span class="tab-badge" id="badgeAlertes" hidden>0</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
-        <button class="tab tab-tel-hide" data-tab="rapports" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z'/><path d='M14 3v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/></svg></span><span class="tab-label">Rapports</span></button>
+        <button class="tab" data-tab="rapports" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z'/><path d='M14 3v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/></svg></span><span class="tab-label">Rapports</span></button>
         <div class="tab-group" aria-hidden="true">Entraînement</div>
         <button class="tab" data-tab="qcm" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M9 12l2 2 4-4"/></svg></span><span class="tab-label">QCM</span></button>
         <button class="tab" data-tab="progression" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span><span class="tab-label">Progression</span></button>
@@ -153,14 +149,15 @@
 
   </div>
 
-  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+  <script defer src="./vendor/leaflet.js"></script>
+  <script defer src="./vendor/chart.umd.min.js"></script>
   <!-- Génération du PDF de l'onglet Export -->
-  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k" crossorigin="anonymous"></script>
-  <script defer src="./rt-auth.js?v=2026-11-06-b69"></script>
-  <script defer src="./rt-stats.js?v=2026-11-06-b69"></script>
-  <script defer src="./app.js?v=2026-11-06-b69"></script>
+  <script defer src="./vendor/jspdf.umd.min.js"></script>
+  <script defer src="./vendor/jspdf.plugin.autotable.min.js"></script>
+  <script defer src="./vendor/qrcode.js"></script>
+  <script defer src="./vendor/france.js"></script>
+  <script defer src="./rt-auth.js?v=2026-11-08-b71"></script>
+  <script defer src="./rt-stats.js?v=2026-11-08-b71"></script>
+  <script defer src="./app.js?v=2026-11-08-b71"></script>
 </body>
 </html>

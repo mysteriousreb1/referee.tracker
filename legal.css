@@ -1,0 +1,17 @@
+/* Pages légales Referee Tracker — lisibles, sobres, sans script. */
+:root { color-scheme: light dark; --fg:#0C1730; --bg:#fff; --mut:#5B6884; --line:#D9DFEA; --acc:#163B7A; --soft:#F6F8FC; }
+@media (prefers-color-scheme: dark) { :root { --fg:#EEF1F7; --bg:#0A1326; --mut:#A7B3CC; --line:#22355F; --acc:#8FB3FF; --soft:#101E3F; } }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+main { max-width:780px; margin:0 auto; padding:24px 16px 72px; }
+h1 { font-size:1.7rem; margin:.3em 0 .1em; line-height:1.2; }
+h2 { font-size:1.15rem; margin:1.9em 0 .45em; border-top:1px solid var(--line); padding-top:1em; }
+h3 { font-size:1rem; margin:1.2em 0 .3em; }
+p, li { color:var(--fg); }
+small, .mut { color:var(--mut); }
+table { width:100%; border-collapse:collapse; font-size:.93rem; margin:8px 0 14px; }
+th, td { text-align:left; border-bottom:1px solid var(--line); padding:7px 10px 7px 0; vertical-align:top; }
+th { color:var(--mut); font-weight:700; font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; }
+a { color:var(--acc); }
+.box { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin:12px 0; }
+.toc { columns: 2; font-size:.92rem; } .toc a { text-decoration:none; }
+@media (max-width: 600px) { .toc { columns: 1; } table { font-size:.86rem; } }

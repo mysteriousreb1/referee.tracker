@@ -6,90 +6,115 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <title>Politique de confidentialité — Referee Tracker</title>
-  <style>
-    :root { color-scheme: light dark; --fg:#111; --bg:#fff; --mut:#555; --line:#e5e5e5; --acc:#c62828; }
-    @media (prefers-color-scheme: dark) { :root { --fg:#eee; --bg:#111; --mut:#aaa; --line:#333; } }
-    body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
-    main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
-    h1 { font-size:1.6rem; margin:.2em 0 .1em; } h2 { font-size:1.15rem; margin:1.8em 0 .4em; border-top:1px solid var(--line); padding-top:1em; }
-    p, li { color:var(--fg); } small, .mut { color:var(--mut); }
-    table { width:100%; border-collapse:collapse; font-size:.95rem; } th, td { text-align:left; border-bottom:1px solid var(--line); padding:6px 8px 6px 0; vertical-align:top; }
-    a { color:var(--acc); }
-  </style>
+  <link rel="stylesheet" href="./legal.css" />
 </head>
 <body>
 <main>
   <p><a href="./">← Retour à Referee Tracker</a></p>
   <h1>Politique de confidentialité</h1>
-  <p class="mut">Version du 30 octobre 2026 (rév. 2) — phase bêta</p>
+  <p class="mut">Version 3 du 7 novembre 2026 — remplace la version du 30 octobre 2026. Accès anticipé, usage gratuit et non commercial.</p>
 
-  <h2>1. Qui est responsable de vos données ?</h2>
-  <p>Referee Tracker est édité par <strong>Clément REBHOLZ</strong> (particulier, phase bêta non commerciale).
-  Contact pour toute question ou demande sur vos données : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a>.</p>
+  <div class="box">
+    <strong>En deux mots.</strong> Referee Tracker ne lit jamais votre boîte mail : vous lui transférez vos convocations. Vos données servent uniquement à faire fonctionner votre suivi (matchs, trajets, indemnités, paiements, agenda, entraînement). Elles ne sont ni vendues, ni utilisées pour de la publicité, ni partagées avec d'autres arbitres. Vous pouvez tout exporter ou tout supprimer vous-même depuis l'application (Mon profil → Compte → Mes données), ou en écrivant à <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a>.
+  </div>
 
-  <h2>2. À quoi servent vos données ?</h2>
-  <ul>
-    <li>Lire les convocations d'arbitrage que vous transférez, créer vos matchs et votre agenda ;</li>
-    <li>calculer vos kilomètres, frais de carburant, indemnités et échéances de paiement ;</li>
-    <li>suivre les paiements reçus et vous envoyer des notifications utiles ;</li>
-    <li>assurer la sécurité, les sauvegardes et le support de l'application.</li>
-  </ul>
-  <p>Vos données ne sont <strong>jamais vendues</strong>, ni utilisées pour de la publicité, ni partagées avec d'autres arbitres.</p>
+  <p class="toc">
+    <a href="#s1">1. Responsable</a><br><a href="#s2">2. Finalités et bases légales</a><br><a href="#s3">3. Données traitées</a><br><a href="#s4">4. Durées de conservation</a><br><a href="#s5">5. Destinataires et sous-traitants</a><br><a href="#s6">6. Transferts hors UE</a><br><a href="#s7">7. Intelligence artificielle</a><br><a href="#s8">8. Sécurité</a><br><a href="#s9">9. Vos droits</a><br><a href="#s10">10. Cookies et stockage local</a><br><a href="#s11">11. Notifications</a><br><a href="#s12">12. Mineurs</a><br><a href="#s13">13. Évolutions</a>
+  </p>
 
-  <h2>3. Quelles données ?</h2>
+  <h2 id="s1">1. Qui est responsable de vos données ?</h2>
+  <p>Le responsable du traitement est l'éditeur de Referee Tracker, personne physique agissant à titre non professionnel et sans but lucratif (voir les <a href="./mentions-legales.html">mentions légales</a>). Il n'a pas désigné de délégué à la protection des données, cette désignation n'étant pas obligatoire pour son activité.</p>
+  <p>Contact pour toute question ou demande relative à vos données : <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a>.</p>
+
+  <h2 id="s2">2. À quoi servent vos données, et sur quelle base ?</h2>
   <table>
-    <tr><th>Catégorie</th><th>Exemples</th></tr>
-    <tr><td>Identité et compte</td><td>nom tel qu'il figure sur vos convocations, e-mail, prénom, niveau</td></tr>
-    <tr><td>Localisation</td><td>adresse de départ (calcul des distances)</td></tr>
-    <tr><td>Matchs</td><td>contenu des convocations : date, salle, équipes, rôle, indemnité</td></tr>
-    <tr><td>Paiements</td><td>montants attendus et reçus, dates, relevés bancaires si vous les importez</td></tr>
-    <tr><td>Optionnel</td><td>évaluations, e-Licence, contacts, hôtels, rapports que vous ajoutez</td></tr>
-    <tr><td>Technique</td><td>abonnement aux notifications, journaux techniques</td></tr>
+    <tr><th>Finalité</th><th>Base légale (RGPD art. 6)</th></tr>
+    <tr><td>Créer et gérer votre compte, vous authentifier, vous envoyer votre code de première connexion</td><td>Exécution du service que vous avez demandé (contrat)</td></tr>
+    <tr><td>Lire les convocations que vous transférez et en extraire vos matchs (date, lieu, équipes, rôle, collègues, annulations)</td><td>Exécution du service</td></tr>
+    <tr><td>Calculer vos trajets, kilomètres, frais de carburant, indemnités et échéances de paiement</td><td>Exécution du service</td></tr>
+    <tr><td>Suivre vos paiements, y compris le rapprochement avec un relevé bancaire que vous déposez</td><td>Exécution du service</td></tr>
+    <tr><td>Alimenter votre agenda par abonnement et vous envoyer des notifications</td><td>Exécution du service ; notifications : votre consentement (autorisation du navigateur), retirable à tout moment</td></tr>
+    <tr><td>Analyser les rapports d'observation que vous déposez (progression), répondre à vos questions de règlement, QCM</td><td>Exécution du service</td></tr>
+    <tr><td>Vous aider à rédiger un rapport d'incident (assistant)</td><td>Exécution du service ; le texte reste sur votre appareil tant que vous ne l'enregistrez pas</td></tr>
+    <tr><td>Sécurité, prévention des abus, journal des accès administrateur, sauvegardes</td><td>Intérêt légitime (sécurité du service) et obligation légale</td></tr>
+    <tr><td>Répondre à vos demandes (contact, droits RGPD)</td><td>Obligation légale et intérêt légitime</td></tr>
   </table>
-  <p><strong>Personnes citées sur vos convocations</strong> (collègues arbitres, correspondants des clubs, observateurs) : seuls le nom, le club et le téléphone figurant sur la convocation sont conservés, visibles par vous seul, pour organiser le match et votre paiement. Ces personnes peuvent demander la suppression de leurs coordonnées à l'adresse ci-dessus.</p>
+  <p>Aucune décision automatisée produisant des effets juridiques n'est prise à votre égard. Les montants, échéances et distances sont des <strong>estimations</strong> ; les documents officiels de vos organismes restent la référence.</p>
 
-  <h2>4. Sur quelle base ?</h2>
-  <ul>
-    <li>Vos propres données : <strong>exécution du service</strong> que vous avez demandé (conditions d'utilisation acceptées) ;</li>
-    <li>données des personnes citées sur les convocations : <strong>intérêt légitime</strong> (organiser le match, être payé), limité aux informations de la convocation.</li>
-  </ul>
+  <h2 id="s3">3. Quelles données ?</h2>
+  <table>
+    <tr><th>Catégorie</th><th>Exemples</th><th>Origine</th></tr>
+    <tr><td>Identité et contact</td><td>Prénom, nom tel qu'il figure sur vos convocations, e-mail de connexion, e-mail recevant vos convocations, téléphone (facultatif), niveau d'arbitrage, comité / ligue / championnat</td><td>Vous (inscription, profil)</td></tr>
+    <tr><td>Adresse de départ et véhicule</td><td>Adresse, code postal, ville, coordonnées géographiques calculées, modèle de véhicule, consommation, puissance fiscale</td><td>Vous</td></tr>
+    <tr><td>Convocations et matchs</td><td>Contenu des e-mails et PDF de convocation que vous transférez : rencontres, lieux, horaires, équipes, collègues (noms, parfois numéros de téléphone), montants d'indemnités</td><td>Vous (transfert ou dépôt)</td></tr>
+    <tr><td>Paiements</td><td>Statut et dates de paiement, montants reçus ; lignes de relevé bancaire <strong>que vous validez seulement</strong> (date, montant, libellé tronqué) — le fichier du relevé est lu dans votre navigateur et n'est jamais envoyé</td><td>Vous</td></tr>
+    <tr><td>Documents déposés</td><td>Rapports d'observation, licence officielle (capture ou PDF), rapports que vous enregistrez, factures d'hôtel</td><td>Vous</td></tr>
+    <tr><td>Contacts et procédures</td><td>Fiches de contact et procédures que vous créez (noms, fonctions, e-mails, téléphones de tiers)</td><td>Vous</td></tr>
+    <tr><td>Entraînement</td><td>Réponses et scores de QCM, questions posées au règlement</td><td>Vous</td></tr>
+    <tr><td>Technique</td><td>Identifiant de compte, horodatages de connexion, jetons de session, abonnement aux notifications (navigateur), préférences (thème, filtres), journaux d'erreurs</td><td>Générées par l'application</td></tr>
+  </table>
+  <p>Aucune donnée dite sensible (santé, opinions, etc.) n'est demandée. Si une convocation ou un rapport que vous déposez en contient, elle n'est traitée que pour vous l'afficher.</p>
 
-  <h2>5. Combien de temps ?</h2>
+  <h2 id="s4">4. Combien de temps ?</h2>
   <table>
     <tr><th>Données</th><th>Durée</th></tr>
-    <tr><td>Matchs, paiements, relevés</td><td>saison en cours + 3 saisons (suivi des revenus)</td></tr>
-    <tr><td>Téléphones des personnes citées</td><td>saison en cours + 1 saison, puis effacement automatique</td></tr>
-    <tr><td>Journaux techniques</td><td>12 mois</td></tr>
-    <tr><td>Sauvegardes</td><td>8 jours glissants</td></tr>
-    <tr><td>Après suppression du compte</td><td>effacement sous 30 jours, sauvegardes comprises</td></tr>
+    <tr><td>Compte, profil, matchs, paiements, documents</td><td>Tant que votre compte est actif, puis effacées sous 30 jours après suppression du compte</td></tr>
+    <tr><td>Compte inactif</td><td>Après 24 mois sans connexion, vous êtes prévenu par e-mail ; sans réponse sous 30 jours, le compte et ses données sont supprimés</td></tr>
+    <tr><td>E-mails transférés reçus sur votre adresse prenom@referee-tracker.fr</td><td>Conservés le temps de leur lecture puis archivés au plus 12 mois, pour permettre une relecture en cas d'erreur d'extraction</td></tr>
+    <tr><td>Temps d'utilisation (minutes par jour, type d'appareil — aucune page consultée, aucune donnée de navigation)</td><td>12 mois ; sert uniquement à mesurer l'usage réel de l'application et à dimensionner le service</td></tr>
+    <tr><td>Sauvegardes</td><td>8 dernières sauvegardes quotidiennes, purgées automatiquement (au plus 8 jours après la suppression du compte)</td></tr>
+    <tr><td>Journaux techniques et de sécurité</td><td>12 mois maximum</td></tr>
+    <tr><td>Code de première connexion</td><td>14 jours, stocké uniquement sous forme hachée</td></tr>
+    <tr><td>Demandes d'accès sur liste d'attente</td><td>12 mois, puis suppression</td></tr>
   </table>
 
-  <h2>6. Qui y a accès ?</h2>
-  <p>Vous seul dans l'application. L'administrateur (Clément REBHOLZ) peut consulter vos données pour la maintenance, le support et la correction d'erreurs ;
-  son accès est protégé par double authentification et <strong>chaque consultation est journalisée</strong>. Il ne les utilise à aucune autre fin.
-  Prestataires techniques (sous-traitants) :</p>
+  <h2 id="s5">5. Qui y a accès ?</h2>
+  <p><strong>Vous seul</strong> dans l'application : chaque arbitre a son espace, cloisonné au niveau de la base de données. L'éditeur, en tant qu'administrateur, peut accéder à vos données pour la maintenance, le support et la sécurité ; chacun de ces accès est journalisé, protégé par une double authentification, et limité à ce qui est nécessaire.</p>
+  <p>Sous-traitants (ils agissent sur instruction et n'utilisent pas vos données pour leur compte) :</p>
   <table>
-    <tr><th>Prestataire</th><th>Rôle</th><th>Localisation</th></tr>
-    <tr><td>Supabase</td><td>base de données, connexion, notifications</td><td>voir l'hébergement du projet ; garanties contractuelles</td></tr>
-    <tr><td>Google (Gmail, Drive, Sheets, Apps Script, Agenda)</td><td>réception des convocations, traitement, agenda</td><td>UE / États-Unis (cadre UE–États-Unis)</td></tr>
-    <tr><td>Cloudflare</td><td>réception et acheminement des e-mails du domaine</td><td>mondial, garanties contractuelles</td></tr>
-    <tr><td>GitHub Pages</td><td>hébergement du site (aucune donnée personnelle stockée)</td><td>États-Unis</td></tr>
-    <tr><td>OpenStreetMap / OSRM</td><td>cartes et calcul d'itinéraire</td><td>UE</td></tr>
+    <tr><th>Prestataire</th><th>Rôle</th><th>Lieu</th></tr>
+    <tr><td>Supabase, Inc.</td><td>Base de données, authentification, stockage des fichiers déposés, fonctions serveur</td><td>Serveurs dans l'Union européenne</td></tr>
+    <tr><td>Google Ireland Ltd (Google Workspace : Apps Script, Gmail, Drive, Agenda, Maps)</td><td>Moteur de traitement par arbitre : réception et lecture des convocations transférées, calcul des trajets, stockage de travail, sauvegardes, envoi d'e-mails</td><td>UE / États-Unis</td></tr>
+    <tr><td>Cloudflare, Inc.</td><td>Nom de domaine, DNS, routage des e-mails entrants (prenom@referee-tracker.fr) vers le moteur</td><td>Réseau mondial</td></tr>
+    <tr><td>GitHub, Inc.</td><td>Hébergement des pages de l'application (aucune donnée personnelle stockée)</td><td>Réseau mondial</td></tr>
+    <tr><td>Anthropic, PBC</td><td>Intelligence artificielle (voir section 7)</td><td>États-Unis</td></tr>
+    <tr><td>Google LLC (Gemini)</td><td>Intelligence artificielle de secours (voir section 7)</td><td>UE / États-Unis</td></tr>
+    <tr><td>OpenStreetMap Foundation (Nominatim, fonds de carte) et le projet OSRM</td><td>Géocodage de l'adresse d'une salle, calcul d'itinéraire, affichage de la carte</td><td>Royaume-Uni / Allemagne</td></tr>
+    <tr><td>Services de notification des navigateurs (Apple, Google, Mozilla)</td><td>Acheminement des notifications que vous avez activées (contenu chiffré de bout en bout)</td><td>Mondial</td></tr>
   </table>
-  <p>Les fonctions d'intelligence artificielle sont <strong>désactivées</strong> pendant la bêta.</p>
+  <p>Aucune donnée n'est transmise à une fédération, une ligue, un comité, un club ou un autre arbitre, sauf si vous utilisez vous-même une fonction d'envoi (par exemple « envoyer ce rapport par e-mail »).</p>
 
-  <h2>7. Sécurité</h2>
-  <p>Connexion par mot de passe personnel (12 caractères minimum), chiffrement des échanges (HTTPS), séparation stricte des données de chaque arbitre,
-  accès administrateur protégé par double authentification, sauvegardes quotidiennes. En cas de violation de données présentant un risque, la CNIL
-  est notifiée sous 72 heures et vous êtes informé.</p>
+  <h2 id="s6">6. Transferts hors de l'Union européenne</h2>
+  <p>Vos données principales sont hébergées dans l'Union européenne. Certains prestataires (Google, Cloudflare, GitHub, Anthropic) sont établis aux États-Unis : les transferts reposent sur leur certification au <em>Data Privacy Framework</em> UE-États-Unis et/ou sur les clauses contractuelles types de la Commission européenne, accompagnées de mesures techniques (chiffrement en transit, minimisation des données envoyées).</p>
 
-  <h2>8. Vos droits</h2>
-  <p>Vous pouvez à tout moment demander l'accès, la rectification, l'export ou la suppression de vos données, vous opposer à un traitement ou en demander la limitation,
-  en écrivant à <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a>. Réponse sous un mois.
-  Vous pouvez aussi saisir la CNIL (<a href="https://www.cnil.fr" rel="noopener">cnil.fr</a>).</p>
+  <h2 id="s7">7. Intelligence artificielle</h2>
+  <p>Certaines fonctions utilisent un modèle d'IA : lecture d'une convocation ou d'un rapport d'observation difficile à extraire automatiquement, réponses aux questions de règlement, analyse de progression. Dans ces cas, <strong>seuls les extraits nécessaires</strong> (texte de la convocation ou du rapport, votre question) sont envoyés au prestataire, sous votre identifiant technique et jamais avec votre e-mail. Les prestataires retenus s'engagent contractuellement à ne pas entraîner leurs modèles sur ces données. L'IA ne prend aucune décision à votre place : vous relisez et corrigez tout ce qu'elle propose, et vous pouvez demander à l'éditeur de désactiver ces fonctions pour votre compte.</p>
 
-  <h2>9. Cookies et stockage</h2>
-  <p>Aucun cookie publicitaire ni traceur. L'application stocke sur votre appareil uniquement ce qui est nécessaire à son fonctionnement (session de connexion, cache d'affichage).</p>
+  <h2 id="s8">8. Sécurité</h2>
+  <ul>
+    <li>Connexions chiffrées (HTTPS) partout ; politique de sécurité du contenu stricte ; aucune ressource chargée depuis un tiers (polices et bibliothèques hébergées par Referee Tracker).</li>
+    <li>Mot de passe personnel (12 caractères minimum), stocké haché par le prestataire d'authentification ; code de première connexion à usage unique, haché, limité à 5 essais par quart d'heure.</li>
+    <li>Cloisonnement par arbitre au niveau de la base (règles de sécurité par ligne), clés secrètes jamais présentes dans l'application ni dans les dépôts de code.</li>
+    <li>Compte administrateur protégé par double authentification ; chaque action administrateur journalisée.</li>
+    <li>Sauvegardes quotidiennes chiffrées au repos, conservées 8 jours, testées.</li>
+    <li>En cas de violation de données susceptible de vous affecter, vous êtes informé dans les meilleurs délais et la CNIL est notifiée sous 72 heures lorsque la loi l'exige.</li>
+  </ul>
+
+  <h2 id="s9">9. Vos droits</h2>
+  <p>Vous pouvez à tout moment demander l'accès à vos données, leur rectification, leur effacement, la limitation de leur traitement, vous opposer à un traitement fondé sur l'intérêt légitime, retirer un consentement, et recevoir vos données dans un format lisible (portabilité). Écrivez à <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a> depuis l'adresse e-mail de votre compte ; réponse sous un mois. Export et suppression sont aussi disponibles directement dans l'application (Mon profil → Compte → Mes données) : les données, fichiers, adresse de réception et identifiants sont effacés immédiatement ; le moteur de traitement rattaché au compte et les sauvegardes sont retirés sous 30 jours.</p>
+  <p>Vous pouvez aussi vous adresser à la CNIL : <a href="https://www.cnil.fr/fr/plaintes" rel="noopener">www.cnil.fr/fr/plaintes</a> — 3 place de Fontenoy, TSA 80715, 75334 Paris Cedex 07.</p>
+
+  <h2 id="s10">10. Cookies et stockage local</h2>
+  <p>Referee Tracker <strong>n'utilise aucun cookie de suivi ni outil de mesure d'audience</strong>. Aucun bandeau de consentement n'est donc nécessaire. Le site vitrine ne dépose rien. L'application utilise uniquement le stockage local de votre navigateur pour ce qui est strictement nécessaire au service, exempté de consentement (article 82 de la loi Informatique et Libertés) : jeton de session, cache de vos données pour un affichage immédiat et une lecture hors ligne, préférences (thème, filtres, visite guidée faite), brouillons. Vous pouvez tout effacer en vous déconnectant ou en supprimant les données du site dans votre navigateur.</p>
+
+  <h2 id="s11">11. Notifications</h2>
+  <p>Les notifications (nouveau match, annulation, rappel, paiement en retard) ne sont envoyées que si vous les activez sur un appareil. Vous pouvez les désactiver à tout moment depuis les réglages de votre navigateur ou de votre téléphone ; l'abonnement correspondant est alors supprimé.</p>
+
+  <h2 id="s12">12. Mineurs</h2>
+  <p>L'application s'adresse aux arbitres en activité. Un arbitre mineur de moins de 15 ans ne peut s'inscrire qu'avec l'accord d'un titulaire de l'autorité parentale, qui peut nous écrire à <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a>.</p>
+
+  <h2 id="s13">13. Évolutions</h2>
+  <p>Cette politique peut évoluer, notamment lors de l'ouverture à un plus grand nombre d'arbitres ou de l'ajout de nouvelles fonctions. La date de version figure en haut de page ; toute modification substantielle vous est signalée dans l'application et vous est demandée à nouveau si elle concerne un consentement.</p>
 </main>
 </body>
 </html>

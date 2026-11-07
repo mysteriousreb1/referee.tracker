@@ -1,4 +1,4 @@
-/* © 2026 Clément REBHOLZ — Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
+/* © 2026 Referee Tracker. Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur. */
 /* =====================================================
    REFEREE TRACKER — AUTHENTIFICATION + COUCHE API
    À charger AVANT app.js dans index.html.
@@ -1068,7 +1068,7 @@ function renderProfile() {
   body.innerHTML = `
     <section class="rt-sect">
       <h3>Identité &amp; adresse</h3>
-      <p class="rt-help">Le nom et l'e-mail FFBB servent à te reconnaître dans le bloc arbitre d'une convocation ; l'adresse est le point de départ de tous les kilomètres.</p>
+      <p class="rt-help">Le nom et l'e-mail officiels servent à te reconnaître dans le bloc arbitre d'une convocation ; l'adresse est le point de départ de tous les kilomètres.</p>
       <div class="rt-field"><label for="pfEmailC">Email de connexion</label>
         <input id="pfEmailC" type="email" value="${esc(p.email_connexion)}" disabled></div>
       <div class="rt-row">
@@ -1077,7 +1077,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
           <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="ex. Régional 2 – JPR Rouge"></div>
       </div>
-      <div class="rt-field"><label for="pfMailFfbb">Email connu de la FFBB${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
+      <div class="rt-field"><label for="pfMailFfbb">Email connu de ta fédération${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
         <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
       <div class="rt-field"><label for="pfAdr">Adresse de départ</label>
         <input id="pfAdr" type="text" value="${esc(p.adresse)}"></div>
@@ -1087,6 +1087,15 @@ function renderProfile() {
         <div class="rt-field"><label for="pfVille">Ville</label>
           <input id="pfVille" type="text" value="${esc(p.ville)}"></div>
       </div>
+      <h4 class="rt-h4">Zones de paiement</h4>
+      <p class="rt-help">Qui te paie, et donc quelles périodes de paiement s'appliquent à tes matchs.</p>
+      <div class="rt-row">
+        <div class="rt-field"><label for="pfZcd">Comité départemental</label>
+          <select id="pfZcd">${ONBOARD.COMITES.map(([k, l]) => `<option value="${k}"${(p.zones && p.zones.cd) === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+        <div class="rt-field"><label for="pfZligue">Ligue régionale</label>
+          <select id="pfZligue"><option value="">— pas de matchs régionaux —</option>${ONBOARD.LIGUES.map(([k, l]) => `<option value="${k}"${(p.zones && p.zones.ligue) === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      </div>
+      <label class="rt-onb-check" style="display:block;margin:4px 0 12px"><input type="checkbox" id="pfZcf"${p.zones && p.zones.cf ? " checked" : ""}> Championnat de France (payé par virement national)</label>
       <button type="button" class="rt-btn" id="pfSaveProfil">Enregistrer</button>
     </section>
 
@@ -1117,7 +1126,7 @@ function renderProfile() {
           <div class="rt-field"><label for="vhCv">Chevaux fiscaux</label>
             <input id="vhCv" type="text" placeholder="8"></div>
         </div>
-        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité FFBB (${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
+        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité kilométrique officielle (${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
         <button type="button" class="rt-btn" id="pfAddVeh">Ajouter</button>
       </details>
     </section>
@@ -1125,8 +1134,8 @@ function renderProfile() {
     <section class="rt-sect">
       <h3>Frais kilométriques</h3>
       <details class="rt-details">
-        <summary>Indemnité FFBB : <b>${esc(t.indemnite_km)} €/km</b></summary>
-        <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
+        <summary>Indemnité kilométrique : <b>${esc(t.indemnite_km)} €/km</b></summary>
+        <div class="rt-field"><label for="pfIndem">Indemnité kilométrique (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
         <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
         <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
@@ -1197,20 +1206,8 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
-      <h3>Aide</h3>
-      <details class="rt-details" id="tkForm">
-        <summary class="rt-btn-ghost rt-summary-btn">Signaler un problème</summary>
-        <div class="rt-row">
-          <div class="rt-field"><label for="tkCat">Type</label>
-            <select id="tkCat">${["Bug / affichage", "Calcul faux", "Paiement", "Import mail", "Idée d'amélioration", "Autre"].map(x => `<option>${esc(x)}</option>`).join("")}</select></div>
-          <div class="rt-field"><label for="tkGrav">Gravité</label>
-            <select id="tkGrav"><option>Gênant</option><option>Bloquant</option><option>Mineur</option></select></div>
-        </div>
-        <div class="rt-field"><label for="tkDesc">Que se passe-t-il ?</label>
-          <textarea id="tkDesc" rows="3" placeholder="Ex. Paiements : le montant à recevoir d'octobre ne correspond pas à l'échéancier"></textarea></div>
-        <button type="button" class="rt-btn" id="tkEnvoyer">Envoyer</button>
-        <details class="rt-details" id="tkHist"><summary>Mes tickets</summary><div id="tkListe"><p class="rt-help">Chargement…</p></div></details>
-      </details>
+      <h3>Un souci ?</h3>
+      <p class="rt-help" style="margin:0"><a href="./manuel.html" target="_blank" rel="noopener"><strong>Manuel utilisateur</strong></a> (chaque écran expliqué) · Écris-nous : <a href="mailto:contact@referee-tracker.fr">contact@referee-tracker.fr</a>. Réponse sous 48 h.</p>
     </section>
 
     <section class="rt-sect">
@@ -1224,10 +1221,49 @@ function renderProfile() {
         <button type="button" class="rt-btn" id="pfChangePwd">Modifier</button>
       </details>
       <button type="button" class="rt-btn-danger" id="rtLogoutBtn">Se déconnecter</button>
-      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Tes données (export, suppression) : <a href="mailto:referee.tracker@gmail.com">referee.tracker@gmail.com</a></p>
+      <!-- b71 — droits RGPD exercés dans l'app (Edge « compte ») : export JSON, suppression définitive. -->
+      <details class="rt-details">
+        <summary>Mes données (export, suppression)</summary>
+        <p class="rt-help">Télécharge tout ce que Referee Tracker conserve sur toi (fichier JSON), ou supprime ton compte : matchs, évaluations, fichiers, adresse de réception et identifiants sont effacés immédiatement. Le moteur de traitement rattaché à ton compte est retiré sous 30 jours.</p>
+        <p><button type="button" class="rt-btn-ghost" id="pfExport">Exporter mes données</button></p>
+        <div class="rt-field"><label for="pfSupprConf">Pour supprimer, écris SUPPRIMER</label><input id="pfSupprConf" type="text" autocomplete="off" placeholder="SUPPRIMER"></div>
+        <button type="button" class="rt-btn-danger" id="pfSuppr" disabled>Supprimer définitivement mon compte</button>
+      </details>
+      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Question sur tes données : <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a></p>
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
+  // b71 — export / suppression de compte (Edge « compte », jeton de session de l'arbitre).
+  const compteApi = async (corps) => {
+    const t = await SB.token();
+    const r = await fetch(SB_URL + "/functions/v1/compte", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error === "CONFIRMATION" ? "Écris exactement SUPPRIMER" : (j.error || "HTTP " + r.status));
+    return j;
+  };
+  document.getElementById("pfExport").addEventListener("click", async () => {
+    const b = document.getElementById("pfExport"); b.disabled = true;
+    try {
+      const j = await compteApi({ action: "exporter" });
+      const blob = new Blob([JSON.stringify(j, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "referee-tracker-mes-donnees-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000); toast("Export téléchargé");
+    } catch (e) { toast("Export : " + e.message, true); }
+    b.disabled = false;
+  });
+  const conf = document.getElementById("pfSupprConf"), btnS = document.getElementById("pfSuppr");
+  conf.addEventListener("input", () => { btnS.disabled = conf.value.trim().toUpperCase() !== "SUPPRIMER"; });
+  btnS.addEventListener("click", async () => {
+    if (!confirm("Suppression définitive de ton compte et de toutes tes données. Cette action est irréversible. Continuer ?")) return;
+    btnS.disabled = true;
+    try {
+      await compteApi({ action: "supprimer", confirmation: conf.value });
+      try { localStorage.clear(); } catch (e) {}
+      try { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch (e) {}
+      alert("Ton compte est supprimé. Merci d'avoir testé Referee Tracker.");
+      location.replace("https://www.referee-tracker.fr/");
+    } catch (e) { toast("Suppression : " + e.message, true); btnS.disabled = false; }
+  });
   // b63 — agenda par abonnement (.ics, Edge Function « ics »), sans Google.
   document.getElementById("pfIcs").addEventListener("click", async () => {
     const b = document.getElementById("pfIcs"); b.disabled = true;
@@ -1250,7 +1286,7 @@ function renderProfile() {
     delCout(type, Number(i));
   }));
   document.getElementById("pfChangePwd").addEventListener("click", changePassword);
-  document.getElementById("tkEnvoyer").addEventListener("click", envoyerTicket);
+  const tkE = document.getElementById("tkEnvoyer"); if (tkE) tkE.addEventListener("click", envoyerTicket);
   const th = document.getElementById("tkHist");
   if (th) th.addEventListener("toggle", () => { if (th.open) chargerTickets(); });
   const setTheme = t => {
@@ -1323,7 +1359,8 @@ function saveProfil() {
   envoyer("settings.profil", {
     profil: {
       niveau: val("pfNiveau"), nom_ffbb: val("pfNom"), email_ffbb: val("pfMailFfbb"),
-      adresse: val("pfAdr"), code_postal: val("pfCp"), ville: val("pfVille")
+      adresse: val("pfAdr"), code_postal: val("pfCp"), ville: val("pfVille"),
+      zones: { cd: val("pfZcd"), ligue: val("pfZligue"), cf: !!(document.getElementById("pfZcf") || {}).checked }   // b70
     }
   }, "Profil enregistré.");
 }
@@ -1692,7 +1729,7 @@ function pushResyncInstaller_() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
 }
 /* b58 — CGU + politique de confidentialité acceptées avant tout usage (preuve en base, RLS). */
-const RT_CGU_VERSION = "2026-10-30";
+const RT_CGU_VERSION = "2026-11-07";   // b70 : CGU v3 + politique v3 → ré-acceptation demandée à tous
 const CONSENT = {
   _ok: false,
   async verifier() {
@@ -1714,7 +1751,7 @@ const CONSENT = {
     d.setAttribute("aria-modal", "true");
     d.innerHTML = `<div class="rt-consent-box">
       <h2>Bienvenue sur Referee Tracker</h2>
-      <p>Avant de commencer, merci de lire et d'accepter :</p>
+      <p>Les conditions et la politique de confidentialité ont été mises à jour (7 novembre 2026). Avant de continuer, merci de les lire et de les accepter :</p>
       <ul>
         <li><a href="./cgu.html" target="_blank" rel="noopener">les conditions d'utilisation</a> ;</li>
         <li><a href="./confidentialite.html" target="_blank" rel="noopener">la politique de confidentialité</a> (vos données et celles des personnes citées sur vos convocations).</li>
@@ -1850,16 +1887,22 @@ const ONBOARD = {
       b.innerHTML = '<h2>Qui te paie ?</h2><p>Tes désignations viennent de trois niveaux. Choisis les tiens : l\'app applique les bons barèmes et les bonnes périodes de paiement.</p>' +
         '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>Comité départemental</strong><span class="rt-tag">obligatoire</span></div><p class="rt-help">Championnats départementaux, 3x3, jeunes. Payé par le comité ou le club selon la rencontre.</p><select id="onbZcd">' + opt(this.COMITES, D2.zcd) + '</select></div>' +
         '<div class="rt-onb-zone' + (D2.zligue ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZligueOn"' + (D2.zligue ? " checked" : "") + '> <strong>Ligue régionale</strong></label><span class="rt-tag">arbitre régional</span></div><p class="rt-help">RM2 / RF2 / PNM / PNF, U15-U18 régionaux… Payé par la ligue par virement, par périodes.</p><select id="onbZligue"' + (D2.zligue ? "" : " disabled") + '>' + opt(this.LIGUES, D2.zligue || "LRGEB") + '</select></div>' +
-        '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la FFBB par virement.</p></div>';
+        '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la la fédération par virement.</p></div>';
       const lo = document.getElementById("onbZligueOn"), ls = document.getElementById("onbZligue");
-      lo.addEventListener("change", () => { ls.disabled = !lo.checked; lo.closest(".rt-onb-zone").classList.toggle("is-on", lo.checked); if (lo.checked && !ls.value) ls.value = "LRGEB"; });
-      document.getElementById("onbZcf").addEventListener("change", ev => ev.target.closest(".rt-onb-zone").classList.toggle("is-on", ev.target.checked));
+      lo.addEventListener("change", () => { ls.disabled = !lo.checked; lo.closest(".rt-onb-zone").classList.toggle("is-on", lo.checked); if (lo.checked && !ls.value) ls.value = "LRGEB"; RT_CARTE.maj(); });
+      document.getElementById("onbZcf").addEventListener("change", ev => { ev.target.closest(".rt-onb-zone").classList.toggle("is-on", ev.target.checked); RT_CARTE.maj(); });
+      // b71 — carte de France animée : le comité, la ligue et le Championnat de France s'allument au fil des choix ; un clic sur un département le choisit.
+      b.insertAdjacentHTML("afterbegin", '<div class="rt-carte" id="onbCarte" aria-hidden="true"></div>');
+      RT_CARTE.monter(document.getElementById("onbCarte"), { cd: () => document.getElementById("onbZcd").value, ligue: () => (lo.checked ? ls.value : ""), cf: () => document.getElementById("onbZcf").checked,
+        surDep: code => { const sel = document.getElementById("onbZcd"); const v = "CD" + code; if ([...sel.options].some(o => o.value === v)) { sel.value = v; } else { sel.value = "AUTRE"; } RT_CARTE.maj(); } });
+      document.getElementById("onbZcd").addEventListener("change", () => RT_CARTE.maj());
+      ls.addEventListener("change", () => RT_CARTE.maj());
     } else if (e === 4) {
       const adr = this.reception || "(adresse communiquée par l'administrateur)";
-      b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations FFBB vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
-        '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : ffbb » → Transférer.</p></details>' +
-        '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur contient ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
-        '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
+      b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations officielles vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
+        '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : (l\'adresse qui t\'envoie tes convocations) » → Transférer.</p></details>' +
+        '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur = l\'adresse qui t\'envoie tes convocations » → Transférer à l\'adresse ci-dessus.</p></details>' +
+        '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : l\'adresse qui t\'envoie tes convocations » → Transférer à l\'adresse ci-dessus.</p></details>' +
         '<p class="rt-help">Transfère aussi une fois tes convocations déjà reçues cette saison : l\'app reconstruit ta saison.</p>';
     } else {
       b.innerHTML = '<h2>Notifications</h2><p>Sois prévenu d\'une nouvelle désignation, d\'un paiement sur place ou d\'une échéance dépassée.</p>' +
@@ -1948,6 +1991,7 @@ const TOUR = {
 function startApp() {
   try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
+  usageInstaller_();   // b71
   // On affiche AVANT de parler au serveur : `loadData` passe par le cache,
   // donc le contenu est à l'écran immédiatement au lieu d'attendre la réponse
   // de « me » — un aller-retour Apps Script, soit 1 à 5 s d'écran vide.
@@ -2005,3 +2049,43 @@ document.addEventListener("DOMContentLoaded", () => {
   const dec = document.getElementById("rtHeaderLogout");
   if (dec) dec.addEventListener("click", logout);
 });
+
+/* ===================== b71 — CARTE DE FRANCE (zones de paiement) =====================
+   Données : vendor/france.js (contours simplifiés, Licence Ouverte). Rendu SVG, animations CSS :
+   apparition des départements, comité en jaune, ligue en bleu, Championnat de France = halo sur tout le pays. */
+const RT_CARTE = {
+  LIGUE_REGION: { LRGEB: "44", ARA: "84", BFC: "27", BRE: "53", CVL: "24", COR: "94", HDF: "32", IDF: "11", NOR: "28", NAQ: "75", OCC: "76", PDL: "52", PACA: "93" },
+  REGION_LIGUE: null, el: null, lire: null,
+  monter(el, lire) {
+    this.el = el; this.lire = lire;
+    const F = window.RT_FRANCE; if (!F || !el) return;
+    if (!this.REGION_LIGUE) { this.REGION_LIGUE = {}; Object.keys(this.LIGUE_REGION).forEach(k => { this.REGION_LIGUE[this.LIGUE_REGION[k]] = k; }); }
+    el.innerHTML = '<svg viewBox="0 0 ' + F.w + ' ' + F.h + '" class="rt-carte-svg" role="img" aria-label="Carte de France"><g class="rt-carte-halo"><rect x="0" y="0" width="' + F.w + '" height="' + F.h + '" rx="40"/></g><g class="rt-carte-deps">' +
+      F.deps.map((d, i) => '<path d="' + d.d + '" data-dep="' + d.c + '" data-reg="' + d.r + '" style="animation-delay:' + (i * 9) + 'ms"><title>' + d.n + ' (' + d.c + ')</title></path>').join("") + '</g></svg>' +
+      '<div class="rt-carte-leg"><span class="rt-carte-l rt-carte-l-cd">Comité</span><span class="rt-carte-l rt-carte-l-lg">Ligue</span><span class="rt-carte-l rt-carte-l-cf">Championnat de France</span></div>';
+    el.querySelectorAll("path[data-dep]").forEach(p => p.addEventListener("click", () => { if (lire.surDep) lire.surDep(p.dataset.dep); }));
+    this.maj();
+  },
+  maj() {
+    const el = this.el, L = this.lire; if (!el || !L) return;
+    const cd = String(L.cd() || "").replace(/^CD/, ""), reg = this.LIGUE_REGION[L.ligue()] || "", cf = !!L.cf();
+    el.querySelectorAll("path[data-dep]").forEach(p => { p.classList.toggle("is-cd", p.dataset.dep === cd); p.classList.toggle("is-lg", !!reg && p.dataset.reg === reg); });
+    el.classList.toggle("is-cf", cf);
+    el.querySelector(".rt-carte-l-cd").classList.toggle("on", !!cd && cd !== "AUTRE");
+    el.querySelector(".rt-carte-l-lg").classList.toggle("on", !!reg);
+    el.querySelector(".rt-carte-l-cf").classList.toggle("on", cf);
+  }
+};
+
+/* ===================== b71 — TEMPS D'UTILISATION (admin : « utilisateurs actifs », minutes, jours actifs) =====================
+   Toutes les minutes, si l'onglet est visible et la session ouverte, on compte 1 min ; toutes les 5 min comptées,
+   un appel à la fonction SQL connexion_ping (sécurisée : auth.uid(), 1 ligne par jour). Aucune donnée de navigation,
+   aucune page consultée : juste un compteur de minutes. Déclaré dans la politique de confidentialité (traitement T8). */
+let _usageTimer = null, _usageMin = 0;
+function usageInstaller_() {
+  if (_usageTimer) return;
+  const appareil = /iPhone|iPad|Android/i.test(navigator.userAgent) ? (/iPad/i.test(navigator.userAgent) ? "tablette" : "téléphone") : "ordinateur";
+  const envoyer = async () => { const n = _usageMin; if (!n) return; _usageMin = 0; try { await SB.write("POST", "rpc/connexion_ping", { p_minutes: n, p_appareil: appareil }); } catch (e) { _usageMin += n; } };
+  _usageTimer = setInterval(() => { if (document.visibilityState !== "visible" || !SB.actif) return; _usageMin++; if (_usageMin >= 5) envoyer(); }, 60000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && _usageMin >= 1) envoyer(); });
+}

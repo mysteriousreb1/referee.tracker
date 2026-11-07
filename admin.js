@@ -14,6 +14,8 @@
   const fmtD = (d) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—");
   const euro = (n) => (Number(n) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
   const pct = (a, b) => (b ? Math.round((a / b) * 100) + " %" : "—");
+  // b71 — minutes d'utilisation → « 1 h 05 » / « 12 min »
+  const minutesTxt = (m) => { m = Number(m) || 0; if (!m) return "—"; if (m < 60) return m + " min"; return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0"); };
   const depuis = (d) => { if (!d) return "jamais"; const h = (Date.now() - new Date(d)) / 36e5; return h < 1 ? "il y a " + Math.round(h * 60) + " min" : h < 48 ? "il y a " + Math.round(h) + " h" : "il y a " + Math.round(h / 24) + " j"; };
   const heures = (d) => (d ? (Date.now() - new Date(d)) / 36e5 : Infinity);
   const nomDe = (p, email) => (p && (p.prenom || p.nom_ffbb)) ? [p.prenom, p.nom_ffbb].filter(Boolean).join(" ") : (email || "—");
@@ -121,7 +123,7 @@
   }
   const badge = (txt, cl) => '<span class="badge ' + (cl || "") + '">' + esc(txt) + "</span>";
   const badgeStatut = (s) => ({ actif: badge("actif", "green"), inscrit: badge("inscrit", "orange"), moteur_pret: badge("moteur prêt", "gold"), suspendu: badge("suspendu", "red"),
-    recue: badge("reçue", "orange"), moteur_cree: badge("moteur créé", "gold"), prete: badge("prête", "green"), erreur: badge("erreur", "red"),
+    attente: badge("attente", "blue"), recue: badge("reçue", "orange"), moteur_cree: badge("moteur créé", "gold"), prete: badge("prête", "green"), erreur: badge("erreur", "red"),
     Ouvert: badge("Ouvert", "red"), "En cours": badge("En cours", "orange"), "Fermé": badge("Fermé", "green") }[s] || badge(s || "—"));
   const ouiNon = (v) => (v ? badge("oui", "green") : badge("non", "gray"));
   const API_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
@@ -200,7 +202,7 @@
       tuile(t.arbitres_actifs ?? 0, "Arbitres actifs", "green", (t.comptes ?? 0) + " comptes", "#arbitres") + tuile(t.inscrits_attente ?? 0, "Inscrits en attente", "orange", "", "#inscriptions") +
       tuile(t.moteurs_prets ?? 0, "Moteurs prêts", "gold", "en attente de 1re connexion", "#arbitres") + tuile(t.suspendus ?? 0, "Suspendus", "red", "", "#arbitres") +
       tuile(t.matchs_total ?? 0, "Matchs total", "", (t.matchs_30j ?? 0) + " sur 30 j") + tuile(t.convocations_7j ?? 0, "Convocations 7 j", "", "reçues toutes instances") +
-      tuile(t.connexions_7j ?? 0, "Connexions 7 j", "green", "comptes vus") + tuile(t.tickets_ouverts ?? 0, "Tickets ouverts", t.tickets_ouverts ? "red" : "gray", "", "#tickets") +
+      tuile(t.connexions_7j ?? 0, "Connexions 7 j", "green", "comptes vus") + tuile(t.actifs_7j ?? 0, "Utilisateurs actifs 7 j", "green", (t.minutes_7j ?? 0) >= 60 ? Math.round((t.minutes_7j || 0) / 60) + " h d'utilisation cumulée" : (t.minutes_7j ?? 0) + " min cumulées") + tuile(t.tickets_ouverts ?? 0, "Tickets ouverts", t.tickets_ouverts ? "red" : "gray", "", "#tickets") +
       tuile(t.push_actifs ?? 0, "Appareils push", "", "actifs (< 5 échecs)", "#sante") + tuile(t.alertes_non_traitees ?? 0, "Alertes non traitées", t.alertes_non_traitees ? "orange" : "gray", "warnings hors INFO") +
       "</div>" +
       '<div class="grid-3">' +
@@ -215,6 +217,9 @@
       { t: "Moteur", k: (r) => (r.moteur ? 1 : 0), r: (r) => ouiNon(r.moteur) },
       { t: "Dernier match reçu", k: (r) => r.dernier_match || "", r: (r) => fmt(r.dernier_match) + ' <span class="mut tiny">' + depuis(r.dernier_match) + "</span>" },
       { t: "Dernière synchro", k: (r) => r.derniere_synchro || "", r: (r) => '<span class="' + (rouge(r) ? "err" : "") + '">' + fmt(r.derniere_synchro) + ' <span class="tiny">' + depuis(r.derniere_synchro) + "</span></span>" },
+      { t: "Convoc. 7 j / 30 j", k: (r) => (r.convocations || {}).j30 || 0, cl: "num right", r: (r) => ((r.convocations || {}).j7 || 0) + " / " + ((r.convocations || {}).j30 || 0) },
+      { t: "Utilisation 7 j", k: (r) => (r.usage || {}).minutes_7j || 0, cl: "num right", r: (r) => minutesTxt((r.usage || {}).minutes_7j) + ' <span class="mut tiny">' + ((r.usage || {}).jours_actifs_30j || 0) + " j actifs / 30</span>" },
+      { t: "Dernière activité", k: (r) => (r.usage || {}).derniere_activite || "", cl: "nw", r: (r) => esc(depuis((r.usage || {}).derniere_activite)) },
     ], sante, { recherche: rechercheCourante, tri: "Dernière synchro", sens: 1, clic: (r) => (location.hash = "#arbitres/" + r.user_id) });
   };
 
@@ -241,6 +246,8 @@
       { t: "Moteur", k: (u) => ((u.profil || {}).api_url ? 1 : 0), r: (u) => ouiNon((u.profil || {}).api_url) },
       { t: "Connexion", k: (u) => u.derniere_connexion || "", cl: "nw", r: (u) => '<span title="' + esc(fmt(u.derniere_connexion)) + '">' + esc(depuis(u.derniere_connexion)) + "</span>" },
       { t: "Matchs", k: "matchs", cl: "num right", r: (u) => u.matchs },
+      { t: "Convoc. 7/30 j", k: (u) => (u.convocations || {}).j30 || 0, cl: "num right", r: (u) => ((u.convocations || {}).j7 || 0) + " / " + ((u.convocations || {}).j30 || 0) },
+      { t: "Usage 7 j", k: (u) => (u.usage || {}).minutes_7j || 0, cl: "num right", r: (u) => minutesTxt((u.usage || {}).minutes_7j) },
       { t: "Synchro", k: (u) => u.derniere_synchro || "", cl: "nw", r: (u) => '<span class="' + ((u.profil || {}).api_url && heures(u.derniere_synchro) > 48 ? "err" : "") + '" title="' + esc(fmt(u.derniere_synchro)) + '">' + esc(depuis(u.derniere_synchro)) + "</span>" },
       { t: "Push", k: (u) => (u.push || {}).n || 0, r: (u) => (u.push && u.push.n ? badge(u.push.n + " app." + (u.push.echecs ? " · " + u.push.echecs + " éch." : ""), u.push.echecs ? "orange" : "green") : badge("—", "gray")) },
       { t: "CGU", k: (u) => (u.consentement || {}).version || "", r: (u) => (u.consentement ? badge("✓ " + u.consentement.version.slice(2), "green") : badge("non", "red")) },
@@ -283,7 +290,7 @@
         '<button class="btn sm" id="fSusp">' + (u.banni ? "Réactiver" : "Suspendre") + "</button>" + '<button class="btn sm" id="fPing">Tester le moteur</button><span id="fPingRes" class="mut tiny"></span></div>' +
       '<div class="tabs"><button class="on" data-tab="profil">Profil</button><button data-tab="matchs">Matchs (' + (f.matchs || []).length + ')</button><button data-tab="alertes">Alertes (' + (f.alertes ? f.alertes.total : 0) + ')</button><button data-tab="tickets">Tickets (' + (f.tickets || []).length + ")</button><button data-tab=\"danger\">Compte</button></div>" +
       '<div class="tabpane on" data-pane="profil"><div class="card"><div class="form-grid">' +
-        inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom FFBB", p.nom_ffbb) + inp("pEmailF", "E-mail FFBB", p.email_ffbb, "", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
+        inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom officiel", p.nom_ffbb) + inp("pEmailF", "E-mail fédération", p.email_ffbb, "", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
         inp("pCd", "Zone CD", z.cd, "CD67") + inp("pLigue", "Ligue", z.ligue, "LRGEB") + '<label class="f">Championnat de France<span style="padding-top:8px">' + chk("pCf", "Oui", z.cf) + "</span></label>" +
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
@@ -331,10 +338,10 @@
   rendus.inscriptions = async function (force) {
     const el = $("sec-inscriptions");
     if (force || !cache.inscriptions) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.inscriptions = (await admin("inscriptions.liste")).data || []; }
-    const l = cache.inscriptions; $("navInscriptions").textContent = l.filter((i) => i.statut === "recue" || i.statut === "erreur").length || "";
-    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["recue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(s.replace("_", " ")) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
+    const l = cache.inscriptions; $("navInscriptions").textContent = l.filter((i) => i.statut === "recue" || i.statut === "erreur" || i.statut === "attente").length || "";
+    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["attente", "recue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(s.replace("_", " ")) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
       '<span class="sp"></span><button class="btn sm" id="btnCmdFile">Copier la commande file d\'attente</button><button class="btn sm" id="btnCsvInsc">Export CSV</button></div>' +
-      '<p class="mut tiny">Parcours : inscription reçue → <code>zsh rt-beta.sh --file-attente</code> crée le moteur → « Marquer moteur créé » (api_url) → « Envoyer le code » (statut prête). Une erreur de route Cloudflare se lève avec « Route faite ».</p><div id="tblInsc"></div>';
+      '<p class="mut tiny">Places : <code>pub.beta</code> (Configuration) — au-delà de <em>max</em>, les demandes arrivent en « attente » et tu les acceptes ici une par une. Parcours : inscription reçue → <code>zsh rt-beta.sh --file-attente</code> crée le moteur → « Marquer moteur créé » (api_url) → « Envoyer le code » (statut prête). Une erreur de route Cloudflare se lève avec « Route faite ».</p><div id="tblInsc"></div>';
     el.querySelectorAll(".pill").forEach((p) => p.addEventListener("click", () => { filtreInsc = p.dataset.f; rendus.inscriptions(false); }));
     $("btnCmdFile").addEventListener("click", () => copier("zsh rt-beta.sh --file-attente"));
     $("btnCsvInsc").addEventListener("click", () => csv([["date", "email", "prenom", "nom_ffbb", "zones", "niveau", "fichiers", "fichiers_ok", "statut", "erreur", "api_url", "adresse_reception"]].concat(l.map((i) => [i.created_at, i.email, i.prenom, i.nom_ffbb, zonesTxt(i.zones), i.niveau, i.fichiers, i.fichiers_ok ? "oui" : "non", i.statut, i.erreur, i.api_url, i.adresse_reception])), "inscriptions.csv"));
@@ -342,12 +349,12 @@
       { t: "Date", k: "created_at", r: (i) => fmt(i.created_at) },
       { t: "E-mail", k: "email", r: (i) => '<span class="ellip" title="' + esc(i.email) + '">' + esc(i.email) + "</span>" },
       { t: "Prénom", k: "prenom", r: (i) => "<strong>" + esc(i.prenom || "—") + "</strong>" },
-      { t: "Nom FFBB", k: "nom_ffbb", r: (i) => esc(i.nom_ffbb || "—") },
+      { t: "Nom officiel", k: "nom_ffbb", r: (i) => esc(i.nom_ffbb || "—") },
       { t: "Zones", k: (i) => zonesTxt(i.zones), cl: "nw", r: (i) => esc(zonesTxt(i.zones)) },
       { t: "Fichiers", k: "fichiers", cl: "right", r: (i) => '<span class="num">' + i.fichiers + "</span> " + (i.fichiers_ok ? badge("ok", "green") : i.fichiers ? badge("à vérifier", "orange") : "") },
       { t: "Statut", k: "statut", r: (i) => badgeStatut(i.statut) + (i.api_url ? " " + badge("moteur", "green") : "") },
       { t: "Erreur", k: "erreur", r: (i) => '<span class="err tiny">' + esc(i.erreur || "") + "</span>" },
-      { t: "", cl: "actions", r: (i) => '<button class="btn sm" data-act="cmd" title="Commande + JSON">Commande</button>' + (i.statut !== "prete" ? '<button class="btn sm" data-act="moteur">Moteur créé</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="code">Envoyer le code</button>' : "") + (i.erreur ? '<button class="btn sm" data-act="route">Route faite</button>' : "") + (i.statut !== "erreur" ? '<button class="btn sm danger" data-act="rejeter">Rejeter</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="fiche">Fiche</button>' : "") },
+      { t: "", cl: "actions", r: (i) => (i.statut === "attente" ? '<button class="btn sm pri" data-act="accepter">Accepter</button>' : '<button class="btn sm" data-act="cmd" title="Commande + JSON">Commande</button>') + (i.statut !== "prete" ? '<button class="btn sm" data-act="moteur">Moteur créé</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="code">Envoyer le code</button>' : "") + (i.erreur ? '<button class="btn sm" data-act="route">Route faite</button>' : "") + (i.statut !== "erreur" ? '<button class="btn sm danger" data-act="rejeter">Rejeter</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="fiche">Fiche</button>' : "") },
     ], l, { recherche: rechercheCourante, tri: "Date", sens: -1, filtre: (i) => !filtreInsc || i.statut === filtreInsc, texte: (i) => [i.email, i.prenom, i.nom_ffbb, i.statut, i.erreur, zonesTxt(i.zones)].join(" ").toLowerCase(),
       action: async (act, i) => {
         try {
@@ -366,6 +373,9 @@
           } else if (act === "rejeter") {
             const motif = await saisir("Rejeter l'inscription", "Motif (facultatif) du rejet de <strong>" + esc(i.email) + "</strong>. Le compte n'est pas supprimé (voir sa fiche pour cela).", "Doublon, demande invalide…", null, "Rejeter");
             if (motif === null) return; await admin("inscription.rejeter", { id: i.id, motif }); toast("Inscription rejetée", "ok"); cache.inscriptions = null; rendus.inscriptions(true);
+          } else if (act === "accepter") {
+            if (!(await confirmer("Accepter la demande", "Créer le compte de <strong>" + esc(i.email) + "</strong> (adresse de réception, route, mail « nous configurons ton compte ») ? Elle passera dans la file « reçue ».", "Accepter"))) return;
+            await admin("inscription.accepter", { id: i.id }); toast("Demande acceptée : compte créé", "ok"); cache.inscriptions = null; cache.arbitres = null; rendus.inscriptions(true);
           } else if (act === "fiche") ouvrirFiche(i.user_id);
         } catch (e) { toast(e.message, "err"); }
       } });
@@ -410,7 +420,7 @@
         F.innerHTML = '<div class="form-grid">' + num("bKm", "Indemnité kilométrique (€/km)", v.indemnite_km ?? 0.4) + "</div>" + kv("bCd", "Barème CD67 (niveau → €)", v.cd67, "Niveau") + kv("bLg", "Barème LRGEB (niveau → €)", v.lrgeb, "Niveau") + kv("bCf", "Barème Championnat de France (niveau → €)", v.cf, "Niveau");
         lireForm = () => ({ indemnite_km: Number(F.querySelector("#bKm").value) || 0, cd67: lireKv("bCd"), lrgeb: lireKv("bLg"), cf: lireKv("bCf") });
       } else if (cfgCle === "pub.periodes_paiement") {
-        F.innerHTML = periodes("pCd", "CD67", v.cd67) + periodes("pLg", "LRGEB", v.lrgeb) + '<div class="form-grid" style="margin-top:10px">' + num("pCf", "FFBB CF : délai de paiement (jours)", v.cf_delai_jours ?? 45, "1") + "</div>";
+        F.innerHTML = periodes("pCd", "CD67", v.cd67) + periodes("pLg", "LRGEB", v.lrgeb) + '<div class="form-grid" style="margin-top:10px">' + num("pCf", "Championnat de France : délai de paiement (jours)", v.cf_delai_jours ?? 45, "1") + "</div>";
         lireForm = () => ({ cd67: lirePeriodes("pCd"), lrgeb: lirePeriodes("pLg"), cf_delai_jours: Number(F.querySelector("#pCf").value) || 0 });
       } else if (cfgCle === "pub.carburant") {
         F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";
