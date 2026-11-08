@@ -1890,7 +1890,31 @@ function libelleCodeNiveau(code, famille) {
   return famille === "autre" ? "" : "";
 }
 
+/* b77 — niveau « phare » propre à chaque arbitre : le plus haut niveau qu'il arbitre cette saison
+   (Championnat de France > Pré-national > Région > Département). Ses matchs gardent la surbrillance or ;
+   un arbitre régional voit donc ses matchs régionaux mis en avant, pas une couleur réservée au CF. */
+const NIV_RANG_ = { "niv-france": 4, "niv-pn": 3, "niv-region": 2, "niv-departement": 1 };
+let _nivPhareCache_ = { rows: null, v: "" };
+function niveauPhare_() {
+  const rows = (typeof state !== "undefined" && state.allRows) || [];
+  if (_nivPhareCache_.rows === rows) return _nivPhareCache_.v;
+  const saisons = rows.map(r => r._season).filter(Boolean).sort();
+  const saison = saisons[saisons.length - 1];
+  let best = "", rang = 0;
+  rows.forEach(r => {
+    if (!r._isActive || (saison && r._season !== saison)) return;
+    let c = ""; try { c = niveauCarteBrut_(r).classe; } catch (e) { return; }
+    if ((NIV_RANG_[c] || 0) > rang) { rang = NIV_RANG_[c]; best = c; }
+  });
+  _nivPhareCache_ = { rows: rows, v: best };
+  return best;
+}
 function niveauCarte(row) {
+  const n = niveauCarteBrut_(row);
+  if (n.classe && n.classe === niveauPhare_()) n.classe += " niv-top";
+  return n;
+}
+function niveauCarteBrut_(row) {
   const niveau = cleanText(get(row, "Niveau administratif")).toLowerCase();
   const code = codeCompetition(row);
   const libelle = cleanText(get(row, "Libellé compétition")).toUpperCase();
@@ -4582,36 +4606,75 @@ function renderEvalSynthese_(evals) {
       <div class="kpi${pire && pire.v < 12 ? " kpi-alert" : ""}"><label>Famille à travailler</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? pire.v.toLocaleString("fr-FR") + " / 20 · 3 dernières évaluations" : (avecFam < 2 ? "il faut 2 évaluations détaillées" : "profil équilibré")}</span></div>
     </div>`;
 }
-/* b24 — Plan de développement : barres par famille, actions des 3 dernières
-   évaluations, axes récurrents regroupés par famille. */
+/* b77 — Plan de développement v2 : un vrai plan d'action, pas un simple résumé.
+   1) Ton cap : point fort, priorité, tendance, prochaine observation.
+   2) 3 axes prioritaires : score + évolution, ce qui revient dans les rapports, actions concrètes,
+      comment le mesurer (critères de la grille), où s'entraîner dans l'app.
+   3) Check-list « avant ta prochaine observation » (cochée sur cet appareil).
+   4) Profil par famille (barres). */
+const PD_CONSEILS_ = {
+  calls: { quoi: "Revois tes décisions sur les contacts et les violations : regarde 10 actions vidéo par semaine et compare avec le règlement.", ou: "reglement", ouLib: "Analyser une action" },
+  controle: { quoi: "Prépare la gestion du match : protocoles (temps-morts, remplacements, antisportives), réclamations et rapports.", ou: "qcm", ouLib: "Réviser au QCM" },
+  mecanique: { quoi: "Travaille ton placement et tes rotations : avant le match, fixe-toi 2 repères de déplacement et vérifie-les à la mi-temps.", ou: "qcm", ouLib: "Réviser la mécanique" },
+  communication: { quoi: "Prépare un pré-match avec ton collègue (zones, signaux, cas particuliers) et soigne tes explications aux bancs.", ou: "reglement", ouLib: "Préparer une situation" },
+  physique: { quoi: "Garde une présence constante : condition physique régulière, tenue et attitude identiques de la 1re à la 40e minute.", ou: "", ouLib: "" }
+};
+function pdCoches_() { try { return JSON.parse(localStorage.getItem("rt-pd-coches") || "{}"); } catch (e) { return {}; } }
+document.addEventListener("change", e => {
+  const c = e.target.closest && e.target.closest("[data-pd-coche]"); if (!c) return;
+  const m = pdCoches_(); if (c.checked) m[c.getAttribute("data-pd-coche")] = 1; else delete m[c.getAttribute("data-pd-coche")];
+  try { localStorage.setItem("rt-pd-coches", JSON.stringify(m)); } catch (x) {}
+  const box = c.closest(".pd-check"); if (box) { const t = box.querySelectorAll("[data-pd-coche]"), k = box.querySelectorAll("[data-pd-coche]:checked"); const z = box.querySelector(".pd-check-n"); if (z) z.textContent = k.length + " / " + t.length; }
+});
 function renderPlanDeveloppement_(evals) {
   if (!evals.length) return "";
-  const fam = evalFamillesMoy_(evals);
-  const famOk = fam.filter(f => f.v !== null);
-  const pireK = famOk.length >= 2 ? famOk.slice().sort((a, b) => a.v - b.v)[0].k : "";
-  const couleur = v => v === null ? "" : v < 10 ? "is-bad" : v < 14 ? "is-mid" : "is-good";
-  const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
-  const vus = {}, actions = [];
-  tri.slice(0, 3).forEach(ev => (ev.plan || []).forEach(a => {
-    const cle = normaliserRecherche(evalSansPrefixe_(a)).slice(0, 40);
-    if (!cle || vus[cle]) return; vus[cle] = 1;
-    actions.push({ txt: evalSansPrefixe_(a), fam: evalFamilleDe_(a), src: (ev.championnat || ev.type || "") + " · " + evalDateCourte_(ev) });
-  }));
-  const parFam = {};
-  evals.forEach((ev, idx) => { const vusEv = {}; [ev.axe1, ev.axe2].filter(Boolean).forEach(a => { const k = evalFamilleDe_(a) || "autre"; if (vusEv[k]) return; vusEv[k] = 1; const o = parFam[k] = parFam[k] || { n: 0, ex: [] }; o.n++; if (o.ex.length < 2) o.ex.push(a); }); });
-  const recur = Object.keys(parFam).filter(k => parFam[k].n >= 2).sort((a, b) => parFam[b].n - parFam[a].n).slice(0, 3);
   const nomFam = k => (EVAL_FAM_.find(x => x[0] === k) || [k, "Autre"])[1];
-  if (!famOk.length && !actions.length && !recur.length) return "";
+  const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));   // récent d'abord
+  const moy = a => a.length ? Math.round(a.reduce((t, v) => t + v, 0) / a.length * 10) / 10 : null;
+  const famVals = k => tri.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined);
+  const fam = EVAL_FAM_.map(([k, l]) => { const v = famVals(k); return { k, l, v: moy(v.slice(0, 3)), avant: moy(v.slice(3, 6)), n: v.length }; });
+  // ce qui revient : axes de travail cités dans plusieurs évaluations
+  const parFam = {};
+  tri.forEach(ev => { const vus = {}; [ev.axe1, ev.axe2].concat(ev.plan || []).filter(Boolean).forEach(a => { const k = evalFamilleDe_(a) || ""; if (!k) return; const o = parFam[k] = parFam[k] || { n: 0, ex: [], act: [] }; if (!vus[k]) { o.n++; vus[k] = 1; } const t = evalSansPrefixe_(a); if ((ev.plan || []).indexOf(a) >= 0) { if (o.act.length < 3 && !o.act.some(x => normaliserRecherche(x).slice(0, 30) === normaliserRecherche(t).slice(0, 30))) o.act.push(t); } else if (o.ex.length < 2) o.ex.push(t); }); });
+  // priorité = score bas + récurrence dans les rapports
+  const prio = fam.map(f => ({ ...f, poids: (f.v === null ? 12 : f.v) - 1.5 * ((parFam[f.k] || {}).n || 0) })).filter(f => f.v !== null || parFam[f.k]).sort((a, b) => a.poids - b.poids).slice(0, 3);
+  const notes = fam.filter(f => f.v !== null);
+  const fort = notes.length ? notes.slice().sort((a, b) => b.v - a.v)[0] : null;
+  const obsN = tri.filter(ev => evalEstMatch_(ev) && ev.note20 !== null && ev.note20 !== undefined).map(ev => ev.note20);
+  const tRec = moy(obsN.slice(0, 3)), tAnc = moy(obsN.slice(3, 6));
+  const tendance = tRec !== null && tAnc !== null ? Math.round((tRec - tAnc) * 10) / 10 : null;
+  if (!prio.length && !fort) return "";
+  // critères de la grille d'observation liés à chaque famille (si la grille à 20 critères existe)
+  const grilles = tri.map(lrgebGrille_).filter(Boolean); const g0 = grilles[0];
+  const LIEN_GRILLE_ = { calls: [10, 11, 12, 13, 15], controle: [3, 4, 6, 14], mecanique: [9, 16, 17], communication: [5, 6, 7, 8], physique: [1, 18, 19, 20] };
+  const criteres = k => g0 ? (LIEN_GRILLE_[k] || []).filter(n => g0[n] && g0[n].mention && g0[n].mention.n <= 15).slice(0, 3).map(n => `${n}. ${g0[n].critere}`) : [];
+  const delta = f => f.v !== null && f.avant !== null ? Math.round((f.v - f.avant) * 10) / 10 : null;
+  const deltaHtml = d => d === null ? "" : `<span class="pd2-d ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${d.toLocaleString("fr-FR")}</span>`;
+  const coches = pdCoches_(); const items = [];
+  prio.forEach(f => { const p = parFam[f.k] || { act: [] }; (p.act.length ? p.act.slice(0, 2) : [PD_CONSEILS_[f.k] ? PD_CONSEILS_[f.k].quoi : ""]).filter(Boolean).forEach(t => items.push({ id: f.k + ":" + normaliserRecherche(t).slice(0, 40), t, f: nomFam(f.k) })); });
+  const fait = items.filter(x => coches[x.id]).length;
   return `
     <h2 class="section-title">Plan de développement</h2>
-    <div class="pd-grid">
-      ${famOk.length ? `<div class="table-card pd-fam"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations détaillées · sur 20</p>
-        ${fam.map(f => `<div class="pd-bar${f.k === pireK ? " is-focus" : ""}"><span class="pd-bar-l">${escapeHtml(f.l)}${f.k === pireK ? ` <em>à travailler</em>` : ""}</span><span class="pd-bar-t"><i class="${couleur(f.v)}" style="width:${f.v === null ? 0 : f.v / 20 * 100}%"></i></span><b>${f.v === null ? "—" : f.v.toLocaleString("fr-FR")}</b></div>`).join("")}</div>` : ""}
-      <div class="table-card pd-actions"><h3>Actions prioritaires</h3><p class="hint">Plans de travail des 3 dernières évaluations</p>
-        ${actions.length ? `<ol>${actions.slice(0, 6).map(a => `<li>${a.fam ? `<span class="badge ${a.fam === pireK ? "red" : "gray"}">${escapeHtml(nomFam(a.fam))}</span> ` : ""}${escapeHtml(a.txt)}<span class="card-sub"> — ${escapeHtml(a.src)}</span></li>`).join("")}</ol>` : `<p class="card-sub">Aucun plan généré : relance « Ré-analyser » sur une évaluation.</p>`}
-        ${recur.length ? `<div class="pd-recur"><b>Ce qui revient</b> ${recur.map(k => `<span class="pd-chip"><span class="badge gold">${parFam[k].n} éval.</span> ${escapeHtml(nomFam(k))}<small> — ${escapeHtml(parFam[k].ex[0])}</small></span>`).join("")}</div>` : ""}
-      </div>
-    </div>`;
+    <div class="pd2-cap">
+      <div class="pd2-kpi"><label>Point fort</label><strong>${fort ? escapeHtml(fort.l) : "—"}</strong><span>${fort ? fort.v.toLocaleString("fr-FR") + " / 20 · à garder" : "il faut 2 évaluations détaillées"}</span></div>
+      <div class="pd2-kpi is-prio"><label>Priorité n°1</label><strong>${prio[0] ? escapeHtml(prio[0].l) : "—"}</strong><span>${prio[0] ? (prio[0].v !== null ? prio[0].v.toLocaleString("fr-FR") + " / 20" : "citée dans tes rapports") + ((parFam[prio[0].k] || {}).n ? " · citée " + parFam[prio[0].k].n + " fois" : "") : ""}</span></div>
+      <div class="pd2-kpi"><label>Tendance des observations</label><strong>${tendance === null ? (tRec !== null ? tRec.toLocaleString("fr-FR") + " / 20" : "—") : (tendance > 0 ? "▲ +" : tendance < 0 ? "▼ " : "= ") + tendance.toLocaleString("fr-FR")}</strong><span>${tendance === null ? "moyenne des 3 dernières" : "3 dernières vs 3 précédentes"}</span></div>
+      <div class="pd2-kpi"><label>Prochaine observation</label><strong>${fait} / ${items.length}</strong><span>actions préparées</span></div>
+    </div>
+    <div class="pd2-axes">${prio.map((f, i) => { const p = parFam[f.k] || { ex: [], act: [], n: 0 }; const c = PD_CONSEILS_[f.k] || {}; const cr = criteres(f.k);
+      return `<article class="pd2-axe${i === 0 ? " is-top" : ""}">
+        <header><span class="pd2-rang">${i + 1}</span><div><h3>${escapeHtml(f.l)}</h3><span class="card-sub">${f.v !== null ? `<b>${f.v.toLocaleString("fr-FR")}</b> / 20 ` : ""}${deltaHtml(delta(f))}${p.n ? ` · citée dans ${p.n} évaluation${p.n > 1 ? "s" : ""}` : ""}</span></div></header>
+        ${f.v !== null ? `<div class="pd-bar-t"><i class="${f.v < 10 ? "is-bad" : f.v < 14 ? "is-mid" : "is-good"}" style="width:${f.v / 20 * 100}%"></i></div>` : ""}
+        ${p.ex.length ? `<p class="pd2-l"><b>Ce que disent les observateurs</b>« ${escapeHtml(p.ex[0])} »</p>` : ""}
+        <div class="pd2-l"><b>Actions</b><ul>${(p.act.length ? p.act : [c.quoi || "Demande un retour précis à ton observateur sur ce point."]).map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul></div>
+        <p class="pd2-l"><b>Comment le mesurer</b>${cr.length ? "Sur ta prochaine fiche, vise « Très bien » sur : " + cr.map(escapeHtml).join(" · ") : "Note obtenue dans cette famille à ta prochaine observation" + (f.v !== null ? " : objectif " + Math.min(20, Math.ceil(f.v + 2)) + " / 20" : "") + "."}</p>
+        ${c.ou ? `<button type="button" class="small-btn secondary pd2-go" data-tab-go="${c.ou}">${escapeHtml(c.ouLib)} →</button>` : ""}
+      </article>`; }).join("")}</div>
+    ${items.length ? `<div class="table-card pd-check"><div class="pd-check-h"><h3>Avant ta prochaine observation</h3><span class="pd-check-n">${fait} / ${items.length}</span></div>
+      ${items.map(x => `<label class="pd-check-i"><input type="checkbox" data-pd-coche="${escapeHtml(x.id)}"${coches[x.id] ? " checked" : ""}><span>${escapeHtml(x.t)}<small>${escapeHtml(x.f)}</small></span></label>`).join("")}
+      <p class="card-sub">Coché sur cet appareil seulement. Les actions viennent des plans de travail de tes 3 dernières évaluations.</p></div>` : ""}
+    ${notes.length ? `<div class="table-card pd-fam pd2-fam"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations détaillées · sur 20 · écart avec les 3 précédentes</p>
+      ${fam.map(f => `<div class="pd-bar${prio[0] && f.k === prio[0].k ? " is-focus" : ""}"><span class="pd-bar-l">${escapeHtml(f.l)}</span><span class="pd-bar-t"><i class="${f.v === null ? "" : f.v < 10 ? "is-bad" : f.v < 14 ? "is-mid" : "is-good"}" style="width:${f.v === null ? 0 : f.v / 20 * 100}%"></i></span><b>${f.v === null ? "—" : f.v.toLocaleString("fr-FR")} ${deltaHtml(delta(f))}</b></div>`).join("")}</div>` : ""}`;
 }
 function renderEvalCharts_(evals) {
   const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev));
@@ -4680,29 +4743,41 @@ function lrgebGrille_(ev) {
 function renderLrgebGrille_(evals) {
   const obs = (evals || []).map(ev => ({ ev, g: lrgebGrille_(ev) })).filter(x => x.g).sort((a, b) => (evalDate_(a.ev) || 0) - (evalDate_(b.ev) || 0));
   if (!obs.length) return "";
-  const dern = obs.slice(-4);   // 4 dernières observations au modèle régional
+  const dern = obs.slice(-4);   // 4 dernières observations au même modèle
   const lib = k => { for (const o of dern) if (o.g[k]) return o.g[k].critere; return "Critère " + k; };
-  const cell = (o, k) => { const m = o.g[k] && o.g[k].mention; return m ? `<td class="lg-c lg-${m.c}" title="${escapeHtml(m.lib)}">${escapeHtml(m.lib.length > 14 ? m.lib.slice(0, 13) + "…" : m.lib)}</td>` : `<td class="lg-c lg-na">—</td>`; };
-  const tendance = k => { if (dern.length < 2) return ""; const a = dern[dern.length - 2].g[k], b = dern[dern.length - 1].g[k]; if (!a || !b || !a.mention || !b.mention) return ""; const d = b.mention.n - a.mention.n; return d > 0 ? `<span class="lg-up" title="en progrès">▲</span>` : d < 0 ? `<span class="lg-down" title="en recul">▼</span>` : `<span class="lg-eq" title="stable">=</span>`; };
   const famScore = (o, nums) => { const v = nums.map(k => o.g[k] && o.g[k].mention ? o.g[k].mention.n : null).filter(x => x !== null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null; };
-  const der = dern[dern.length - 1];
-  const aTravailler = Object.keys(der.g).map(Number).filter(k => der.g[k].mention && der.g[k].mention.n <= 10).map(k => lib(k));
-  const progres = dern.length >= 2 ? Object.keys(der.g).map(Number).filter(k => { const a = dern[dern.length - 2].g[k], b = der.g[k]; return a && b && a.mention && b.mention && b.mention.n > a.mention.n; }).map(k => lib(k)) : [];
-  return `<div class="table-card lg-card">
-    <div class="lg-head"><div><h3 class="lg-titre">Grille régionale d'observation</h3><p class="card-sub">Modèle 2026/2027 · 20 critères · ${obs.length} observation${obs.length > 1 ? "s" : ""} au même modèle${obs.length > 4 ? " (4 dernières affichées)" : ""}. Lecture : une ligne par critère, une colonne par observation, flèche = évolution entre les deux dernières.</p></div></div>
-    <div class="lg-fams">${LRGEB_FAM_.map(([nom, nums]) => { const v = famScore(der, nums), prev = dern.length >= 2 ? famScore(dern[dern.length - 2], nums) : null; return `<div class="lg-fam"><span class="lg-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : v.toFixed(1)}<small>/20</small></strong>${prev !== null && v !== null ? `<span class="lg-fam-d ${v > prev ? "lg-up" : v < prev ? "lg-down" : "lg-eq"}">${v > prev ? "+" : ""}${(v - prev).toFixed(1)}</span>` : ""}</div>`; }).join("")}</div>
-    ${aTravailler.length || progres.length ? `<div class="lg-sum">${aTravailler.length ? `<div class="lg-sum-b lg-sum-warn"><b>À travailler (dernière observation)</b><ul>${aTravailler.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}${progres.length ? `<div class="lg-sum-b lg-sum-ok"><b>En progrès depuis l'observation précédente</b><ul>${progres.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}</div>` : ""}
-    <div class="table-wrap"><table class="lg-table"><thead><tr><th>Critère</th>${dern.map(o => `<th class="lg-c">${escapeHtml((o.ev.dateEval || o.ev.dateMatch || "").slice(0, 5) || "?")}<small>${escapeHtml(o.ev.championnat || "")}</small></th>`).join("")}<th class="lg-c">Évol.</th></tr></thead>
-    <tbody>${LRGEB_FAM_.map(([nom, nums]) => `<tr class="lg-famrow"><td colspan="${dern.length + 2}">${escapeHtml(nom)}</td></tr>` + nums.map(k => `<tr><td class="lg-lib"><span class="lg-num">${k}</span>${escapeHtml(lib(k))}</td>${dern.map(o => cell(o, k)).join("")}<td class="lg-c">${tendance(k)}</td></tr>`).join("")).join("")}</tbody></table></div>
+  const der = dern[dern.length - 1], prec = dern.length >= 2 ? dern[dern.length - 2] : null;
+  /* b77 — titre adapté au niveau des observations (un arbitre CF n'est pas « régional ») */
+  const estCF = o => /^N[MF]|FRANCE|\bCF\b/i.test(String(o.ev.championnat || "") + " " + String(o.ev.instance || ""));
+  const nCF = obs.filter(estCF).length;
+  const titre = nCF === obs.length ? "Grille d'observation · Championnat de France" : nCF === 0 ? "Grille d'observation · Région" : "Grille d'observation";
+  const tend = k => { if (!prec) return 0; const a = prec.g[k], b = der.g[k]; if (!a || !b || !a.mention || !b.mention) return 0; return Math.sign(b.mention.n - a.mention.n); };
+  const aTravailler = Object.keys(der.g).map(Number).filter(k => der.g[k].mention && der.g[k].mention.n <= 10);
+  const progres = prec ? Object.keys(der.g).map(Number).filter(k => tend(k) > 0) : [];
+  const recul = prec ? Object.keys(der.g).map(Number).filter(k => tend(k) < 0) : [];
+  const dot = (o, k) => { const m = o.g[k] && o.g[k].mention; return `<i class="og-dot og-${m ? m.c : "na"}" title="${escapeHtml(evalDateCourte_(o.ev) + " · " + (m ? m.lib : "non noté"))}"></i>`; };
+  const fleche = k => { const t = tend(k); return t > 0 ? `<b class="og-t og-up" title="en progrès">▲</b>` : t < 0 ? `<b class="og-t og-down" title="en recul">▼</b>` : `<b class="og-t og-eq"></b>`; };
+  const anneau = v => { const p = v === null ? 0 : Math.max(0, Math.min(1, v / 20)); const c = v === null ? "var(--line)" : v >= 16 ? "#22c55e" : v >= 12 ? "#3b82f6" : v >= 9 ? "#f59e0b" : "#ef4444"; return `<svg class="og-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="3.5"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(p * 97.4).toFixed(1)} 97.4" transform="rotate(-90 18 18)"/></svg>`; };
+  const puces = (ks, cls, lib0) => ks.length ? `<div class="og-sum ${cls}"><b>${lib0}</b>${ks.slice(0, 4).map(k => `<span class="og-chip"><em>${k}</em>${escapeHtml(lib(k))}</span>`).join("")}${ks.length > 4 ? `<span class="og-plus">+${ks.length - 4}</span>` : ""}</div>` : "";
+  return `<div class="table-card og-card">
+    <div class="og-head"><div><h3 class="og-titre">${escapeHtml(titre)}</h3>
+      <p class="card-sub">20 critères · ${obs.length} observation${obs.length > 1 ? "s" : ""}${obs.length > 4 ? " (4 dernières)" : ""} · ${dern.map(o => escapeHtml(evalDateCourte_(o.ev) + (o.ev.championnat ? " " + o.ev.championnat : ""))).join(" → ")}</p></div>
+      <div class="og-leg"><span><i class="og-dot og-tb"></i>Très bien</span><span><i class="og-dot og-b"></i>Bien</span><span><i class="og-dot og-ame"></i>À améliorer</span><span><i class="og-dot og-ins"></i>Insuffisant</span></div></div>
+    <div class="og-fams">${LRGEB_FAM_.map(([nom, nums]) => { const v = famScore(der, nums), pv = prec ? famScore(prec, nums) : null; const d = v !== null && pv !== null ? Math.round((v - pv) * 10) / 10 : null;
+      return `<div class="og-fam">${anneau(v)}<div><span class="og-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : v.toFixed(1)}<small>/20</small></strong>${d !== null && d !== 0 ? `<span class="og-d ${d > 0 ? "og-up" : "og-down"}">${d > 0 ? "+" : ""}${d.toFixed(1)}</span>` : ""}</div></div>`; }).join("")}</div>
+    ${puces(aTravailler, "og-sum-warn", "À travailler") + puces(progres, "og-sum-ok", "En progrès") + puces(recul, "og-sum-down", "En recul")}
+    <div class="og-crit">${LRGEB_FAM_.map(([nom, nums], fi) => { const nAme = nums.filter(k => der.g[k] && der.g[k].mention && der.g[k].mention.n <= 10).length;
+      return `<details class="og-fam-d"${fi === 0 || nAme ? " open" : ""}><summary><span>${escapeHtml(nom)}</span><span class="card-sub">${nums.length} critères${nAme ? ` · <b class="og-warn-n">${nAme} à travailler</b>` : ""}</span></summary>
+        ${nums.map(k => `<div class="og-row"><span class="og-num">${k}</span><span class="og-lib">${escapeHtml(lib(k))}</span><span class="og-dots">${dern.map(o => dot(o, k)).join("")}</span>${fleche(k)}</div>`).join("")}</details>`; }).join("")}</div>
     <details class="lg-calc"><summary>Comment c'est calculé ?</summary>
       <ol>
-        <li>L'app lit la fiche d'observation importée et repère les critères numérotés de 1 à 20 (il en faut au moins 15 pour reconnaître la grille régionale).</li>
-        <li>Chaque mention écrite par l'observateur est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard) = 15, Très bien (ou Supérieur) = 20. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
+        <li>L'app lit la fiche d'observation importée et repère les critères numérotés de 1 à 20 (il en faut au moins 15 pour reconnaître la grille).</li>
+        <li>Chaque mention est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard) = 15, Très bien (ou Supérieur) = 20. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
         <li>Les 20 critères sont rangés en 5 familles : Jugement (1 à 5), Gestion &amp; relation (6 à 8), Mécanique (9 à 13), Communication &amp; équipe (14 à 16), Attitude &amp; cohérence (17 à 20).</li>
-        <li>La note d'une famille = moyenne des critères notés de cette famille, sur 20. L'écart affiché compare avec l'observation précédente.</li>
-        <li>« À travailler » = critères à 10 ou moins sur la dernière observation. « En progrès » = critères dont la mention a monté.</li>
+        <li>Note d'une famille = moyenne de ses critères notés, sur 20 ; l'écart compare avec l'observation précédente. Chaque point de couleur = une observation, de la plus ancienne (à gauche) à la plus récente.</li>
+        <li>« À travailler » = critères à 10 ou moins sur la dernière observation ; « En progrès » / « En recul » = mention qui a monté / baissé.</li>
       </ol>
-      <p>Ce n'est pas la note officielle : la Ligue ne publie pas de formule de conversion. C'est un repère pour suivre ta progression critère par critère.</p>
+      <p>Ce n'est pas une note officielle : c'est un repère pour suivre ta progression critère par critère.</p>
     </details>
   </div>`;
 }
@@ -5227,11 +5302,28 @@ function telsDe_(t) { const r = String(t || "").match(/(?:\+33\s?|0)[1-9](?:[\s.
 function telAffiche_(t) { const d = String(t || "").replace(/[^\d+]/g, ""); return /^0\d{9}$/.test(d) ? d.replace(/(\d{2})(?=\d)/g, "$1 ").trim() : String(t || ""); }
 function boutonsContact_(mail, tel, sujet, lien) {
   return `<div class="cc-btns">
-    ${mail ? `<a class="cc-btn" href="mailto:${escapeHtml(mail)}${sujet ? "?subject=" + encodeURIComponent(sujet) : ""}" title="Écrire à ${escapeHtml(mail)}" aria-label="Écrire à ${escapeHtml(mail)}">${ICONE_MAIL_}</a>` : ""}
-    ${tel ? `<a class="cc-btn cc-tel" href="tel:${escapeHtml(String(tel).replace(/[^\d+]/g, ""))}" title="Appeler ${escapeHtml(telAffiche_(tel))}" aria-label="Appeler ${escapeHtml(telAffiche_(tel))}">${ICONE_TEL_}</a>` : ""}
+    ${mail ? `<button type="button" class="cc-btn" data-cc-voir="mail" data-v="${escapeHtml(mail)}" data-lien="mailto:${escapeHtml(mail)}${sujet ? "?subject=" + encodeURIComponent(sujet) : ""}" title="Afficher l'adresse mail" aria-label="Afficher l'adresse mail">${ICONE_MAIL_}</button>` : ""}
+    ${tel ? `<button type="button" class="cc-btn cc-tel" data-cc-voir="tel" data-v="${escapeHtml(telAffiche_(tel))}" data-lien="tel:${escapeHtml(String(tel).replace(/[^\d+]/g, ""))}" title="Afficher le numéro" aria-label="Afficher le numéro">${ICONE_TEL_}</button>` : ""}
     ${lien && /^https?:/i.test(lien) ? `<a class="cc-btn" href="${escapeHtml(safeUrl_(lien))}" target="_blank" rel="noopener" title="Ouvrir le lien" aria-label="Ouvrir le lien">${ICONE_LIEN_}</a>` : ""}
   </div>`;
 }
+/* b77 — boutons contact : un clic affiche le numéro ou l'adresse (sélectionnable), avec « Copier »
+   et un lien discret pour appeler / écrire. Un 2e clic sur le même bouton referme. */
+document.addEventListener("click", e => {
+  const cp = e.target.closest && e.target.closest("[data-cc-copier]");
+  if (cp) { const v = cp.getAttribute("data-cc-copier"); try { navigator.clipboard.writeText(v).then(() => { cp.textContent = "Copié ✓"; setTimeout(() => { cp.textContent = "Copier"; }, 1500); }); } catch (x) {} return; }
+  const b = e.target.closest && e.target.closest("[data-cc-voir]");
+  if (!b) return;
+  const box = b.closest(".cc-btns"); if (!box) return;
+  const hote = b.closest(".cc-card") || box.parentElement;
+  let z = hote.querySelector(":scope > .cc-val");
+  const type = b.getAttribute("data-cc-voir"), v = b.getAttribute("data-v"), lien = b.getAttribute("data-lien");
+  if (z && z.getAttribute("data-type") === type) { z.remove(); b.classList.remove("is-on"); return; }
+  box.querySelectorAll("[data-cc-voir]").forEach(x => x.classList.toggle("is-on", x === b));
+  if (!z) { z = document.createElement("div"); z.className = "cc-val"; hote.appendChild(z); }
+  z.setAttribute("data-type", type);
+  z.innerHTML = `<span class="cc-val-t">${escapeHtml(v)}</span><button type="button" class="cc-val-b" data-cc-copier="${escapeHtml(v)}">Copier</button><a class="cc-val-b" href="${escapeHtml(safeUrl_(lien))}">${type === "tel" ? "Appeler" : "Écrire"}</a>`;
+});
 const CONTACT_CHAMPS_ = c => [
   { id: "nom", label: "Nom", value: c.nom, required: true }, { id: "role", label: "Rôle", value: c.role },
   { id: "organisation", label: "Organisation / Club", value: c.organisation }, { id: "championnat", label: "Championnat / Astreinte", value: c.championnat },
@@ -9478,9 +9570,14 @@ function libelleWeekend_(w) {
 const RAPP_ROLES_ = ["Table de marque", "Responsable de salle", "Coach", "Capitaine"];
 const RAPP_48H_ = ["Table de marque", "Responsable de salle"];
 const RAPP_CRITERES_ = ["Autorité et maîtrise du match", "Communication (table, coachs, capitaines)", "Cohérence des décisions", "Gestion des comportements", "Placement et condition physique"];
-function matchsPourRapports_() {
-  return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte")
-    .sort((a, b) => b._date - a._date).slice(0, 40);
+/* b77 — menu « Match concerné » : seulement les matchs joués depuis 5 jours au plus (un rapport s'envoie
+   dans les jours qui suivent la rencontre), plus le match déjà choisi s'il est plus ancien. */
+function matchsPourRapports_(uidGarde) {
+  const fin = new Date(); fin.setHours(23, 59, 59, 999);
+  const debut = new Date(); debut.setHours(0, 0, 0, 0); debut.setDate(debut.getDate() - 5);
+  return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte" &&
+      ((r._date >= debut && r._date <= fin) || (uidGarde && get(r, "UID") === uidGarde)))
+    .sort((a, b) => b._date - a._date);
 }
 /* --- Partie 1 : modèles vierges (générés ici, en PDF) --- */
 const RAPP_TYPES_SAISIE_ = ["Incident(s) disciplinaire(s)", "Faute(s) disqualifiante(s)", "Réclamation", "Incident(s) matériel(s)", "Commotion cérébrale", "Autre rapport"];
@@ -9536,7 +9633,7 @@ function renderRapportsPanel_() {
   if (state._rappErr) return erreurPerso_(state._rappErr, "retryRapp");
   if (state.rapports === undefined) { loadRapports(); return chargementPerso_(); }
   const L = state.rapports, dos = state.rapportsDossier || {};
-  const ms = matchsPourRapports_();
+  const ms = matchsPourRapports_((state.rappForm && state.rappForm.uid) || (state.rappAssist && state.rappAssist.uid));
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
@@ -9705,7 +9802,7 @@ function renderRapportsOfficiels_(ms) {
       <div class="rf-actions"><button type="button" class="small-btn secondary" id="rappSignClear">Effacer la signature</button></div>`, false);
   return `<div class="rf">
     <div class="rf-tete"><button type="button" class="small-btn secondary" data-rf-retour>← Formulaires</button><div><strong>${escapeHtml(c.titre)}</strong><span class="card-sub">${escapeHtml(c.sous)}</span></div></div>
-    <div class="field rf-match"><label for="rfMatch">Match concerné</label><select id="rfMatch">${ms.map(x => `<option value="${escapeHtml(get(x, "UID"))}"${get(x, "UID") === e.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(x))}</option>`).join("")}</select></div>
+    <div class="field rf-match"><label for="rfMatch">Match concerné</label>${ms.length ? `<select id="rfMatch">${ms.map(x => `<option value="${escapeHtml(get(x, "UID"))}"${get(x, "UID") === e.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(x))}</option>`).join("")}</select>` : `<p class="card-sub">Aucun match joué ces 5 derniers jours : les champs de la rencontre sont à remplir à la main.</p>`}<span class="card-sub">Matchs joués depuis 5 jours au plus.</span></div>
     ${stRencontre}${stMoment}${stFaits}${stFdm}${stSign}
     <div class="rf-fin">
       <div class="rf-actions"><button type="button" class="small-btn secondary" id="rfApercu">Aperçu</button><button type="button" class="small-btn" id="rfGenerer">Générer le PDF officiel</button></div>
@@ -9794,7 +9891,7 @@ async function rfGenerer_(root, enregistrer) {
   const src = await fetch(c.fichier); if (!src.ok) throw new Error("Formulaire officiel introuvable");
   const res = await RT_FORMULAIRES.remplir(new Uint8Array(await src.arrayBuffer()), c, rfDonnees_(c, e, sig));
   const blob = new Blob([res.octets], { type: "application/pdf" });
-  const r = (matchsPourRapports_() || []).find(x => get(x, "UID") === e.uid);
+  const r = (state.allRows || []).find(x => get(x, "UID") === e.uid);
   const nom = (c.id + "_" + (e.champs.date || "").replace(/\//g, "-") + "_" + (e.champs.equipe_a || "match").replace(/[^A-Za-z0-9]+/g, "-").slice(0, 30) + ".pdf").replace(/-+/g, "-");
   if (!enregistrer) { window.open(URL.createObjectURL(blob), "_blank", "noopener"); dire("Aperçu ouvert dans un nouvel onglet."); return; }
   // 1. téléchargement immédiat
@@ -9967,7 +10064,7 @@ function rappAssistTexte_(a, ms) {
 }
 function attachRapportAssistant_(root) {
   const z = root.querySelector(".rapp-assist"); if (!z) return;
-  const a = state.rappAssist, ms = matchsPourRapports_();
+  const a = state.rappAssist, ms = matchsPourRapports_(state.rappAssist && state.rappAssist.uid);
   const maj = () => { a.texteFige = null; const t = root.querySelector("#raTexte"); if (t) t.value = rappAssistTexte_(a, ms); try { localStorage.setItem(rappAssistCle_(a.uid, a.type), JSON.stringify(a.data)); } catch (e) {} const o = root.querySelector("#raOriginal"); if (o) o.remove(); };
   // b71 — relecture IA (Code.gs rapport.relire → Ia.gs, poste « rapports »).
   const relire = root.querySelector("#raRelire"), zone = root.querySelector("#raIaZone");
@@ -10409,3 +10506,10 @@ function renderClassementMatch_(row) {
     document.addEventListener("focusin", () => setTimeout(caler, 50));   // b67 : réagir dès l'ouverture du clavier
   }
 })();
+
+/* b77 — liens internes « aller à l'onglet » (plan de développement, etc.). */
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-tab-go]");
+  if (!b || typeof setActiveTab !== "function") return;
+  setActiveTab(b.getAttribute("data-tab-go")); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (x) {}
+});

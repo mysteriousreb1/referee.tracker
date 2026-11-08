@@ -163,7 +163,7 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", arbitres: "Arbitres", inscriptions: "Inscriptions", config: "Configuration", tickets: "Tickets", sante: "Santé", stats: "Statistiques" };
+  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", arbitres: "Arbitres", inscriptions: "Inscriptions", messages: "Messages", config: "Configuration", tickets: "Tickets", sante: "Santé", stats: "Statistiques" };
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
@@ -201,7 +201,16 @@
     const tuile = (v, l, cl, sub, lien) => '<div class="tile ' + cl + (lien ? " clic" : "") + '"' + (lien ? ' data-lien="' + lien + '"' : "") + "><b>" + esc(v) + "</b><span>" + l + "</span>" + (sub ? "<small>" + sub + "</small>" : "") + "</div>";
     const sante = (s.sante || []).slice();
     const rouge = (x) => x.moteur && heures(x.derniere_synchro) > 48;
-    el.innerHTML =
+    // b77 — « À traiter » : la liste d'actions du jour, cliquable, avant les chiffres.
+    const aFaire = [];
+    if (t.inscrits_attente) aFaire.push(["orange", t.inscrits_attente + " inscription(s) en attente", "Accepter ou rejeter", "#inscriptions"]);
+    if (t.tickets_ouverts) aFaire.push(["red", t.tickets_ouverts + " ticket(s) ouvert(s)", "Répondre (l'arbitre est prévenu)", "#tickets"]);
+    const muets = sante.filter(rouge); if (muets.length) aFaire.push(["red", muets.length + " moteur(s) sans synchro depuis 48 h", muets.map((x) => x.prenom || x.email).slice(0, 3).join(", "), "#sante"]);
+    if (t.moteurs_prets) aFaire.push(["gold", t.moteurs_prets + " compte(s) prêt(s), jamais connecté(s)", "Renvoyer le code de 1re connexion depuis la fiche", "#arbitres"]);
+    if (t.alertes_non_traitees) aFaire.push(["orange", t.alertes_non_traitees + " alerte(s) non traitée(s)", "Voir dans la fiche de chaque arbitre", "#arbitres"]);
+    const aFaireHtml = '<div class="card afaire"><div class="card-head"><h2>À traiter</h2><span class="sub">' + (aFaire.length ? aFaire.length + " point(s)" : "rien en attente") + "</span></div>" +
+      (aFaire.length ? '<ul class="afaire-l">' + aFaire.map((a) => '<li class="clic" data-lien="' + a[3] + '"><span class="dot ' + a[0] + '"></span><div><strong>' + esc(a[1]) + '</strong><span class="mut tiny">' + esc(a[2]) + '</span></div><span class="afaire-go">→</span></li>').join("") + "</ul>" : '<p class="vide">Tout est à jour. ✓</p>') + "</div>";
+    el.innerHTML = aFaireHtml +
       '<div class="tiles">' +
       tuile(t.arbitres_actifs ?? 0, "Arbitres actifs", "green", (t.comptes ?? 0) + " comptes", "#arbitres") + tuile(t.inscrits_attente ?? 0, "Inscrits en attente", "orange", "", "#inscriptions") +
       tuile(t.moteurs_prets ?? 0, "Moteurs prêts", "gold", "en attente de 1re connexion", "#arbitres") + tuile(t.suspendus ?? 0, "Suspendus", "red", "", "#arbitres") +
@@ -214,7 +223,7 @@
       '<div class="card"><div class="card-head"><h2>Derniers événements</h2></div><ul class="events">' + ((s.evenements || []).map((e) => "<li><time>" + fmt(e.at) + "</time><span>" + badge(e.type, { inscription: "gold", ticket: "red", suspension: "red" }[e.type]) + " " + esc(e.libelle) + (e.detail ? ' <span class="err tiny">' + esc(e.detail) + "</span>" : "") + "</span></li>").join("") || '<li class="vide">Rien à signaler</li>') + "</ul></div>" +
       "</div>" +
       '<div class="card"><div class="card-head"><h2>État de santé par arbitre</h2><span class="sub">rouge = moteur prêt mais aucune synchro depuis 48 h</span></div><div id="dashSante"></div></div>';
-    el.querySelectorAll(".tile.clic").forEach((x) => x.addEventListener("click", () => (location.hash = x.dataset.lien)));
+    el.querySelectorAll(".tile.clic, .afaire-l li.clic").forEach((x) => x.addEventListener("click", () => (location.hash = x.dataset.lien)));
     tableCourante = tableau($("dashSante"), [
       { t: "Arbitre", k: (r) => r.prenom || r.email, r: (r) => '<span class="dot ' + (rouge(r) ? "red" : r.moteur ? "green" : "") + '"></span><strong>' + esc(r.prenom || "—") + '</strong> <span class="mut">' + esc(r.email) + "</span>" },
       { t: "Statut", k: "statut", r: (r) => badgeStatut(r.statut) },
@@ -313,7 +322,7 @@
         (nonTraitees ? badge(nonTraitees + " alerte(s) non traitée(s)", "orange") : "") + "</div>" +
       '<div class="row" style="margin-bottom:12px"><button class="btn sm" id="fLien">Lien mot de passe</button><button class="btn sm" id="fCode">Régénérer le code 1re connexion</button>' +
         '<button class="btn sm" id="fSusp">' + (u.banni ? "Réactiver" : "Suspendre") + "</button>" + '<button class="btn sm" id="fPing">Tester le moteur</button><span id="fPingRes" class="mut tiny"></span></div>' +
-      '<div class="tabs"><button class="on" data-tab="profil">Profil</button><button data-tab="matchs">Matchs (' + (f.matchs || []).length + ')</button><button data-tab="alertes">Alertes (' + (f.alertes ? f.alertes.total : 0) + ')</button><button data-tab="tickets">Tickets (' + (f.tickets || []).length + ")</button><button data-tab=\"danger\">Compte</button></div>" +
+      '<div class="tabs"><button class="on" data-tab="profil">Profil</button><button data-tab="matchs">Matchs (' + (f.matchs || []).length + ')</button><button data-tab="alertes">Alertes (' + (f.alertes ? f.alertes.total : 0) + ')</button><button data-tab="tickets">Tickets (' + (f.tickets || []).length + ")</button><button data-tab=\"notes\">Notes & message</button><button data-tab=\"danger\">Compte</button></div>" +
       '<div class="tabpane on" data-pane="profil"><div class="card"><div class="form-grid">' +
         inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom officiel", p.nom_ffbb) + inp("pEmailF", "E-mail fédération", p.email_ffbb, "", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
@@ -326,10 +335,32 @@
       '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · lecture seule (consultation journalisée)</span><span class="sp"></span><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
       '<div class="tabpane" data-pane="alertes"><div class="card">' + alertesHtml + "</div></div>" +
       '<div class="tabpane" data-pane="tickets">' + ticketsHtml + '<p style="margin-top:8px"><a href="#tickets/' + esc(u.id) + '" id="fTickets">Ouvrir dans Tickets →</a></p></div>' +
+      '<div class="tabpane" data-pane="notes"><div class="grid-2"><div class="card"><div class="card-head"><h3>Notes internes</h3><span class="sub">visibles par toi seul · jamais par l\'arbitre</span></div>' +
+        '<div class="row"><select id="nCat"><option value="retour">Retour client</option><option value="demande">Demande</option><option value="bug">Bug</option><option value="suivi" selected>Suivi</option><option value="autre">Autre</option></select></div><textarea id="nTxt" rows="3" placeholder="Ex. : souhaite un export par mois ; a signalé un écart sur un match du 12/10…" style="width:100%;margin-top:8px;font-family:inherit"></textarea><div class="row" style="margin-top:8px"><button class="btn pri sm" id="nAdd">Ajouter la note</button></div><div id="nListe" style="margin-top:12px"><p class="mut">Chargement…</p></div></div>' +
+        '<div class="card"><div class="card-head"><h3>Écrire à cet arbitre</h3><span class="sub">e-mail au design Referee Tracker et/ou notification</span></div>' +
+        '<label class="f">Sujet<input id="mSujet" maxlength="120" placeholder="Ex. : Ton écart du 12/10 est corrigé"></label><label class="f" style="margin-top:8px">Message<textarea id="mTxt" rows="6" style="font-family:inherit" placeholder="Le message commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
+        '<div class="row" style="margin-top:8px"><select id="mCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select><button class="btn pri sm" id="mEnv">Envoyer</button></div></div></div></div>' +
       '<div class="tabpane" data-pane="danger"><div class="card danger-zone"><h3>Supprimer le compte</h3><p>Supprime définitivement : matchs, évaluations, tickets, appareils push, consentements, profil, inscription, fichiers Storage import/, puis le compte de connexion. Irréversible.</p><button class="btn danger" id="fSuppr">Supprimer le compte…</button></div></div>';
     const body = $("drawerBody");
     body.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { body.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b)); body.querySelectorAll(".tabpane").forEach((x) => x.classList.toggle("on", x.dataset.pane === b.dataset.tab)); }));
     body.querySelector("#fSaison").addEventListener("change", (e) => ouvrirFiche(userId, e.target.value));
+    // b77 — notes internes + message direct
+    const CAT_NOTE = { retour: ["Retour client", "gold"], demande: ["Demande", "blue"], bug: ["Bug", "red"], suivi: ["Suivi", "gray"], autre: ["Autre", "gray"] };
+    async function chargerNotes() {
+      const z = body.querySelector("#nListe"); if (!z) return;
+      try { const j = await admin("notes.liste", { user_id: userId }); const l = j.data || [];
+        z.innerHTML = l.length ? '<ul class="notes">' + l.map((n) => '<li><div class="row">' + badge((CAT_NOTE[n.categorie] || [n.categorie])[0], (CAT_NOTE[n.categorie] || [0, ""])[1]) + '<time class="mut tiny">' + fmt(n.cree) + '</time><span class="sp"></span><button class="btn sm" data-note="' + n.id + '">Supprimer</button></div><p>' + esc(n.texte).replace(/\n/g, "<br>") + "</p></li>").join("") + "</ul>" : '<p class="vide">Aucune note pour l\'instant.</p>';
+        z.querySelectorAll("[data-note]").forEach((x) => x.addEventListener("click", async () => { if (!(await confirmer("Supprimer la note", "Supprimer définitivement cette note ?", "Supprimer", true))) return; try { await admin("note.supprimer", { id: Number(x.dataset.note) }); chargerNotes(); } catch (e) { toast(e.message, "err"); } }));
+      } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; }
+    }
+    chargerNotes();
+    body.querySelector("#nAdd").addEventListener("click", async () => { const t = body.querySelector("#nTxt").value.trim(); if (t.length < 2) return toast("Note vide", "err"); try { await admin("note.ajouter", { user_id: userId, texte: t, categorie: body.querySelector("#nCat").value }); body.querySelector("#nTxt").value = ""; toast("Note ajoutée", "ok"); chargerNotes(); } catch (e) { toast(e.message, "err"); } });
+    body.querySelector("#mEnv").addEventListener("click", async () => {
+      const sujet = body.querySelector("#mSujet").value.trim(), texte = body.querySelector("#mTxt").value.trim(), canal = body.querySelector("#mCanal").value;
+      if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
+      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(nomDe(p, u.email)) + "</strong> ?", "Envoyer"))) return;
+      try { const j = await admin("message.envoyer", { cible: userId, sujet, texte, canal }); toast("Envoyé · " + j.mails + " e-mail · " + j.pushs + " notification", "ok"); body.querySelector("#mTxt").value = ""; } catch (e) { toast(e.message, "err"); }
+    });
     body.querySelector("#fTickets").addEventListener("click", fermerDrawer);
     body.querySelector("#pSave").addEventListener("click", async () => {
       const v = (id) => body.querySelector("#" + id).value.trim(); const msg = body.querySelector("#pMsg");
@@ -522,9 +553,9 @@
       action: async (act, t) => {
         try {
           if (act === "rep") {
-            dialogue("Répondre au ticket #" + t.id, '<p class="mut">' + esc(t.categorie || "") + " · " + esc(t.gravite || "") + "</p><p style=\"white-space:pre-wrap\">" + esc(t.description || "") + '</p><label class="f">Réponse (visible par l\'arbitre dans l\'app)<textarea id="tkRep" rows="5" style="font-family:inherit">' + esc(t.reponse || "") + '</textarea></label><label class="f" style="margin-top:8px">Statut<select id="tkSt">' + ["Ouvert", "En cours", "Fermé"].map((s) => '<option' + ((t.reponse ? t.statut : "En cours") === s ? " selected" : "") + ">" + s + "</option>").join("") + '</select></label><div class="dlg-actions"><button class="btn" id="tkNon">Annuler</button><button class="btn pri" id="tkOui">Enregistrer</button></div>', (b) => {
+            dialogue("Répondre au ticket #" + t.id, '<p class="mut">' + esc(t.categorie || "") + " · " + esc(t.gravite || "") + "</p><p style=\"white-space:pre-wrap\">" + esc(t.description || "") + '</p><label class="f">Réponse (visible par l\'arbitre dans l\'app)<textarea id="tkRep" rows="5" style="font-family:inherit">' + esc(t.reponse || "") + '</textarea></label><label class="f" style="margin-top:8px">Statut<select id="tkSt">' + ["Ouvert", "En cours", "Fermé"].map((s) => '<option' + ((t.reponse ? t.statut : "En cours") === s ? " selected" : "") + ">" + s + "</option>").join("") + '</select></label><label class="chk" style="margin-top:10px"><input type="checkbox" id="tkNotif" checked>Prévenir l\'arbitre (e-mail + notification)</label><div class="dlg-actions"><button class="btn" id="tkNon">Annuler</button><button class="btn pri" id="tkOui">Enregistrer</button></div>', (b) => {
               b.querySelector("#tkNon").onclick = fermerDlg;
-              b.querySelector("#tkOui").onclick = async () => { try { await admin("ticket.repondre", { id: t.id, reponse: b.querySelector("#tkRep").value.trim(), statut: b.querySelector("#tkSt").value }); fermerDlg(); toast("Réponse enregistrée", "ok"); cache.tickets = null; cache.stats = null; rendus.tickets(true); } catch (e) { toast(e.message, "err"); } };
+              b.querySelector("#tkOui").onclick = async () => { try { const j = await admin("ticket.repondre", { id: t.id, reponse: b.querySelector("#tkRep").value.trim(), statut: b.querySelector("#tkSt").value, notifier: b.querySelector("#tkNotif").checked }); fermerDlg(); toast("Réponse enregistrée" + (j.prevenu && (j.prevenu.mail || j.prevenu.push) ? " · arbitre prévenu" + (j.prevenu.mail ? " par e-mail" : "") + (j.prevenu.push ? (j.prevenu.mail ? " et" : "") + " par notification" : "") : ""), "ok"); cache.tickets = null; cache.stats = null; rendus.tickets(true); } catch (e) { toast(e.message, "err"); } };
             });
           } else if (act === "fermer" || act === "rouvrir") {
             const st = act === "fermer" ? "Fermé" : "Ouvert";
@@ -533,6 +564,49 @@
           }
         } catch (e) { toast(e.message, "err"); }
       } });
+  };
+
+  // =====================================================================
+  // b77 — MESSAGES : écrire à un arbitre, aux actifs ou à tous (e-mail au design + notification)
+  // =====================================================================
+  const MODELES_MSG = [
+    ["", "— Partir d'un modèle —", ""],
+    ["Nouvelle version de l'application", "Une nouvelle version de Referee Tracker est en ligne.\n\nCe qui change :\n- \n- \n\nPour l'avoir tout de suite : ferme puis rouvre l'application (ou touche « Actualiser »)."],
+    ["Maintenance prévue", "Une courte maintenance est prévue le JJ/MM de HHhMM à HHhMM.\n\nPendant ce temps, l'application peut être indisponible. Tes convocations reçues pendant la maintenance seront traitées juste après."],
+    ["Ton retour a été pris en compte", "Merci pour ton retour. La correction est en ligne depuis aujourd'hui.\n\nDis-nous si tout est bon de ton côté."],
+    ["Pense à transférer tes convocations", "Petit rappel : pour que tes matchs arrivent tout seuls dans l'application, vérifie que la règle de transfert de ta messagerie vers ton adresse Referee Tracker est bien active.\n\nBesoin d'aide ? Réponds simplement à ce message."]
+  ];
+  rendus.messages = async function (force) {
+    const el = $("sec-messages");
+    if (force || !cache.arbitres) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.arbitres = (await admin("arbitres.liste")).data || []; }
+    const l = cache.arbitres.filter((a) => !a.banni);
+    const actifs = l.filter((a) => (a.profil || {}).statut === "actif").length;
+    el.innerHTML = '<div class="grid-2 msg-grid"><div class="card"><div class="card-head"><h2>Nouveau message</h2><span class="sub">e-mail au design Referee Tracker et/ou notification sur le téléphone</span></div>' +
+      '<label class="f">Destinataires<select id="msCible"><option value="actifs">Arbitres actifs (' + actifs + ')</option><option value="tous">Tous les comptes non suspendus (' + l.length + ")</option>" + l.map((a) => '<option value="' + a.id + '">' + esc(nomDe(a.profil, a.email)) + "</option>").join("") + "</select></label>" +
+      '<label class="f">Modèle<select id="msModele">' + MODELES_MSG.map((m, i) => '<option value="' + i + '">' + esc(m[1] && i ? m[0] : m[1]) + "</option>").join("") + "</select></label>" +
+      '<label class="f">Sujet<input id="msSujet" maxlength="120" placeholder="Ex. : Nouvelle version de l\'application"></label>' +
+      '<label class="f">Message<textarea id="msTxt" rows="9" style="font-family:inherit" placeholder="Commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
+      '<label class="f">Canal<select id="msCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select></label>' +
+      '<div class="row" style="margin-top:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
+      '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
+      '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
+    $("msModele").addEventListener("change", (e) => { const m = MODELES_MSG[Number(e.target.value)]; if (m && m[0] && Number(e.target.value)) { $("msSujet").value = m[0]; $("msTxt").value = m[1]; } });
+    const apercu = () => { const sujet = $("msSujet").value.trim() || "Sujet", texte = $("msTxt").value.trim() || "…";
+      $("msPrev").innerHTML = '<div class="mp-head">REFEREE <b>TRACKER</b></div><div class="mp-body"><h3>' + esc(sujet) + "</h3><p>Bonjour Prénom,</p>" + texte.split(/\n{2,}/).map((x) => "<p>" + esc(x).replace(/\n/g, "<br>") + "</p>").join("") + '<span class="mp-btn">Ouvrir l\'application</span><small>Message de l\'équipe Referee Tracker · une question ? contact@referee-tracker.fr</small></div>'; };
+    $("msApercu").addEventListener("click", apercu); $("msTxt").addEventListener("input", apercu); $("msSujet").addEventListener("input", apercu);
+    $("msEnv").addEventListener("click", async () => {
+      const cible = $("msCible").value, sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(), canal = $("msCanal").value;
+      if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
+      const lib = $("msCible").selectedOptions[0].textContent;
+      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong> ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
+      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal }); toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
+    });
+    $("msHist").addEventListener("click", async () => {
+      $("msHistZ").innerHTML = '<p class="mut">Chargement…</p>';
+      try { const j = await admin("journal.liste", { page: 0, filtre_action: "message.envoyer" }); const d = j.data || [];
+        $("msHistZ").innerHTML = d.length ? '<div class="tbl"><table><thead><tr><th>Date</th><th>Sujet</th><th>Cible</th><th>Canal</th><th class="right">Envois</th></tr></thead><tbody>' + d.map((x) => { const t = x.details || {}; return "<tr><td>" + fmt(x.at) + "</td><td><strong>" + esc(t.sujet || "") + '</strong><br><span class="mut tiny">' + esc((t.extrait || "").slice(0, 120)) + "</span></td><td>" + esc(t.cible === "tous" ? "Tous" : t.cible === "actifs" ? "Actifs" : "1 arbitre") + "</td><td>" + esc({ les2: "E-mail + notif.", mail: "E-mail", push: "Notification" }[t.canal] || "") + '</td><td class="num right">' + (t.mails || 0) + " / " + (t.pushs || 0) + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="vide">Aucun message envoyé.</p>';
+      } catch (e) { $("msHistZ").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; }
+    });
   };
 
   // =====================================================================
