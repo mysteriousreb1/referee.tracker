@@ -207,6 +207,19 @@
     if (t.tickets_ouverts) aFaire.push(["red", t.tickets_ouverts + " ticket(s) ouvert(s)", "Répondre (l'arbitre est prévenu)", "#tickets"]);
     const muets = sante.filter(rouge); if (muets.length) aFaire.push(["red", muets.length + " moteur(s) sans synchro depuis 48 h", muets.map((x) => x.prenom || x.email).slice(0, 3).join(", "), "#sante"]);
     if (t.moteurs_prets) aFaire.push(["gold", t.moteurs_prets + " compte(s) prêt(s), jamais connecté(s)", "Renvoyer le code de 1re connexion depuis la fiche", "#arbitres"]);
+    // b78e — un arbitre d'un comité / d'une ligue sans barème ni échéancier : dates de paiement seulement estimées.
+    try {
+      if (!cache.config) cache.config = await admin("config.get");
+      if (!cache.arbitres) cache.arbitres = (await admin("arbitres.liste")).data || [];
+      const cfgV = (k) => ((cache.config.data || []).find((r) => r.cle === k) || {}).valeur || {};
+      const bar = cfgV("pub.baremes"), per = cfgV("pub.periodes_paiement"), sais = Object.values(per);
+      const manque = new Set();
+      cache.arbitres.filter((a) => (a.profil || {}).statut === "actif" || (a.profil || {}).statut === "inscrit").forEach((a) => { const z = (a.profil || {}).zones || {};
+        const cd = String(z.cd || "").toLowerCase(), lg = String(z.ligue || "").toLowerCase();
+        if (cd && cd !== "cd67" && (!bar[cd] || !sais.some((x) => x && x[cd]))) manque.add(cd.toUpperCase());
+        if (lg && lg !== "lrgeb" && !sais.some((x) => x && x[lg])) manque.add(lg.toUpperCase()); });
+      if (manque.size) aFaire.push(["gold", "Barème / échéancier à renseigner : " + [...manque].join(", "), "Sans eux, les dates de paiement de ces arbitres sont estimées. Configuration → Barèmes / Échéanciers", "#config"]);
+    } catch (e) {}
     if (t.alertes_non_traitees) aFaire.push(["orange", t.alertes_non_traitees + " alerte(s) non traitée(s)", "Voir dans la fiche de chaque arbitre", "#arbitres"]);
     const aFaireHtml = '<div class="card afaire"><div class="card-head"><h2>À traiter</h2><span class="sub">' + (aFaire.length ? aFaire.length + " point(s)" : "rien en attente") + "</span></div>" +
       (aFaire.length ? '<ul class="afaire-l">' + aFaire.map((a) => '<li class="clic" data-lien="' + a[3] + '"><span class="dot ' + a[0] + '"></span><div><strong>' + esc(a[1]) + '</strong><span class="mut tiny">' + esc(a[2]) + '</span></div><span class="afaire-go">→</span></li>').join("") + "</ul>" : '<p class="vide">Tout est à jour. ✓</p>') + "</div>";
@@ -340,7 +353,7 @@
         '<div class="row"><select id="nCat"><option value="retour">Retour client</option><option value="demande">Demande</option><option value="bug">Bug</option><option value="suivi" selected>Suivi</option><option value="autre">Autre</option></select></div><textarea id="nTxt" rows="3" placeholder="Ex. : souhaite un export par mois ; a signalé un écart sur un match du 12/10…" style="width:100%;margin-top:8px;font-family:inherit"></textarea><div class="row" style="margin-top:8px"><button class="btn pri sm" id="nAdd">Ajouter la note</button></div><div id="nListe" style="margin-top:12px"><p class="mut">Chargement…</p></div></div>' +
         '<div class="card"><div class="card-head"><h3>Écrire à cet arbitre</h3><span class="sub">e-mail au design Referee Tracker et/ou notification</span></div>' +
         '<label class="f">Sujet<input id="mSujet" maxlength="120" placeholder="Ex. : Ton écart du 12/10 est corrigé"></label><label class="f" style="margin-top:8px">Message<textarea id="mTxt" rows="6" style="font-family:inherit" placeholder="Le message commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
-        '<div class="row" style="margin-top:8px"><select id="mCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select><button class="btn pri sm" id="mEnv">Envoyer</button>' + (waNum(p.telephone) ? '<button class="btn sm wa-btn" id="mWa" title="' + esc(p.telephone) + '">WhatsApp</button>' : '<span class="mut tiny">WhatsApp : aucun numéro</span>') + '</div></div></div></div>' +
+        '<div class="row" style="margin-top:8px"><select id="mCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select><button class="btn pri sm" id="mEnv">Envoyer</button>' + (waNum(p.telephone) ? '<button class="btn sm wa-btn" id="mWa" title="' + esc(p.telephone) + '">WhatsApp</button>' : '<span class="mut tiny">WhatsApp : aucun numéro</span>') + '<button class="btn sm" id="mStop" title="L\'arbitre a répondu STOP ou ne veut plus de nouveautés">Retirer des offres (STOP)</button><span class="mut tiny" id="mStopEtat">' + (((p.communications || {}).offres === true) ? "offres : oui" : "offres : non") + " · WhatsApp : " + (((p.communications || {}).whatsapp === true) ? "oui" : "non") + '</span></div></div></div></div>' +
       '<div class="tabpane" data-pane="danger"><div class="card danger-zone"><h3>Supprimer le compte</h3><p>Supprime définitivement : matchs, évaluations, tickets, appareils push, consentements, profil, inscription, fichiers Storage import/, puis le compte de connexion. Irréversible.</p><button class="btn danger" id="fSuppr">Supprimer le compte…</button></div></div>';
     const body = $("drawerBody");
     body.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { body.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b)); body.querySelectorAll(".tabpane").forEach((x) => x.classList.toggle("on", x.dataset.pane === b.dataset.tab)); }));
@@ -356,6 +369,8 @@
     }
     chargerNotes();
     body.querySelector("#nAdd").addEventListener("click", async () => { const t = body.querySelector("#nTxt").value.trim(); if (t.length < 2) return toast("Note vide", "err"); try { await admin("note.ajouter", { user_id: userId, texte: t, categorie: body.querySelector("#nCat").value }); body.querySelector("#nTxt").value = ""; toast("Note ajoutée", "ok"); chargerNotes(); } catch (e) { toast(e.message, "err"); } });
+    { const st = body.querySelector("#mStop"); if (st) st.addEventListener("click", async () => { if (!(await confirmer("Retirer des nouveautés et offres", "Plus aucun message promotionnel (e-mail et WhatsApp) ne sera envoyé à " + esc(p.prenom || "cet arbitre") + ". Les informations de service continuent. Il pourra se réinscrire depuis Mon profil.", "Retirer"))) return;
+      try { await admin("communications.retirer", { user_id: userId, canal: "tout" }); body.querySelector("#mStopEtat").textContent = "offres : non · WhatsApp : non"; p.communications = { ...(p.communications || {}), offres: false, whatsapp: false }; cache.arbitres = null; toast("Retiré : plus de nouveautés ni d'offres", "ok"); } catch (e) { toast(e.message, "err"); } }); }
     { const w = body.querySelector("#mWa"); if (w) w.addEventListener("click", () => { const sujet = body.querySelector("#mSujet").value.trim(), texte = body.querySelector("#mTxt").value.trim(); window.open(waLien(p.telephone, "Bonjour " + (p.prenom || "") + ",\n\n" + (sujet ? "*" + sujet + "*\n\n" : "") + texte + "\n\n— Referee Tracker"), "_blank", "noopener"); }); }
     body.querySelector("#mEnv").addEventListener("click", async () => {
       const sujet = body.querySelector("#mSujet").value.trim(), texte = body.querySelector("#mTxt").value.trim(), canal = body.querySelector("#mCanal").value;
@@ -443,8 +458,8 @@
   // 4. CONFIGURATION
   // =====================================================================
   const CFG = {
-    "pub.baremes": { titre: "Barèmes CD67", desc: "Part fixe par catégorie (désigné, QR, interdép., amicaux) · appliqué par les moteurs sous 10 min" },
-    "pub.periodes_paiement": { titre: "Échéanciers de paiement", desc: "CD67 et Ligue, par saison · appliqué sous 10 min" },
+    "pub.baremes": { titre: "Barèmes des comités", desc: "Un barème par comité (CD67, CD75…) : part fixe par catégorie (désigné, QR, interdép., amicaux) · appliqué par les moteurs sous 10 min" },
+    "pub.periodes_paiement": { titre: "Échéanciers de paiement", desc: "Par comité et par ligue, par saison · appliqué sous 10 min" },
     "pub.ia": { titre: "IA", desc: "Plafond mensuel et répartition par fonction · appliqué sous 10 min" },
     "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
@@ -476,23 +491,40 @@
     function formulaire(v) {
       v = v || {};
       if (cfgCle === "pub.baremes") {
-        // b74 — même structure que le moteur (Bareme.gs) : part fixe en € par catégorie ; le km (A/R × taux) s'ajoute toujours.
-        const c = v.cd67 || {};
-        F.innerHTML = '<p class="mut tiny">Indemnité d\'un match CD67 = part fixe ci-dessous + km A/R × taux kilométrique de l\'arbitre. Une catégorie absente garde la valeur du code.</p>' +
+        // b78e — un barème PAR COMITÉ (clé « cd67 », « cd75 »…) : part fixe en € par catégorie ; le km (A/R × 0,40 €) s'ajoute toujours.
+        const cles = Object.keys(v).filter((k) => /^cd/i.test(k) && v[k] && typeof v[k] === "object");
+        if (!cles.length) cles.push("cd67");
+        if (!formulaire._cd || cles.indexOf(formulaire._cd) < 0) formulaire._cd = cles[0];
+        const k = formulaire._cd, c = v[k] || {};
+        F.innerHTML = '<div class="row" style="align-items:flex-end;gap:8px;flex-wrap:wrap"><label class="f">Comité<select id="bCd">' + cles.map((x) => '<option value="' + esc(x) + '"' + (x === k ? " selected" : "") + ">" + esc(x.toUpperCase()) + "</option>").join("") + '</select></label><label class="f">Ajouter un comité<input id="bCdNew" placeholder="CD75" style="max-width:110px"></label><button class="btn sm" id="bCdAdd">+ Ajouter</button></div>' +
+          '<p class="mut tiny">Indemnité d\'un match départemental = part fixe ci-dessous + km A/R × 0,40 €. Une catégorie absente : on garde le montant écrit sur la convocation' + (k === "cd67" ? " (pour le CD67, la valeur du code)" : "") + '.</p>' +
           kv("bDe", "Officiel désigné (catégorie → €)", c.designe, "Catégorie") + kv("bQr", "Jeunes qualification région, code -5 (catégorie → €)", c.qr, "Catégorie") +
           kv("bIn", "Interdépartemental, code -7 (catégorie → €)", c.interdepartemental, "Catégorie") + kv("bAm", "Amicaux / tournois (Séniors, Jeunes → €)", c.amicaux, "Séniors ou Jeunes");
-        lireForm = () => ({ indemnite_km: v.indemnite_km ?? 0.4, cd67: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
+        lireForm = () => Object.assign({}, v, { indemnite_km: v.indemnite_km ?? 0.4, [k]: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
+        setTimeout(() => {
+          const sel = F.querySelector("#bCd"); if (sel) sel.addEventListener("change", () => { const o = lireForm(); formulaire._cd = sel.value; formulaire(o); });
+          const add = F.querySelector("#bCdAdd"); if (add) add.addEventListener("click", () => { const n = F.querySelector("#bCdNew").value.trim().toLowerCase(); if (!/^cd\d{2,3}[ab]?$/.test(n)) return toast("Format attendu : CD75, CD2A…", "err"); const o = lireForm(); o[n] = o[n] || { designe: {}, qr: {}, interdepartemental: {}, amicaux: {} }; formulaire._cd = n; formulaire(o); });
+        }, 0);
       } else if (cfgCle === "pub.periodes_paiement") {
         // b74 — { "2026/2027": { cd67: [[début, fin, paiement]], lrgeb: [[début, fin, à partir du]], lrgeb_marge_jours } } (dates JJ/MM/AAAA).
         const saisons = Object.keys(v).filter((s) => /^\d{4}\/\d{4}$/.test(s)).sort();
         const iso = (d) => { const m = String(d || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
         const fr = (d) => { const m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; };
         const bloc = (id, titre, l, lib3) => '<div class="subtab">' + titre + ' (début · fin · ' + lib3 + ')</div><div class="liste-edit" id="' + id + '">' + (l || []).map((p) => '<div class="row"><input type="date" value="' + esc(iso(p[0])) + '"><input type="date" value="' + esc(iso(p[1])) + '"><input type="date" value="' + esc(iso(p[2])) + '"><button class="btn sm" data-del>✕</button></div>').join("") + '</div><button class="btn sm" data-addp="' + id + '">+ Période</button>';
-        F.innerHTML = '<p class="mut tiny">Une saison renseignée ici remplace celle écrite dans le moteur. Pour une nouvelle saison : ajoute-la avec le bouton ci-dessous.</p>' + saisons.map((s, i) => '<div class="card" data-saison="' + esc(s) + '"><div class="card-head"><h3>Saison ' + esc(s) + "</h3></div>" + bloc("pCd" + i, "CD67 — date de paiement", v[s].cd67, "payé le") + bloc("pLg" + i, "Ligue LRGEB — date « à partir du »", v[s].lrgeb, "à partir du") + '<div class="form-grid" style="margin-top:8px">' + num("pMg" + i, "Ligue : marge de virement (jours)", v[s].lrgeb_marge_jours ?? 7, "1") + "</div></div>").join("") +
+        // b78e — par saison : un bloc par comité (« cd.. » : date de paiement) et par ligue (date « à partir du » + marge de virement).
+        const zonesDe = (o) => Object.keys(o || {}).filter((z) => !/_marge_jours$/.test(z) && Array.isArray(o[z]));
+        F.innerHTML = '<p class="mut tiny">Une saison renseignée ici remplace celle écrite dans le moteur (CD67 et LRGEB). Pour un autre comité ou une autre ligue, ajoute son code (CD75, LIDF…) : il s\'appliquera aux arbitres qui l\'ont choisi.</p>' + saisons.map((s, i) => { const zs = zonesDe(v[s]); if (!zs.length) zs.push("cd67", "lrgeb");
+          return '<div class="card" data-saison="' + esc(s) + '" data-zones="' + esc(zs.join(",")) + '"><div class="card-head"><h3>Saison ' + esc(s) + "</h3></div>" + zs.map((z, j) => /^cd/.test(z)
+            ? bloc("p" + i + "_" + j, "Comité " + z.toUpperCase() + " — date de paiement", v[s][z], "payé le")
+            : bloc("p" + i + "_" + j, "Ligue " + z.toUpperCase() + " — date « à partir du »", v[s][z], "à partir du") + '<div class="form-grid" style="margin-top:6px">' + num("pM" + i + "_" + j, "Ligue " + z.toUpperCase() + " : marge de virement (jours)", v[s][z + "_marge_jours"] ?? 7, "1") + "</div>").join("") +
+            '<div class="row" style="margin-top:8px"><input data-zadd="' + i + '" placeholder="CD75 ou LIDF" style="max-width:140px"><button class="btn sm" data-zaddb="' + i + '">+ Comité ou ligue</button></div></div>'; }).join("") +
           '<div class="row"><input id="pNew" placeholder="2027/2028" style="max-width:140px"><button class="btn sm" id="pAddS">+ Ajouter la saison</button></div>';
         const lireP = (id) => Array.from(F.querySelectorAll("#" + id + " .row")).map((r) => Array.from(r.querySelectorAll("input")).map((x) => fr(x.value))).filter((p) => p[0] && p[1] && p[2]);
-        lireForm = () => { const o = {}; F.querySelectorAll("[data-saison]").forEach((c, i) => { o[c.dataset.saison] = { cd67: lireP("pCd" + i), lrgeb: lireP("pLg" + i), lrgeb_marge_jours: Number(F.querySelector("#pMg" + i).value) || 0 }; }); return o; };
-        setTimeout(() => { const b = F.querySelector("#pAddS"); if (b) b.addEventListener("click", () => { const s = F.querySelector("#pNew").value.trim(); if (!/^\d{4}\/\d{4}$/.test(s)) return toast("Format attendu : 2027/2028", "err"); const o = lireForm(); o[s] = o[s] || { cd67: [], lrgeb: [], lrgeb_marge_jours: 7 }; formulaire(o); }); }, 0);
+        lireForm = () => { const o = {}; F.querySelectorAll("[data-saison]").forEach((c, i) => { const r = {}; c.dataset.zones.split(",").forEach((z, j) => { r[z] = lireP("p" + i + "_" + j); if (!/^cd/.test(z)) { const m = F.querySelector("#pM" + i + "_" + j); r[z + "_marge_jours"] = m ? Number(m.value) || 0 : 7; } }); o[c.dataset.saison] = r; }); return o; };
+        setTimeout(() => {
+          const b = F.querySelector("#pAddS"); if (b) b.addEventListener("click", () => { const s = F.querySelector("#pNew").value.trim(); if (!/^\d{4}\/\d{4}$/.test(s)) return toast("Format attendu : 2027/2028", "err"); const o = lireForm(); o[s] = o[s] || { cd67: [], lrgeb: [], lrgeb_marge_jours: 7 }; formulaire(o); });
+          F.querySelectorAll("[data-zaddb]").forEach((bt) => bt.addEventListener("click", () => { const i = bt.dataset.zaddb, n = F.querySelector('[data-zadd="' + i + '"]').value.trim().toLowerCase(); if (!/^[a-z0-9]{2,8}$/.test(n)) return toast("Code attendu : CD75, LIDF…", "err"); const o = lireForm(); const s = F.querySelectorAll("[data-saison]")[Number(i)].dataset.saison; if (!o[s][n]) { o[s][n] = []; if (!/^cd/.test(n)) o[s][n + "_marge_jours"] = 7; } formulaire(o); }));
+        }, 0);
       } else if (cfgCle === "pub.carburant") {
         F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";
         lireForm = () => ({ prix_e10: Number(F.querySelector("#cE10").value) || 0 });

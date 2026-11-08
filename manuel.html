@@ -3,320 +3,350 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="robots" content="noindex" />
-  <title>Manuel — Referee Tracker</title>
-  <link rel="stylesheet" href="./legal.css" />
-  <style>
-    /* Manuel : maquettes SVG légères, cartes « étape », encadrés. */
-    main { max-width: 860px; }
-    .lead { font-size: 1.05rem; color: var(--mut); margin: 0 0 18px; }
-    .fig { margin: 14px 0 18px; background: var(--soft); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
-    .fig svg { width: 100%; height: auto; display: block; }
-    .fig figcaption { font-size: .85rem; color: var(--mut); margin-top: 8px; }
-    .steps { counter-reset: s; list-style: none; padding: 0; margin: 10px 0 16px; }
-    .steps li { position: relative; padding: 10px 12px 10px 48px; border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: var(--bg); }
-    .steps li::before { counter-increment: s; content: counter(s); position: absolute; left: 12px; top: 10px; width: 26px; height: 26px; border-radius: 13px; background: #0A1F44; color: #F5B400; font-weight: 800; text-align: center; line-height: 26px; font-size: .85rem; }
-    .tip { border-left: 4px solid #F5B400; }
-    .warn { border-left: 4px solid #c0392b; }
-    .kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); font-size: .85em; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
-    .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: #0A1F44; color: #F5B400; vertical-align: middle; }
-    .toc { columns: 2; }
-    .pc { font-size: .78rem; color: var(--mut); text-transform: uppercase; letter-spacing: .06em; }
-    /* palette des maquettes */
-    svg .bg { fill: #0f172a; } svg .card { fill: #1e293b; } svg .txt { fill: #e2e8f0; font: 600 11px/1 -apple-system, "Segoe UI", Arial, sans-serif; } svg .mut { fill: #94a3b8; font: 500 9px/1 -apple-system, "Segoe UI", Arial, sans-serif; }
-    svg .acc { fill: #F5B400; } svg .acc-t { fill: #0A1F44; font: 800 10px/1 -apple-system, "Segoe UI", Arial, sans-serif; } svg .ok { fill: #2ecc71; } svg .ko { fill: #e74c3c; } svg .blue { fill: #4f6fb5; }
-    svg .lbl { fill: #F5B400; font: 800 8px/1 -apple-system, "Segoe UI", Arial, sans-serif; letter-spacing: .08em; }
+  <title>Manuel utilisateur — Referee Tracker</title>
+  <style>@font-face{font-family:M;src:url(./fonts/montserrat-latin-400-normal.woff2);font-weight:400}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-500-normal.woff2);font-weight:500}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-600-normal.woff2);font-weight:600}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-700-normal.woff2);font-weight:700}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-800-normal.woff2);font-weight:800}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-800-italic.woff2);font-weight:800;font-style:italic}
+@font-face{font-family:M;src:url(./fonts/montserrat-latin-900-normal.woff2);font-weight:900}
+@font-face{font-family:J;src:url(./fonts/jetbrains-mono-latin-700-normal.woff2);font-weight:700}
+:root{--navy:#0B1F3B;--navy2:#133863;--blue:#1D4ED8;--gold:#F5B400;--gold-l:#FFF6DB;--red:#E4002B;--red-l:#FDECEF;--ink:#1B2433;--mut:#5E6C84;--line:#E3E8F1;--bg:#F5F7FB}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font-family:M,Arial,sans-serif;color:var(--ink);font-size:10.4pt;line-height:1.5}
+@page{size:A4;margin:16mm 15mm 17mm}
+p{margin:0 0 7px}
+b,strong{font-weight:700;color:var(--navy)}
+code,.code{font-family:J,monospace;font-size:.92em;background:#EEF2F8;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--navy)}
 
-    .tel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin: 12px 0 16px; }
-    .tel { margin: 0; background: var(--soft); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
-    .tel-svg { max-width: 180px; margin: 0 auto; }
-    .tel-svg svg { width: 100%; height: auto; display: block; }
-    .tel figcaption { font-size: .88rem; margin-top: 10px; line-height: 1.45; }
-  </style>
+/* --- couverture --- */
+.cover{height:297mm;width:210mm;position:relative;overflow:hidden;color:#fff;
+  background:radial-gradient(circle at 85% 12%,rgba(29,78,216,.55),transparent 45%),radial-gradient(circle at 0% 100%,rgba(245,180,0,.28),transparent 45%),linear-gradient(160deg,#081631,#0B1F3B 55%,#0d2a55)}
+.cover .in{position:absolute;inset:22mm 18mm}
+.cover .brand{display:flex;align-items:center;gap:12px}
+.cover .brand img{width:46px;height:46px;border-radius:11px}
+.cover .brand span{font-weight:800;font-style:italic;letter-spacing:.02em;font-size:15pt}
+.cover .brand span em{color:var(--gold);font-style:italic}
+.cover .kicker{margin-top:44mm;display:inline-block;background:var(--gold);color:var(--navy);font-weight:800;font-size:9pt;letter-spacing:.12em;text-transform:uppercase;padding:5px 12px;border-radius:30px}
+.cover h1{font-size:40pt;line-height:1.02;font-weight:900;margin:14px 0 12px;letter-spacing:-.02em;max-width:115mm}
+.cover h1 em{font-style:normal;color:var(--gold)}
+.cover .sub{font-size:13pt;color:#C9D4EA;max-width:105mm;font-weight:500}
+.cover .phone{position:absolute;right:-6mm;bottom:20mm;width:74mm;border-radius:26px;border:7px solid #1b2a47;box-shadow:0 30px 60px rgba(0,0,0,.55);transform:rotate(-4deg)}
+.cover .foot{position:absolute;left:0;bottom:0;font-size:8.5pt;color:#9FB0CF}
+.cover .chips{margin-top:16mm;display:flex;flex-direction:column;gap:9px;max-width:100mm}
+.cover .chip{display:flex;gap:10px;align-items:center;font-weight:600;font-size:10.5pt}
+.cover .chip i{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);display:grid;place-items:center;font-style:normal;color:var(--gold);font-weight:800;font-size:10pt}
+
+/* --- sections --- */
+.sec{break-before:page}
+.sec.cont{break-before:auto;margin-top:22px}
+.h{break-after:avoid}
+.h{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.h .n{flex:none;width:38px;height:38px;border-radius:11px;background:var(--navy);color:var(--gold);display:grid;place-items:center;font-weight:900;font-size:15pt}
+.h h2{font-size:19pt;line-height:1.1;margin:0;font-weight:800;color:var(--navy);letter-spacing:-.01em}
+.h .t small{display:block;color:var(--mut);font-weight:600;font-size:9pt;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+h3{font-size:12pt;color:var(--navy);margin:14px 0 6px;font-weight:800}
+.lead{font-size:11pt;color:#34405A;margin-bottom:12px}
+
+/* --- composants --- */
+.shot{margin:10px 0 12px;break-inside:avoid}
+.shot img{width:100%;display:block;border-radius:10px;border:1px solid #1d2c4a;box-shadow:0 8px 22px rgba(11,31,59,.18)}
+.shot figcaption{font-size:8.6pt;color:var(--mut);margin-top:5px;text-align:center}
+.row{display:flex;gap:12px;align-items:flex-start}
+.row>*{flex:1;min-width:0}
+.c2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.c3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:#fff;break-inside:avoid}
+.card h4{margin:0 0 4px;font-size:10.5pt;color:var(--navy);font-weight:800}
+.card p,.card li{font-size:9.6pt;margin:0 0 4px}
+.card.soft{background:var(--bg)}
+.tip,.warn,.ok{border-radius:12px;padding:10px 13px;margin:10px 0;font-size:9.8pt;break-inside:avoid;border:1px solid}
+.tip{background:var(--gold-l);border-color:#F3DE9C}
+.warn{background:var(--red-l);border-color:#F6C3CC}
+.ok{background:#EAF7EF;border-color:#BFE6CC}
+.tip b,.warn b,.ok b{color:var(--navy)}
+.steps{list-style:none;margin:6px 0 10px;padding:0;counter-reset:s}
+.steps li{position:relative;padding:0 0 7px 32px;counter-increment:s;break-inside:avoid}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;font-size:9pt;display:grid;place-items:center}
+ul.dots{margin:4px 0 8px;padding-left:18px}ul.dots li{margin:0 0 3px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:9.4pt;margin:8px 0 12px;border:1px solid var(--line);border-radius:10px;overflow:hidden;break-inside:avoid}
+th{background:var(--navy);color:#fff;text-align:left;font-weight:700;padding:7px 10px;font-size:9pt}
+td{padding:6px 10px;border-top:1px solid var(--line);vertical-align:top}
+tr:nth-child(even) td{background:#F8FAFD}
+td:first-child{font-weight:700;color:var(--navy);width:30%}
+.formula{background:var(--navy);color:#fff;border-radius:12px;padding:12px 16px;margin:10px 0;font-weight:700;font-size:11pt;text-align:center}
+.formula em{color:var(--gold);font-style:normal}
+.timeline{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 16px}
+.timeline .card{text-align:center;padding:12px 8px}
+.timeline .num{width:30px;height:30px;margin:0 auto 6px;border-radius:50%;background:var(--gold);color:var(--navy);display:grid;place-items:center;font-weight:900}
+.timeline h4{font-size:9.6pt}.timeline p{font-size:8.6pt;color:var(--mut)}
+.phones{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin:8px 0}
+.phones img{width:100%;border-radius:8px}
+.phones.five{grid-template-columns:repeat(5,1fr)}
+.tel{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:10px 18mm}
+.tel img{width:100%;border-radius:16px;border:5px solid #1b2a47;box-shadow:0 10px 24px rgba(11,31,59,.2)}
+.onb{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.onb img{width:100%;border-radius:12px;box-shadow:0 8px 20px rgba(11,31,59,.2)}
+.toc{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin:8px 0 14px}
+.toc div{display:flex;gap:8px;align-items:center;font-weight:600;font-size:9.8pt;border-bottom:1px dashed var(--line);padding:4px 0}
+.toc i{font-style:normal;color:var(--gold);background:var(--navy);border-radius:6px;width:22px;height:22px;display:grid;place-items:center;font-weight:800;font-size:8.5pt}
+.end{margin-top:14px;background:var(--navy);color:#fff;border-radius:14px;padding:14px 16px;break-inside:avoid}
+.end b{color:var(--gold)}
+.small{font-size:8.8pt;color:var(--mut)}
+.avoid{break-inside:avoid}
+
+.onb3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:start}.onb3 img{width:100%;border-radius:12px;box-shadow:0 8px 20px rgba(11,31,59,.2)}
+
+.h{break-after:avoid;page-break-after:avoid}.keep{height:0;break-before:avoid}
+.h + .keep + *{break-before:avoid}
+
+@media screen{
+  body{background:#F5F7FB;margin:0}
+  .wrap{max-width:900px;margin:0 auto;padding:18px 16px 40px;background:#fff;min-height:100vh}
+  .sec{break-before:auto;margin-top:34px}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--navy);color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:18px}
+  .top b{color:#fff;font-style:italic;font-weight:800}.top b em{color:var(--gold);font-style:italic}
+  .top a{display:inline-block;background:var(--gold);color:var(--navy);font-weight:800;text-decoration:none;border-radius:10px;padding:8px 12px;font-size:10pt;margin:3px 0}
+  .top a.sec2{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+  figure.shot[style]{width:100%!important}
+}
+@media screen and (max-width:700px){
+  .row,.c2,.c3,.onb3{display:block}.row>*,.c2>*,.c3>*{margin-bottom:10px}
+  .c3[style]{display:block!important}
+  .tel{margin:10px 0;gap:8px}
+  td:first-child{width:auto}
+  .h h2{font-size:16pt}
+}</style>
 </head>
-<body>
-<main>
-  <p><a href="./">← Retour à Referee Tracker</a></p>
-  <h1>Manuel utilisateur</h1>
-  <p class="mut">Version b73 · novembre 2026 · ordinateur, tablette et téléphone</p>
-  <p class="lead">Referee Tracker lit tes convocations, construit ton calendrier, calcule tes indemnités et tes frais, suit tes paiements et t'aide à progresser. Ce manuel décrit chaque écran, dans l'ordre où tu les rencontres.</p>
+<body><div class="wrap">
+<div class="top"><b>REFEREE <em>TRACKER</em> · Manuel utilisateur</b><span><a href="./manuel/pdf/Referee-Tracker-Manuel-utilisateur.pdf" download>Manuel en PDF</a> <a class="sec2" href="./manuel/pdf/Referee-Tracker-Guide-de-demarrage.pdf" download>Guide de démarrage (PDF)</a></span></div>
 
-  <div class="box toc">
-    <a href="#demarrer">1. Démarrer</a><br>
-    <a href="#convocations">2. Recevoir tes convocations</a><br>
-    <a href="#accueil">3. Accueil</a><br>
-    <a href="#matchs">4. Mes matchs (5×5, 3×3)</a><br>
-    <a href="#paiements">5. Paiements</a><br>
-    <a href="#analyse">6. Analyse et Estimation</a><br>
-    <a href="#hotel">7. Hôtel</a><br>
-    <a href="#alertes">8. Alertes</a><br>
-    <a href="#export">9. Export</a><br>
-    <a href="#rapports">10. Rapports officiels FFBB</a><br>
-    <a href="#entrainement">11. Entraînement : QCM, Progression, Règlement</a><br>
-    <a href="#espace">12. Mon espace : e-Licence, procédures, contacts</a><br>
-    <a href="#profil">13. Mon profil</a><br>
-    <a href="#telephone">14. Installer l'app sur ton téléphone</a><br>
-    <a href="#recherche">15. Recherche et filtres</a><br>
-    <a href="#depannage">16. Dépannage</a><br>
-    <a href="#donnees">17. Tes données</a>
+
+<section>
+  <div class="avoid"><div class="h"><div class="t"><small>En une page</small><h2>Referee Tracker, c'est quoi ?</h2></div></div>
+  <div class="keep"></div><p class="lead">Ton assistant d'arbitre. Il lit tes convocations, construit ton calendrier, calcule tes indemnités et tes frais réels, suit chaque paiement, prévoit ce que ta saison va te rapporter, prépare tes rapports et t'aide à progresser.</p></div>
+  <table>
+    <tr><th>Tu veux…</th><th>Va dans…</th><th>Ce que l'app fait pour toi</th></tr>
+    <tr><td>Savoir où et quand tu arbitres</td><td>Accueil, 5×5, 3×3</td><td>Matchs, heure de rendez-vous, départ conseillé, itinéraire</td></tr>
+    <tr><td>Savoir ce qu'on te doit</td><td>Paiements</td><td>Montant par payeur, date prévue, retards</td></tr>
+    <tr><td>Savoir ce que tu gagnes vraiment</td><td>Analyse</td><td>Indemnités moins carburant et usure</td></tr>
+    <tr><td>Prévoir ta saison</td><td>Estimation</td><td>Projection au 30 juillet, avec fourchette</td></tr>
+    <tr><td>Gérer un déplacement avec nuit</td><td>Hôtel</td><td>Coût, remboursement, net du week-end</td></tr>
+    <tr><td>Remplir un rapport officiel</td><td>Rapports</td><td>Formulaire FFBB pré-rempli, assistant de rédaction, PDF officiel</td></tr>
+    <tr><td>Progresser</td><td>QCM, Progression, Règlement</td><td>Entraînement, plan de développement, réponses de règles</td></tr>
+    <tr><td>Garder tes documents</td><td>Mon espace</td><td>e-Licence, procédures, contacts</td></tr>
+  </table>
+  <div class="tip"><b>Principe de confiance.</b> La convocation officielle reste toujours la référence. L'app calcule, rappelle et prépare, mais ne remplace ni la convocation, ni le règlement, ni ta signature.</div>
+
+  <div class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">1</div><div class="t"><small>Le circuit</small><h2>Comment tes convocations arrivent</h2></div></div>
+  <div class="keep"></div><div class="c3" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card soft"><h4>1. Convocation</h4><p>La fédération, la ligue ou le comité t'écrit.</p></div>
+    <div class="card soft"><h4>2. Transfert</h4><p>Ta règle la renvoie vers <b>prenom@referee-tracker.fr</b>.</p></div>
+    <div class="card soft"><h4>3. Lecture</h4><p>Date, salle, équipes, rôle, collègue, payeur, indemnité, kilomètres.</p></div>
+    <div class="card soft"><h4>4. Dans l'app</h4><p>En 1 à 5 minutes, avec une notification.</p></div>
+  </div></div>
+  <table>
+    <tr><th>Type de mail</th><th>Ce que l'app fait</th></tr>
+    <tr><td>Nouvelle désignation</td><td>Crée le match</td></tr>
+    <tr><td>Modification</td><td>Met à jour l'horaire, la salle ou le collègue, et te prévient</td></tr>
+    <tr><td>Annulation</td><td>Passe le match en « Annulé » : il sort de tous les calculs</td></tr>
+    <tr><td>Mail ambigu</td><td>Crée une alerte « À régler » plutôt que d'inventer</td></tr>
+  </table>
   </div>
+</section>
 
-  <!-- ============================================================ 1 -->
-  <h2 id="demarrer">1. Démarrer</h2>
-  <div class="box tip"><strong>Sur téléphone ?</strong> Installe d'abord l'app sur ton écran d'accueil : <a href="#telephone">chapitre 14</a>, illustré pas à pas pour iPhone et Android.</div>
-  <p>Tu as reçu un e-mail « Ton compte est prêt » avec un <strong>code de première connexion</strong> (format XXXX-XXXX, valable 14 jours, usage unique).</p>
-  <figure class="fig">
-    <svg viewBox="0 0 640 200" role="img" aria-label="Écran de première connexion">
-      <rect class="bg" width="640" height="200" rx="14"/>
-      <rect class="card" x="190" y="18" width="260" height="164" rx="12"/>
-      <text class="acc" x="210" y="44" style="font:800 14px Arial">Referee Tracker</text>
-      <text class="mut" x="210" y="60">Ma première connexion</text>
-      <rect x="210" y="74" width="220" height="22" rx="6" fill="#fff"/><text x="218" y="89" fill="#64748b" style="font:10px Arial">ton e-mail</text>
-      <rect x="210" y="104" width="220" height="22" rx="6" fill="#fff"/><text x="218" y="119" fill="#64748b" style="font:10px Arial">K7PM-4R2X</text>
-      <rect class="acc" x="210" y="136" width="220" height="26" rx="13"/><text class="acc-t" x="275" y="153">Continuer</text>
-    </svg>
-    <figcaption>Écran d'accueil → bouton « Ma première connexion » → e-mail + code → choix du mot de passe.</figcaption>
-  </figure>
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">2</div><div class="t"><small>Ton tableau de bord</small><h2>Accueil</h2></div></div>
+  <div class="keep"></div><figure class="shot" style="width:80%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/accueil.jpg" alt=""><figcaption>Quatre chiffres clés, ton prochain match et ton week-end (données fictives).</figcaption></figure></div>
+  <div class="c2">
+    <div class="card"><h4>Prochain match</h4><p>Équipes, niveau, rôle, heure de rendez-vous, compte à rebours, montant, boutons <b>Waze</b> et <b>Détail</b>.</p></div>
+    <div class="card"><h4>Départ conseillé</h4><p>Dans les 3 heures avant un match : l'heure à laquelle partir (trajet réel + marge, réglable).</p></div>
+    <div class="card"><h4>Ton collègue</h4><p>Nom et téléphone s'ils figurent sur la convocation, avec un bouton « Contacté » qui arrête les rappels.</p></div>
+    <div class="card"><h4>Ton niveau en avant</h4><p>Ton niveau le plus haut ressort en <b>jaune</b> sur toutes les cartes.</p></div>
+  </div>
+  <div class="tip"><b>Complète ton historique.</b> Tant que ton espace n'est pas complet, une carte en bas de l'accueil propose 4 étapes : saisons passées, fiches d'observation, e-Licence, parcours. « Masquer » la retire.</div>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">3</div><div class="t"><small>5×5 et 3×3</small><h2>Tes matchs</h2></div></div>
+  <div class="keep"></div><figure class="shot" style="width:72%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/matchs.jpg" alt=""><figcaption>Chaque carte : date, rendez-vous, compétition, équipes, salle, rôle, indemnité et statut de paiement.</figcaption></figure></div>
+  <h3>Comment l'indemnité est calculée</h3>
+  <div class="formula">indemnité = <em>part fixe de la rencontre</em> + <em>km aller-retour × 0,40 €</em></div>
+  <p>La part fixe est lue sur la convocation, ou prise dans le barème de ton comité. Exemple (fictif) : NF3 à 72 km aller-retour → 68 € + 72 × 0,40 € = <b>96,80 €</b>.</p>
+  <table>
+    <tr><th>Action sur un match</th><th>Effet</th></tr>
+    <tr><td>Waze / Plans</td><td>Itinéraire depuis ton adresse de départ</td></tr>
+    <tr><td>Payé sur place / Marquer reçu</td><td>Enregistre le paiement, même partiel</td></tr>
+    <tr><td>Hôtel</td><td>Associe une nuit à ce match</td></tr>
+    <tr><td>Annuler / rétablir</td><td>Retire ou remet le match dans les calculs</td></tr>
+    <tr><td>Corriger un montant</td><td>Ta correction est gardée et prioritaire</td></tr>
+  </table>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">4</div><div class="t"><small>Combien, qui, quand</small><h2>Paiements</h2></div></div>
+  <div class="keep"></div><figure class="shot" style="width:72%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/paiements.jpg" alt=""><figcaption>À percevoir, déjà reçu, ce mois-ci, en retard, et une carte par payeur.</figcaption></figure></div>
+  <div class="row">
+    <table style="flex:1.1">
+      <tr><th>Statut</th><th>Signification</th></tr>
+      <tr><td>À recevoir</td><td>Match joué, paiement attendu à la date prévue</td></tr>
+      <tr><td>En retard</td><td>Date dépassée : une alerte apparaît</td></tr>
+      <tr><td>Reçu</td><td>Paiement marqué reçu</td></tr>
+      <tr><td>Payé sur place</td><td>Espèces ou chèque le jour du match</td></tr>
+      <tr><td>Bénévole</td><td>Rencontre sans indemnité</td></tr>
+    </table>
+    <div style="flex:.9">
+      <div class="card soft"><h4>La date prévue</h4><p>Chaque payeur a sa règle : échéancier du comité par périodes, calendrier de la ligue, délai de la fédération pour le Championnat de France, paiement en salle ou virement sous 30 jours pour les clubs.</p></div>
+      <div class="tip"><b>Un paiement reçu ?</b> Ouvre le match → <b>Marquer reçu</b> (ou montant partiel). Il passe en « Reçu » partout.</div>
+    </div>
+  </div>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">5</div><div class="t"><small>La réalité, puis la prévision</small><h2>Analyse et Estimation</h2></div></div>
+  <div class="keep"></div><div class="row">
+    <figure class="shot"><img loading="lazy" src="./manuel/img/analyse.jpg" alt=""><figcaption>Analyse : ce que tu as vraiment gagné.</figcaption></figure>
+    <figure class="shot"><img loading="lazy" src="./manuel/img/estimation.jpg" alt=""><figcaption>Estimation : ta saison au 30 juillet.</figcaption></figure>
+  </div></div>
+  <table>
+    <tr><th>Indicateur</th><th>Calcul</th></tr>
+    <tr><td>Revenu net réel</td><td>Indemnités − carburant (km × consommation × prix du carburant du mois autour de chez toi)</td></tr>
+    <tr><td>Usure / entretien</td><td>km × coût d'entretien au km (réglable)</td></tr>
+    <tr><td>Distance d'équilibre</td><td>Au-delà, une mission te coûte plus qu'elle ne rapporte</td></tr>
+    <tr><td>Trésorerie</td><td>Ce qui doit arriver d'ici 30, 60 et 90 jours, et ce qui est en retard</td></tr>
+  </table>
+  <h3>L'estimation, en 3 parts</h3>
+  <div class="c3">
+    <div class="card"><h4>Réalisé</h4><p>Matchs joués, comptés exactement.</p></div>
+    <div class="card"><h4>À venir</h4><p>Matchs déjà désignés, comptés exactement.</p></div>
+    <div class="card"><h4>À prévoir</h4><p>Ton rythme de l'an dernier, ajusté sur ton rythme actuel. Fourchette basse et haute.</p></div>
+  </div>
+  <p class="small">Un seul chiffre « net estimé fin de saison » existe dans toute l'app : chaque nouvelle désignation le recalcule.</p>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">6</div><div class="t"><small>Les outils du quotidien</small><h2>Hôtel, Alertes, Export</h2></div></div>
+  <div class="keep"></div><div class="row">
+    <div>
+      <h3 style="margin-top:0">Hôtel</h3>
+      <p>Pour les déplacements avec nuit : ajoute la nuit (prix, repas, facture), rattache-la au match, suis le remboursement. L'app calcule le <b>net du week-end</b> : indemnités − carburant − hôtel − repas.</p>
+      <h3>Alertes</h3>
+      <p>Le menu n'apparaît que s'il y a quelque chose à régler.</p>
+      <ul class="dots"><li><b>À régler</b> : paiement en retard, convocation contradictoire, montant inhabituel.</li><li><b>Avant le match</b> : collègue à contacter, rendez-vous proche (rappels la veille à 18 h et le jour J à 7 h).</li><li><b>Infos</b> : lecture partielle, modification reçue.</li></ul>
+    </div>
+    <figure class="shot" style="margin-top:0"><img loading="lazy" src="./manuel/img/hotel.jpg" alt=""><figcaption>Hôtel et repas.</figcaption></figure>
+  </div></div>
+  <h3>Export</h3>
+  <table>
+    <tr><th>Export</th><th>Usage</th></tr>
+    <tr><td>PDF de saison ou de mois</td><td>Récapitulatif pour toi, un comité ou ta déclaration de revenus</td></tr>
+    <tr><td>Année civile / plage de dates</td><td>Missions de la période, totaux par payeur et par mois</td></tr>
+    <tr><td>CSV / Excel</td><td>Toutes les colonnes, pour tes propres calculs</td></tr>
+    <tr><td>Carte des salles</td><td>Les salles où tu as arbitré, avec le nombre de passages</td></tr>
+  </table>
+  <p class="small">Les exports sont produits sur ton appareil : rien n'est envoyé ailleurs.</p>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">7</div><div class="t"><small>Les 5 formulaires officiels</small><h2>Rapports</h2></div></div>
+  <div class="keep"></div><p class="lead">Incident disciplinaire, faute disqualifiante avec rapport, réclamation, incident matériel, protocole commotion : le PDF produit est le <b>formulaire officiel</b>, rempli aux bons emplacements.</p>
+  <figure class="shot" style="width:62%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/rapport-form.jpg" alt=""><figcaption>Le formulaire en étapes : tu ne vois que ce que tu remplis.</figcaption></figure></div>
+  
   <ol class="steps">
-    <li>Ouvre <strong>app.referee-tracker.fr</strong> et touche <strong>Ma première connexion</strong>.</li>
-    <li>Saisis l'e-mail de ton compte et le code reçu. Choisis un mot de passe de 12 caractères minimum.</li>
-    <li>L'<strong>assistant</strong> s'ouvre (5 minutes) : identité, adresse de départ, véhicule, zones de paiement, convocations, notifications.</li>
-    <li>La <strong>visite guidée</strong> te montre les 8 zones clés de l'app. Elle ne s'affiche qu'une fois.</li>
+    <li><b>Le match</b> : ton dernier match par défaut. Le menu propose les matchs des 5 derniers jours.</li>
+    <li><b>La rencontre</b> est pré-remplie depuis ta convocation. Ta fonction et la compétition se choisissent dans un menu.</li>
+    <li><b>Ce qui s'est passé</b> : tes notes, puis « Rédiger avec l'assistant ». Il met en forme au style des commissions, sans rien ajouter, et liste ce qui manque.</li>
+    <li><b>Signature</b> au doigt, puis : Ouvrir, Imprimer, Partager ou <b>Envoyer par mail</b> à la commission.</li>
   </ol>
-  <h3>Les zones de paiement</h3>
-  <p>C'est l'étape la plus importante : elle détermine qui te paie et quand. Choisis ton <strong>comité départemental</strong> (obligatoire), ta <strong>ligue</strong> si tu es arbitre régional, et coche <strong>Championnat de France</strong> si tu y officies. La carte s'allume au fil de tes choix ; un clic sur un département le sélectionne.</p>
-  <div class="box tip">Tu changes de niveau en cours de saison ? Mon profil → Zones de paiement : tout se recalcule.</div>
+</section>
 
-  <!-- ============================================================ 2 -->
-  <h2 id="convocations">2. Recevoir tes convocations</h2>
-  <p>Referee Tracker ne lit jamais ta boîte mail. Tu lui <strong>transfères</strong> tes convocations vers ton adresse personnelle <strong>prenom@referee-tracker.fr</strong> (indiquée dans l'e-mail de bienvenue et dans Mon profil). Dès qu'une convocation arrive, le match apparaît dans l'app en 1 à 5 minutes.</p>
-  <div class="grid2">
-    <div class="box"><strong>Gmail</strong><br>Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert → puis Filtres : « De : l'adresse qui t'envoie tes convocations » → Transférer.</div>
-    <div class="box"><strong>Orange</strong><br>Mail Orange → Mes préférences → Règles de tri → Nouvelle règle : expéditeur = l'adresse des convocations → Transférer à ton adresse Referee Tracker.</div>
-    <div class="box"><strong>Outlook / iCloud</strong><br>Paramètres → Règles → condition « De » → action « Transférer à ».</div>
-    <div class="box"><strong>À la main</strong><br>Tu peux aussi transférer n'importe quelle convocation ou annulation manuellement, en une fois ou pour une seule rencontre.</div>
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">8</div><div class="t"><small>Entraînement</small><h2>QCM, Progression, Règlement</h2></div></div>
+  <div class="keep"></div><table>
+    <tr><th>Module</th><th>Fonctionnement</th></tr>
+    <tr><td>QCM entraînement</td><td>20 questions, correction après chaque réponse avec l'extrait du règlement</td></tr>
+    <tr><td>QCM examen</td><td>20 questions en 10 minutes, résultat enregistré</td></tr>
+    <tr><td>Progression</td><td>Tes fiches d'observation (PDF) lues et analysées : notes, familles, évolution</td></tr>
+    <tr><td>Règlement</td><td>Pose une question, ou raconte une action de ton match : réponse avec les articles, la bonne procédure et comment progresser</td></tr>
+  </table></div>
+  <div class="avoid"><h3>Ton plan de développement</h3>
+  <figure class="shot" style="width:80%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/plan.jpg" alt=""><figcaption>Point fort, priorités, actions concrètes et checklist avant ta prochaine observation.</figcaption></figure></div>
+  <p>Construit à partir de tes <b>3 dernières observations</b> : ce que disent les observateurs, les actions à mener, les critères à viser sur la prochaine fiche. Coche les actions au fur et à mesure.</p>
+</section>
+
+<section class="sec cont">
+  <div class="avoid"><h3 style="margin-top:0">La grille d'observation, critère par critère</h3>
+  <figure class="shot" style="width:80%;margin:0 auto 10px"><img loading="lazy" src="./manuel/img/grille.jpg" alt=""><figcaption>29 critères, 6 familles, un point de couleur par observation.</figcaption></figure></div>
+  <div class="c2">
+    <div class="card"><h4>Comment c'est calculé</h4><p>Chaque mention devient des points : Insuffisant 5, À améliorer 10, Bien 15, Très bien 20. La note d'une famille est la moyenne de ses critères, comparée à l'observation précédente.</p></div>
+    <div class="card"><h4>Les 6 familles</h4><p>Présentation (1-4), Gestion des acteurs (5-8), Jugement (9-16), Violations et temps (17-19), Présence et mécanique (20-24), Duo et impact (25-29).</p></div>
   </div>
-  <p>Sont reconnus : convocations 5×5 et 3×3, modifications (changement d'heure, de salle, de collègue), <strong>annulations</strong> (le match passe en « Annulé », tu es notifié), feuilles de frais. Un document illisible est analysé par l'assistant IA puis vérifié.</p>
+  <p class="small">Ce n'est pas une note officielle : c'est un repère pour suivre ta progression.</p>
+</section>
 
-  <!-- ============================================================ 3 -->
-  <h2 id="accueil">3. Accueil</h2>
-  <figure class="fig">
-    <svg viewBox="0 0 640 230" role="img" aria-label="Maquette de l'accueil">
-      <rect class="bg" width="640" height="230" rx="14"/>
-      <text class="txt" x="20" y="30" style="font-size:13px">Bonjour Julie · samedi 7 novembre</text>
-      <g><rect class="card" x="20" y="44" width="140" height="56" rx="10"/><text class="lbl" x="30" y="60">MATCHS SAISON</text><text class="txt" x="30" y="86" style="font-size:18px">35</text></g>
-      <g><rect class="card" x="172" y="44" width="140" height="56" rx="10"/><text class="lbl" x="182" y="60">À VENIR</text><text class="txt" x="182" y="86" style="font-size:18px">11</text></g>
-      <g><rect class="card" x="324" y="44" width="140" height="56" rx="10"/><text class="lbl" x="334" y="60">PAIEMENTS REÇUS</text><text class="ok" x="334" y="86" style="font:600 18px Arial">840,80 €</text></g>
-      <g><rect class="card" x="476" y="44" width="144" height="56" rx="10"/><text class="lbl" x="486" y="60">EN ATTENTE</text><text class="acc" x="486" y="86" style="font:600 18px Arial">1 624 €</text></g>
-      <rect class="card" x="20" y="112" width="600" height="100" rx="10"/>
-      <text class="lbl" x="34" y="132">PROCHAIN MATCH · DEMAIN 18H30 · RDV 17H45</text>
-      <text class="txt" x="34" y="156" style="font-size:14px">SCHWEIGHOUSE B.C.  vs  GEISPOLSHEIM C.J.S.</text>
-      <text class="mut" x="34" y="174">PNF · Arbitre n°2 · Centre Robert Kaeufling, Schweighouse-sur-Moder · 53,00 €</text>
-      <rect class="acc" x="34" y="186" width="64" height="18" rx="9"/><text class="acc-t" x="50" y="198">Waze</text>
-      <rect x="106" y="186" width="64" height="18" rx="9" fill="#334155"/><text class="txt" x="122" y="198" style="font-size:9px">Détail</text>
-      <rect x="178" y="186" width="80" height="18" rx="9" fill="#334155"/><text class="txt" x="190" y="198" style="font-size:9px">Collègue</text>
-    </svg>
-    <figcaption>Quatre chiffres clés, le prochain match avec l'heure de rendez-vous et le départ conseillé, puis les matchs de la semaine.</figcaption>
-  </figure>
-  <ul>
-    <li><strong>Départ conseillé</strong> : dans les 3 h avant un match, l'accueil affiche l'heure à laquelle partir (trajet + marge). Activable dans Mon profil.</li>
-    <li><strong>Collègue</strong> : nom, rôle, téléphone s'ils figurent sur la convocation ; bouton « contacté » pour arrêter les rappels.</li>
-    <li>Les montants sont ceux de <strong>ta saison en cours</strong> ; la loupe (en bas à droite) permet de changer de saison sur les pages de liste.</li>
-  </ul>
-
-  <!-- ============================================================ 4 -->
-  <h2 id="matchs">4. Mes matchs (5×5, 3×3)</h2>
-  <p>Chaque match est une carte : date, heure de rendez-vous, compétition, équipes, salle, ton rôle, indemnité, statut de paiement. Touche la carte pour l'ouvrir.</p>
-  <figure class="fig">
-    <svg viewBox="0 0 640 150" role="img" aria-label="Carte de match">
-      <rect class="bg" width="640" height="150" rx="14"/>
-      <rect class="card" x="20" y="16" width="600" height="118" rx="10"/>
-      <text class="txt" x="34" y="40">29/11/2026</text><text class="mut" x="34" y="54">Dim · 15h30</text>
-      <rect class="acc" x="110" y="28" width="30" height="14" rx="7"/><text class="acc-t" x="117" y="38" style="font-size:8px">NF3</text>
-      <text class="txt" x="150" y="40" style="font-size:13px">DUTTLENHEIM LC - 1</text><text class="mut" x="150" y="56">S.I. GRAFFENSTADEN - 1 · Féminin · Arbitre 1</text>
-      <text class="txt" x="520" y="40" style="font-size:13px">106,40 €</text><rect x="520" y="48" width="70" height="14" rx="7" fill="#334155"/><text class="acc" x="528" y="58" style="font:700 8px Arial">À RECEVOIR</text>
-      <g><rect x="34" y="78" width="270" height="44" rx="8" fill="#0f172a"/><text class="lbl" x="44" y="94">CARBURANT ESTIMÉ</text><text class="acc" x="44" y="114" style="font:600 13px Arial">13,11 €</text></g>
-      <g><rect x="316" y="78" width="290" height="44" rx="8" fill="#0f172a"/><text class="lbl" x="326" y="94">NET ESTIMÉ</text><text class="ok" x="326" y="114" style="font:600 13px Arial">93,29 €</text></g>
-    </svg>
-    <figcaption>Carte dépliée : carburant et net estimés, collègue, salle (carte et itinéraire), documents, actions.</figcaption>
-  </figure>
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">9</div><div class="t"><small>Tes documents et tes réglages</small><h2>Mon espace et Mon profil</h2></div></div>
+  <div class="keep"></div><div class="row">
+    <div>
+      <table>
+        <tr><th>Mon espace</th><th>Contenu</th></tr>
+        <tr><td>e-Licence</td><td>Ta licence en plein écran à la table de marque, et ta clé e-Marque V2</td></tr>
+        <tr><td>Procédures</td><td>Indisponibilité, absence, discipline… avec le bon contact</td></tr>
+        <tr><td>Contacts</td><td>Répartiteurs, commissions, formateurs. Un appui affiche le numéro ou l'e-mail, avec Copier et Appeler</td></tr>
+      </table>
+    </div>
+    <figure class="shot" style="margin-top:8px"><img loading="lazy" src="./manuel/img/contacts.jpg" alt=""><figcaption>Le numéro s'affiche : rien ne se lance par erreur.</figcaption></figure>
+  </div></div>
   <table>
-    <tr><th>Action</th><th>Où</th><th>Effet</th></tr>
-    <tr><td>Waze / Plans</td><td>carte du match</td><td>Itinéraire vers la salle, depuis ton adresse de départ</td></tr>
-    <tr><td>Payé sur place</td><td>carte du match</td><td>Marque l'indemnité reçue en espèces ou chèque le jour même</td></tr>
-    <tr><td>Marquer reçu / montant partiel</td><td>Paiements</td><td>Enregistre un virement reçu, même partiel</td></tr>
-    <tr><td>Hôtel</td><td>onglet Hôtel</td><td>Associe une nuit à un match et son remboursement</td></tr>
-    <tr><td>Annuler / rétablir</td><td>carte du match</td><td>Match annulé : indemnité et frais retirés des calculs</td></tr>
+    <tr><th>Mon profil</th><th>Contenu</th></tr>
+    <tr><td>Identité, adresse, zones</td><td>Nom officiel, niveau, adresse de départ, comité, ligue, Championnat de France</td></tr>
+    <tr><td>Véhicule et tarifs</td><td>Consommation, taux kilométrique, prix du carburant, entretien</td></tr>
+    <tr><td>Agenda</td><td>Lien pour Calendrier, Google Agenda ou Outlook, mis à jour tout seul</td></tr>
+    <tr><td>Cet appareil</td><td>Notifications (bouton Tester), départ conseillé, thème clair ou sombre</td></tr>
+    <tr><td>Communications</td><td>Nouveautés et offres par e-mail et WhatsApp : décoche ce que tu ne veux plus recevoir</td></tr>
+    <tr><td>Double authentification</td><td>Facultative : un code à 6 chiffres en plus du mot de passe</td></tr>
+    <tr><td>Mes données</td><td>Export de toutes tes données, suppression du compte</td></tr>
   </table>
-  <div class="box tip">Les indemnités sont calculées selon le <strong>barème de ta zone</strong> (comité, ligue, Championnat de France) et la distance aller-retour depuis ton adresse. Tu peux corriger un montant depuis la carte : la correction est conservée.</div>
+</section>
 
-  <!-- ============================================================ 5 -->
-  <h2 id="paiements">5. Paiements</h2>
-  <p>Trois chiffres : <strong>reçu</strong>, <strong>en retard</strong>, <strong>à venir</strong>. En dessous, les listes par payeur (comité, ligue, fédération, clubs) avec la date prévue de chaque virement, calculée depuis les périodes de paiement de ta zone.</p>
-  <h3>Statuts</h3>
-  <table>
-    <tr><th>Statut</th><th>Signification</th></tr>
-    <tr><td>À recevoir</td><td>Match joué, virement attendu à la date prévue</td></tr>
-    <tr><td>En retard</td><td>Date prévue dépassée : une alerte « À régler » apparaît</td></tr>
-    <tr><td>Reçu</td><td>Paiement marqué reçu (virement, chèque ou espèces)</td></tr>
-    <tr><td>Payé sur place</td><td>Espèces / chèque le jour du match</td></tr>
-    <tr><td>Bénévole</td><td>Rencontre sans indemnité (amical, formation…)</td></tr>
-  </table>
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">10</div><div class="t"><small>Partout avec toi</small><h2>Sur téléphone</h2></div></div>
+  <div class="keep"></div><div class="tel"><img loading="lazy" src="./manuel/img/tel-accueil.jpg"><img loading="lazy" src="./manuel/img/tel-matchs.jpg"><img loading="lazy" src="./manuel/img/tel-paiements.jpg"></div></div>
+  <ul class="dots"><li>Une barre en bas : <b>Accueil, Matchs, Argent</b> et <b>Plus</b> pour le reste.</li><li>Tire l'écran vers le bas pour actualiser.</li><li>Hors connexion, tes derniers matchs restent consultables.</li><li>L'analyse avancée est plus confortable sur ordinateur ou tablette.</li></ul>
 
-  <!-- ============================================================ 6 -->
-  <h2 id="analyse">6. Analyse et Estimation</h2>
-  <p><strong>Analyse</strong> (vue d'ensemble, analyse avancée) : ce que l'arbitrage t'a rapporté <em>sur les matchs déjà joués</em> — encaissé, carburant, usure, net réel, distance d'équilibre, délais de paiement constatés.</p>
-  <p><strong>Estimation</strong> : projection de fin de saison. Calendrier connu + rythme des saisons précédentes, fourchette basse / haute, km prévus, carburant et entretien prévus. Un seul chiffre « net estimé fin de saison » dans toute l'app : chaque nouvelle désignation le recalcule.</p>
-  <figure class="fig">
-    <svg viewBox="0 0 640 120" role="img" aria-label="Tableau d'estimation">
-      <rect class="bg" width="640" height="120" rx="14"/>
-      <text class="lbl" x="20" y="26">ESTIMATION FIN DE SAISON 2026/2027</text>
-      <text class="txt" x="20" y="54" style="font-size:22px">5 099,92 €</text><text class="mut" x="20" y="70">fourchette 1 608 € (calendrier connu seul) à 6 097 €</text>
-      <g><text class="mut" x="340" y="34">RÉALISÉ</text><text class="txt" x="340" y="52">24 matchs · 1 688 €</text></g>
-      <g><text class="mut" x="340" y="74">À VENIR (DÉSIGNÉS)</text><text class="txt" x="340" y="92">9 matchs · 604 €</text></g>
-      <g><text class="mut" x="500" y="34">À PRÉVOIR</text><text class="txt" x="500" y="52">70 matchs · 4 740 €</text></g>
-      <g><text class="mut" x="500" y="74">KM SAISON</text><text class="txt" x="500" y="92">5 966 km</text></g>
-    </svg>
-  </figure>
-
-  <!-- ============================================================ 7 -->
-  <h2 id="hotel">7. Hôtel</h2>
-  <p>Pour les déplacements avec nuit : ajoute l'hôtel (nom, prix, justificatif), rattache-le au match, suis le remboursement. Les documents sont rangés dans ton espace de stockage.</p>
-
-  <!-- ============================================================ 8 -->
-  <h2 id="alertes">8. Alertes</h2>
-  <p>Le menu Alertes n'apparaît que s'il y a <strong>quelque chose à régler</strong> (badge rouge = nombre). Trois sections :</p>
-  <table>
-    <tr><th>Section</th><th>Exemples</th><th>Quoi faire</th></tr>
-    <tr><td>À régler</td><td>paiement en retard, convocation contradictoire, montant inhabituel pour la compétition (écart de barème)</td><td>Agir, puis « Traité » ; l'alerte disparaît sur tous tes appareils</td></tr>
-    <tr><td>Avant le match</td><td>collègue à contacter, rendez-vous proche, hôtel à prévoir</td><td>Rappels automatiques (J-1 18 h, jour J 7 h si notifications actives)</td></tr>
-    <tr><td>Infos</td><td>lecture partielle d'un document, modification reçue</td><td>Lecture simple ; se résout seule</td></tr>
-  </table>
-
-  <!-- ============================================================ 9 -->
-  <h2 id="export">9. Export</h2>
-  <p>PDF (récapitulatif de saison, prêt pour une déclaration ou un comité), Excel / CSV (toutes les colonnes), agenda. Les exports se font sur ton appareil ; rien n'est envoyé ailleurs.</p>
-
-  <!-- ============================================================ 10 -->
-  <h2 id="rapports">10. Rapports officiels FFBB</h2>
-  <p>Les cinq formulaires officiels de la FFBB se remplissent directement dans l'app : <strong>incident(s) disciplinaire(s)</strong>, <strong>faute(s) disqualifiante(s) avec rapport</strong>, <strong>réclamation</strong>, <strong>incident(s) matériel(s)</strong> et <strong>protocole commotion cérébrale</strong>. Le PDF produit est le formulaire officiel lui-même, rempli aux bons emplacements.</p>
-  <ol class="steps">
-    <li>Rapports → <strong>Rapports officiels FFBB</strong> → choisis le formulaire, puis la rencontre.</li>
-    <li>Tout ce que ta convocation connaît est déjà rempli : ton nom, ta fonction (1er ou 2e arbitre), la compétition, la date, le lieu, le n° de rencontre, les équipes, « Fait à » et « Le ». Tu peux tout corriger.</li>
-    <li>Décris ce qui s'est passé avec tes mots : qui (numéro, nom, fonction), quand (période, chrono, score), quoi (gestes, <strong>propos exacts entre guillemets</strong>), ta décision, la suite.</li>
-    <li><strong>Rédiger avec l'assistant</strong> : l'IA met ta description au style attendu par les commissions (factuel, chronologique, sans jugement), coche les cases quand tes notes le disent clairement (moment, questions sur la feuille de marque…) et liste ce qui manque. <strong>Elle n'invente rien</strong> : ce que tu n'as pas écrit reste vide.</li>
-    <li>Relis la description et les cases, réponds aux questions « Feuille de marque » (Oui / Non, et « pourquoi » si non), signe au doigt dans le cadre.</li>
-    <li><strong>Aperçu du PDF</strong> pour vérifier, puis <strong>Générer et enregistrer le PDF</strong> : le formulaire officiel rempli est téléchargé, rangé dans ton Drive (onglet Sauvegarde) et gardé dans ton espace sécurisé. La description continue au verso, puis sur une page annexe si elle est très longue.</li>
-    <li>Envoie le PDF à la commission indiquée en bas du formulaire, dans le délai prévu (24 h ou 72 h selon le rapport). Tu restes seul responsable du contenu que tu signes.</li>
-  </ol>
-  <p>Onglet <strong>Sauvegarde</strong> : tous tes rapports (générés ici ou déposés en PDF / photo), classés par match, avec « Voir / imprimer » et « Envoyer par mail ».</p>
-
-  <!-- ============================================================ 11 -->
-  <h2 id="entrainement">11. Entraînement</h2>
-  <h3>QCM</h3>
-  <p>Entraînement (20 questions, correction immédiate, explication) ou examen (conditions réelles, minuteur). Les thèmes où tu te trompes alimentent un <strong>plan d'entraînement</strong> et apparaissent dans Progression.</p>
-  <h3>Progression</h3>
-  <p>Dépose tes fiches d'observation (PDF) : la note, les familles (jugement, gestion, mécanique, communication, attitude), les axes et le plan de travail sont extraits et suivis dans le temps. La <strong>grille régionale 2026/2027</strong> (20 critères) est affichée critère par critère avec l'évolution entre deux observations : ce qui progresse, ce qui recule, ce qui est à travailler.</p>
-  <figure class="fig">
-    <svg viewBox="0 0 640 120" role="img" aria-label="Grille régionale">
-      <rect class="bg" width="640" height="120" rx="14"/>
-      <text class="lbl" x="20" y="24">GRILLE RÉGIONALE · 20 CRITÈRES</text>
-      <text class="mut" x="20" y="48">9. AK : placements et déplacements</text><text class="ok" x="420" y="48" style="font:700 10px Arial">Très bien</text><text class="ok" x="500" y="48" style="font:700 10px Arial">Très bien</text><text class="mut" x="590" y="48">=</text>
-      <text class="mut" x="20" y="70">10. AT : placements (bonne distance, Z6)</text><text class="blue" x="420" y="70" style="font:700 10px Arial">Bien</text><text class="ok" x="500" y="70" style="font:700 10px Arial">Très bien</text><text class="ok" x="590" y="70" style="font:700 10px Arial">▲</text>
-      <text class="mut" x="20" y="92">11. Courses / transition</text><text class="blue" x="420" y="92" style="font:700 10px Arial">Bien</text><text class="blue" x="500" y="92" style="font:700 10px Arial">Bien</text><text class="mut" x="590" y="92">=</text>
-    </svg>
-  </figure>
-  <h3>Règlement</h3>
-  <p>Pose ta question en langage courant : la réponse cite l'article du règlement officiel et des interprétations chargés dans ton espace. Tu peux ajouter tes propres documents (PDF).</p>
-
-  <!-- ============================================================ 12 -->
-  <h2 id="espace">12. Mon espace</h2>
-  <ul>
-    <li><strong>e-Licence</strong> : ta licence à portée de main, affichée en plein écran à la table de marque.</li>
-    <li><strong>Procédures</strong> : fiches pratiques (indisponibilités, absence de dernière minute, discipline…) avec le bon contact et le bon numéro, classées par catégorie et importance.</li>
-    <li><strong>Contacts</strong> : répartiteurs, commissions, formateurs. En bas, les <strong>collègues de tes convocations</strong> : fiches construites automatiquement (nombre de rencontres ensemble, dernière, compétitions), à ajouter en un clic.</li>
-  </ul>
-
-  <!-- ============================================================ 13 -->
-  <h2 id="profil">13. Mon profil</h2>
-  <p>Bouton en haut à droite (silhouette).</p>
-  <table>
-    <tr><th>Section</th><th>Contenu</th></tr>
-    <tr><td>Identité et adresse</td><td>Nom officiel (tel qu'écrit sur les convocations), niveau, adresse de départ</td></tr>
-    <tr><td>Zones de paiement</td><td>Comité, ligue, Championnat de France : barèmes et périodes de paiement</td></tr>
-    <tr><td>Véhicule et tarifs</td><td>Consommation, chevaux fiscaux, indemnité kilométrique, prix du carburant, entretien</td></tr>
-    <tr><td>Agenda</td><td>« Ajouter mes matchs à mon agenda » : lien personnel pour Calendrier (iPhone/Mac), Google Agenda, Outlook — mise à jour automatique</td></tr>
-    <tr><td>Cet appareil</td><td>Notifications (test), départ conseillé, thème clair / sombre</td></tr>
-    <tr><td>Compte</td><td>Mot de passe, <strong>export de toutes tes données</strong> (JSON), <strong>suppression définitive du compte</strong></td></tr>
-  </table>
-
-  <!-- ============================================================ 14 -->
-  <h2 id="telephone">14. Installer l'app sur ton téléphone</h2>
-  <p>Referee Tracker n'est pas dans l'App Store ni le Play Store : c'est une <strong>application web</strong>. On l'ajoute sur l'écran d'accueil en 1 minute, puis elle s'ouvre en plein écran comme n'importe quelle app, avec son icône et ses notifications.</p>
-  <div class="box warn"><strong>Indispensable sur iPhone :</strong> les notifications (nouvelle convocation, annulation, paiement) ne fonctionnent <strong>que</strong> si l'app est ajoutée sur l'écran d'accueil et ouverte depuis l'icône. Il faut iOS 16.4 ou plus récent (Réglages → Général → Informations → Version d'iOS).</div>
-  <p class="mut">Repère : sur les illustrations, le <strong>repère jaune numéroté</strong> montre où toucher.</p>
-
-  <h3>Sur iPhone (Safari)</h3>
-  <div class="tel-grid">
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="40" width="180" height="250" fill="#0B1220"/><text x="100" y="80" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="98" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="120" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="132" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="144" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="156" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="170" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="183" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="10" y="300" width="180" height="90" rx="0" fill="#f1f5f9"/><rect x="22" y="308" width="156" height="26" rx="13" fill="#e2e8f0"/><text x="100" y="325" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="middle">app.referee-tracker.fr</text><text x="30" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="18" font-weight="400" text-anchor="middle">‹</text><text x="62" y="365" fill="#94a3b8" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="18" font-weight="400" text-anchor="middle">›</text><g transform="translate(100,358)"><rect x="-7" y="-5" width="14" height="14" rx="2" fill="none" stroke="#2563eb" stroke-width="1.8"/><path d="M0,-12 L0,3 M-4,-8 L0,-12 L4,-8" stroke="#2563eb" stroke-width="1.8" fill="none"/></g><text x="138" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="13" font-weight="400" text-anchor="middle">▢</text><text x="170" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="13" font-weight="400" text-anchor="middle">⧉</text><rect x="20" y="306" width="160" height="30" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="180" cy="306" r="8" fill="#F5B400"/><text x="180" y="309.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">1</text></svg></div><figcaption><b>1.</b> Ouvre <b>Safari</b> (pas une autre app) et va sur <b>app.referee-tracker.fr</b>.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="40" width="180" height="250" fill="#0B1220"/><text x="100" y="80" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="98" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="120" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="132" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="144" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="156" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="170" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="183" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="10" y="300" width="180" height="90" rx="0" fill="#f1f5f9"/><rect x="22" y="308" width="156" height="26" rx="13" fill="#e2e8f0"/><text x="100" y="325" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="middle">app.referee-tracker.fr</text><text x="30" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="18" font-weight="400" text-anchor="middle">‹</text><text x="62" y="365" fill="#94a3b8" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="18" font-weight="400" text-anchor="middle">›</text><g transform="translate(100,358)"><rect x="-7" y="-5" width="14" height="14" rx="2" fill="none" stroke="#2563eb" stroke-width="1.8"/><path d="M0,-12 L0,3 M-4,-8 L0,-12 L4,-8" stroke="#2563eb" stroke-width="1.8" fill="none"/></g><text x="138" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="13" font-weight="400" text-anchor="middle">▢</text><text x="170" y="365" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="13" font-weight="400" text-anchor="middle">⧉</text><circle cx="100" cy="356" r="15" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="115" cy="341" r="8" fill="#F5B400"/><text x="115" y="344.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">2</text></svg></div><figcaption><b>2.</b> Touche <b>Partager</b> (carré avec une flèche vers le haut), en bas au centre. Sur iOS 26 : touche d'abord <b>•••</b> en bas à droite, puis <b>Partager</b>.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="40" width="180" height="110" fill="#0B1220"/><rect x="10" y="150" width="180" height="240" rx="14" fill="#ffffff" stroke="#cbd5e1"/><text x="100" y="172" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="middle">Partager</text><rect x="20" y="190" width="160" height="28" rx="8" fill="#f1f5f9"/><text x="30" y="208" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Copier</text><rect x="20" y="224" width="160" height="28" rx="8" fill="#f1f5f9"/><text x="30" y="242" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Ajouter à la liste de lecture</text><rect x="20" y="258" width="160" height="28" rx="8" fill="#f1f5f9"/><text x="30" y="276" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Ajouter un signet</text><rect x="20" y="292" width="160" height="28" rx="8" fill="#f1f5f9"/><text x="30" y="310" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Sur l'écran d'accueil</text><text x="168" y="310" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="middle">⊞</text><rect x="20" y="326" width="160" height="28" rx="8" fill="#f1f5f9"/><text x="30" y="344" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Rechercher dans la page</text><rect x="17" y="289" width="166" height="34" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="183" cy="289" r="8" fill="#F5B400"/><text x="183" y="292.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">3</text></svg></div><figcaption><b>3.</b> Fais glisser la liste vers le haut et touche <b>Sur l'écran d'accueil</b> (parfois « Ajouter à l'écran d'accueil »).</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f2f2f7"/><text x="22" y="52" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Annuler</text><text x="100" y="52" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">Écran d'accueil</text><text x="178" y="52" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="800" text-anchor="end">Ajouter</text><rect x="20" y="72" width="160" height="64" rx="10" fill="#ffffff"/><rect x="28" y="80" width="46" height="46" rx="11" fill="#0A1F44"/><text x="51" y="108" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="14" font-weight="800" text-anchor="middle">RT</text><text x="84" y="98" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start">Referee Tracker</text><text x="84" y="114" fill="#64748b" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">app.referee-tracker.fr</text><rect x="20" y="146" width="160" height="34" rx="10" fill="#ffffff"/><text x="30" y="167" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="start">Ouvrir comme app web</text><rect x="146" y="155" width="26" height="15" rx="7.5" fill="#34c759"/><circle cx="164" cy="162.5" r="6" fill="#fff"/><text x="100" y="200" fill="#64748b" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="middle">(iOS 26 : laisse cette option activée)</text><rect x="144" y="38" width="40" height="20" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="184" cy="38" r="8" fill="#F5B400"/><text x="184" y="41.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">4</text></svg></div><figcaption><b>4.</b> Garde le nom <b>Referee Tracker</b>. Sur iOS 26, laisse <b>Ouvrir comme app web</b> activé. Touche <b>Ajouter</b> en haut à droite.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#1e3a5f"/><rect x="28" y="60" width="30" height="30" rx="8" fill="#ef4444" opacity=".85"/><rect x="68" y="60" width="30" height="30" rx="8" fill="#22c55e" opacity=".85"/><rect x="108" y="60" width="30" height="30" rx="8" fill="#3b82f6" opacity=".85"/><rect x="148" y="60" width="30" height="30" rx="8" fill="#a855f7" opacity=".85"/><rect x="28" y="116" width="30" height="30" rx="8" fill="#f97316" opacity=".85"/><rect x="68" y="116" width="30" height="30" rx="8" fill="#14b8a6" opacity=".85"/><rect x="108" y="116" width="30" height="30" rx="8" fill="#eab308" opacity=".85"/><rect x="148" y="116" width="30" height="30" rx="8" fill="#64748b" opacity=".85"/><rect x="28" y="172" width="30" height="30" rx="8" fill="#0A1F44" stroke="#F5B400" stroke-width="1.5"/><text x="43" y="192" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="800" text-anchor="middle">RT</text><text x="43" y="214" fill="#fff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="7" font-weight="600" text-anchor="middle">Referee</text><circle cx="43" cy="187" r="22" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="65" cy="165" r="8" fill="#F5B400"/><text x="65" y="168.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">5</text></svg></div><figcaption><b>5.</b> L'icône <b>RT</b> apparaît sur ton écran d'accueil. Ouvre l'app <b>depuis cette icône</b> et connecte-toi (une seule fois : la session de Safari n'est pas reprise).</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><rect x="72" y="14" width="56" height="14" rx="7" fill="#000"/><rect x="10" y="40" width="180" height="250" fill="#0B1220"/><text x="100" y="80" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="98" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="120" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="132" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="144" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="156" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="170" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="183" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="22" y="130" width="156" height="120" rx="14" fill="#ffffff"/><text x="100" y="156" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9.5" font-weight="800" text-anchor="middle">« Referee Tracker »</text><text x="100" y="170" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="middle">souhaite vous envoyer</text><text x="100" y="182" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="middle">des notifications</text><line x1="22" y1="200" x2="178" y2="200" stroke="#e2e8f0"/><text x="61" y="230" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="middle">Refuser</text><text x="139" y="230" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">Autoriser</text><rect x="108" y="212" width="64" height="28" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="172" cy="212" r="8" fill="#F5B400"/><text x="172" y="215.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">6</text></svg></div><figcaption><b>6.</b> Touche <b>Activer</b> sur le bandeau des notifications (ou Mon profil → Cet appareil), puis <b>Autoriser</b>. Vérifie avec <b>Tester</b>.</figcaption></figure>
+  <div class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">11</div><div class="t"><small>Sécurité et confidentialité</small><h2>Tes données</h2></div></div>
+  <div class="keep"></div><table>
+    <tr><th>Question</th><th>Réponse</th></tr>
+    <tr><td>Qui voit mes données ?</td><td>Toi seul. Toute intervention technique de notre part est journalisée</td></tr>
+    <tr><td>L'app lit-elle ma boîte mail ?</td><td>Non : seulement les convocations que tu lui transfères</td></tr>
+    <tr><td>Où sont-elles stockées ?</td><td>Dans l'Union européenne, sauvegardées chaque nuit, chiffrées</td></tr>
+    <tr><td>Rester connecté</td><td>Ton navigateur mémorise le mot de passe ; l'app le redemande après 5 jours sans ouverture</td></tr>
+    <tr><td>Récupérer ou supprimer</td><td>Mon profil → Mes données, ou rgpd@referee-tracker.fr</td></tr>
+  </table></div>
   </div>
-  <div class="box tip"><strong>Avec Chrome sur iPhone</strong> (iOS 16.4+) : bouton <b>Partager</b> à droite de la barre d'adresse → <b>Sur l'écran d'accueil</b>. Le reste est identique.</div>
+</section>
 
-  <h3>Sur Android (Chrome)</h3>
-  <div class="tel-grid">
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><circle cx="100" cy="20" r="5" fill="#000"/><rect x="10" y="68" width="180" height="250" fill="#0B1220"/><text x="100" y="108" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="126" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="148" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="160" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="172" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="184" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="198" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="211" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="10" y="34" width="180" height="34" fill="#f1f5f9"/><rect x="18" y="40" width="130" height="22" rx="11" fill="#e2e8f0"/><text x="28" y="55" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="600" text-anchor="start">app.referee-tracker.fr</text><text x="160" y="56" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="middle">▢</text><text x="178" y="56" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">⋮</text><circle cx="178" cy="51" r="13" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="191" cy="38" r="8" fill="#F5B400"/><text x="191" y="41.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">1</text></svg></div><figcaption><b>1.</b> Ouvre <b>Chrome</b> sur <b>app.referee-tracker.fr</b>, puis touche le menu <b>⋮</b> en haut à droite. Si un bandeau « Installer l'application » s'affiche en bas, touche-le directement et passe à l'étape 3.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><circle cx="100" cy="20" r="5" fill="#000"/><rect x="10" y="68" width="180" height="250" fill="#0B1220"/><text x="100" y="108" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="126" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="148" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="160" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="172" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="184" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="198" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="211" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="10" y="34" width="180" height="34" fill="#f1f5f9"/><rect x="18" y="40" width="130" height="22" rx="11" fill="#e2e8f0"/><text x="28" y="55" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="600" text-anchor="start">app.referee-tracker.fr</text><text x="160" y="56" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="middle">▢</text><text x="178" y="56" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">⋮</text><rect x="58" y="40" width="128" height="250" rx="10" fill="#ffffff" stroke="#cbd5e1"/><text x="68" y="62" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Nouvel onglet</text><text x="68" y="90" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Historique</text><text x="68" y="118" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Téléchargements</text><text x="68" y="146" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Favoris</text><text x="68" y="174" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Partager…</text><text x="68" y="202" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Rechercher dans la page</text><text x="68" y="230" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="600" text-anchor="start">Ajouter à l'écran d'accueil</text><text x="68" y="258" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="start">Paramètres</text><rect x="62" y="214" width="120" height="18" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="182" cy="214" r="8" fill="#F5B400"/><text x="182" y="217.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">2</text></svg></div><figcaption><b>2.</b> Touche <b>Ajouter à l'écran d'accueil</b> (ou <b>Installer l'application</b> selon la version).</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><circle cx="100" cy="20" r="5" fill="#000"/><rect x="10" y="68" width="180" height="250" fill="#0B1220"/><text x="100" y="108" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="126" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="148" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="160" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="172" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="184" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="198" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="211" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="10" y="10" width="180" height="380" rx="24" fill="rgba(0,0,0,.45)"/><rect x="22" y="130" width="156" height="130" rx="16" fill="#ffffff"/><text x="36" y="156" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="800" text-anchor="start">Installer l'application ?</text><rect x="36" y="170" width="30" height="30" rx="15" fill="#0A1F44"/><text x="51" y="190" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="800" text-anchor="middle">RT</text><text x="74" y="184" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start">Referee Tracker</text><text x="74" y="197" fill="#64748b" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="7.5" font-weight="500" text-anchor="start">app.referee-tracker.fr</text><text x="92" y="240" fill="#1d4ed8" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="middle">Annuler</text><rect x="122" y="226" width="46" height="22" rx="11" fill="#1d4ed8"/><text x="145" y="241" fill="#fff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">Installer</text><rect x="118" y="222" width="54" height="30" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="172" cy="222" r="8" fill="#F5B400"/><text x="172" y="225.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">3</text></svg></div><figcaption><b>3.</b> Confirme avec <b>Installer</b>. Android crée l'icône sur l'écran d'accueil et dans la liste des applications.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><circle cx="100" cy="20" r="5" fill="#000"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#1e3a5f"/><rect x="28" y="60" width="30" height="30" rx="15" fill="#ef4444" opacity=".85"/><rect x="68" y="60" width="30" height="30" rx="15" fill="#22c55e" opacity=".85"/><rect x="108" y="60" width="30" height="30" rx="15" fill="#3b82f6" opacity=".85"/><rect x="148" y="60" width="30" height="30" rx="15" fill="#a855f7" opacity=".85"/><rect x="28" y="116" width="30" height="30" rx="15" fill="#f97316" opacity=".85"/><rect x="68" y="116" width="30" height="30" rx="15" fill="#14b8a6" opacity=".85"/><rect x="108" y="116" width="30" height="30" rx="15" fill="#eab308" opacity=".85"/><rect x="148" y="116" width="30" height="30" rx="15" fill="#64748b" opacity=".85"/><rect x="28" y="172" width="30" height="30" rx="15" fill="#0A1F44" stroke="#F5B400" stroke-width="1.5"/><text x="43" y="192" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="10" font-weight="800" text-anchor="middle">RT</text><text x="43" y="214" fill="#fff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="7" font-weight="600" text-anchor="middle">Referee</text><circle cx="43" cy="187" r="22" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="65" cy="165" r="8" fill="#F5B400"/><text x="65" y="168.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">4</text></svg></div><figcaption><b>4.</b> Ouvre Referee Tracker <b>depuis l'icône</b> : l'app s'affiche en plein écran, sans barre d'adresse.</figcaption></figure>
-    <figure class="tel"><div class="tel-svg"><svg viewBox="0 0 200 400" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="196" height="396" rx="30" fill="#0b0f19" stroke="#475569" stroke-width="2"/><rect x="10" y="10" width="180" height="380" rx="24" fill="#f8fafc"/><circle cx="100" cy="20" r="5" fill="#000"/><rect x="10" y="40" width="180" height="250" fill="#0B1220"/><text x="100" y="80" fill="#F5B400" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">REFEREE</text><text x="100" y="98" fill="#ffffff" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="15" font-weight="800" text-anchor="middle">TRACKER</text><rect x="35" y="120" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="132" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">E-mail</text><rect x="35" y="144" width="130" height="18" rx="5" fill="#1B2740"/><text x="42" y="156" fill="#93A0BE" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="500" text-anchor="start">Mot de passe</text><rect x="35" y="170" width="130" height="20" rx="10" fill="#F5B400"/><text x="100" y="183" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8" font-weight="800" text-anchor="middle">Se connecter</text><rect x="22" y="130" width="156" height="120" rx="14" fill="#ffffff"/><text x="100" y="156" fill="#0f172a" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9.5" font-weight="800" text-anchor="middle">« Referee Tracker »</text><text x="100" y="170" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="middle">souhaite vous envoyer</text><text x="100" y="182" fill="#334155" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="8.5" font-weight="500" text-anchor="middle">des notifications</text><line x1="22" y1="200" x2="178" y2="200" stroke="#e2e8f0"/><text x="61" y="230" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="600" text-anchor="middle">Refuser</text><text x="139" y="230" fill="#2563eb" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">Autoriser</text><rect x="108" y="212" width="64" height="28" rx="9" fill="none" stroke="#F5B400" stroke-width="3"/><circle cx="172" cy="212" r="8" fill="#F5B400"/><text x="172" y="215.5" fill="#0A1F44" font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="9" font-weight="800" text-anchor="middle">5</text></svg></div><figcaption><b>5.</b> Touche <b>Activer</b> sur le bandeau des notifications, puis <b>Autoriser</b>. Vérifie avec Mon profil → Cet appareil → <b>Tester</b>.</figcaption></figure>
-  </div>
-  <div class="box tip"><strong>Samsung Internet</strong> : menu <b>≡</b> en bas à droite → <b>Ajouter la page à</b> → <b>Écran d'accueil</b>. <strong>Firefox</strong> : menu <b>⋮</b> → <b>Installer</b> (ou « Ajouter à l'écran d'accueil »).</div>
-
-  <h3>Une fois installée</h3>
-  <ol class="steps">
-    <li>Barre du bas : <strong>Accueil</strong>, <strong>5×5</strong>, <strong>3×3</strong>, <strong>Paiements</strong>, <strong>Plus…</strong> (Analyse, Hôtel, QCM, Progression, Rapports, Règlement, Mon espace).</li>
-    <li>Tire l'écran vers le bas pour actualiser. Les mises à jour de l'app s'installent seules à l'ouverture suivante.</li>
-    <li>Hors connexion, les derniers matchs restent consultables ; tes modifications partent à la reconnexion.</li>
-    <li>L'analyse avancée et la saisie des niveaux sont plus confortables sur ordinateur ou tablette.</li>
-  </ol>
-  <table>
+<section class="sec cont">
+  <div class="avoid"><div class="h"><div class="n">12</div><div class="t"><small>Un souci ?</small><h2>Dépannage</h2></div></div>
+  <div class="keep"></div><table>
     <tr><th>Problème</th><th>Solution</th></tr>
-    <tr><td>L'icône ouvre Safari avec la barre d'adresse</td><td>Supprime l'icône (appui long → Supprimer le signet) et refais les étapes 1 à 4 depuis <b>Safari</b>.</td></tr>
-    <tr><td>Pas de « Sur l'écran d'accueil » dans la liste</td><td>Fais défiler jusqu'en bas → <b>Modifier les actions</b> → ajoute « Sur l'écran d'accueil ».</td></tr>
-    <tr><td>Pas de notifications sur iPhone</td><td>Ouvre l'app depuis l'icône (pas depuis Safari), puis Réglages iPhone → Notifications → Referee Tracker → <b>Autoriser</b>.</td></tr>
-    <tr><td>Pas de notifications sur Android</td><td>Paramètres → Applications → Referee Tracker (ou Chrome) → Notifications → <b>Autoriser</b>. Désactive l'économie de batterie pour l'app.</td></tr>
-    <tr><td>Rien ne s'installe sur Android</td><td>Mets Chrome à jour (Play Store), puis réessaie. Le mode navigation privée bloque l'installation.</td></tr>
-  </table>
+    <tr><td>Un match n'apparaît pas</td><td>Vérifie la règle de transfert, puis Alertes → Infos ; transfère la convocation à la main</td></tr>
+    <tr><td>Mauvais montant</td><td>Ouvre la carte du match et corrige ; signale-le-nous</td></tr>
+    <tr><td>Mauvais kilomètres</td><td>Vérifie ton adresse de départ dans Mon profil</td></tr>
+    <tr><td>Paiement en retard à tort</td><td>Ouvre le match → Marquer reçu</td></tr>
+    <tr><td>L'app semble ancienne</td><td>Ferme-la complètement et rouvre-la : la mise à jour s'installe</td></tr>
+    <tr><td>Pas de notifications</td><td>Mon profil → Cet appareil → Tester ; sur iPhone, ouvre l'app depuis son icône</td></tr>
+    <tr><td>Mot de passe redemandé</td><td>Normal après 5 jours sans ouvrir l'app : tes données sont intactes</td></tr>
+    <tr><td>Code de double authentification refusé</td><td>Vérifie que l'heure du téléphone est automatique ; le code change toutes les 30 secondes</td></tr>
+  </table></div>
+  <div class="end"><b>On t'écoute.</b> contact@referee-tracker.fr (réponse sous 48 h) ou Mon profil → Écrire au support. Pendant la bêta, chaque retour compte et fait évoluer l'app.<br><span style="opacity:.75;font-size:9pt">Données personnelles : rgpd@referee-tracker.fr · Captures réalisées avec des données fictives.</span></div>
+</section>
 
-  <!-- ============================================================ 15 -->
-  <h2 id="recherche">15. Recherche et filtres</h2>
-  <p>La <strong>loupe</strong> (bas à droite) ouvre la recherche de la page courante : saison, texte (club, salle, ville, collègue, compétition), niveau, statut de paiement, format. Les suggestions et l'historique t'évitent de retaper. Chaque page garde ses propres filtres.</p>
-
-  <!-- ============================================================ 16 -->
-  <h2 id="depannage">16. Dépannage</h2>
-  <table>
-    <tr><th>Symptôme</th><th>Cause probable</th><th>Solution</th></tr>
-    <tr><td>Une convocation n'apparaît pas</td><td>Transfert non actif, ou mail parti ailleurs</td><td>Vérifie la règle de transfert ; transfère le mail à la main vers ton adresse Referee Tracker</td></tr>
-    <tr><td>Montant différent du barème</td><td>Zone de paiement ou distance</td><td>Mon profil → Zones ; adresse de départ ; corrige le montant depuis la carte</td></tr>
-    <tr><td>Message « recharge la page »</td><td>Nouvelle version disponible</td><td>Recharge ; sur téléphone, ferme et rouvre l'app</td></tr>
-    <tr><td>Pas de notification</td><td>Autorisation refusée ou app non installée (iPhone)</td><td>Mon profil → Tester ; réglages du téléphone → notifications</td></tr>
-    <tr><td>Un message d'erreur reste affiché</td><td>—</td><td>Croix en haut à droite du message, ou touche n'importe quelle autre action</td></tr>
-  </table>
-  <p>Un souci ? <a href="mailto:contact@referee-tracker.fr">contact@referee-tracker.fr</a> (réponse sous 48 h). Décris ce que tu faisais, sur quel appareil.</p>
-
-  <!-- ============================================================ 17 -->
-  <h2 id="donnees">17. Tes données</h2>
-  <p>Tes données servent uniquement à faire fonctionner ton suivi. Elles ne sont ni vendues, ni partagées avec d'autres arbitres. Tu peux tout <strong>exporter</strong> et tout <strong>supprimer</strong> toi-même depuis Mon profil → Compte → Mes données. Détails : <a href="./confidentialite.html">politique de confidentialité</a>, <a href="./cgu.html">conditions d'utilisation</a>.</p>
-  <p class="mut">Referee Tracker est un outil indépendant, créé par un arbitre pour les arbitres. Il n'est affilié à aucune fédération, ligue ou comité ; les convocations, barèmes et règlements restent ceux de tes instances officielles.</p>
-</main>
-</body>
-</html>
+</div></body></html>

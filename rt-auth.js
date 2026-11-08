@@ -1882,7 +1882,7 @@ const ONBOARD = {
   demo: false,
   /* b74 — mode démo : l'assistant de 1re connexion rejoué à blanc, sans rien lire ni écrire sur le compte. */
   ouvrirDemo() {
-    this.demo = true; this.etape = 0; this.sug = { noms: [] }; this.reception = "demo@recevoir.referee-tracker.fr";
+    this.demo = true; this.etape = 0; this.sug = { noms: [] }; this.reception = "prenom@referee-tracker.fr";
     this.data = { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false };
     const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
     d.innerHTML = '<div class="rt-consent-box rt-onb"><p class="rt-demo-tag">Mode démo · rien n\'est enregistré</p><div class="rt-onb-prog" id="rtOnbProg"></div><div id="rtOnbBody"></div><p class="rt-consent-msg" id="rtOnbMsg"></p><div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="rtOnbPrev">Retour</button><button type="button" class="rt-btn" id="rtOnbNext">Suivant</button><button type="button" class="rt-btn-ghost" id="rtOnbQuit">Quitter la démo</button></div></div>';

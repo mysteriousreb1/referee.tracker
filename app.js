@@ -2449,7 +2449,7 @@ function paiementRegime_(row) {
 }
 
 function paiementPayeur_(regime) {
-  return ({ cd67: "CD67", region: "Région", federation: "FFBB" })[regime] || "Organisme payeur";
+  return ({ cd67: zonesUser_().cd, region: "Ligue " + zonesUser_().ligue, federation: "FFBB" })[regime] || "Organisme payeur";
 }
 
 function dateInputValue_(v) {
@@ -2626,7 +2626,7 @@ function renderPaymentControl(row) {
         <form class="payment-regime-form" data-uid="${uid}">
           <select name="regime" aria-label="Régime de paiement">
             <option value="">Choisir le régime…</option>
-            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">FFBB</option>
+            <option value="cd67">Comité (${escapeHtml(zonesUser_().cd)})</option><option value="region">Ligue (${escapeHtml(zonesUser_().ligue)})</option><option value="federation">FFBB</option>
             <option value="parts_egales">Deux clubs à parts égales</option><option value="recevante">Club recevant</option>
           </select>
           <button type="submit" class="small-btn">Valider</button>
@@ -2686,7 +2686,12 @@ function attachCardListeners(root) {
 /* b19 — 5 payeurs affichés. Clés internes inchangées pour le rapprochement
    bancaire (ffbb = CF séniors, club = clubs) ; « cfj » = CF jeunes, payés
    à parts égales par les 2 clubs (NMU15, NMU18, NFU15, NFU18). */
-const PAYEURS_LIB_ = { ligue: "Ligue (LRGEB)", cd: "Comité 67 (CD67)", ffbb: "CF Séniors (fédération)", cfj: "CF Jeunes (2 clubs)", club: "Clubs (coupes, amicaux)" };
+/* b78e — comité et ligue DE L'ARBITRE (Mon profil → zones) : plus de CD67 / LRGEB en dur dans les libellés. */
+function zonesUser_() {
+  let z = {}; try { z = (Profil && Profil.config && Profil.config.profil && Profil.config.profil.zones) || {}; } catch (e) { z = {}; }
+  return { cd: String(z.cd || "CD67").toUpperCase(), ligue: String(z.ligue || "LRGEB").toUpperCase() };
+}
+const PAYEURS_LIB_ = { get ligue() { return "Ligue (" + zonesUser_().ligue + ")"; }, get cd() { return "Comité (" + zonesUser_().cd + ")"; }, ffbb: "CF Séniors (fédération)", cfj: "CF Jeunes (2 clubs)", club: "Clubs (coupes, amicaux)" };
 const PAYEURS_ORDRE_ = ["cd", "ligue", "ffbb", "cfj", "club"];
 function payeurAffiche_(r) {
   const c = rbClasse_(r);
@@ -4137,7 +4142,7 @@ function renderProgression() {
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14a2 2 0 0 0 2-2v-5"/><path d="M3 14v5a2 2 0 0 0 2 2h1"/></svg>
         </span>
         <p class="eval-dropzone-text">Glisse un ou plusieurs PDF ici, ou <label for="evalFileInput" class="eval-dropzone-link">choisis des fichiers</label></p>
-        <p class="eval-dropzone-sub">Fiches CD67, Ligue, stages, TIC : lecture directe du PDF, note telle qu'écrite dans le document, match rattaché pour les observations. 20 à 40 s par fichier. Un PDF déjà déposé n'est pas dupliqué.</p>
+        <p class="eval-dropzone-sub">Fiches comité, ligue, stages, TIC : lecture directe du PDF, note telle qu'écrite dans le document, match rattaché pour les observations. 20 à 40 s par fichier. Un PDF déjà déposé n'est pas dupliqué.</p>
         <input id="evalFileInput" type="file" accept="application/pdf" multiple hidden />
       </div>
       <div id="evalProgress" class="eval-progress" hidden></div>
@@ -5614,10 +5619,10 @@ const ALERTE_TYPES_ = [
   [/kilom|km /i, "avant", "Kilométrage manquant ou à vérifier", "Renseigne ou contrôle les km A/R avant le match : l'indemnité kilométrique en dépend."],
   [/adresse/i, "avant", "Adresse de la salle manquante", "Complète l'adresse pour l'itinéraire Waze et le calcul des km."],
   [/coll[èe]gue/i, "avant", "Collègue manquant", "Ajoute ton collègue (nom, téléphone) pour le covoiturage et le contact d'avant-match."],
-  [/barème cd67|calculé via barème/i, "infos", "Barème CD67 appliqué", "Indemnité calculée d'après le barème : rien à faire, sauf si la convocation indique un autre montant."],
+  [/barème cd67|calculé via barème/i, "infos", "Barème du comité appliqué", "Indemnité calculée d'après le barème : rien à faire, sauf si la convocation indique un autre montant."],
   [/indemnité (estimée|: ia|fixe 3x3|manquante|à compléter)|journée ou demi-journée/i, "infos", "Indemnité estimée", "Compare avec la convocation ou la fiche de frais et corrige le montant si besoin."],
   [/3x3/i, "infos", "Mission 3×3 à vérifier", "Lecture automatique incertaine : vérifie le format, le lieu et l'heure."],
-  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, CD67, Ligue, FFBB) dans le bloc paiement du match."]
+  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, comité, ligue, FFBB) dans le bloc paiement du match."]
 ];
 function classerAlerte_(r) {
   const ws = warningsAlerte_(r);
@@ -7889,7 +7894,7 @@ function segmentNiveau_(r) {
 }
 function renderClassementRentabilite(rows) {
   const five = rows.filter(r => r._format === "5x5");
-  const NIV = { cd67: "CD67", ligue: "LRGEB", cf: "CF", autre: "Autre" };
+  const NIV = { cd67: zonesUser_().cd, ligue: zonesUser_().ligue, cf: "CF", autre: "Autre" };
   const groupes = groupBySimple(five, r => get(r, "Recevant") + "||" + segmentAge_(r) + "||" + segmentNiveau_(r))
     .filter(g => g.count > 0)
     .sort((a, b) => b.net - a.net)
@@ -7903,7 +7908,7 @@ function renderClassementRentabilite(rows) {
       <p class="hint">Net réel cumulé par club recevant (indemnités − carburant), nombre de missions. Choisis une catégorie ou un niveau pour afficher le classement.</p>
       <div class="renta-filtres">
         <div class="pa-axes">${chip("age", "", "Tous")}${chip("age", "seniors", "Séniors")}${chip("age", "jeunes", "Jeunes")}</div>
-        <div class="pa-axes">${chip("niv", "", "Tous niveaux")}${chip("niv", "cd67", "CD67")}${chip("niv", "ligue", "LRGEB")}${chip("niv", "cf", "Champ. de France")}</div>
+        <div class="pa-axes">${chip("niv", "", "Tous niveaux")}${chip("niv", "cd67", escapeHtml(zonesUser_().cd))}${chip("niv", "ligue", escapeHtml(zonesUser_().ligue))}${chip("niv", "cf", "Champ. de France")}</div>
       </div>
       ${groupes.map(g => { const [club, age, niv] = g.label.split("||"); return `
         <div class="rank-row" data-age="${age}" data-niv="${niv}" style="display:none">
