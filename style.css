@@ -4624,7 +4624,7 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .og-titre { margin: 0 0 4px; font-size: 17px; }
 .og-leg { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .og-leg span { display: inline-flex; align-items: center; gap: 6px; }
-.og-fams { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.og-fams { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 @media (max-width: 980px) { .og-fams { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .og-fams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .og-fam { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(127,127,127,.06); border: 1px solid var(--line); }

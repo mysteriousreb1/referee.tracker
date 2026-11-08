@@ -4677,9 +4677,9 @@ function renderPlanDeveloppement_(evals) {
   const tRec = moy(obsN.slice(0, 3)), tAnc = moy(obsN.slice(3, 6));
   const tendance = tRec !== null && tAnc !== null ? Math.round((tRec - tAnc) * 10) / 10 : null;
   if (!prio.length && !fort) return "";
-  // critères de la grille d'observation liés à chaque famille (si la grille à 20 critères existe)
+  // critères de la grille d'observation liés à chaque famille du plan (grille à 29 critères)
   const grilles = tri.map(lrgebGrille_).filter(Boolean); const g0 = grilles[0];
-  const LIEN_GRILLE_ = { calls: [10, 11, 12, 13, 15], controle: [3, 4, 6, 14], mecanique: [9, 16, 17], communication: [5, 6, 7, 8], physique: [1, 18, 19, 20] };
+  const LIEN_GRILLE_ = { calls: [9, 10, 11, 12, 13, 15, 16], controle: [4, 5, 6, 14], mecanique: [22, 23, 24, 27], communication: [7, 21, 26, 28], physique: [1, 20, 22] };
   const criteres = k => g0 ? (LIEN_GRILLE_[k] || []).filter(n => g0[n] && g0[n].mention && g0[n].mention.n <= 15).slice(0, 3).map(n => `${n}. ${g0[n].critere}`) : [];
   const delta = f => f.v !== null && f.avant !== null ? Math.round((f.v - f.avant) * 10) / 10 : null;
   const deltaHtml = d => d === null ? "" : `<span class="pd2-d ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${d.toLocaleString("fr-FR")}</span>`;
@@ -4754,23 +4754,27 @@ function buildEvalCharts_(evals) {
    La fiche régionale comporte 20 critères numérotés, notés par mention. On la reconnaît à ses numéros
    (≥ 15 critères « n. … »), on regroupe les critères en 5 familles et on suit chaque critère d'une
    observation à l'autre : l'arbitre voit exactement quelles lignes progressent ou reculent. */
+/* b78 — la fiche réelle compte 29 critères (relevé sur les fiches importées) : familles calées sur leur contenu. */
 const LRGEB_FAM_ = [
-  ["Jugement", [1, 2, 3, 4, 5]],
-  ["Gestion & relation", [6, 7, 8]],
-  ["Mécanique", [9, 10, 11, 12, 13]],
-  ["Communication & équipe", [14, 15, 16]],
-  ["Attitude & cohérence", [17, 18, 19, 20]]
+  ["Présentation", [1, 2, 3, 4]],
+  ["Gestion des acteurs", [5, 6, 7, 8]],
+  ["Jugement", [9, 10, 11, 12, 13, 14, 15, 16]],
+  ["Violations & temps", [17, 18, 19]],
+  ["Présence & mécanique", [20, 21, 22, 23, 24]],
+  ["Duo & impact", [25, 26, 27, 28, 29]]
 ];
 const LRGEB_MENTIONS_ = [["insuffisant", 5, "ins"], ["ameliorer", 10, "ame"], ["tres bien", 20, "tb"], ["superieur", 20, "tb"], ["bien", 15, "b"], ["standard", 15, "b"]];
 function lrgebMention_(v) {
   const t = String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/^\s*oui\s*$/.test(t)) return { n: 15, c: "b", lib: String(v).trim() };      // critère binaire (ex. horaires respectés)
+  if (/^\s*non\s*$/.test(t)) return { n: 5, c: "ins", lib: String(v).trim() };
   for (const [m, n, c] of LRGEB_MENTIONS_) if (t.includes(m)) return { n, c, lib: String(v).trim() };
   const x = Number(String(v).replace(",", ".")); if (!isNaN(x) && x > 0 && x <= 20) return { n: x <= 5 ? x * 4 : x, c: x >= 16 ? "tb" : x >= 12 ? "b" : x >= 8 ? "ame" : "ins", lib: String(v).trim() };
   return null;
 }
 function lrgebGrille_(ev) {
   const out = {}; let n = 0;
-  (ev.grille || []).forEach(g => { const m = String(g.critere || "").match(/^\s*(\d{1,2})\s*[.)\-–]/); if (!m) return; const k = Number(m[1]); if (k < 1 || k > 20) return; out[k] = { critere: String(g.critere).replace(/^\s*\d{1,2}\s*[.)\-–]\s*/, ""), mention: lrgebMention_(g.valeur) }; n++; });
+  (ev.grille || []).forEach(g => { const m = String(g.critere || "").match(/^\s*(\d{1,2})\s*[.)\-–]/); if (!m) return; const k = Number(m[1]); if (k < 1 || k > 29) return; out[k] = { critere: String(g.critere).replace(/^\s*\d{1,2}\s*[.)\-–]\s*/, ""), mention: lrgebMention_(g.valeur) }; n++; });
   return n >= 15 ? out : null;
 }
 function renderLrgebGrille_(evals) {
@@ -4794,7 +4798,7 @@ function renderLrgebGrille_(evals) {
   const puces = (ks, cls, lib0) => ks.length ? `<div class="og-sum ${cls}"><b>${lib0}</b>${ks.slice(0, 4).map(k => `<span class="og-chip"><em>${k}</em>${escapeHtml(lib(k))}</span>`).join("")}${ks.length > 4 ? `<span class="og-plus">+${ks.length - 4}</span>` : ""}</div>` : "";
   return `<div class="table-card og-card">
     <div class="og-head"><div><h3 class="og-titre">${escapeHtml(titre)}</h3>
-      <p class="card-sub">20 critères · ${obs.length} observation${obs.length > 1 ? "s" : ""}${obs.length > 4 ? " (4 dernières)" : ""} · ${dern.map(o => escapeHtml(evalDateCourte_(o.ev) + (o.ev.championnat ? " " + o.ev.championnat : ""))).join(" → ")}</p></div>
+      <p class="card-sub">${Object.keys(der.g).length} critères · ${obs.length} observation${obs.length > 1 ? "s" : ""}${obs.length > 4 ? " (4 dernières)" : ""} · ${dern.map(o => escapeHtml(evalDateCourte_(o.ev) + (o.ev.championnat ? " " + o.ev.championnat : ""))).join(" → ")}</p></div>
       <div class="og-leg"><span><i class="og-dot og-tb"></i>Très bien</span><span><i class="og-dot og-b"></i>Bien</span><span><i class="og-dot og-ame"></i>À améliorer</span><span><i class="og-dot og-ins"></i>Insuffisant</span></div></div>
     <div class="og-fams">${LRGEB_FAM_.map(([nom, nums]) => { const v = famScore(der, nums), pv = prec ? famScore(prec, nums) : null; const d = v !== null && pv !== null ? Math.round((v - pv) * 10) / 10 : null;
       return `<div class="og-fam">${anneau(v)}<div><span class="og-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : v.toFixed(1)}<small>/20</small></strong>${d !== null && d !== 0 ? `<span class="og-d ${d > 0 ? "og-up" : "og-down"}">${d > 0 ? "+" : ""}${d.toFixed(1)}</span>` : ""}</div></div>`; }).join("")}</div>
@@ -4804,9 +4808,9 @@ function renderLrgebGrille_(evals) {
         ${nums.map(k => `<div class="og-row"><span class="og-num">${k}</span><span class="og-lib">${escapeHtml(lib(k))}</span><span class="og-dots">${dern.map(o => dot(o, k)).join("")}</span>${fleche(k)}</div>`).join("")}</details>`; }).join("")}</div>
     <details class="lg-calc"><summary>Comment c'est calculé ?</summary>
       <ol>
-        <li>L'app lit la fiche d'observation importée et repère les critères numérotés de 1 à 20 (il en faut au moins 15 pour reconnaître la grille).</li>
-        <li>Chaque mention est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard) = 15, Très bien (ou Supérieur) = 20. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
-        <li>Les 20 critères sont rangés en 5 familles : Jugement (1 à 5), Gestion &amp; relation (6 à 8), Mécanique (9 à 13), Communication &amp; équipe (14 à 16), Attitude &amp; cohérence (17 à 20).</li>
+        <li>L'app lit la fiche d'observation importée et repère les critères numérotés (jusqu'à 29 ; il en faut au moins 15 pour reconnaître la grille).</li>
+        <li>Chaque mention est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard, Oui) = 15, Très bien (ou Supérieur) = 20 ; Non = 5. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
+        <li>Les critères sont rangés en 6 familles : Présentation (1 à 4), Gestion des acteurs (5 à 8), Jugement (9 à 16), Violations &amp; temps (17 à 19), Présence &amp; mécanique (20 à 24), Duo &amp; impact (25 à 29).</li>
         <li>Note d'une famille = moyenne de ses critères notés, sur 20 ; l'écart compare avec l'observation précédente. Chaque point de couleur = une observation, de la plus ancienne (à gauche) à la plus récente.</li>
         <li>« À travailler » = critères à 10 ou moins sur la dernière observation ; « En progrès » / « En recul » = mention qui a monté / baissé.</li>
       </ol>

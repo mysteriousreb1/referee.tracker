@@ -41,6 +41,7 @@ code, .mono { font-family: var(--mono); font-size: 12px; }
 
 /* ---------- Boutons & champs ---------- */
 button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+[hidden] { display: none !important; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 700; font-size: 12.5px; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background .12s, transform .08s; }
 .btn:hover { background: var(--surface-2); } .btn:active { transform: translateY(1px); }
 .btn.pri { background: var(--gold); border-color: var(--gold); color: #0B1F3B; }
