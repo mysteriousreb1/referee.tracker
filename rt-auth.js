@@ -2058,7 +2058,8 @@ const MFA_U = {
     return j;
   },
   aal() { try { const s = SB.session; const b = s.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(atob(b + "===".slice((b.length + 3) % 4))).aal || "aal1"; } catch (e) { return "aal1"; } },
-  async facteurs() { const u = await this.api("user"); return (u.factors || []).filter(f => f.factor_type === "totp"); },
+  /* b78c : le code « Admin Referee Tracker » protège seulement la console admin ; l'app arbitre ne regarde que ses propres codes. */
+  async facteurs() { const u = await this.api("user"); return (u.factors || []).filter(f => f.factor_type === "totp" && !/^admin/i.test(f.friendly_name || "")); },
   async verifier(idFacteur, code) {
     const ch = await this.api("factors/" + idFacteur + "/challenge", "POST", {});
     const s = await this.api("factors/" + idFacteur + "/verify", "POST", { challenge_id: ch.id, code });
