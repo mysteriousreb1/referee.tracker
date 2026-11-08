@@ -285,6 +285,7 @@
       { t: "Synchro", k: (u) => u.derniere_synchro || "", cl: "nw", r: (u) => '<span class="' + ((u.profil || {}).api_url && heures(u.derniere_synchro) > 48 ? "err" : "") + '" title="' + esc(fmt(u.derniere_synchro)) + '">' + esc(depuis(u.derniere_synchro)) + "</span>" },
       { t: "Push", k: (u) => (u.push || {}).n || 0, r: (u) => (u.push && u.push.n ? badge(u.push.n + " app." + (u.push.echecs ? " · " + u.push.echecs + " éch." : ""), u.push.echecs ? "orange" : "green") : badge("—", "gray")) },
       { t: "CGU", k: (u) => (u.consentement || {}).version || "", r: (u) => (u.consentement ? badge("✓ " + u.consentement.version.slice(2), "green") : badge("non", "red")) },
+      { t: "Offres", k: (u) => (comm(u).offres ? 1 : 0) + (comm(u).whatsapp ? 1 : 0), r: (u) => (comm(u).offres ? badge("e-mail", "green") : badge("non", "gray")) + (comm(u).whatsapp ? " " + badge("WhatsApp", "green") : "") },
     ], l, { recherche: rechercheCourante, tri: "Arbitre", filtre: (u) => !filtreStatut || statut(u) === filtreStatut, clic: (u) => ouvrirFiche(u.id),
       texte: (u) => [u.email, (u.profil || {}).prenom, (u.profil || {}).nom_ffbb, (u.profil || {}).adresse_reception, (u.profil || {}).niveau, zonesTxt((u.profil || {}).zones), statut(u)].join(" ").toLowerCase() });
     $("btnCsvArb").addEventListener("click", () => csv([["prenom", "nom_ffbb", "email", "adresse_reception", "statut", "niveau", "zones", "moteur", "derniere_connexion", "matchs", "derniere_synchro", "push", "cgu"]].concat(l.map((u) => { const p = u.profil || {}; return [p.prenom, p.nom_ffbb, u.email, p.adresse_reception, statut(u), p.niveau, zonesTxt(p.zones), p.api_url ? "oui" : "non", u.derniere_connexion, u.matchs, u.derniere_synchro, (u.push || {}).n || 0, (u.consentement || {}).version]; })), "arbitres.csv"));
@@ -339,7 +340,7 @@
         '<div class="row"><select id="nCat"><option value="retour">Retour client</option><option value="demande">Demande</option><option value="bug">Bug</option><option value="suivi" selected>Suivi</option><option value="autre">Autre</option></select></div><textarea id="nTxt" rows="3" placeholder="Ex. : souhaite un export par mois ; a signalé un écart sur un match du 12/10…" style="width:100%;margin-top:8px;font-family:inherit"></textarea><div class="row" style="margin-top:8px"><button class="btn pri sm" id="nAdd">Ajouter la note</button></div><div id="nListe" style="margin-top:12px"><p class="mut">Chargement…</p></div></div>' +
         '<div class="card"><div class="card-head"><h3>Écrire à cet arbitre</h3><span class="sub">e-mail au design Referee Tracker et/ou notification</span></div>' +
         '<label class="f">Sujet<input id="mSujet" maxlength="120" placeholder="Ex. : Ton écart du 12/10 est corrigé"></label><label class="f" style="margin-top:8px">Message<textarea id="mTxt" rows="6" style="font-family:inherit" placeholder="Le message commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
-        '<div class="row" style="margin-top:8px"><select id="mCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select><button class="btn pri sm" id="mEnv">Envoyer</button></div></div></div></div>' +
+        '<div class="row" style="margin-top:8px"><select id="mCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select><button class="btn pri sm" id="mEnv">Envoyer</button>' + (waNum(p.telephone) ? '<button class="btn sm wa-btn" id="mWa" title="' + esc(p.telephone) + '">WhatsApp</button>' : '<span class="mut tiny">WhatsApp : aucun numéro</span>') + '</div></div></div></div>' +
       '<div class="tabpane" data-pane="danger"><div class="card danger-zone"><h3>Supprimer le compte</h3><p>Supprime définitivement : matchs, évaluations, tickets, appareils push, consentements, profil, inscription, fichiers Storage import/, puis le compte de connexion. Irréversible.</p><button class="btn danger" id="fSuppr">Supprimer le compte…</button></div></div>';
     const body = $("drawerBody");
     body.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { body.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b)); body.querySelectorAll(".tabpane").forEach((x) => x.classList.toggle("on", x.dataset.pane === b.dataset.tab)); }));
@@ -355,6 +356,7 @@
     }
     chargerNotes();
     body.querySelector("#nAdd").addEventListener("click", async () => { const t = body.querySelector("#nTxt").value.trim(); if (t.length < 2) return toast("Note vide", "err"); try { await admin("note.ajouter", { user_id: userId, texte: t, categorie: body.querySelector("#nCat").value }); body.querySelector("#nTxt").value = ""; toast("Note ajoutée", "ok"); chargerNotes(); } catch (e) { toast(e.message, "err"); } });
+    { const w = body.querySelector("#mWa"); if (w) w.addEventListener("click", () => { const sujet = body.querySelector("#mSujet").value.trim(), texte = body.querySelector("#mTxt").value.trim(); window.open(waLien(p.telephone, "Bonjour " + (p.prenom || "") + ",\n\n" + (sujet ? "*" + sujet + "*\n\n" : "") + texte + "\n\n— Referee Tracker"), "_blank", "noopener"); }); }
     body.querySelector("#mEnv").addEventListener("click", async () => {
       const sujet = body.querySelector("#mSujet").value.trim(), texte = body.querySelector("#mTxt").value.trim(), canal = body.querySelector("#mCanal").value;
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
@@ -569,6 +571,10 @@
   // =====================================================================
   // b77 — MESSAGES : écrire à un arbitre, aux actifs ou à tous (e-mail au design + notification)
   // =====================================================================
+  // b77 — WhatsApp : lien wa.me (ouvre WhatsApp sur le PC ou le téléphone, message pré-rempli, tu n'as plus qu'à envoyer).
+  const waNum = (t) => { let d = String(t || "").replace(/[^\d+]/g, ""); if (/^0[1-9]\d{8}$/.test(d)) d = "33" + d.slice(1); d = d.replace(/^\+/, ""); return /^\d{10,15}$/.test(d) ? d : ""; };
+  const waLien = (tel, texte) => "https://wa.me/" + waNum(tel) + "?text=" + encodeURIComponent(texte);
+  const comm = (a) => (a.profil || {}).communications || {};
   const MODELES_MSG = [
     ["", "— Partir d'un modèle —", ""],
     ["Nouvelle version de l'application", "Une nouvelle version de Referee Tracker est en ligne.\n\nCe qui change :\n- \n- \n\nPour l'avoir tout de suite : ferme puis rouvre l'application (ou touche « Actualiser »)."],
@@ -586,7 +592,9 @@
       '<label class="f">Modèle<select id="msModele">' + MODELES_MSG.map((m, i) => '<option value="' + i + '">' + esc(m[1] && i ? m[0] : m[1]) + "</option>").join("") + "</select></label>" +
       '<label class="f">Sujet<input id="msSujet" maxlength="120" placeholder="Ex. : Nouvelle version de l\'application"></label>' +
       '<label class="f">Message<textarea id="msTxt" rows="9" style="font-family:inherit" placeholder="Commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
-      '<label class="f">Canal<select id="msCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option></select></label>' +
+      '<label class="f">Type<select id="msType"><option value="service">Information de service (nouvelle version, maintenance, compte) · tous les destinataires</option><option value="promo">Promotion / nouveautés commerciales · seulement ceux qui ont accepté</option></select></label>' +
+      '<label class="f">Canal<select id="msCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option><option value="wa">WhatsApp (un clic par arbitre)</option></select></label>' +
+      '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
@@ -594,12 +602,25 @@
     const apercu = () => { const sujet = $("msSujet").value.trim() || "Sujet", texte = $("msTxt").value.trim() || "…";
       $("msPrev").innerHTML = '<div class="mp-head">REFEREE <b>TRACKER</b></div><div class="mp-body"><h3>' + esc(sujet) + "</h3><p>Bonjour Prénom,</p>" + texte.split(/\n{2,}/).map((x) => "<p>" + esc(x).replace(/\n/g, "<br>") + "</p>").join("") + '<span class="mp-btn">Ouvrir l\'application</span><small>Message de l\'équipe Referee Tracker · une question ? contact@referee-tracker.fr</small></div>'; };
     $("msApercu").addEventListener("click", apercu); $("msTxt").addEventListener("input", apercu); $("msSujet").addEventListener("input", apercu);
+    // Destinataires réels selon cible + type (promo = consentement « offres » ; WhatsApp = consentement « whatsapp » + numéro).
+    const destinataires = () => { const c = $("msCible").value, promo = $("msType").value === "promo";
+      let d = c === "tous" ? l : c === "actifs" ? l.filter((a) => (a.profil || {}).statut === "actif") : l.filter((a) => a.id === c);
+      if (promo) d = d.filter((a) => comm(a).offres === true);
+      return d; };
+    const majWa = () => { const z = $("msWa"), wa = $("msCanal").value === "wa"; z.hidden = !wa; $("msEnv").hidden = wa; if (!wa) return;
+      const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(); let envoyes = {}; try { envoyes = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); } catch (e) {}
+      const d = destinataires(), ok = d.filter((a) => comm(a).whatsapp === true && waNum((a.profil || {}).telephone)), exclus = d.length - ok.length;
+      z.innerHTML = '<p class="mut tiny">WhatsApp ne permet pas l\'envoi groupé depuis un site : chaque bouton ouvre la conversation avec le message déjà écrit, tu n\'as plus qu\'à appuyer sur Envoyer. Seuls les arbitres qui ont accepté WhatsApp et donné un numéro apparaissent' + (exclus ? " (" + exclus + " exclu(s) : pas d'accord ou pas de numéro)" : "") + ".</p>" +
+        (ok.length ? ok.map((a) => { const p = a.profil || {}, k = a.id + "|" + sujet; const msg = "Bonjour " + (p.prenom || "") + ",\n\n" + (sujet ? "*" + sujet + "*\n\n" : "") + texte + ($("msType").value === "promo" ? "\n\n(Réponds STOP pour ne plus recevoir ces messages.)" : "") + "\n\n— Referee Tracker";
+          return '<div class="wa-l"><strong>' + esc(nomDe(p, a.email)) + '</strong><span class="mut tiny">' + esc(p.telephone || "") + '</span><span class="sp"></span>' + (envoyes[k] ? badge("ouvert", "green") : "") + '<a class="btn sm wa-btn" target="_blank" rel="noopener" data-k="' + esc(k) + '" href="' + esc(waLien(p.telephone, msg)) + '">WhatsApp</a></div>'; }).join("") : '<p class="vide">Aucun destinataire WhatsApp.</p>');
+      z.querySelectorAll(".wa-btn").forEach((b) => b.addEventListener("click", () => { try { const e = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); e[b.dataset.k] = Date.now(); localStorage.setItem("rt-wa-envoyes", JSON.stringify(e)); } catch (x) {} setTimeout(majWa, 300); })); };
+    ["msCible", "msType", "msCanal"].forEach((id) => $(id).addEventListener("change", majWa)); ["msSujet", "msTxt"].forEach((id) => $(id).addEventListener("input", () => { if ($("msCanal").value === "wa") majWa(); }));
     $("msEnv").addEventListener("click", async () => {
-      const cible = $("msCible").value, sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(), canal = $("msCanal").value;
+      const cible = $("msCible").value, sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(), canal = $("msCanal").value, type = $("msType").value;
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
       const lib = $("msCible").selectedOptions[0].textContent;
-      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong> ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
-      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal }); toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
+      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong>" + (type === "promo" ? " (seulement ceux qui ont accepté les offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
+      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type }); toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
     });
     $("msHist").addEventListener("click", async () => {
       $("msHistZ").innerHTML = '<p class="mut">Chargement…</p>';

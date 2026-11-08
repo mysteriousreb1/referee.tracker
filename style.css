@@ -4697,3 +4697,17 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .pd2-fam .hint { margin: 2px 0 10px; font-size: 12px; color: var(--muted); }
 .cc-card { flex-wrap: wrap; }
 .cc-card > .cc-val { flex: 1 1 100%; order: 99; margin-top: 4px; }
+/* b77 — carte « Complète ton historique » */
+.acc-histo { margin-top: 26px; }
+.acc-histo-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.acc-histo-h .section-title { margin: 0; }
+.acc-histo-g { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 1000px) { .acc-histo-g { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .acc-histo-g { grid-template-columns: 1fr; } }
+.acc-histo-i { display: flex; gap: 10px; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+.acc-histo-i > div { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.acc-histo-i .card-sub { font-size: 12.5px; line-height: 1.4; }
+.acc-histo-c { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 900; color: #fff; }
+.acc-histo-i.is-ok { opacity: .7; }
+.acc-histo-i.is-ok .acc-histo-c { background: #16a34a; border-color: #16a34a; }
+.rt-check{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0;cursor:pointer}.rt-check input{width:18px;height:18px;margin-top:2px;accent-color:var(--gold,#F5B400);flex:none}

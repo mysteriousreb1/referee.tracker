@@ -1224,6 +1224,18 @@ function renderProfile() {
           <input id="pwNouv" type="password" autocomplete="new-password" placeholder="12 caractères minimum"></div>
         <button type="button" class="rt-btn" id="pfChangePwd">Modifier</button>
       </details>
+      <details class="rt-details" id="pfCommD">
+        <summary>Communications (nouveautés, offres)</summary>
+        <p class="rt-help">Les informations de service (nouvelle version, maintenance, ton compte) te sont toujours envoyées. Le reste, c'est toi qui choisis.</p>
+        <label class="rt-check"><input type="checkbox" id="pfCommOffres"> Recevoir par e-mail les nouveautés et offres (au plus 2 par mois)</label>
+        <label class="rt-check"><input type="checkbox" id="pfCommWa"> Les recevoir aussi par WhatsApp</label>
+        <div class="rt-field"><label for="pfCommTel">Numéro WhatsApp</label><input id="pfCommTel" type="tel" inputmode="tel" autocomplete="tel" placeholder="06 12 34 56 78"></div>
+        <button type="button" class="rt-btn" id="pfCommSave">Enregistrer</button> <span class="rt-help" id="pfCommMsg"></span>
+      </details>
+      <details class="rt-details" id="pfMfaD">
+        <summary>Double authentification (facultative)</summary>
+        <div id="pfMfa"></div>
+      </details>
       <!-- b71 — droits RGPD exercés dans l'app (Edge « compte ») : export JSON, suppression définitive. -->
       <details class="rt-details">
         <summary>Mes données (export, suppression)</summary>
@@ -1245,6 +1257,20 @@ function renderProfile() {
     if (!r.ok || !j.ok) throw new Error(j.error === "CONFIRMATION" ? "Écris exactement SUPPRIMER" : (j.error || "HTTP " + r.status));
     return j;
   };
+  // b77 — préférences de communication (opt-in), lues et écrites par l'Edge « compte ».
+  { const dc = document.getElementById("pfCommD");
+    if (dc) {
+      const charger = async () => { try { const j = await compteApi({ action: "communications.lire" }); const c = j.communications || {}; document.getElementById("pfCommOffres").checked = c.offres === true; document.getElementById("pfCommWa").checked = c.whatsapp === true; document.getElementById("pfCommTel").value = j.telephone || ""; } catch (e) { document.getElementById("pfCommMsg").textContent = e.message; } };
+      dc.addEventListener("toggle", () => { if (dc.open) charger(); });
+      document.getElementById("pfCommSave").addEventListener("click", async () => {
+        const m = document.getElementById("pfCommMsg"); m.textContent = "Enregistrement…";
+        const tel = document.getElementById("pfCommTel").value.trim(), wa = document.getElementById("pfCommWa").checked;
+        if (wa && !tel) { m.textContent = "Indique ton numéro pour WhatsApp."; return; }
+        try { await compteApi({ action: "communications", offres: document.getElementById("pfCommOffres").checked, whatsapp: wa, telephone: tel }); m.textContent = "Enregistré ✓"; }
+        catch (e) { m.textContent = e.message === "TELEPHONE" ? "Numéro invalide (ex. 06 12 34 56 78)." : e.message; }
+      });
+      if (/[?&]desabonner=1\b/.test(location.search)) { dc.open = true; setTimeout(() => dc.scrollIntoView({ block: "center" }), 300); }
+    } }
   document.getElementById("pfExport").addEventListener("click", async () => {
     const b = document.getElementById("pfExport"); b.disabled = true;
     try {
@@ -1290,6 +1316,7 @@ function renderProfile() {
     delCout(type, Number(i));
   }));
   document.getElementById("pfChangePwd").addEventListener("click", changePassword);
+  { const dm = document.getElementById("pfMfaD"); if (dm) dm.addEventListener("toggle", () => { if (dm.open) MFA_U.rendreProfil(document.getElementById("pfMfa")); }); }   // b77
   const tkE = document.getElementById("tkEnvoyer"); if (tkE) tkE.addEventListener("click", envoyerTicket);
   const th = document.getElementById("tkHist");
   if (th) th.addEventListener("toggle", () => { if (th.open) chargerTickets(); });
@@ -1835,7 +1862,7 @@ function cablerPremiereConnexion_() {
 
 const ONBOARD = {
   etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
-  N_ETAPES: 6,   // b69 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 notifications
+  N_ETAPES: 7,   // b77 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 historique · 6 notifications
   COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
   LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
   NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Régional 3", "Régional 2 – JPR Rouge", "Régional 1", "Championnat de France", "Haut niveau / Fédéral"],
@@ -1921,6 +1948,14 @@ const ONBOARD = {
         '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur contient ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
         '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
         '<p class="rt-help">Transfère aussi une fois tes convocations déjà reçues cette saison : l\'app reconstruit ta saison.</p>';
+    } else if (e === 5) {   // b77 — l'historique : sans lui, pas de progression ni de comparaison
+      const it = (t, d) => '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>' + t + '</strong><span class="rt-tag">facultatif</span></div><p class="rt-help">' + d + '</p></div>';
+      b.innerHTML = '<h2>Ton historique</h2><p>Plus tu en donnes, plus l\'app est utile dès le premier jour. Rien n\'est obligatoire : tu pourras tout ajouter plus tard.</p>' +
+        it("Tes saisons passées", "Transfère aussi tes anciennes convocations (mêmes réglages qu\'à l\'étape précédente) : l\'app reconstruit chaque saison, tes kilomètres et tes indemnités.") +
+        it("Tes fiches d\'observation", "Dans Progression, dépose les PDF de tes observations : note, grille critère par critère, plan de développement.") +
+        it("Ton e-Licence", "Dans Mon espace → e-Licence : photo ou PDF, affichée en plein écran à la table de marque.") +
+        it("Ton parcours", "Dans Progression → Ajouter un niveau : tes niveaux et examens passés (date, niveau, résultat).") +
+        '<p class="rt-help">Sur l\'accueil, la carte « Complète ton historique » t\'emmène à chaque endroit en un clic.</p>';
     } else {
       b.innerHTML = '<h2>Notifications</h2><p>Sois prévenu d\'une nouvelle désignation, d\'un paiement sur place ou d\'une échéance dépassée.</p>' +
         '<button type="button" class="rt-btn" id="onbPush">Activer les notifications</button><p class="rt-help" id="onbPushEtat"></p>' +
@@ -2011,7 +2046,93 @@ const TOUR = {
   }
 };
 
-function startApp() {
+/* b77 — double authentification FACULTATIVE pour tous (TOTP : Google Authenticator, 1Password, Authy, trousseau iCloud).
+   Activée → chaque nouvelle connexion demande le code à 6 chiffres. Côté serveur, une politique RLS restrictive refuse
+   toute donnée à une session « mot de passe seul » (aal1) si l'arbitre a activé la 2FA ; le moteur fait de même. */
+const MFA_U = {
+  async api(chemin, methode, corps) {
+    const t = await SB.token();
+    const r = await SB._fetch(SB_URL + "/auth/v1/" + chemin, { method: methode || "GET", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: corps ? JSON.stringify(corps) : undefined }, 15000);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.msg || j.error_description || j.message || ("Erreur " + r.status));
+    return j;
+  },
+  aal() { try { const s = SB.session; const b = s.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(atob(b + "===".slice((b.length + 3) % 4))).aal || "aal1"; } catch (e) { return "aal1"; } },
+  async facteurs() { const u = await this.api("user"); return (u.factors || []).filter(f => f.factor_type === "totp"); },
+  async verifier(idFacteur, code) {
+    const ch = await this.api("factors/" + idFacteur + "/challenge", "POST", {});
+    const s = await this.api("factors/" + idFacteur + "/verify", "POST", { challenge_id: ch.id, code });
+    if (s && s.access_token) SB.save(s);
+    return s;
+  },
+  /* Porte d'entrée : true = on peut démarrer. Session aal1 + facteur vérifié → on demande le code. */
+  async porte() {
+    if (this.aal() === "aal2") return true;
+    let ok = [];
+    try { ok = (await Promise.race([this.facteurs(), new Promise((_, ko) => setTimeout(() => ko(new Error("délai")), 6000))])).filter(f => f.status === "verified"); }
+    catch (e) { return true; }   // réseau lent : on démarre ; le serveur reste protégé
+    if (!ok.length) return true;
+    return new Promise(res => this.demander(ok[0].id, res));
+  },
+  demander(idFacteur, fini) {
+    const d = document.createElement("div"); d.id = "rtMfa"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = '<form class="rt-consent-box" id="rtMfaForm" autocomplete="off"><h2>Code de sécurité</h2><p>La double authentification est activée sur ton compte. Saisis le code à 6 chiffres de ton application d\'authentification.</p>' +
+      '<div class="rt-field"><label for="rtMfaCode">Code</label><input id="rtMfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div>' +
+      '<p class="rt-consent-msg" id="rtMfaMsg"></p><div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="rtMfaQuit">Se déconnecter</button><button type="submit" class="rt-btn">Valider</button></div></form>';
+    document.body.appendChild(d);
+    const champ = document.getElementById("rtMfaCode"); setTimeout(() => champ.focus(), 50);
+    document.getElementById("rtMfaQuit").addEventListener("click", () => logout());
+    document.getElementById("rtMfaForm").addEventListener("submit", async ev => {
+      ev.preventDefault(); const m = document.getElementById("rtMfaMsg"); const code = champ.value.replace(/\D/g, "");
+      if (code.length !== 6) { m.textContent = "6 chiffres attendus."; return; }
+      m.textContent = "Vérification…";
+      try { await this.verifier(idFacteur, code); d.remove(); fini(true); }
+      catch (e) { m.textContent = /invalid|expired/i.test(e.message) ? "Code incorrect ou expiré : réessaie avec le code affiché maintenant." : e.message; champ.value = ""; champ.focus(); }
+    });
+  },
+  /* Bloc « Double authentification » de Mon profil. */
+  async rendreProfil(z) {
+    if (!z) return;
+    z.innerHTML = '<p class="rt-help">Chargement…</p>';
+    let fs = []; try { fs = await this.facteurs(); } catch (e) { z.innerHTML = '<p class="rt-help">' + esc(e.message) + "</p>"; return; }
+    const ok = fs.filter(f => f.status === "verified");
+    if (ok.length) {
+      z.innerHTML = '<p class="rt-help"><strong>Activée ✓</strong> · un code à 6 chiffres est demandé à chaque nouvelle connexion.</p>' +
+        '<div class="rt-field"><label for="mfaOffCode">Pour la désactiver, saisis un code</label><input id="mfaOffCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div><button type="button" class="rt-btn-ghost" id="mfaOff">Désactiver</button><p class="rt-help" id="mfaMsg"></p>';
+      document.getElementById("mfaOff").addEventListener("click", async () => {
+        const m = document.getElementById("mfaMsg"), code = document.getElementById("mfaOffCode").value.replace(/\D/g, "");
+        if (code.length !== 6) { m.textContent = "6 chiffres attendus."; return; }
+        try { if (this.aal() !== "aal2") await this.verifier(ok[0].id, code); else await this.verifier(ok[0].id, code); await this.api("factors/" + ok[0].id, "DELETE"); m.textContent = "Désactivée."; setTimeout(() => this.rendreProfil(z), 800); }
+        catch (e) { m.textContent = e.message; }
+      });
+      return;
+    }
+    z.innerHTML = '<p class="rt-help">Facultatif, recommandé. En plus du mot de passe, un code à 6 chiffres généré par une application (Google Authenticator, 1Password, Authy, trousseau iCloud) : même avec ton mot de passe, personne d\'autre ne peut ouvrir ton compte.</p><button type="button" class="rt-btn" id="mfaOn">Activer la double authentification</button><div id="mfaEnr"></div>';
+    document.getElementById("mfaOn").addEventListener("click", async () => {
+      const e2 = document.getElementById("mfaEnr"); e2.innerHTML = '<p class="rt-help">Préparation…</p>';
+      try {
+        for (const f of fs.filter(f => f.status !== "verified")) { try { await this.api("factors/" + f.id, "DELETE"); } catch (x) {} }
+        const f = await this.api("factors", "POST", { factor_type: "totp", friendly_name: "Referee Tracker " + new Date().toISOString().slice(0, 10) });
+        let src = ""; try { const q = qrcode(0, "M"); q.addData(f.totp.uri); q.make(); src = q.createDataURL(5, 10); } catch (x) {}
+        e2.innerHTML = '<ol class="rt-help"><li>Ouvre ton application d\'authentification et scanne ce QR code' + (/iPhone|iPad|Android/i.test(navigator.userAgent) ? " (ou touche « Copier la clé » et colle-la dans l'application)" : "") + ".</li><li>Saisis le code à 6 chiffres affiché.</li></ol>" +
+          (src ? '<img alt="QR code de double authentification" width="200" height="200" style="background:#fff;padding:8px;border-radius:12px" src="' + src + '">' : "") +
+          '<p class="rt-help">Clé : <code id="mfaCle" style="user-select:all;word-break:break-all">' + esc(f.totp.secret) + '</code> <button type="button" class="rt-btn-ghost" id="mfaCopier">Copier la clé</button></p>' +
+          '<div class="rt-field"><label for="mfaCode">Code à 6 chiffres</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div><button type="button" class="rt-btn" id="mfaValider">Valider et activer</button><p class="rt-help" id="mfaMsg2"></p>';
+        document.getElementById("mfaCopier").addEventListener("click", () => { try { navigator.clipboard.writeText(f.totp.secret); document.getElementById("mfaCopier").textContent = "Copiée ✓"; } catch (x) {} });
+        document.getElementById("mfaValider").addEventListener("click", async () => {
+          const m = document.getElementById("mfaMsg2"), code = document.getElementById("mfaCode").value.replace(/\D/g, "");
+          if (code.length !== 6) { m.textContent = "6 chiffres attendus."; return; }
+          try { await this.verifier(f.id, code); m.textContent = "Double authentification activée ✓"; setTimeout(() => this.rendreProfil(z), 900); }
+          catch (x) { m.textContent = /invalid|expired/i.test(x.message) ? "Code incorrect : vérifie l'heure du téléphone et réessaie." : x.message; }
+        });
+      } catch (x) { e2.innerHTML = '<p class="rt-help">' + esc(x.message) + "</p>"; }
+    });
+  }
+};
+
+async function startApp() {
+  marquerActivite_(true);   // b77
+  if (!(await MFA_U.porte())) return;   // b77 : code 2FA si activée
   try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
   usageInstaller_();   // b71
@@ -2061,6 +2182,34 @@ function startApp() {
     .catch(() => { /* jsonp a déjà réaffiché l'écran de connexion si besoin */ });
 }
 
+/* b77 — session mémorisée, mais redemandée après 5 jours sans utilisation (téléphone perdu, ordinateur partagé).
+   L'horodatage est mis à jour à chaque ouverture et à chaque retour sur l'app (au plus une fois par minute). */
+const INACTIVITE_MAX_MS_ = 5 * 24 * 3600 * 1000, CLE_ACTIVITE_ = "rt_derniere_activite";
+function inactifTropLongtemps_() {
+  let t = 0; try { t = Number(localStorage.getItem(CLE_ACTIVITE_) || 0); } catch (e) {}
+  if (!t) { marquerActivite_(true); return false; }   // première fois après la mise à jour : on ne déconnecte personne
+  return Date.now() - t > INACTIVITE_MAX_MS_;
+}
+/* Déconnexion « légère » : la session est révoquée, mais les notifications de l'appareil restent actives
+   (l'arbitre continue d'être prévenu d'une désignation même s'il n'ouvre pas l'app). */
+function deconnexionInactivite_() {
+  const s = SB.session; SB.clear();
+  try { Session.clear(); } catch (e) {}
+  try { fetch(SB_URL + "/auth/v1/logout?scope=local", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (s && s.access_token) } }).catch(() => {}); } catch (e) {}
+  try { localStorage.removeItem(CLE_ACTIVITE_); } catch (e) {}
+  showLogin("Pour ta sécurité, reconnecte-toi : tu n'as pas ouvert l'app depuis plus de 5 jours.");
+}
+let _activiteT_ = 0;
+function marquerActivite_(force) {
+  const n = Date.now(); if (!force && n - _activiteT_ < 60000) return; _activiteT_ = n;
+  try { if (SB.actif) localStorage.setItem(CLE_ACTIVITE_, String(n)); } catch (e) {}
+}
+["click", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, () => marquerActivite_(false), { passive: true }));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (SB.actif && inactifTropLongtemps_()) { deconnexionInactivite_(); return; }
+  marquerActivite_(false);
+});
 document.addEventListener("DOMContentLoaded", () => {
   buildLoginOverlay();
   let arrivee = null;
@@ -2071,8 +2220,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   // b57 (F10) — invitation : le mot de passe est OBLIGATOIREMENT choisi avant d'entrer dans l'app.
   else if (arrivee && (arrivee.type === "recovery" || arrivee.type === "invite" || arrivee.type === "signup")) showRecovery(arrivee.type);
+  else if (SB.actif && inactifTropLongtemps_()) deconnexionInactivite_();   // b77 — 5 jours sans ouvrir l'app : mot de passe redemandé
   else if (SB.actif) startApp();
   else showLogin("");
+  if (/[?&]desabonner=1\b/.test(location.search)) setTimeout(() => { try { if (SB.actif) showProfile(); } catch (e) {} }, 2500);   // b77 — lien « se désabonner »
 
   const btn = document.getElementById("rtProfileBtn");
   if (btn) btn.addEventListener("click", showProfile);

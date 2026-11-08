@@ -1720,9 +1720,42 @@ function renderAccueil() {
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
+    <div id="accHisto"></div>
   `;
+  try { accHistorique_(root.querySelector("#accHisto")); } catch (e) { /* carte facultative */ }
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
+}
+
+
+/* b77 — « Complète ton historique » : sans historique, pas de progression ni de comparaison.
+   4 points, chacun avec son action directe ; la carte disparaît quand tout est fait ou si on la masque. */
+const HISTO_CLE_ = "rt-histo-masque";
+let _histoCompte_ = null;
+async function histoCompter_() {
+  if (_histoCompte_) return _histoCompte_;
+  const n = async t => { try { const l = await SB.get(t + "?select=user_id&limit=1"); return (l || []).length; } catch (e) { return 0; } };
+  const [ev, el, ni] = await Promise.all([n("evaluations"), n("elicence"), n("niveaux")]);
+  _histoCompte_ = { ev, el, ni }; return _histoCompte_;
+}
+function accHistorique_(z) {
+  if (!z) return;
+  try { if (localStorage.getItem(HISTO_CLE_)) return; } catch (e) {}
+  const saisons = [...new Set((state.allRows || []).map(r => r._season).filter(Boolean))].sort();
+  const passees = saisons.length > 1;
+  histoCompter_().then(c => {
+    const pts = [
+      { ok: passees, t: "Tes saisons passées", d: passees ? saisons.length + " saisons dans l'app" : "Transfère aussi tes anciennes convocations : l'app reconstruit tes saisons, tes kilomètres et tes comparaisons.", go: "", lib: "" },
+      { ok: c.ev > 0, t: "Tes fiches d'observation", d: c.ev > 0 ? c.ev + " fiche(s) analysée(s)" : "Dépose les PDF de tes observations : notes, grille critère par critère et plan de développement.", go: "progression", lib: "Déposer mes fiches" },
+      { ok: c.el > 0, t: "Ton e-Licence", d: c.el > 0 ? "Enregistrée" : "Photo ou PDF de ta licence, affichée en plein écran à la table de marque.", go: "elicence", lib: "Ajouter" },
+      { ok: c.ni > 0, t: "Ton parcours d'arbitre", d: c.ni > 0 ? "Niveaux renseignés" : "Tes niveaux et examens passés (date, niveau, résultat) : la base de ta progression.", go: "progression", lib: "Ajouter un niveau" }
+    ];
+    const faits = pts.filter(p => p.ok).length;
+    if (faits === pts.length) { z.innerHTML = ""; return; }
+    z.innerHTML = `<section class="acc-bloc acc-histo"><div class="acc-histo-h"><h2 class="section-title">Complète ton historique <span class="count">${faits} / ${pts.length}</span></h2><button type="button" class="small-btn secondary" id="accHistoMasquer">Masquer</button></div>
+      <div class="acc-histo-g">${pts.map(p => `<div class="acc-histo-i${p.ok ? " is-ok" : ""}"><span class="acc-histo-c">${p.ok ? "✓" : ""}</span><div><strong>${escapeHtml(p.t)}</strong><span class="card-sub">${escapeHtml(p.d)}</span>${!p.ok && p.go ? `<button type="button" class="small-btn" data-tab-go="${p.go}">${escapeHtml(p.lib)} →</button>` : ""}</div></div>`).join("")}</div></section>`;
+    const m = z.querySelector("#accHistoMasquer"); if (m) m.addEventListener("click", () => { try { localStorage.setItem(HISTO_CLE_, "1"); } catch (e) {} z.innerHTML = ""; });
+  });
 }
 
 /* ---------------- regroupement par week-end ----------------

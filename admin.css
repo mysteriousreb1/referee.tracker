@@ -338,3 +338,9 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .afaire-l .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .afaire-l .dot.red { background: #dc2626; } .afaire-l .dot.orange { background: #f59e0b; } .afaire-l .dot.gold { background: #F5B400; }
 .afaire-go { color: var(--muted); font-weight: 800; }
+/* b77 — WhatsApp */
+.wa-btn { background: #25D366 !important; border-color: #25D366 !important; color: #fff !important; font-weight: 800; }
+.wa-liste { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; display: grid; gap: 6px; }
+.wa-l { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.wa-l:first-of-type { border-top: 0; }
+.wa-l .sp { flex: 1; }
