@@ -3594,7 +3594,8 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
 #reglement.active { display: flex; flex-direction: column; min-height: calc(100dvh - 120px); }
 .regl-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; max-width: 900px; width: 100%; margin: 0 auto; }
 .regl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
-.regl-head .section-title { margin: 0; }
+.regl-head .section-title { margin: 0; white-space: nowrap; }
+.regl-head-t { min-width: 0; }
 .regl-head-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .regl-head-act { display: flex; gap: 8px; flex: 0 0 auto; }
 #reglement .regl-chat { flex: 1 1 auto; max-height: none; overflow: visible; margin: 0; padding: 10px 2px 8px; gap: 16px; }
