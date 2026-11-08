@@ -21,7 +21,7 @@ const RT_STATS = (function () {
   function lirePrixGel_(cle) { const v = Number((ENV.prixGel || {})[cle]); return (v > 0.5 && v < 4) ? v : 0; }
   function gelerPrix_() {}            // le gel est fait côté serveur
   var START_COORDS = { lat: 0, lon: 0 }, START_ADDRESS = "";
-  var VEHICLES = [{ name: "Peugeot 108", consoL100: 6.58, cv: 4, depuis: "01/01/2000" }, { name: "Audi A3 35 TFSI", consoL100: 6.0, cv: 8, depuis: "01/08/2026" }];
+  var VEHICLES = [{ name: "Véhicule", consoL100: 6.0, cv: 5, depuis: "01/01/2000" }];   // b74 — repli neutre : chaque arbitre a ses véhicules dans Mon profil
   function _syncConfig_() {
     const c = CONFIG; if (!c) return;
     if (c.tarifs) { if (c.tarifs.indemnite_km) RATE_PER_KM_FFBB = c.tarifs.indemnite_km; if (c.tarifs.usure_km) COUT_USURE_PAR_KM = c.tarifs.usure_km; if (c.tarifs.carburant_defaut) FUEL_PRICE_PER_L = c.tarifs.carburant_defaut; }

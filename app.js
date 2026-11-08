@@ -7361,7 +7361,9 @@ function consoPour_(date) {
     l.forEach(x => { const d = isoDe(x.depuis); const c = Number(x.consoL100 || x.conso); if (d && d <= iso && c > 0 && c < 30 && d >= vDe) { v = x; vDe = d; } });
     if (v) return Number(v.consoL100 || v.conso);
   }
-  return (date && date >= new Date(2026, 7, 1)) ? 6.0 : 6.58;
+  // b74 — repli neutre (plus les véhicules du fondateur) : 1er véhicule du profil, sinon 6 L/100.
+  const v0 = Array.isArray(l) && l.length ? Number(l[0].consoL100 || l[0].conso) : 0;
+  return v0 > 0 && v0 < 30 ? v0 : 6.0;
 }
 function realFuelCostClient(km, date) {
   const k = Number(km) || 0;
@@ -7729,7 +7731,7 @@ document.addEventListener("click", function (e) {
    2. RYTHME DE LA SAISON PASSÉE : nombre de matchs que tu avais arbitrés
       sur la même période restante l'an dernier.
    3. RYTHME ACTUEL : ratio (matchs de cette saison / matchs de l'an dernier
-      à la même date), lissé et borné [0,6 ; 1,6] pour éviter les emballements.
+      à la même date), lissé et borné [0,7 ; 1,4] pour éviter les emballements.
    Matchs attendus d'ici la fin = max(calendrier connu, restant N-1 x ratio).
    Bas = calendrier connu seul ; haut = estimation centrale + 25 %.
    Les matchs "à prévoir" sont valorisés à la moyenne de la saison en cours. */
@@ -7742,8 +7744,13 @@ function saisonDebutAnnee_() {
 }
 function entretienKmClient_(date) {
   const l = state.couts && state.couts.entretien;
-  // Avant les périodes saisies : même repli que le serveur (108 = 0,12 €/km, Audi = 0,1875).
-  const repli = (date && date < new Date(2026, 7, 1)) ? 0.12 : 0.1875;
+  // b74 — même repli que le serveur : barème du véhicule en service (108 = 0,12 €/km, Audi = 0,1875),
+  // sinon le coût d'usure du profil, sinon 0,15 €/km. Plus de valeurs du fondateur pour les autres arbitres.
+  const PAR_VEH = { "Audi A3 35 TFSI": 0.1875, "Peugeot 108": 0.12 };
+  let veh = "";
+  if (date && Array.isArray(state.vehicles)) { const iso0 = date.toISOString().slice(0, 10); const isoDe = d => { d = String(d || ""); let m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0]; m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; }; state.vehicles.forEach(x => { const dd = isoDe(x.depuis); if (dd && dd <= iso0) veh = x.name || x.nom || veh; }); }
+  const usure = Number(((typeof Profil !== "undefined" && Profil.config && Profil.config.tarifs) || {}).usure_km);
+  const repli = PAR_VEH[veh] !== undefined ? PAR_VEH[veh] : (usure > 0 && usure < 2 ? usure : 0.15);
   if (!date || !l || !l.length) return repli;
   const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
   let r = repli;
@@ -10249,7 +10256,7 @@ function attachPersoListeners_(root) {
 
 /* ======================= b55 — CLASSEMENT DES 2 ÉQUIPES =======================
    Source : résultats officiels FFBB de la saison (table Supabase ffbb_rencontres, alimentée
-   lundi et jeudi par le collecteur du Mac via l'API publique). Le classement de la poule est
+   lundi et jeudi par une tâche GitHub automatique via l'API publique — b75). Le classement de la poule est
    recalculé ici, sans rien demander au serveur : victoire 2 pts, défaite 1 pt, forfait 0 pt
    (20-0) ; départage : points, puis différence, puis points marqués.
    La poule = l'ensemble des équipes reliées par des rencontres dans la même compétition. */
