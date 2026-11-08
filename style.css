@@ -2736,12 +2736,12 @@ button.acc-ligne:active { transform: scale(.995); }
 .export-check{display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer}.export-check input{width:auto}
 
 /* b11 — messages jaunes réduits : seul le chargement (.status-bar) reste jaune */
-.stat-note { background: var(--surface-2); border: 1px solid var(--border, rgba(128,128,128,.25)); color: var(--text); }
+.stat-note { background: var(--surface-2); border: 1px solid var(--line, rgba(128,128,128,.25)); color: var(--text); }
 .insight.warn { background: var(--surface-2); color: var(--text); border-left-color: var(--orange); }
 :root[data-theme="dark"] .insight.warn { color: var(--text); }
 .rtm .stat-note { background: transparent; border: 0; padding: 0; margin: 8px 0 0; }
 .rtm .stat-note p { margin: 0 0 10px; line-height: 1.5; }
-.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border, rgba(128,128,128,.4)); background: transparent; color: var(--text-soft, var(--text)); cursor: pointer; vertical-align: middle; }
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line, rgba(128,128,128,.4)); background: transparent; color: var(--muted, var(--text)); cursor: pointer; vertical-align: middle; }
 .info-btn:hover { background: var(--surface-2); }
 @media (max-width: 640px) { .toolbar { grid-template-columns: 1fr !important; } .toolbar .field { min-width: 0; } .toolbar select, .toolbar input { max-width: 100%; } }
 
@@ -3961,9 +3961,9 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 
 /* b58 — consentement CGU / confidentialité */
 .rt-consent { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.rt-consent-box { background: var(--card, #fff); color: var(--text, #111); max-width: 520px; width: 100%; border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); max-height: 90vh; overflow: auto; }
+.rt-consent-box { background: var(--surface, #fff); color: var(--text, #111); max-width: 520px; width: 100%; border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); max-height: 90vh; overflow: auto; }
 .rt-consent-box h2 { margin: 0 0 8px; font-size: 1.25rem; }
-.rt-consent-box a { color: var(--accent, #c62828); }
+.rt-consent-box a { color: var(--red, #c62828); }
 .rt-consent-chk { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; font-weight: 600; }
 .rt-consent-chk input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
 .rt-consent-msg { color: #c62828; min-height: 1.2em; margin: 4px 0; }
@@ -3973,9 +3973,9 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-onb h2 { margin: 6px 0 6px; }
 .rt-onb-prog { display: flex; gap: 6px; margin-bottom: 10px; }
 .rt-onb-prog span { flex: 1; height: 4px; border-radius: 2px; background: rgba(127,127,127,.25); }
-.rt-onb-prog span.on { background: var(--accent, #c62828); }
+.rt-onb-prog span.on { background: var(--red, #c62828); }
 .rt-onb-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
-.rt-chip { border: 1px solid var(--accent, #c62828); background: transparent; color: inherit; border-radius: 999px; padding: 8px 12px; font: inherit; min-height: 44px; }
+.rt-chip { border: 1px solid var(--red, #c62828); background: transparent; color: inherit; border-radius: 999px; padding: 8px 12px; font: inherit; min-height: 44px; }
 .rt-onb-adr { font-size: 1.1rem; font-weight: 700; word-break: break-all; padding: 10px; border-radius: 10px; background: rgba(127,127,127,.12); }
 .rt-onb select { width: 100%; min-height: 44px; font-size: 16px; }
 .rt-onb details { margin: 6px 0; }
@@ -4325,7 +4325,7 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .comp-logo--3x3 { background: linear-gradient(135deg, #b45309, #92400e); color: #fff; }
 
 /* b71 — relecture IA des rapports */
-.rapp-ia { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--border, rgba(127,127,127,.35)); border-radius: 12px; }
+.rapp-ia { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--line, rgba(127,127,127,.35)); border-radius: 12px; }
 .rapp-ia-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .rapp-ia-prop { margin-top: 10px; display: grid; gap: 10px; }
 .rapp-ia-bloc { padding: 10px 12px; border-radius: 10px; background: rgba(127,127,127,.08); }
@@ -4382,3 +4382,15 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .cc-auto { margin-top: 22px; padding-top: 10px; border-top: 1px dashed rgba(127,127,127,.3); }
 .cc-auto-sub { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; margin-top: 2px; }
 .cc-auto-card { border-style: dashed; }
+
+/* ===== b72 (08/11/2026) — contrastes (thème sombre) ===== */
+/* Badge de niveau or (championnat de France) : texte foncé partout, pas seulement dans les cartes de match. */
+.niv-france .badge-niveau, .badge-niveau.niv-france { color: #3E2D00; }
+.niv-autre .badge-niveau, .badge-niveau.niv-autre { color: #445069; background: #EAEEF5; box-shadow: none; }
+/* Badge 3x3 (rouge vif en sombre) : rouge plus profond pour garder le texte blanc lisible. */
+:root[data-theme="dark"] .badge-niveau { text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+:root[data-theme="dark"] .niv-3x3 .badge-niveau, :root[data-theme="dark"] .badge-niveau.niv-3x3 { background: #C8102E; }
+/* Compteurs et logos texte : bleu marine illisible sur fond sombre. */
+:root[data-theme="dark"] .past-summary .count,
+:root[data-theme="dark"] .section-title .count { color: #A9C4F5; }
+:root[data-theme="dark"] .comp-logo--txt { color: #A9C4F5; }
