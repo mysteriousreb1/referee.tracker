@@ -3967,6 +3967,9 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-consent-box a { color: var(--red, #c62828); }
 .rt-consent-chk { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; font-weight: 600; }
 .rt-consent-chk input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
+.rt-consent-comm { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 10px 14px 4px; margin: 12px 0; }
+.rt-consent-comm p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+.rt-consent-comm .rt-consent-chk { margin: 8px 0 6px; }
 .rt-consent-msg { color: #c62828; min-height: 1.2em; margin: 4px 0; }
 .rt-consent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 

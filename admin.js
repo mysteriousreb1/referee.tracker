@@ -329,7 +329,7 @@
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
         inp("pCd", "Zone CD", z.cd, "CD67") + inp("pLigue", "Ligue", z.ligue, "LRGEB") + '<label class="f">Championnat de France<span style="padding-top:8px">' + chk("pCf", "Oui", z.cf) + "</span></label>" +
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
-        '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "rapprochement", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, k, fn[k])).join("") + "</div>" +
+        '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, k, fn[k])).join("") + "</div>" +
         '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></div>' +
         (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
@@ -369,7 +369,7 @@
       const api = v("pApi"), recep = v("pRecep").toLowerCase();
       if (api && !API_RE.test(api)) { msg.textContent = "URL du moteur invalide (https://script.google.com/macros/s/…/exec)"; msg.className = "err"; return; }
       if (recep && !RECEP_RE.test(recep)) { msg.textContent = "Adresse de réception invalide (…@referee-tracker.fr)"; msg.className = "err"; return; }
-      const fonctions = {}; ["ia", "rapprochement", "evaluations", "elicence", "classements"].forEach((k) => (fonctions[k] = body.querySelector("#fn_" + k).checked));
+      const fonctions = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (fonctions[k] = body.querySelector("#fn_" + k).checked));
       msg.textContent = "Enregistrement…"; msg.className = "mut";
       try {
         await admin("profil.set", { user_id: userId, prenom: v("pPrenom"), nom_ffbb: v("pNom"), email_ffbb: v("pEmailF"), telephone: v("pTel"), niveau: v("pNiveau"), statut: v("pStatut"), zones: { cd: v("pCd"), ligue: v("pLigue"), cf: body.querySelector("#pCf").checked }, adresse_reception: recep, api_url: api, fonctions });
@@ -497,8 +497,8 @@
         F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";
         lireForm = () => ({ prix_e10: Number(F.querySelector("#cE10").value) || 0 });
       } else if (cfgCle === "pub.fonctions_defaut") {
-        F.innerHTML = '<div class="row">' + ["ia", "rapprochement", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, k, v[k])).join("") + "</div>";
-        lireForm = () => { const o = {}; ["ia", "rapprochement", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
+        F.innerHTML = '<div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, k, v[k])).join("") + "</div>";
+        lireForm = () => { const o = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
       } else if (cfgCle === "pub.ia") {
         // b74 — même structure que le moteur (Ia.gs) : plafond en $ par moteur et par mois, part de chaque fonction en % (total ≤ 100).
         F.innerHTML = '<div class="form-grid">' + num("iaMax", "Plafond mensuel par arbitre (USD)", v.plafond_usd ?? 30) + "</div>" + kv("iaB", "Part du plafond par fonction (%) — convocations, evaluations, reglement, rapports, autre", v.budget_pct, "Fonction") + '<p class="mut tiny">Les convocations ne sont jamais bloquées, même au-delà de leur part.</p>';
@@ -592,7 +592,7 @@
       '<label class="f">Modèle<select id="msModele">' + MODELES_MSG.map((m, i) => '<option value="' + i + '">' + esc(m[1] && i ? m[0] : m[1]) + "</option>").join("") + "</select></label>" +
       '<label class="f">Sujet<input id="msSujet" maxlength="120" placeholder="Ex. : Nouvelle version de l\'application"></label>' +
       '<label class="f">Message<textarea id="msTxt" rows="9" style="font-family:inherit" placeholder="Commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
-      '<label class="f">Type<select id="msType"><option value="service">Information de service (nouvelle version, maintenance, compte) · tous les destinataires</option><option value="promo">Promotion / nouveautés commerciales · seulement ceux qui ont accepté</option></select></label>' +
+      '<label class="f">Type<select id="msType"><option value="service">Information de service (nouvelle version, maintenance, compte) · tous les destinataires</option><option value="promo">Promotion / nouveautés commerciales · sauf ceux qui s\'y sont opposés</option></select></label>' +
       '<label class="f">Canal<select id="msCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option><option value="wa">WhatsApp (un clic par arbitre)</option></select></label>' +
       '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
@@ -610,7 +610,7 @@
     const majWa = () => { const z = $("msWa"), wa = $("msCanal").value === "wa"; z.hidden = !wa; $("msEnv").hidden = wa; if (!wa) return;
       const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(); let envoyes = {}; try { envoyes = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); } catch (e) {}
       const d = destinataires(), ok = d.filter((a) => comm(a).whatsapp === true && waNum((a.profil || {}).telephone)), exclus = d.length - ok.length;
-      z.innerHTML = '<p class="mut tiny">WhatsApp ne permet pas l\'envoi groupé depuis un site : chaque bouton ouvre la conversation avec le message déjà écrit, tu n\'as plus qu\'à appuyer sur Envoyer. Seuls les arbitres qui ont accepté WhatsApp et donné un numéro apparaissent' + (exclus ? " (" + exclus + " exclu(s) : pas d'accord ou pas de numéro)" : "") + ".</p>" +
+      z.innerHTML = '<p class="mut tiny">WhatsApp ne permet pas l\'envoi groupé depuis un site : chaque bouton ouvre la conversation avec le message déjà écrit, tu n\'as plus qu\'à appuyer sur Envoyer. Seuls les arbitres qui ne se sont pas opposés à WhatsApp et dont le numéro est connu apparaissent' + (exclus ? " (" + exclus + " exclu(s) : opposition ou pas de numéro)" : "") + ".</p>" +
         (ok.length ? ok.map((a) => { const p = a.profil || {}, k = a.id + "|" + sujet; const msg = "Bonjour " + (p.prenom || "") + ",\n\n" + (sujet ? "*" + sujet + "*\n\n" : "") + texte + ($("msType").value === "promo" ? "\n\n(Réponds STOP pour ne plus recevoir ces messages.)" : "") + "\n\n— Referee Tracker";
           return '<div class="wa-l"><strong>' + esc(nomDe(p, a.email)) + '</strong><span class="mut tiny">' + esc(p.telephone || "") + '</span><span class="sp"></span>' + (envoyes[k] ? badge("ouvert", "green") : "") + '<a class="btn sm wa-btn" target="_blank" rel="noopener" data-k="' + esc(k) + '" href="' + esc(waLien(p.telephone, msg)) + '">WhatsApp</a></div>'; }).join("") : '<p class="vide">Aucun destinataire WhatsApp.</p>');
       z.querySelectorAll(".wa-btn").forEach((b) => b.addEventListener("click", () => { try { const e = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); e[b.dataset.k] = Date.now(); localStorage.setItem("rt-wa-envoyes", JSON.stringify(e)); } catch (x) {} setTimeout(majWa, 300); })); };
@@ -619,7 +619,7 @@
       const cible = $("msCible").value, sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(), canal = $("msCanal").value, type = $("msType").value;
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
       const lib = $("msCible").selectedOptions[0].textContent;
-      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong>" + (type === "promo" ? " (seulement ceux qui ont accepté les offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
+      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong>" + (type === "promo" ? " (sauf ceux qui se sont opposés aux offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
       try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type }); toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
     });
     $("msHist").addEventListener("click", async () => {

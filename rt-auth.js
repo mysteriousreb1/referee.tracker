@@ -1226,10 +1226,9 @@ function renderProfile() {
       </details>
       <details class="rt-details" id="pfCommD">
         <summary>Communications (nouveautés, offres)</summary>
-        <p class="rt-help">Les informations de service (nouvelle version, maintenance, ton compte) te sont toujours envoyées. Le reste, c'est toi qui choisis.</p>
-        <label class="rt-check"><input type="checkbox" id="pfCommOffres"> Recevoir par e-mail les nouveautés et offres (au plus 2 par mois)</label>
-        <label class="rt-check"><input type="checkbox" id="pfCommWa"> Les recevoir aussi par WhatsApp</label>
-        <div class="rt-field"><label for="pfCommTel">Numéro WhatsApp</label><input id="pfCommTel" type="tel" inputmode="tel" autocomplete="tel" placeholder="06 12 34 56 78"></div>
+        <p class="rt-help">Les informations de service (nouvelle version, maintenance, ton compte) te sont toujours envoyées. Pour les nouveautés et offres (au plus 2 par mois), décoche ce que tu ne veux plus recevoir.</p>
+        <label class="rt-check"><input type="checkbox" id="pfCommOffres"> Nouveautés et offres par e-mail</label>
+        <label class="rt-check"><input type="checkbox" id="pfCommWa"> Nouveautés et offres par WhatsApp <span class="rt-help" id="pfCommTel"></span></label>
         <button type="button" class="rt-btn" id="pfCommSave">Enregistrer</button> <span class="rt-help" id="pfCommMsg"></span>
       </details>
       <details class="rt-details" id="pfMfaD">
@@ -1260,13 +1259,12 @@ function renderProfile() {
   // b77 — préférences de communication (opt-in), lues et écrites par l'Edge « compte ».
   { const dc = document.getElementById("pfCommD");
     if (dc) {
-      const charger = async () => { try { const j = await compteApi({ action: "communications.lire" }); const c = j.communications || {}; document.getElementById("pfCommOffres").checked = c.offres === true; document.getElementById("pfCommWa").checked = c.whatsapp === true; document.getElementById("pfCommTel").value = j.telephone || ""; } catch (e) { document.getElementById("pfCommMsg").textContent = e.message; } };
+      const charger = async () => { try { const j = await compteApi({ action: "communications.lire" }); const c = j.communications || {}; document.getElementById("pfCommOffres").checked = c.offres === true; document.getElementById("pfCommWa").checked = c.whatsapp === true; const wa = document.getElementById("pfCommWa"), tl = document.getElementById("pfCommTel"); tl.textContent = j.telephone ? "(" + j.telephone + ")" : "(aucun numéro sur ton inscription)"; wa.disabled = !j.telephone; if (!j.telephone) wa.checked = false; } catch (e) { document.getElementById("pfCommMsg").textContent = e.message; } };
       dc.addEventListener("toggle", () => { if (dc.open) charger(); });
       document.getElementById("pfCommSave").addEventListener("click", async () => {
         const m = document.getElementById("pfCommMsg"); m.textContent = "Enregistrement…";
-        const tel = document.getElementById("pfCommTel").value.trim(), wa = document.getElementById("pfCommWa").checked;
-        if (wa && !tel) { m.textContent = "Indique ton numéro pour WhatsApp."; return; }
-        try { await compteApi({ action: "communications", offres: document.getElementById("pfCommOffres").checked, whatsapp: wa, telephone: tel }); m.textContent = "Enregistré ✓"; }
+        const wa = document.getElementById("pfCommWa").checked;   // b78d : le numéro est celui de l'inscription, jamais redemandé
+        try { await compteApi({ action: "communications", offres: document.getElementById("pfCommOffres").checked, whatsapp: wa }); m.textContent = "Enregistré ✓"; }
         catch (e) { m.textContent = e.message === "TELEPHONE" ? "Numéro invalide (ex. 06 12 34 56 78)." : e.message; }
       });
       if (/[?&]desabonner=1\b/.test(location.search)) { dc.open = true; setTimeout(() => dc.scrollIntoView({ block: "center" }), 300); }
@@ -1760,7 +1758,16 @@ function pushResyncInstaller_() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
 }
 /* b58 — CGU + politique de confidentialité acceptées avant tout usage (preuve en base, RLS). */
-const RT_CGU_VERSION = "2026-11-07";   // b70 : CGU v3 + politique v3 → ré-acceptation demandée à tous
+const RT_CGU_VERSION = "2026-11-08";   // b78d : politique v4 (prospection avec opposition, plus de relevé bancaire)
+// ancien :   // b70 : CGU v3 + politique v3 → ré-acceptation demandée à tous
+/* b78d — appel à l'Edge « compte » utilisable hors de Mon profil (écran d'acceptation). */
+async function rtCompteApi_(corps) {
+  const t = await SB.token();
+  const r = await fetch(SB_URL + "/functions/v1/compte", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
 const CONSENT = {
   _ok: false,
   async verifier() {
@@ -1782,11 +1789,13 @@ const CONSENT = {
     d.setAttribute("aria-modal", "true");
     d.innerHTML = `<div class="rt-consent-box">
       <h2>Bienvenue sur Referee Tracker</h2>
-      <p>Les conditions et la politique de confidentialité ont été mises à jour (7 novembre 2026). Avant de continuer, merci de les lire et de les accepter :</p>
+      <p>Les conditions et la politique de confidentialité ont été mises à jour (8 novembre 2026). Avant de continuer, merci de les lire et de les accepter :</p>
       <ul>
         <li><a href="./cgu.html" target="_blank" rel="noopener">les conditions d'utilisation</a> ;</li>
         <li><a href="./confidentialite.html" target="_blank" rel="noopener">la politique de confidentialité</a> (vos données et celles des personnes citées sur vos convocations).</li>
       </ul>
+      <div class="rt-consent-comm"><strong>Nouveautés et offres</strong><p>Tu recevras les nouveautés et offres de Referee Tracker (au plus 2 par mois), par e-mail et par WhatsApp si ton numéro est connu. Tu peux t'y opposer ici, puis à tout moment dans Mon profil → Communications ou par le lien présent dans chaque message.</p>
+        <label class="rt-consent-chk"><input type="checkbox" id="rtConsentRefus"> Je ne souhaite pas les recevoir.</label></div>
       <label class="rt-consent-chk"><input type="checkbox" id="rtConsentChk"> J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité.</label>
       <p class="rt-consent-msg" id="rtConsentMsg"></p>
       <div class="rt-consent-actions">
@@ -1794,7 +1803,10 @@ const CONSENT = {
         <button type="button" class="rt-btn-danger" id="rtConsentNo">Refuser et me déconnecter</button>
       </div></div>`;
     document.body.appendChild(d);
-    const chk = document.getElementById("rtConsentChk"), ok = document.getElementById("rtConsentOk");
+    const chk = document.getElementById("rtConsentChk"), ok = document.getElementById("rtConsentOk"), refus = document.getElementById("rtConsentRefus");
+    /* b78d : un arbitre qui s'est déjà opposé garde son choix (case pré-cochée « je ne souhaite pas »). */
+    let commAvant = null;
+    rtCompteApi_({ action: "communications.lire" }).then(j => { commAvant = j.communications || {}; if (commAvant.date && commAvant.offres === false) refus.checked = true; }).catch(() => {});
     chk.addEventListener("change", () => { ok.disabled = !chk.checked; });
     document.getElementById("rtConsentNo").addEventListener("click", () => logout());
     ok.addEventListener("click", async () => {
@@ -1802,6 +1814,7 @@ const CONSENT = {
       try {
         const sub = rtSubDuJeton_();
         await SB.write("POST", "consentements?on_conflict=user_id,version", { user_id: sub, version: RT_CGU_VERSION }).catch(err => { if (!/409|duplicate/i.test(err.message || "")) throw err; });
+        try { await rtCompteApi_({ action: "communications", offres: !refus.checked, whatsapp: !refus.checked }); } catch (e) {}   // b78d : choix enregistré (date + source), jamais bloquant
         this._ok = true;
         try { localStorage.setItem("rt-cgu:" + sub, RT_CGU_VERSION); } catch (e) {}
         d.remove();
