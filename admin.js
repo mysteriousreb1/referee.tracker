@@ -163,11 +163,11 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { dashboard: "Tableau de bord", arbitres: "Arbitres", inscriptions: "Inscriptions", config: "Configuration", tickets: "Tickets", sante: "Santé", stats: "Statistiques" };
+  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", arbitres: "Arbitres", inscriptions: "Inscriptions", config: "Configuration", tickets: "Tickets", sante: "Santé", stats: "Statistiques" };
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
-    const h = (location.hash || "#dashboard").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "dashboard";
+    const h = (location.hash || "#pilotage").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "pilotage";
     courant = sec; effacerMsg();
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.sec === sec));
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("active", s.id === "sec-" + sec));
@@ -225,6 +225,27 @@
       { t: "Utilisation 7 j", k: (r) => (r.usage || {}).minutes_7j || 0, cl: "num right", r: (r) => minutesTxt((r.usage || {}).minutes_7j) + ' <span class="mut tiny">' + ((r.usage || {}).jours_actifs_30j || 0) + " j actifs / 30</span>" },
       { t: "Dernière activité", k: (r) => (r.usage || {}).derniere_activite || "", cl: "nw", r: (r) => esc(depuis((r.usage || {}).derniere_activite)) },
     ], sante, { recherche: rechercheCourante, tri: "Dernière synchro", sens: 1, clic: (r) => (location.hash = "#arbitres/" + r.user_id) });
+  };
+
+  // =====================================================================
+  // 0. PILOTAGE (b74) — tableau de bord type Power BI (admin-pilotage.js)
+  // =====================================================================
+  rendus.pilotage = async function (force) {
+    const el = $("sec-pilotage");
+    if (force || !cache.pilotage) {
+      el.innerHTML = '<p class="mut">Chargement…</p>';
+      enCours++; $("chargement").classList.remove("hidden");
+      try {
+        const t = await jeton();
+        const r = await fetch(SB_URL + "/functions/v1/admin-pilotage", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: "{}" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
+        cache.pilotage = j;
+      } finally { if (--enCours <= 0) { enCours = 0; $("chargement").classList.add("hidden"); } }
+    }
+    if (!window.RT_PILOTAGE) throw new Error("Module de pilotage non chargé");
+    window.RT_PILOTAGE.render(el, cache.pilotage, { fiche: (u) => (location.hash = "#arbitres/" + u) });
+    tableCourante = null;
   };
 
   // =====================================================================
@@ -389,12 +410,13 @@
   // 4. CONFIGURATION
   // =====================================================================
   const CFG = {
-    "pub.baremes": { titre: "Barèmes", desc: "Indemnité km, barèmes CD67 / LRGEB / CF par niveau" },
-    "pub.periodes_paiement": { titre: "Périodes de paiement", desc: "CD67, LRGEB : périodes ; CF : délai (jours)" },
-    "pub.carburant": { titre: "Carburant", desc: "Prix E10 par défaut" },
-    "pub.fonctions_defaut": { titre: "Fonctions par défaut", desc: "Activées pour un nouvel arbitre" },
-    "pub.ia": { titre: "IA", desc: "Plafond USD et budget par poste" },
-    "pub.textes": { titre: "Textes & maintenance", desc: "Bandeau global, mode maintenance" },
+    "pub.baremes": { titre: "Barèmes CD67", desc: "Part fixe par catégorie (désigné, QR, interdép., amicaux) · appliqué par les moteurs sous 10 min" },
+    "pub.periodes_paiement": { titre: "Échéanciers de paiement", desc: "CD67 et Ligue, par saison · appliqué sous 10 min" },
+    "pub.ia": { titre: "IA", desc: "Plafond mensuel et répartition par fonction · appliqué sous 10 min" },
+    "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
+    "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
+    "pub.carburant": { titre: "Carburant (info)", desc: "Non utilisé : chaque arbitre a son prix dans Mon profil" },
+    "pub.fonctions_defaut": { titre: "Fonctions par défaut (info)", desc: "Non utilisé pour l'instant" },
   };
   let cfgCle = "pub.baremes";
   rendus.config = async function (force) {
@@ -421,11 +443,23 @@
     function formulaire(v) {
       v = v || {};
       if (cfgCle === "pub.baremes") {
-        F.innerHTML = '<div class="form-grid">' + num("bKm", "Indemnité kilométrique (€/km)", v.indemnite_km ?? 0.4) + "</div>" + kv("bCd", "Barème CD67 (niveau → €)", v.cd67, "Niveau") + kv("bLg", "Barème LRGEB (niveau → €)", v.lrgeb, "Niveau") + kv("bCf", "Barème Championnat de France (niveau → €)", v.cf, "Niveau");
-        lireForm = () => ({ indemnite_km: Number(F.querySelector("#bKm").value) || 0, cd67: lireKv("bCd"), lrgeb: lireKv("bLg"), cf: lireKv("bCf") });
+        // b74 — même structure que le moteur (Bareme.gs) : part fixe en € par catégorie ; le km (A/R × taux) s'ajoute toujours.
+        const c = v.cd67 || {};
+        F.innerHTML = '<p class="mut tiny">Indemnité d\'un match CD67 = part fixe ci-dessous + km A/R × taux kilométrique de l\'arbitre. Une catégorie absente garde la valeur du code.</p>' +
+          kv("bDe", "Officiel désigné (catégorie → €)", c.designe, "Catégorie") + kv("bQr", "Jeunes qualification région, code -5 (catégorie → €)", c.qr, "Catégorie") +
+          kv("bIn", "Interdépartemental, code -7 (catégorie → €)", c.interdepartemental, "Catégorie") + kv("bAm", "Amicaux / tournois (Séniors, Jeunes → €)", c.amicaux, "Séniors ou Jeunes");
+        lireForm = () => ({ indemnite_km: v.indemnite_km ?? 0.4, cd67: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
       } else if (cfgCle === "pub.periodes_paiement") {
-        F.innerHTML = periodes("pCd", "CD67", v.cd67) + periodes("pLg", "LRGEB", v.lrgeb) + '<div class="form-grid" style="margin-top:10px">' + num("pCf", "FFBB CF : délai de paiement (jours)", v.cf_delai_jours ?? 45, "1") + "</div>";
-        lireForm = () => ({ cd67: lirePeriodes("pCd"), lrgeb: lirePeriodes("pLg"), cf_delai_jours: Number(F.querySelector("#pCf").value) || 0 });
+        // b74 — { "2026/2027": { cd67: [[début, fin, paiement]], lrgeb: [[début, fin, à partir du]], lrgeb_marge_jours } } (dates JJ/MM/AAAA).
+        const saisons = Object.keys(v).filter((s) => /^\d{4}\/\d{4}$/.test(s)).sort();
+        const iso = (d) => { const m = String(d || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+        const fr = (d) => { const m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; };
+        const bloc = (id, titre, l, lib3) => '<div class="subtab">' + titre + ' (début · fin · ' + lib3 + ')</div><div class="liste-edit" id="' + id + '">' + (l || []).map((p) => '<div class="row"><input type="date" value="' + esc(iso(p[0])) + '"><input type="date" value="' + esc(iso(p[1])) + '"><input type="date" value="' + esc(iso(p[2])) + '"><button class="btn sm" data-del>✕</button></div>').join("") + '</div><button class="btn sm" data-addp="' + id + '">+ Période</button>';
+        F.innerHTML = '<p class="mut tiny">Une saison renseignée ici remplace celle écrite dans le moteur. Pour une nouvelle saison : ajoute-la avec le bouton ci-dessous.</p>' + saisons.map((s, i) => '<div class="card" data-saison="' + esc(s) + '"><div class="card-head"><h3>Saison ' + esc(s) + "</h3></div>" + bloc("pCd" + i, "CD67 — date de paiement", v[s].cd67, "payé le") + bloc("pLg" + i, "Ligue LRGEB — date « à partir du »", v[s].lrgeb, "à partir du") + '<div class="form-grid" style="margin-top:8px">' + num("pMg" + i, "Ligue : marge de virement (jours)", v[s].lrgeb_marge_jours ?? 7, "1") + "</div></div>").join("") +
+          '<div class="row"><input id="pNew" placeholder="2027/2028" style="max-width:140px"><button class="btn sm" id="pAddS">+ Ajouter la saison</button></div>';
+        const lireP = (id) => Array.from(F.querySelectorAll("#" + id + " .row")).map((r) => Array.from(r.querySelectorAll("input")).map((x) => fr(x.value))).filter((p) => p[0] && p[1] && p[2]);
+        lireForm = () => { const o = {}; F.querySelectorAll("[data-saison]").forEach((c, i) => { o[c.dataset.saison] = { cd67: lireP("pCd" + i), lrgeb: lireP("pLg" + i), lrgeb_marge_jours: Number(F.querySelector("#pMg" + i).value) || 0 }; }); return o; };
+        setTimeout(() => { const b = F.querySelector("#pAddS"); if (b) b.addEventListener("click", () => { const s = F.querySelector("#pNew").value.trim(); if (!/^\d{4}\/\d{4}$/.test(s)) return toast("Format attendu : 2027/2028", "err"); const o = lireForm(); o[s] = o[s] || { cd67: [], lrgeb: [], lrgeb_marge_jours: 7 }; formulaire(o); }); }, 0);
       } else if (cfgCle === "pub.carburant") {
         F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";
         lireForm = () => ({ prix_e10: Number(F.querySelector("#cE10").value) || 0 });
@@ -433,8 +467,12 @@
         F.innerHTML = '<div class="row">' + ["ia", "rapprochement", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, k, v[k])).join("") + "</div>";
         lireForm = () => { const o = {}; ["ia", "rapprochement", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
       } else if (cfgCle === "pub.ia") {
-        F.innerHTML = '<div class="form-grid">' + num("iaMax", "Plafond mensuel (USD)", v.plafond_usd ?? 5) + "</div>" + kv("iaB", "Budget par poste (USD)", v.budget_par_poste_usd, "Poste");
-        lireForm = () => ({ plafond_usd: Number(F.querySelector("#iaMax").value) || 0, budget_par_poste_usd: lireKv("iaB") });
+        // b74 — même structure que le moteur (Ia.gs) : plafond en $ par moteur et par mois, part de chaque fonction en % (total ≤ 100).
+        F.innerHTML = '<div class="form-grid">' + num("iaMax", "Plafond mensuel par arbitre (USD)", v.plafond_usd ?? 30) + "</div>" + kv("iaB", "Part du plafond par fonction (%) — convocations, evaluations, reglement, rapports, autre", v.budget_pct, "Fonction") + '<p class="mut tiny">Les convocations ne sont jamais bloquées, même au-delà de leur part.</p>';
+        lireForm = () => ({ plafond_usd: Number(F.querySelector("#iaMax").value) || 0, budget_pct: lireKv("iaB") });
+      } else if (cfgCle === "pub.beta") {
+        F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";
+        lireForm = () => ({ max: Number(F.querySelector("#btMax").value) || 0, ouvert: F.querySelector("#btOuv").checked });
       } else if (cfgCle === "pub.textes") {
         F.innerHTML = '<label class="f">Message du bandeau global (vide = aucun)<textarea id="tBand" rows="3" style="font-family:inherit">' + esc(v.bandeau || "") + "</textarea></label><div class=\"row\" style=\"margin-top:8px\">" + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente)", v.maintenance) + "</div>";
         lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), maintenance: F.querySelector("#tMaint").checked });

@@ -43,6 +43,7 @@
     <aside class="side">
       <div class="brand"><img src="./apple-touch-icon.png" alt="" /><div><strong>Referee Tracker</strong><span>Super admin</span></div></div>
       <nav class="nav" id="nav">
+        <a href="#pilotage" data-sec="pilotage"><i>◧</i>Pilotage</a>
         <a href="#dashboard" data-sec="dashboard"><i>▦</i>Tableau de bord</a>
         <a href="#arbitres" data-sec="arbitres"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
         <a href="#inscriptions" data-sec="inscriptions"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
@@ -67,6 +68,7 @@
       <div id="chargement" class="loader hidden"><span></span></div>
       <p id="msg" class="msg hidden"></p>
 
+      <section id="sec-pilotage" class="sec"></section>
       <section id="sec-dashboard" class="sec"></section>
       <section id="sec-arbitres" class="sec"></section>
       <section id="sec-inscriptions" class="sec"></section>
@@ -87,6 +89,7 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
+  <script src="./admin-pilotage.js?v=2026-11-08-b74"></script>
   <script src="./admin.js?v=2026-11-08-b74"></script>
 </body>
 </html>

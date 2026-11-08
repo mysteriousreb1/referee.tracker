@@ -2037,6 +2037,13 @@ function startApp() {
     ["qcmStats", "enjeux", "classements", "config"].forEach((a, i) => setTimeout(() => { try { jsonp(a).catch(() => {}); } catch (e) {} }, i * 1500));
   }, 4000);
   if (!SB.actif) return;
+  // b74 — bandeau global et mode maintenance réglés par l'admin (config_globale pub.textes, lisible par tout connecté).
+  SB.get("config_globale?select=valeur&cle=eq.pub.textes&limit=1").then(l => {
+    const v = (l && l[0] && l[0].valeur) || {};
+    const b = String(v.bandeau || "").trim().slice(0, 300);
+    if (b && !document.getElementById("rtBandeauGlobal")) { const d = document.createElement("div"); d.id = "rtBandeauGlobal"; d.className = "rt-bandeau-global"; d.setAttribute("role", "status"); d.textContent = b; const m = document.querySelector("main.content") || document.body; m.insertBefore(d, m.firstChild); }
+    if (v.maintenance && !document.getElementById("rtMaintenance")) { const d = document.createElement("div"); d.id = "rtMaintenance"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.innerHTML = '<div class="rt-consent-box"><h2>Maintenance en cours</h2><p>Referee Tracker est en cours de mise à jour. Tes données sont en sécurité : reviens dans quelques minutes.</p></div>'; document.body.appendChild(d); }
+  }).catch(() => {});
   jsonp("me")
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");

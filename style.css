@@ -4597,3 +4597,4 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .rt-demo-tag { margin: 0 0 8px; display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--gold); color: var(--navy-900); }
 .cf-l-date { color: var(--text); }
 .rt-profile-body .rt-details > summary:not(:has(b))::after { margin-left: auto; }
+.rt-bandeau-global { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--gold-soft); border-left: 4px solid var(--gold); color: var(--text); font-weight: 600; font-size: 14px; }
