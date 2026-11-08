@@ -9578,7 +9578,8 @@ function renderRapportsOfficiels_(ms) {
       <p class="card-sub" style="margin-top:12px">Formulaires vierges : ${Object.values(C).map(f => `<a href="${escapeHtml(f.fichier)}" target="_blank" rel="noopener">${escapeHtml(f.titre)}</a>`).join(" · ")}</p>`;
   }
   const c = C[e.id];
-  const r = ms.find(x => get(x, "UID") === e.uid) || ms[0];
+  const passe = ms.find(x => x._date && x._date <= new Date());   // par défaut : le dernier match joué
+  const r = ms.find(x => get(x, "UID") === e.uid) || passe || ms[0];
   if (r && e.uid !== get(r, "UID")) { e.uid = get(r, "UID"); e.champs = {}; }
   if (r && !e._pre) { rfPreRemplir_(c, r); e._pre = e.uid; }
   if (r && e._pre !== e.uid) { e.champs = {}; rfPreRemplir_(c, r); e._pre = e.uid; }

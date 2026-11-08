@@ -4423,3 +4423,18 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rf-carte:hover, .rf-carte:focus-visible { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(10,31,68,.14); border-color: var(--red); }
 .rf-go { margin-top: 6px; font-weight: 800; color: var(--red); font-size: 13px; }
 @media (max-width: 640px) { .rf-q { grid-template-columns: 1fr; } .rf-dq-l { grid-template-columns: 1fr 1fr; } }
+
+/* ===== b73 — finitions V1 : apparitions douces, retours tactiles, chiffres ===== */
+@keyframes rtIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rtPop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
+.rf-carte, .rf { animation: rtIn .32s cubic-bezier(.2,.7,.2,1) both; }   /* écrans ouverts par l'utilisateur seulement (pas de clignotement aux rafraîchissements) */
+.match-card { transition: transform .16s ease, box-shadow .16s ease; }
+@media (hover: hover) { .match-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(10,31,68,.16); } }
+button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:active { transform: scale(.97); }
+.tabs-mini-btn.active { animation: rtPop .25s ease both; }
+.rf-case input:checked + *, .rf-radio input:checked { animation: rtPop .2s ease; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rf-carte, .rf, .tabs-mini-btn.active { animation: none !important; }
+  .match-card, button { transition: none !important; }
+}
