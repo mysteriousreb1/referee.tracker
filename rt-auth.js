@@ -1095,7 +1095,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfZligue">Ligue régionale</label>
           <select id="pfZligue"><option value="">— pas de matchs régionaux —</option>${ONBOARD.LIGUES.map(([k, l]) => `<option value="${k}"${(p.zones && p.zones.ligue) === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       </div>
-      <label class="rt-onb-check" style="display:block;margin:4px 0 12px"><input type="checkbox" id="pfZcf"${p.zones && p.zones.cf ? " checked" : ""}> Championnat de France (payé par virement national)</label>
+      <label class="rt-switch"><input type="checkbox" id="pfZcf"${p.zones && p.zones.cf ? " checked" : ""}> Championnat de France (payé par virement national)</label>
       <button type="button" class="rt-btn" id="pfSaveProfil">Enregistrer</button>
     </section>
 
@@ -1134,14 +1134,14 @@ function renderProfile() {
     <section class="rt-sect">
       <h3>Frais kilométriques</h3>
       <details class="rt-details">
-        <summary>Indemnité FFBB : <b>${esc(t.indemnite_km)} €/km</b></summary>
+        <summary><span>Indemnité kilométrique</span><b>${esc(isNaN(Number(t.indemnite_km)) ? String(t.indemnite_km) : Number(t.indemnite_km).toFixed(2).replace(".", ","))} €/km</b></summary>
         <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
         <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
         <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
       </details>
       <details class="rt-details">
-        <summary>Carburant : <b>${esc(coutsResume_("prix"))}</b></summary>
+        <summary><span>Prix du carburant</span><b>${esc(coutsResume_("prix"))}</b></summary>
         ${coutsListe_("prix")}
         <div class="rt-row">
           <div class="rt-field"><label for="cpDate">À partir du</label>
@@ -1152,7 +1152,7 @@ function renderProfile() {
         <button type="button" class="rt-btn" id="cpAddPrix">Ajouter ce prix</button>
       </details>
       <details class="rt-details">
-        <summary>Entretien : <b>${esc(coutsResume_("entretien"))}</b></summary>
+        <summary><span>Coût d'entretien</span><b>${esc(coutsResume_("entretien"))}</b></summary>
         ${coutsListe_("entretien")}
         <div class="rt-row">
           <div class="rt-field"><label for="ceDate">À partir du</label>
@@ -1206,8 +1206,12 @@ function renderProfile() {
     </section>
 
     <section class="rt-sect">
-      <h3>Un souci ?</h3>
-      <p class="rt-help" style="margin:0"><a href="./manuel.html" target="_blank" rel="noopener"><strong>Manuel utilisateur</strong></a> (chaque écran expliqué) · Écris-nous : <a href="mailto:contact@referee-tracker.fr">contact@referee-tracker.fr</a>. Réponse sous 48 h.</p>
+      <h3>Aide</h3>
+      <div class="rt-liens">
+        <a class="rt-lien" href="./manuel.html" target="_blank" rel="noopener"><span>Manuel utilisateur</span><small>chaque écran expliqué</small></a>
+        <a class="rt-lien" href="mailto:contact@referee-tracker.fr"><span>Écrire au support</span><small>contact@referee-tracker.fr · réponse sous 48 h</small></a>
+        <a class="rt-lien" href="./?demo=premiere-connexion"><span>Rejouer la première connexion</span><small>démo de l'assistant d'accueil, rien n'est enregistré</small></a>
+      </div>
     </section>
 
     <section class="rt-sect">
@@ -1220,7 +1224,6 @@ function renderProfile() {
           <input id="pwNouv" type="password" autocomplete="new-password" placeholder="12 caractères minimum"></div>
         <button type="button" class="rt-btn" id="pfChangePwd">Modifier</button>
       </details>
-      <button type="button" class="rt-btn-danger" id="rtLogoutBtn">Se déconnecter</button>
       <!-- b71 — droits RGPD exercés dans l'app (Edge « compte ») : export JSON, suppression définitive. -->
       <details class="rt-details">
         <summary>Mes données (export, suppression)</summary>
@@ -1229,7 +1232,8 @@ function renderProfile() {
         <div class="rt-field"><label for="pfSupprConf">Pour supprimer, écris SUPPRIMER</label><input id="pfSupprConf" type="text" autocomplete="off" placeholder="SUPPRIMER"></div>
         <button type="button" class="rt-btn-danger" id="pfSuppr" disabled>Supprimer définitivement mon compte</button>
       </details>
-      <p class="rt-help"><a href="./confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · Question sur tes données : <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a></p>
+      <p class="rt-help rt-legal"><a href="./confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="./cgu.html" target="_blank" rel="noopener">Conditions d'utilisation</a> · <a href="mailto:rgpd@referee-tracker.fr">rgpd@referee-tracker.fr</a></p>
+      <button type="button" class="rt-btn-logout" id="rtLogoutBtn">Se déconnecter</button>
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
@@ -1835,6 +1839,19 @@ const ONBOARD = {
   COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
   LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
   NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Régional 3", "Régional 2 – JPR Rouge", "Régional 1", "Championnat de France", "Haut niveau / Fédéral"],
+  demo: false,
+  /* b74 — mode démo : l'assistant de 1re connexion rejoué à blanc, sans rien lire ni écrire sur le compte. */
+  ouvrirDemo() {
+    this.demo = true; this.etape = 0; this.sug = { noms: [] }; this.reception = "demo@recevoir.referee-tracker.fr";
+    this.data = { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false };
+    const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = '<div class="rt-consent-box rt-onb"><p class="rt-demo-tag">Mode démo · rien n\'est enregistré</p><div class="rt-onb-prog" id="rtOnbProg"></div><div id="rtOnbBody"></div><p class="rt-consent-msg" id="rtOnbMsg"></p><div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="rtOnbPrev">Retour</button><button type="button" class="rt-btn" id="rtOnbNext">Suivant</button><button type="button" class="rt-btn-ghost" id="rtOnbQuit">Quitter la démo</button></div></div>';
+    document.body.appendChild(d);
+    document.getElementById("rtOnbPrev").addEventListener("click", () => this.aller(this.etape - 1));
+    document.getElementById("rtOnbNext").addEventListener("click", () => this.suivant());
+    document.getElementById("rtOnbQuit").addEventListener("click", () => { d.remove(); this.demo = false; });
+    this.aller(0);
+  },
   ouvrir() {
     if (document.getElementById("rtOnb")) return;
     const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
@@ -1927,6 +1944,12 @@ const ONBOARD = {
     if (this.etape < this.N_ETAPES - 1) return this.aller(this.etape + 1);
     const bt = document.getElementById("rtOnbNext"); bt.disabled = true; msg.textContent = "Enregistrement…";
     const D = this.data;
+    if (this.demo) {   // b74 — démo : aucune écriture
+      document.getElementById("rtOnb").remove(); this.demo = false;
+      try { setStatus("Démo terminée : rien n'a été enregistré sur ton compte.", "ok"); } catch (e) {}
+      setTimeout(() => { try { TOUR.ouvrir(); } catch (e) {} }, 400);
+      return;
+    }
     try {
       const r = await jsonp("onboarding.save", { profil: { nom_ffbb: D.nom_ffbb, niveau: D.niveau, adresse: D.adresse, code_postal: D.code_postal, ville: D.ville, zones: { cd: D.zcd, ligue: D.zligue || "", cf: !!D.zcf } }, vehicule: { nom: D.vnom, conso: D.conso, cv: D.cv }, prenom: D.prenom });
       if (!r || r.success === false) throw new Error((r && r.error) || "Enregistrement refusé");
@@ -2018,7 +2041,8 @@ function startApp() {
     .then(res => {
       if (!res || !res.success) throw new Error((res && res.error) || "Session invalide");
       if (res.home && res.home.lat) HOME = res.home;
-      if (res.onboarding && res.onboarding.fait === false) setTimeout(() => ONBOARD.ouvrir(), 300);   // b59
+      if (/[?&]demo=premiere-connexion\b/.test(location.search)) setTimeout(() => ONBOARD.ouvrirDemo(), 300);   // b74 — démo
+      else if (res.onboarding && res.onboarding.fait === false) setTimeout(() => ONBOARD.ouvrir(), 300);   // b59
       else { let t = ""; try { t = localStorage.getItem("rt_tour_fait") || ""; } catch (e) {} if (!t && TOUR.obligatoire()) setTimeout(() => TOUR.ouvrir(), 800); }   // b69
       Profil.email = res.email || "";
       if (res.config) {

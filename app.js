@@ -926,13 +926,14 @@ function renderReglement() {
         : `<div class="regl-msg regl-ia"><div class="regl-avatar" aria-hidden="true">IA</div><div class="regl-col"><div class="regl-bulle">${reglReponseHtml_(m)}</div>${reglMetaIa_(m)}</div></div>`).join("")
         : `<div class="regl-empty">
             <div class="regl-empty-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7"/><path d="M9 11h5"/></svg></div>
-            <h3>Pose ta question de règlement</h3>
-            <p class="regl-empty-hint">Pose une situation de match, l'IA répond avec les articles du règlement FIBA.</p>
+            <h3>Ton formateur règlement</h3>
+            <p class="regl-empty-hint">Pose une question, ou raconte une action de ton match : l'IA te dit ce qui allait, ce qui n'allait pas, la bonne procédure et comment progresser, articles FIBA à l'appui.</p>
+            <p class="regl-empty-hint regl-ex">Exemple : « 3e QT, le n°7 tire à 3 points, le défenseur atterrit sous ses pieds après le tir. J'étais en Trail, j'ai laissé jouer. Qu'aurais-je dû faire ? »</p>
           </div>`}
         <div class="regl-status" id="reglStatus" role="status">${state._reglEnCours ? `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…` : ""}</div>
       </div>
       <form class="regl-form" id="reglForm">
-        <textarea id="reglInput" rows="1" placeholder="Décris la situation ou pose ta question…" aria-label="Question de règlement"></textarea>
+        <textarea id="reglInput" rows="1" placeholder="Raconte une situation de match (ce qui s'est passé, ce que tu as sifflé) ou pose ta question…" aria-label="Question de règlement"></textarea>
         <button type="submit" class="regl-send" id="reglSend"${state._reglEnCours ? " disabled" : ""} aria-label="Envoyer" title="Envoyer (Entrée)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
       </form>
     </div>`;
@@ -1044,6 +1045,15 @@ function reglReponseHtml_(m) {
     var prec = `<div class="regl-prec">${m.precisions.map(x => `<span>${escapeHtml(x.q)} → <b>${escapeHtml(x.r)}</b></span>`).join("")}</div>`;
   }
   if (!m.decision && !m.explication) return (prec || "") + formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources);
+  const a = m.analyse;
+  if (a && (a.bien.length + a.pas_bien.length + a.a_faire.length + a.ameliorer.length)) {   // b74 — analyse d'une situation vécue
+    const bloc = (cls, t, l) => l && l.length ? `<div class="regl-an ${cls}"><span>${t}</span><ul>${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : "";
+    return `${prec || ""}
+    ${m.decision ? `<div class="regl-decision"><span>Ce qu'il fallait faire</span>${formatReglementReponse_(m.decision)}</div>` : ""}
+    <div class="regl-an-grille">${bloc("ok", "Ce qui allait", a.bien)}${bloc("ko", "Ce qui n'allait pas", a.pas_bien)}${bloc("proc", "La procédure", a.a_faire)}${bloc("plus", "Pour progresser", a.ameliorer)}</div>
+    ${m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(x => `<span class="regl-art">${escapeHtml(x)}</span>`).join("")}</div>` : ""}
+    ${reglSourcesHtml_(m.sources)}`;
+  }
   return `${prec || ""}
     ${m.decision ? `<div class="regl-decision"><span>Décision</span>${formatReglementReponse_(m.decision)}</div>` : ""}
     ${m.explication ? `<div class="regl-expl">${formatReglementReponse_(m.explication)}</div>` : ""}
@@ -1104,7 +1114,7 @@ async function askReglement_(question, precisions) {
       reglQuestions_(question, r);
       return;
     }
-    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", explication: r.explication || "", articles: r.articles || [], precisions: precisions || null,
+    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", explication: r.explication || "", articles: r.articles || [], analyse: r.analyse || null, precisions: precisions || null,
       sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })),
       ts: Date.now(), cache: !!r.cache, passages: r.passages || 0, ms: { total: Date.now() - t0, ia: r.ms && r.ms.ia } });
   } catch (err) {
@@ -1274,14 +1284,26 @@ document.addEventListener("focusout", () => { if (state._renderDiffere) { state.
    Même logique de filtre que renderAlertes()/paiementEnRetard() pour rester
    cohérent avec le contenu réel des onglets ; masqué (hidden) si le
    compteur est à 0 pour ne pas alourdir la barre de navigation inutile. */
+/* b74 — « Clément REBHOLZ » depuis le profil : prénom tel que saisi, NOM officiel en capitales (sans le prénom). */
+function nomAffiche_() {
+  const p = (typeof Profil !== "undefined" && Profil.config && Profil.config.profil) || {};
+  const sans = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const prenom = String(p.prenom || (window.RT_AUTH && window.RT_AUTH.prenom) || "").trim();
+  let nom = String(p.nom_ffbb || "").trim();
+  if (!nom) return prenom;
+  if (prenom) nom = nom.split(/\s+/).filter(w => sans(w) !== sans(prenom)).join(" ");
+  const pr = prenom || String(p.nom_ffbb || "").trim().split(/\s+/).slice(-1)[0].toLowerCase().replace(/(^|[-\s])\S/g, c => c.toUpperCase());
+  return (pr + " " + nom.toUpperCase()).trim();
+}
 function renderTabBadges_() {
   try { alertesSync_(); } catch (e) {}
   const rows = (state.allRows || []).filter(r => r._season === getCurrentSeason());   // b67 : saison courante, quel que soit le filtre de la page
   const sessEl = document.querySelector(".tabs-foot span:last-child");
   if (sessEl && typeof Session !== "undefined" && Session && Session.email) {
-    sessEl.textContent = Session.email;   // b49 — plus de « Session : » ; l'e-mail seul, tronqué par le CSS
-    sessEl.title = "Connecté : " + Session.email;
-    sessEl.title = "Tu es connecté avec ce compte. La session reste ouverte tant que tu utilises le site (30 jours d'inactivité maximum).";
+    // b74 — « Prénom NOM » à la place de l'e-mail (et plus de point vert) ; l'e-mail reste en info-bulle.
+    sessEl.textContent = nomAffiche_() || Session.email;
+    sessEl.title = "Connecté avec " + Session.email + ". La session reste ouverte tant que tu utilises le site (30 jours d'inactivité maximum).";
+    const dot = document.querySelector(".tabs-foot-dot"); if (dot) dot.hidden = true;
   }
 
   // b70 — le menu Alertes n'apparaît que s'il y a quelque chose d'important « À régler » ; le badge ne compte que ça.
@@ -1369,8 +1391,15 @@ function analyseInstallerSections_() {
 })();
 function renderRapprochementAnalyse_() {
   const h = document.getElementById("statsRapprochement"); if (!h) return;
+  /* b74 — page refaite : 3 étapes claires, engagement de confidentialité visible. */
   h.innerHTML = `<h2 class="section-title">Rapprochement bancaire</h2>
-    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (Ligue, CD67, FFBB, clubs).</p>
+    <p class="card-sub rb-intro">Retrouve en une fois quels matchs ont été payés, à partir du relevé de ta banque.</p>
+    ${RB.brut.length ? "" : `<ol class="rb-etapes">
+      <li><b>Exporte ton relevé</b><span>Depuis l'appli ou le site de ta banque : format CSV ou Excel, sur la période voulue.</span></li>
+      <li><b>Dépose-le ci-dessous</b><span>Chaque virement reçu est comparé aux montants attendus (Ligue, comité, fédération, clubs).</span></li>
+      <li><b>Valide</b><span>Coche les correspondances justes : les matchs passent en « Reçu ».</span></li>
+    </ol>`}
+    <div class="rb-cnil"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Ton relevé est lu uniquement dans ton navigateur. Il n'est ni envoyé, ni enregistré, ni conservé : il disparaît dès que tu fermes ou recharges l'app.</span></div>
     <div id="rbZone">${rbHtml_()}</div>`;
   attachRapprochement_(h);
 }
@@ -2038,7 +2067,7 @@ function renderDetails(row) {
     ["Équipe arbitrale", [
       ["Mon rôle", get(row, "Mon rôle")], ["Collègue", get(row, "Collègue nom"), true],
       ["Tél. collègue", formatPhoneFr(get(row, "Collègue téléphone"))], ["Rôle collègue", get(row, "Collègue rôle")],
-      ["Référent 3x3", get(row, "Référent 3x3"), true], ["Observateur", get(row, "Observateur"), true],
+      ["Crew Leader", get(row, "Référent 3x3"), true], ["Observateur", get(row, "Observateur"), true],
       ["Contact collègue", get(row, "Contact collègue")]
     ]],
     ["Points de contrôle", [["Warnings", warningsReels(row).join(" | "), true]]]
@@ -2346,7 +2375,7 @@ function renderActions(row) {
     links.push(`<button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Contact fait" : "Contact fait"}</button>`);
   }
   if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
-    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">Portail officiels</a>`);
+    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
   }
   /* b19 — événement annulé à la dernière minute (sur place, 3x3 ou 5x5) :
      disponible 3 jours autour du match tant que rien n'a été payé. */
@@ -2681,9 +2710,15 @@ function renderMoisPaiements_() {
       </details>` : ""}
       ${m.predOk ? `<div class="mp-tuile mp-tuile--fixe"><label>Prévu ce mois (délais réels)</label><strong>${formatMoneyC(m.predMois)}</strong><span class="sub">d'après le délai moyen constaté de chaque payeur</span></div>` : ""}
     </div>
-    <div class="table-card mp-wrap"><div class="table-wrap"><table class="cf-table mp-table">
-      <thead><tr><th>Payeur</th><th>Retard</th><th>Ce mois</th><th>Mois suivant</th><th>Plus tard</th><th>Reste dû</th><th>Reçu</th><th>Délai moyen</th></tr></thead>
-      <tbody>${lignes}</tbody></table></div></div>`;
+    <h3 class="mp-h">Qui te doit quoi</h3>
+    <div class="mp-payeurs">${PAYEURS_ORDRE_.filter(k => m.par[k]).map(k => {
+      const c = m.par[k], du = c.ret + c.mois + c.suiv + c.plus + c.sans;
+      const prochain = c.ret ? `<span class="mp-chip mp-chip--ret">${formatMoney(c.ret)} en retard</span>` : (c.mois ? `<span class="mp-chip">${formatMoney(c.mois)} ce mois-ci</span>` : (c.suiv ? `<span class="mp-chip">${formatMoney(c.suiv)} le mois prochain</span>` : (c.plus ? `<span class="mp-chip mp-chip--plus">${formatMoney(c.plus)} plus tard</span>` : "")));
+      return `<div class="mp-payeur${c.ret ? " is-ret" : ""}${du ? "" : " is-solde"}">
+        <div class="mp-p-nom">${escapeHtml(PAYEURS_LIB_[k])}</div>
+        <div class="mp-p-du"><strong>${du ? formatMoney(du) : "Soldé"}</strong><span>${du ? "reste à recevoir" : "rien en attente"}</span></div>
+        <div class="mp-p-meta">${prochain}<span class="mp-p-recu">reçu : ${formatMoney(c.recu || 0)}${c.delais && c.delais.length ? " · délai moyen " + moy(c.delais) : ""}</span></div>
+      </div>`; }).join("")}</div>`;
 }
 
 /* b53 — téléphone : « Argent », 3 chiffres + listes (retard / à venir / reçu). Analyse et rapprochement restent sur PC. */
@@ -3284,7 +3319,9 @@ function rbClasse_(r) {
 }
 const RB_MEM_KEY_ = "rt_rb_payeurs_v1";
 function rbMemLire_() { try { return JSON.parse(localStorage.getItem(RB_MEM_KEY_) || "{}") || {}; } catch (e) { return {}; } }
-function rbMemEcrire_(m) { try { localStorage.setItem(RB_MEM_KEY_, JSON.stringify(m)); } catch (e) { /* stockage indisponible : sans effet */ } }
+/* b74 (CNIL) — plus aucune mémorisation des libellés bancaires, même dans le navigateur ; l'ancienne mémoire est effacée. */
+function rbMemEcrire_(m) { try { localStorage.removeItem(RB_MEM_KEY_); } catch (e) {} }
+try { localStorage.removeItem(RB_MEM_KEY_); } catch (e) {}
 /* Clé stable d'un payeur : nom de l'émetteur sans références (VG62…, numéros). Reste dans le navigateur. */
 function rbCle_(n) {
   return String(n || "").replace(/virement en votre faveur|remise de cheque|versement d'especes/g, "").replace(/^[\s-]+/, "").split(" - ")[0].split(/\n/)[0]
@@ -3310,6 +3347,9 @@ function rbTokensRow_(r) {
 /* ---- Historique des virements pointés (feuille VIREMENTS_POINTES) ---- */
 const RB_CLS_LIB_ = { ligue: "Ligue", cd: "Comité", ffbb: "Fédération", club: "Clubs", mixte: "Mixte" };
 async function rbChargerHist_() {
+  /* b74 (CNIL) — aucun historique de virements n'est conservé : le relevé est lu dans le navigateur, seuls les matchs passent « Reçu ».
+     Les virements déjà pointés ne sont plus reproposés car leurs matchs sont soldés. */
+  RB.hist = []; RB.histOk = true; RB.histErr = ""; return;
   try {
     const res = await jsonpFrais("bank.list");
     if (!res || res.success === false) throw new Error((res && res.error) || "indisponible");
@@ -3338,6 +3378,7 @@ function rbCotesUndo_(h) {
   return out;
 }
 async function rbMemoriser_(entrees) {
+  return;   // b74 (CNIL) : rien n'est mémorisé
   if (!entrees.length) return;
   try {
     const res = await jsonp("bank.add", { items: JSON.stringify(entrees) });
@@ -3365,6 +3406,7 @@ function rbExportCsv_() {
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 function rbHistHtml_() {
+  return "";   // b74 (CNIL) : plus d'historique des virements
   if (!RB.histOk) return RB.histErr ? `<div class="rb-note">${escapeHtml(RB.histErr)}</div>` : "";
   if (!RB.hist.length) return "";
   const par = {}, cls = new Set();
@@ -3437,12 +3479,12 @@ function rbHtml_() {
     <div class="rb-drop${pret ? "" : " is-off"}" id="rbDrop" tabindex="0" role="button" aria-label="Déposer un relevé bancaire">
       <span class="rb-drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 20h16"/></svg></span>
       <p class="rb-drop-t">${chargement ? "Chargement de l'historique des virements pointés…" : pret ? `Glisse ton relevé ici, ou <label for="rbFile" class="rb-drop-link">choisis un fichier</label>` : "Historique indisponible : import bloqué pour éviter de reproposer des virements déjà pointés."}</p>
-      <p class="rb-drop-sub">CSV, TSV ou Excel (.xlsx), export de ta banque. Lu dans ton navigateur, jamais envoyé. Seuls les virements que tu valides sont mémorisés (date, montant, libellé tronqué).</p>
+      <p class="rb-drop-sub">CSV ou Excel exporté depuis ta banque</p>
       <input type="file" id="rbFile" accept=".xlsx,.xls,.csv,.txt,.tsv" hidden${pret ? "" : " disabled"}>
       ${RB.fichier ? `<span class="rb-fn">${escapeHtml(RB.fichier)}</span>` : ""}
       ${!pret && RB.histErr ? `<button type="button" class="small-btn secondary" id="rbHistRetry">Réessayer</button>` : ""}
     </div>
-    <div class="rb-bar"><label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label><span class="rb-fn">écart accepté entre un virement et le dû</span></div>
+    <details class="rb-reglages"><summary>Réglage : tolérance d'écart (${escapeHtml(String(RB.tol))} €)</summary><div class="rb-bar"><label class="field rb-f"><span>Tolérance (€)</span><input type="number" id="rbTol" min="0" max="5" step="0.01" value="${escapeHtml(String(RB.tol))}"></label><span class="rb-fn">écart accepté entre un virement et le montant dû (frais bancaires, arrondis)</span></div></details>
     ${RB.msg ? `<div class="rb-note rb-note--msg">${escapeHtml(RB.msg)}</div>` : ""}`;
   if (!RB.brut.length) return zoneFichier + rbHistHtml_();
   const sel = RB.props.reduce((a, p) => a + [...p.coches].filter(u => !p.faits.has(u)).length, 0);
@@ -3488,6 +3530,7 @@ const RBMEM = {
   _m: null, _chargee: false,
   lire() { if (this._m) return this._m; this._m = rbMemLire_(); return this._m; },
   async charger() {
+    this._chargee = true; return;   // b74 (CNIL) : plus de mémoire serveur des payeurs (libellés bancaires)
     if (this._chargee) return;
     this._chargee = true;
     try {
@@ -3500,7 +3543,7 @@ const RBMEM = {
     } catch (e) { /* serveur indisponible : on reste sur le cache */ }
   },
   async enregistrer(cle, entree) {
-    const m = this.lire(); m[cle] = entree; rbMemEcrire_(m);
+    const m = this.lire(); m[cle] = entree; return;   // b74 (CNIL) : mémoire de la session uniquement, rien d'écrit
     try { await jsonp("bank.payeur.set", { cle, cls: entree.cls || "", club: entree.club || "", toks: (entree.toks || []).join(" "), ecart: String(entree.ecart || 0) }); } catch (e) { /* cache local suffit */ }
   }
 };
@@ -3946,7 +3989,7 @@ function renderCashFlow_(cf) {
       <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
       <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
     </div>
-    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
+    <p class="card-sub cf-intro">Ce qui doit encore t'être versé, par date prévue (échéancier du comité, calendrier de la Ligue, mois suivant pour la fédération, 30 jours pour les clubs).</p>
     ${spark}
     ${cfTableau_()}
         <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
@@ -3970,18 +4013,10 @@ function cfTableau_() {
   if (!l.length) return "";
   let cumul = 0;
   const dans = d => { const j = Math.round((d - auj) / 86400000); return j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " jours"; };
-  if (estTel_()) {   // b53 — une ligne par échéance, détail au tap
-    return `<div class="cf-lignes">${l.map(g => { cumul += g.montant; return `<details class="cf-ligne">
-      <summary><span class="cf-l-date">${escapeHtml(g.d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }))}</span><span class="cf-l-pay">${escapeHtml(Object.keys(g.payeurs).join(", "))}</span><strong class="cf-l-mt">${money(g.montant)}</strong></summary>
-      <div class="cf-l-det">${dans(g.d)} · ${g.nb} mission${g.nb > 1 ? "s" : ""} · cumulé ${money(cumul)}</div></details>`; }).join("")}</div>`;
-  }
-  return `<div class="table-card"><div class="table-wrap"><table class="cf-table">
-    <thead><tr><th>Versement prévu</th><th>Quand</th><th>Payeur</th><th class="num">Missions</th><th class="num">Montant</th><th class="num">Cumulé</th></tr></thead>
-    <tbody>${l.map(g => { cumul += g.montant; return `<tr>
-      <td>${escapeHtml(g.d.toLocaleDateString("fr-FR"))}</td><td>${dans(g.d)}</td>
-      <td>${escapeHtml(Object.keys(g.payeurs).join(", "))}</td>
-      <td class="num">${g.nb}</td><td class="num">${money(g.montant)}</td><td class="num cf-cumul">${money(cumul)}</td></tr>`; }).join("")}</tbody>
-  </table></div></div>`;
+  /* b74 — une ligne simple par versement (date · payeur · montant), détail au clic : plus de grand tableau. */
+  return `<div class="cf-lignes">${l.map(g => { cumul += g.montant; return `<details class="cf-ligne">
+      <summary><span class="cf-l-date">${escapeHtml(g.d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }))}<small>${dans(g.d)}</small></span><span class="cf-l-pay">${escapeHtml(Object.keys(g.payeurs).join(", "))}</span><strong class="cf-l-mt">${money(g.montant)}</strong></summary>
+      <div class="cf-l-det">${g.nb} mission${g.nb > 1 ? "s" : ""} · total cumulé à cette date : ${money(cumul)}</div></details>`; }).join("")}</div>`;
 }
 
 /* Courbe cumulée des encaissements à venir — SVG maison, aucun canvas :
@@ -4002,14 +4037,21 @@ function cashFlowSparkline_(echeances) {
     dots.push(`<circle cx="${X.toFixed(1)}" cy="${Y.toFixed(1)}" r="3.5" class="cf-dot"><title>${escapeHtml(e.date)} · ${money(e.cumul)} cumulés</title></circle>`);
   });
   const area = line + ` L ${px(maxJ).toFixed(1)} ${(H - PADY).toFixed(1)} L ${px(0).toFixed(1)} ${(H - PADY).toFixed(1)} Z`;
+  // b74 — graphique expliqué : titre, légende, repères de mois.
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  const ticks = [];
+  for (let m = 1; m <= 12; m++) { const d = new Date(auj.getFullYear(), auj.getMonth() + m, 1); const j = Math.round((d - auj) / 86400000); if (j > maxJ) break; ticks.push({ j, t: d.toLocaleDateString("fr-FR", { month: "short" }) }); }
   return `
     <div class="cf-chart">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Courbe cumulée des encaissements à venir">
+      <div class="cf-chart-t"><strong>Ce que tu auras touché, date après date</strong><span>Chaque point = un versement prévu. La courbe monte du montant reçu ce jour-là : à droite, le total de tout ce qui reste à percevoir.</span></div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Cumul des versements prévus dans le temps">
+        ${ticks.map(k => `<line x1="${px(k.j).toFixed(1)}" x2="${px(k.j).toFixed(1)}" y1="${PADY}" y2="${H - PADY}" class="cf-tick"/>`).join("")}
         <path d="${area}" class="cf-area"/>
         <path d="${line}" class="cf-line" fill="none"/>
         ${dots.join("")}
       </svg>
-      <div class="cf-chart-axis"><span>aujourd'hui</span><span>+${maxJ} j · ${money(maxCumul)}</span></div>
+      <div class="cf-chart-mois">${ticks.map(k => `<span style="left:${(px(k.j) / W * 100).toFixed(2)}%">${escapeHtml(k.t)}</span>`).join("")}</div>
+      <div class="cf-chart-axis"><span>aujourd'hui · 0 €</span><span>dans ${maxJ} j · ${money(maxCumul)} au total</span></div>
     </div>`;
 }
 
@@ -4652,7 +4694,16 @@ function renderLrgebGrille_(evals) {
     ${aTravailler.length || progres.length ? `<div class="lg-sum">${aTravailler.length ? `<div class="lg-sum-b lg-sum-warn"><b>À travailler (dernière observation)</b><ul>${aTravailler.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}${progres.length ? `<div class="lg-sum-b lg-sum-ok"><b>En progrès depuis l'observation précédente</b><ul>${progres.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}</div>` : ""}
     <div class="table-wrap"><table class="lg-table"><thead><tr><th>Critère</th>${dern.map(o => `<th class="lg-c">${escapeHtml((o.ev.dateEval || o.ev.dateMatch || "").slice(0, 5) || "?")}<small>${escapeHtml(o.ev.championnat || "")}</small></th>`).join("")}<th class="lg-c">Évol.</th></tr></thead>
     <tbody>${LRGEB_FAM_.map(([nom, nums]) => `<tr class="lg-famrow"><td colspan="${dern.length + 2}">${escapeHtml(nom)}</td></tr>` + nums.map(k => `<tr><td class="lg-lib"><span class="lg-num">${k}</span>${escapeHtml(lib(k))}</td>${dern.map(o => cell(o, k)).join("")}<td class="lg-c">${tendance(k)}</td></tr>`).join("")).join("")}</tbody></table></div>
-    <p class="card-sub" style="margin:8px 0 0">Mentions telles qu'écrites par l'observateur. Barème indicatif : Insuffisant 5 · À améliorer 10 · Bien 15 · Très bien 20.</p>
+    <details class="lg-calc"><summary>Comment c'est calculé ?</summary>
+      <ol>
+        <li>L'app lit la fiche d'observation importée et repère les critères numérotés de 1 à 20 (il en faut au moins 15 pour reconnaître la grille régionale).</li>
+        <li>Chaque mention écrite par l'observateur est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard) = 15, Très bien (ou Supérieur) = 20. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
+        <li>Les 20 critères sont rangés en 5 familles : Jugement (1 à 5), Gestion &amp; relation (6 à 8), Mécanique (9 à 13), Communication &amp; équipe (14 à 16), Attitude &amp; cohérence (17 à 20).</li>
+        <li>La note d'une famille = moyenne des critères notés de cette famille, sur 20. L'écart affiché compare avec l'observation précédente.</li>
+        <li>« À travailler » = critères à 10 ou moins sur la dernière observation. « En progrès » = critères dont la mention a monté.</li>
+      </ol>
+      <p>Ce n'est pas la note officielle : la Ligue ne publie pas de formule de conversion. C'est un repère pour suivre ta progression critère par critère.</p>
+    </details>
   </div>`;
 }
 /* b24 — carte d'évaluation : note telle qu'écrite, détails structurés, ré-analyse. */
@@ -5768,6 +5819,15 @@ function quitterSerieQcm() {
   renderQcm();
 }
 
+/* b74 — énoncé lisible : « … suivants : - a - b - c » devient une phrase + une liste. */
+function qcmEnonceHtml_(t) {
+  const txt = String(t || "");
+  const parts = txt.split(/\s+-\s+(?=\S)/);
+  if (parts.length >= 3 && parts.slice(1).every(p => p.length > 8)) {
+    return `<p class="qz-qtext">${escapeHtml(parts[0].replace(/\s*:?\s*$/, " :"))}</p><ul class="qz-qlist">${parts.slice(1).map(p => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`;
+  }
+  return `<p class="qz-qtext">${escapeHtml(txt)}</p>`;
+}
 function renderQcm() {
   const root = document.getElementById("qcm");
   if (!root) return;
@@ -5936,9 +5996,9 @@ function renderQcmSession_(root) {
   if (exam) btnPrincipal = dernier ? "Terminer l'exam" : "Valider et suivant";
   else btnPrincipal = !valide ? "Valider" : (dernier ? "Voir le résultat" : "Question suivante");
 
-  root.innerHTML = `
+  root.innerHTML = `<div class="qz-wrap">
     <div class="qz-top">
-      <div class="qz-top-l"><strong>${exam ? "Exam" : (s.cible ? "Série ciblée" : "Entraînement")}</strong> · Question ${s.i + 1}/${n}
+      <div class="qz-top-l"><span class="qz-mode-pill${exam ? " is-exam" : ""}">${exam ? "Exam" : (s.cible ? "Série ciblée" : "Entraînement")}</span>
         ${exam ? `<span class="qz-chrono" id="qcmChrono">${formatChronoQcm_(s.fin - Date.now())}</span>` : ""}</div>
       <div class="qz-top-r">
         ${s.i > 0 ? `<button type="button" class="small-btn secondary" id="qzPrev">Précédent</button>` : ""}
@@ -5950,7 +6010,7 @@ function renderQcmSession_(root) {
 
     <div class="qz-q">
       <div class="qz-qnum">Question ${s.i + 1} <span>sur ${n}</span></div>
-      <p class="qz-qtext">${escapeHtml(qcmTexte_(q.question))}</p>
+      ${qcmEnonceHtml_(qcmTexte_(q.question))}
       ${q.multiple ? `<p class="qz-hint">Plusieurs réponses possibles</p>` : ""}
       <div class="qz-opts">${renderQcmOptionsHtml_(q, s, valide)}</div>
       ${valide ? `<div class="qz-fb ${ok ? "ok" : "ko"}">
@@ -5961,7 +6021,7 @@ function renderQcmSession_(root) {
     </div>
     <div class="actions qz-actions"><button class="small-btn" id="qzNext"${(!valide && !aRepondu) ? " disabled" : ""}>${btnPrincipal}</button>
       ${exam ? `<span class="qz-count">${nbRep}/${n} répondues</span>` : ""}</div>
-  `;
+  </div>`;
 
   root.querySelectorAll(".qz-opt input").forEach(inp => inp.addEventListener("change", () => {
     const idx = Number(inp.dataset.idx);
@@ -6244,7 +6304,8 @@ const ALERTE_TYPES_ = [
   // [test, section, titre, quoi faire]
   [/arbitre non trouv|mon nom absent/i, "regler", "Arbitre non trouvé dans la convocation", "Vérifie que la convocation te concerne ; corrige la mission ou ignore l'alerte."],
   [/trop-per|montant reçu supérieur/i, "regler", "Trop-perçu", "Le montant reçu dépasse l'indemnité due : contrôle le paiement et corrige le montant."],
-  [/date (de match |3x3 )?(illisible|non lue|non trouvée|improbable)|date : ia/i, "regler", "Date de match illisible", "Ouvre le match et saisis la bonne date (puis l'agenda se met à jour)."],
+  [/date : ia|date lue par l'ia/i, "infos", "Date lue par l'IA", "L'IA a lu la date du match dans le mail (le texte contenait une autre date, souvent celle d'envoi). Rien à faire si elle est juste."],
+  [/date (de match |3x3 )?(illisible|non lue|non trouvée|improbable)/i, "regler", "Date de match illisible", "Ouvre le match et saisis la bonne date (puis l'agenda se met à jour)."],
   [/heure (de match |de rdv 3x3 )?(illisible|non trouvée)/i, "regler", "Heure illisible", "Ouvre le match et renseigne l'heure du match ou du rendez-vous."],
   [/pdf|non reconnu|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
   [/convocation fbi/i, "infos", "Convocation FBI à compléter", "Équipes, rôle et collègue absents du mail : complète-les dès que tu les connais."],
@@ -9575,7 +9636,8 @@ function renderRapportsOfficiels_(ms) {
       <div class="rapp-modeles rf-choix">${Object.values(C).map(f => `<button type="button" class="rapp-modele rf-carte" data-rf-form="${escapeHtml(f.id)}">
         <strong>${escapeHtml(f.titre)}</strong><span class="card-sub">${escapeHtml(f.sous)}</span>
         <span class="rf-go">Remplir →</span></button>`).join("")}</div>
-      <p class="card-sub" style="margin-top:12px">Formulaires vierges : ${Object.values(C).map(f => `<a href="${escapeHtml(f.fichier)}" target="_blank" rel="noopener">${escapeHtml(f.titre)}</a>`).join(" · ")}</p>`;
+      <div class="rf-vierges field"><label for="rfVierge">Besoin d'un formulaire vierge, à imprimer ?</label>
+        <select id="rfVierge"><option value="">Choisir un formulaire…</option>${Object.values(C).map(f => `<option value="${escapeHtml(f.fichier)}">${escapeHtml(f.titre)}</option>`).join("")}</select></div>`;
   }
   const c = C[e.id];
   const passe = ms.find(x => x._date && x._date <= new Date());   // par défaut : le dernier match joué
@@ -9586,13 +9648,15 @@ function renderRapportsOfficiels_(ms) {
   const ch = e.champs;
   const qs = (c.questions || []).map(q => {
     const pourquoi = (c.champs || []).find(x => x.pour === q.id);
-    return `<div class="rf-q"><span class="rf-q-t">${escapeHtml(q.texte)}</span><span class="rf-q-r">${q.choix.map(v => `<label class="rf-radio"><input type="radio" name="rfq_${q.id}" value="${v}" data-rf-q="${q.id}"${e.rep[q.id] === v ? " checked" : ""}> ${v}</label>`).join("")}<button type="button" class="rf-raz" data-rf-qraz="${q.id}" title="Effacer">✕</button></span>
+    return `<div class="rf-q"><span class="rf-q-t">${escapeHtml(q.texte)}</span><select class="rf-q-sel" data-rf-q="${q.id}" aria-label="${escapeHtml(q.texte)}"><option value="">—</option>${q.choix.map(v => `<option value="${escapeHtml(v)}"${e.rep[q.id] === v ? " selected" : ""}>${escapeHtml(v)}</option>`).join("")}</select>
       ${pourquoi ? `<input type="text" class="rf-pq" data-rf-champ="${pourquoi.key}" placeholder="Si non, pourquoi ?" value="${escapeHtml(ch[pourquoi.key] || "")}"${e.rep[q.id] === "Non" ? "" : " hidden"} />` : ""}</div>`;
   }).join("");
+  /* b74 — choix exclusifs en menus déroulants (plus de grilles de cases). */
   const groupe = (g, titre) => {
     const L = (c.cases || []).filter(x => x.groupe === g);
     if (!L.length) return "";
-    return `<fieldset class="rf-groupe"><legend>${titre}</legend>${L.map(x => `<label class="rf-case"><input type="checkbox" data-rf-case="${x.id}"${e.cases[x.id] ? " checked" : ""}> ${escapeHtml(x.label)}</label>`).join("")}</fieldset>`;
+    const lib = x => g === "periode" && x.label === "QT" ? "1er QT" : g === "prolongation" ? (x.label === "…" ? "Autre prolongation" : "Prolongation " + x.label) : x.label;
+    return `<div class="field"><label>${titre}</label><select data-rf-grp="${g}"><option value="">—</option>${L.map(x => `<option value="${escapeHtml(x.id)}"${e.cases[x.id] ? " selected" : ""}>${escapeHtml(lib(x))}</option>`).join("")}</select></div>`;
   };
   const momentHtml = groupe("moment", "Moment") + groupe("periode", "Période") + groupe("prolongation", "Prolongation");
   const dqHtml = e.id === "faute-disqualifiante" ? `<fieldset class="rf-groupe rf-dq"><legend>Personne(s) disqualifiée(s)</legend>${[1, 2, 3, 4].map(i => `<div class="rf-dq-l">
@@ -9603,38 +9667,91 @@ function renderRapportsOfficiels_(ms) {
       ${rfChamp_("cc_Autres Signes", "Autres signes", ch["cc_Autres Signes"], { large: true })}
       <div class="rf-qs">${c.binaires.map(([t, oui, non]) => `<div class="rf-q"><span class="rf-q-t">${escapeHtml(t)}</span><span class="rf-q-r"><label class="rf-radio"><input type="radio" name="rfb_${escapeHtml(oui)}" value="${escapeHtml(oui)}" data-rf-bin="${escapeHtml(t)}"${e.bin[t] === oui ? " checked" : ""}> Oui</label><label class="rf-radio"><input type="radio" name="rfb_${escapeHtml(oui)}" value="${escapeHtml(non)}" data-rf-bin="${escapeHtml(t)}"${e.bin[t] === non ? " checked" : ""}> Non</label></span></div>`).join("")}</div>
       ${rfChamp_("cc_Préciser par qui", "Score de Maddocks : par qui", ch["cc_Préciser par qui"], { large: true })}` : "";
+  /* b74 — page en étapes repliables : on n'a sous les yeux que ce qu'on remplit. */
+  e.ouv = e.ouv || {};
+  const etape = (k, n, titre, resume, corps, ouvertDef) => `<details class="rf-step" data-rf-step="${k}"${(e.ouv[k] !== undefined ? e.ouv[k] : ouvertDef) ? " open" : ""}>
+      <summary><span class="rf-step-n">${n}</span><span class="rf-step-t">${titre}</span><span class="rf-step-r">${resume || ""}</span></summary><div class="rf-step-b">${corps}</div></details>`;
+  const fait_ = !!(ch.date && ch.equipe_a);
+  let n = 0;
+  const stRencontre = etape("rencontre", ++n, "La rencontre", fait_ ? escapeHtml([ch.date, [ch.equipe_a, ch.equipe_b].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")) + " · pré-rempli" : "à compléter", `
+      <div class="rf-grille">
+        ${rfChamp_("auteur", "Auteur du rapport", ch.auteur)}${rfChamp_("date", "Date", ch.date)}${rfChamp_("lieu", "Lieu", ch.lieu)}${rfChamp_("num_rencontre", "N° de rencontre", ch.num_rencontre)}
+        ${rfChamp_("equipe_a", "Équipe A", ch.equipe_a)}${rfChamp_("equipe_b", "Équipe B", ch.equipe_b)}
+        ${c.acroform ? "" : groupe("fonction", "Ta fonction") + groupe("competition", "Compétition")}
+        ${rfChamp_("autre_comp", "Compétition (si autre)", ch.autre_comp)}
+      </div>${scoreHtml}${dqHtml}${commotionHtml}`, !fait_);
+  const stMoment = c.acroform ? "" : etape("moment", ++n, "Le moment", escapeHtml([ch.quart_temps, ch.temps_jeu].filter(Boolean).join(" · ")), `
+      <div class="rf-grille">${groupe("moment", "Moment")}${groupe("periode", "Période")}${groupe("prolongation", "Prolongation")}
+        ${rfChamp_("quart_temps", "Quart-temps", ch.quart_temps, { ph: "ex. 3e" })}${rfChamp_("temps_jeu", "Chrono affiché", ch.temps_jeu, { ph: "ex. 6:12" })}</div>`, false);
+  const stFaits = etape("faits", ++n, "Ce qui s'est passé", e.description ? "rédigé" : "", `
+      <p class="card-sub">Avec tes mots, dans l'ordre : qui, quand, quoi (propos exacts entre guillemets), ta décision, la suite. L'assistant met en forme sans rien ajouter.</p>
+      <textarea id="rfNotes" class="rf-notes" rows="5" placeholder="Ex. : 3e QT, 6:12, 45-47. Le n°7 de l'équipe A (M. X) conteste une faute et me dit « … ». Faute technique, puis…">${escapeHtml(e.notes || "")}</textarea>
+      <div class="rf-actions"><button type="button" class="small-btn" id="rfIa">Rédiger avec l'assistant</button> <span class="card-sub" id="rfIaMsg"></span></div>
+      ${e.manques && e.manques.length ? `<div class="rf-manques"><strong>À compléter ou vérifier :</strong><ul>${e.manques.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul></div>` : ""}
+      <label class="rf-lab" for="rfDesc">${c.acroform ? "Remarques complémentaires (texte du formulaire)" : "Texte qui sera écrit sur le formulaire"}</label>
+      <textarea id="rfDesc" class="rf-notes" rows="7">${escapeHtml(e.description || "")}</textarea>`, true);
+  const nbRep = Object.keys(e.rep || {}).length;
+  const stFdm = qs ? etape("fdm", ++n, "Feuille de marque", nbRep ? nbRep + " réponse(s)" : "", `<div class="rf-qs">${qs}</div>`, false) : "";
+  const stSign = etape("signature", ++n, "Signature", escapeHtml([ch.fait_a, ch.le].filter(Boolean).join(", le ")), `
+      <div class="rf-grille">${rfChamp_("fait_a", "Fait à", ch.fait_a)}${rfChamp_("le", "Le", ch.le)}${rfChamp_("signature", "Nom sous la signature", ch.signature)}</div>
+      <canvas id="rappSign" class="rapp-sign" width="720" height="240" aria-label="Signe ici"></canvas>
+      <div class="rf-actions"><button type="button" class="small-btn secondary" id="rappSignClear">Effacer la signature</button></div>`, false);
   return `<div class="rf">
-    <div class="rf-tete"><button type="button" class="small-btn secondary" data-rf-retour>← Formulaires</button> <strong>${escapeHtml(c.titre)}</strong> <span class="card-sub">${escapeHtml(c.sous)}</span></div>
-    <div class="field rf-large"><label for="rfMatch">Match</label><select id="rfMatch">${ms.map(x => `<option value="${escapeHtml(get(x, "UID"))}"${get(x, "UID") === e.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(x))}</option>`).join("")}</select></div>
-    <h4 class="rf-h">1. Rencontre (pré-rempli depuis ta convocation)</h4>
-    <div class="rf-grille">
-      ${rfChamp_("auteur", "Auteur du rapport", ch.auteur)}${rfChamp_("date", "Date", ch.date)}${rfChamp_("lieu", "Lieu", ch.lieu)}${rfChamp_("num_rencontre", "N° de rencontre", ch.num_rencontre)}
-      ${rfChamp_("equipe_a", "Équipe A", ch.equipe_a)}${rfChamp_("equipe_b", "Équipe B", ch.equipe_b)}
-      ${c.acroform ? "" : rfChamp_("quart_temps", "Quart-temps", ch.quart_temps, { ph: "ex. 3e" }) + rfChamp_("temps_jeu", "Temps de jeu affiché", ch.temps_jeu, { ph: "ex. 6:12" })}
-      ${rfChamp_("autre_comp", "Compétition (si « autre »)", ch.autre_comp)}
-    </div>
-    ${c.acroform ? "" : groupe("fonction", "Ta fonction") + groupe("competition", "Compétition")}
-    ${scoreHtml}${dqHtml}${commotionHtml}
-    ${momentHtml ? `<h4 class="rf-h">2. Moment</h4>${momentHtml}` : ""}
-    <h4 class="rf-h">${c.acroform ? "2" : "3"}. Ce qui s'est passé</h4>
-    <p class="card-sub">Écris avec tes mots, dans l'ordre : qui (numéro, nom, fonction), quand (période, chrono, score), quoi (gestes, propos exacts entre guillemets), ta décision, la suite. L'assistant ne rajoute rien.</p>
-    <textarea id="rfNotes" class="rf-notes" rows="6" placeholder="Ex. : 3e QT, 6:12, 45-47. Le n°7 de l'équipe A (M. X) conteste une faute et me dit « … ». Faute technique, puis…">${escapeHtml(e.notes || "")}</textarea>
-    <div class="rf-actions"><button type="button" class="small-btn" id="rfIa">Rédiger avec l'assistant</button> <span class="card-sub" id="rfIaMsg"></span></div>
-    ${e.manques && e.manques.length ? `<div class="rf-manques"><strong>À compléter ou vérifier :</strong><ul>${e.manques.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul></div>` : ""}
-    <label class="rf-h" for="rfDesc">${c.acroform ? "Remarques complémentaires (texte du formulaire)" : "Description qui sera écrite sur le formulaire (recto puis verso)"}</label>
-    <textarea id="rfDesc" class="rf-notes" rows="9">${escapeHtml(e.description || "")}</textarea>
-    ${qs ? `<h4 class="rf-h">${c.acroform ? "3" : "4"}. Feuille de marque</h4><div class="rf-qs">${qs}</div>` : ""}
-    <h4 class="rf-h">Signature</h4>
-    <div class="rf-grille">${rfChamp_("fait_a", "Fait à", ch.fait_a)}${rfChamp_("le", "Le", ch.le)}${rfChamp_("signature", "Nom sous la signature", ch.signature)}</div>
-    <canvas id="rappSign" class="rapp-sign" width="720" height="240" aria-label="Signe ici"></canvas>
-    <div class="rf-actions"><button type="button" class="small-btn secondary" id="rappSignClear">Effacer la signature</button></div>
-    <div class="rf-actions rf-fin">
-      <button type="button" class="small-btn secondary" id="rfApercu">Aperçu du PDF</button>
-      <button type="button" class="small-btn" id="rfGenerer">Générer et enregistrer le PDF</button>
+    <div class="rf-tete"><button type="button" class="small-btn secondary" data-rf-retour>← Formulaires</button><div><strong>${escapeHtml(c.titre)}</strong><span class="card-sub">${escapeHtml(c.sous)}</span></div></div>
+    <div class="field rf-match"><label for="rfMatch">Match concerné</label><select id="rfMatch">${ms.map(x => `<option value="${escapeHtml(get(x, "UID"))}"${get(x, "UID") === e.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(x))}</option>`).join("")}</select></div>
+    ${stRencontre}${stMoment}${stFaits}${stFdm}${stSign}
+    <div class="rf-fin">
+      <div class="rf-actions"><button type="button" class="small-btn secondary" id="rfApercu">Aperçu</button><button type="button" class="small-btn" id="rfGenerer">Générer le PDF officiel</button></div>
       <span class="card-sub" id="rfMsg"></span>
+      <div id="rfApres">${rfApresHtml_(e)}</div>
+      <p class="card-sub">Le PDF est téléchargé, rangé dans ton Drive et dans ton espace sécurisé. Ensuite : imprime-le ou envoie-le à la commission indiquée en bas du formulaire.</p>
     </div>
-    <p class="card-sub">Le PDF officiel rempli est téléchargé, rangé dans ton Drive (dossier Rapports, onglet Sauvegarde) et gardé dans ton espace sécurisé. Tu l'envoies ensuite à la commission indiquée en bas du formulaire.</p>
   </div>`;
+}
+/* b74 — après génération : imprimer, envoyer par mail, partager. */
+function rfApresHtml_(e) {
+  const d = e && e.dernier;
+  if (!d) return "";
+  let mail = ""; try { mail = localStorage.getItem("rt-rf-mail") || ""; } catch (x) {}
+  return `<div class="rf-apres">
+    <strong>PDF prêt : ${escapeHtml(d.nom)}</strong>
+    <div class="rf-actions">
+      <button type="button" class="small-btn secondary" data-rf-ap="ouvrir">Ouvrir</button>
+      <button type="button" class="small-btn secondary" data-rf-ap="imprimer">Imprimer</button>
+      ${navigator.canShare ? `<button type="button" class="small-btn secondary" data-rf-ap="partager">Partager…</button>` : ""}
+    </div>
+    ${d.id ? `<div class="rf-mail"><input type="email" id="rfMailDest" placeholder="Adresse de la commission" value="${escapeHtml(mail)}" autocomplete="email" /><button type="button" class="small-btn" data-rf-ap="mail">Envoyer par mail</button></div>` : `<p class="card-sub">Envoi par mail indisponible (copie Drive non créée) : utilise « Partager » ou joins le PDF téléchargé.</p>`}
+  </div>`;
+}
+function attachRfApres_(root) {
+  const e = rfEtat_(), d = e.dernier, z = root.querySelector("#rfApres");
+  if (!z || !d) return;
+  z.querySelectorAll("[data-rf-ap]").forEach(b => b.addEventListener("click", async () => {
+    const quoi = b.dataset.rfAp;
+    if (quoi === "ouvrir") { window.open(d.url, "_blank", "noopener"); return; }
+    if (quoi === "imprimer") {
+      const f = document.createElement("iframe"); f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0"; f.src = d.url;
+      f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (x) { window.open(d.url, "_blank", "noopener"); } setTimeout(() => f.remove(), 60000); };
+      document.body.appendChild(f); return;
+    }
+    if (quoi === "partager") {
+      try { const file = new File([d.blob], d.nom, { type: "application/pdf" }); if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: d.nom }); }
+      catch (x) { if (x && x.name !== "AbortError") setStatus("Partage impossible : " + x.message, "error"); }
+      return;
+    }
+    if (quoi === "mail") {
+      const dest = (z.querySelector("#rfMailDest").value || "").trim();
+      if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(dest)) { setStatus("Adresse e-mail invalide", "error"); return; }
+      b.disabled = true;
+      try {
+        const res = await jsonp("rapport.send", { id: d.id, email: dest });
+        if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
+        try { localStorage.setItem("rt-rf-mail", dest); } catch (x) {}
+        setStatus("Rapport envoyé à " + dest, "ok");
+      } catch (err) { setStatus("Erreur d'envoi : " + err.message, "error"); }
+      b.disabled = false;
+    }
+  }));
 }
 /* Construit les données de remplissage depuis l'état. */
 function rfDonnees_(c, e, signaturePng) {
@@ -9691,21 +9808,31 @@ async function rfGenerer_(root, enregistrer) {
   const out = await jsonp("rapport.add", { matchUid: e.uid, match: r ? hotelMatchLabel_(r) : (e.champs.equipe_a || ""), role: c.titre, notes: "Formulaire officiel rempli dans l'app", fNom: nom, fMime: "application/pdf", fData: btoa(bin) });
   if (!out || out.success === false) throw new Error((out && out.error) || "Enregistrement Drive impossible");
   state.rapports = undefined;
+  const o = out.result || out.data || {};
+  e.dernier = { id: o.id || "", nom, blob, url: URL.createObjectURL(blob) };
+  const z = root.querySelector("#rfApres"); if (z) { z.innerHTML = rfApresHtml_(e); attachRfApres_(root); }
   dire("PDF téléchargé, rangé dans ton Drive" + (okSb ? " et dans ton espace sécurisé." : ". (Copie sécurisée indisponible, réessaie plus tard.)"));
   setStatus("Rapport officiel enregistré", "ok");
 }
 function attachRapportsOfficiels_(root) {
   const e = rfEtat_();
+  const vg = root.querySelector("#rfVierge"); if (vg) vg.addEventListener("change", () => { if (vg.value) window.open(vg.value, "_blank", "noopener"); vg.value = ""; });
   root.querySelectorAll("[data-rf-form]").forEach(b => b.addEventListener("click", () => { state.rappForm = null; const n = rfEtat_(); n.id = b.dataset.rfForm; rerenderPerso_(); }));
   const ret = root.querySelector("[data-rf-retour]"); if (ret) ret.addEventListener("click", () => { state.rappForm = null; rerenderPerso_(); });
   if (!e.id || !RF_.cartes) return;
   const sel = root.querySelector("#rfMatch"); if (sel) sel.addEventListener("change", () => { e.uid = sel.value; e.champs = {}; e._pre = ""; rerenderPerso_(); });
   root.querySelectorAll("[data-rf-champ]").forEach(i => i.addEventListener("input", () => { e.champs[i.dataset.rfChamp] = i.value; }));
   root.querySelectorAll("[data-rf-case]").forEach(i => i.addEventListener("change", () => { e.cases[i.dataset.rfCase] = i.checked; }));
+  root.querySelectorAll("[data-rf-grp]").forEach(sl => sl.addEventListener("change", () => {
+    (RF_.cartes[e.id].cases || []).filter(x => x.groupe === sl.dataset.rfGrp).forEach(x => { e.cases[x.id] = false; });
+    if (sl.value) e.cases[sl.value] = true;
+  }));
+  root.querySelectorAll("[data-rf-step]").forEach(d => d.addEventListener("toggle", () => { e.ouv[d.dataset.rfStep] = d.open; }));
+  attachRfApres_(root);
   root.querySelectorAll("[data-rf-signe]").forEach(i => i.addEventListener("change", () => { e.signes[i.dataset.rfSigne] = i.checked; }));
   root.querySelectorAll("[data-rf-bin]").forEach(i => i.addEventListener("change", () => { e.bin[i.dataset.rfBin] = i.value; }));
   root.querySelectorAll("[data-rf-q]").forEach(i => i.addEventListener("change", () => {
-    e.rep[i.dataset.rfQ] = i.value;
+    if (i.value) e.rep[i.dataset.rfQ] = i.value; else delete e.rep[i.dataset.rfQ];
     const pq = i.closest(".rf-q").querySelector(".rf-pq"); if (pq) pq.hidden = i.value !== "Non";
   }));
   root.querySelectorAll("[data-rf-qraz]").forEach(b => b.addEventListener("click", () => { delete e.rep[b.dataset.rfQraz]; rerenderPerso_(); }));

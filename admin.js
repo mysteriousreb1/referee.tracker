@@ -70,7 +70,11 @@
       for (const f of (u.factors || []).filter((f) => f.status !== "verified")) { try { await auth("factors/" + f.id, "DELETE"); } catch (e) {} }
       const e = await auth("factors", "POST", { factor_type: "totp", friendly_name: "Admin Referee Tracker" });
       facteur = e.id;
-      $("qr").innerHTML = '<img alt="QR code" src="' + esc(e.totp.qr_code) + '">';
+      // b74 — QR généré en local depuis l'URI otpauth (le SVG brut de Supabase ne s'affichait pas dans un <img>).
+      let src = "";
+      try { const q = qrcode(0, "M"); q.addData(e.totp.uri); q.make(); src = q.createDataURL(6, 12); }
+      catch (x) { src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(String(e.totp.qr_code || "").replace(/^data:image\/svg\+xml;utf-8,/, "")); }
+      $("qr").innerHTML = '<img alt="QR code" width="240" height="240" style="background:#fff;padding:8px;border-radius:8px" src="' + esc(src) + '">';
       $("secret").textContent = e.totp.secret;
       $("mfaEnroll").classList.remove("hidden");
       $("mfaTxt").textContent = "Puis saisis le code à 6 chiffres :";
