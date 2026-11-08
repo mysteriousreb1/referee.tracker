@@ -420,7 +420,7 @@
         F.innerHTML = '<div class="form-grid">' + num("bKm", "Indemnité kilométrique (€/km)", v.indemnite_km ?? 0.4) + "</div>" + kv("bCd", "Barème CD67 (niveau → €)", v.cd67, "Niveau") + kv("bLg", "Barème LRGEB (niveau → €)", v.lrgeb, "Niveau") + kv("bCf", "Barème Championnat de France (niveau → €)", v.cf, "Niveau");
         lireForm = () => ({ indemnite_km: Number(F.querySelector("#bKm").value) || 0, cd67: lireKv("bCd"), lrgeb: lireKv("bLg"), cf: lireKv("bCf") });
       } else if (cfgCle === "pub.periodes_paiement") {
-        F.innerHTML = periodes("pCd", "CD67", v.cd67) + periodes("pLg", "LRGEB", v.lrgeb) + '<div class="form-grid" style="margin-top:10px">' + num("pCf", "Championnat de France : délai de paiement (jours)", v.cf_delai_jours ?? 45, "1") + "</div>";
+        F.innerHTML = periodes("pCd", "CD67", v.cd67) + periodes("pLg", "LRGEB", v.lrgeb) + '<div class="form-grid" style="margin-top:10px">' + num("pCf", "FFBB CF : délai de paiement (jours)", v.cf_delai_jours ?? 45, "1") + "</div>";
         lireForm = () => ({ cd67: lirePeriodes("pCd"), lrgeb: lirePeriodes("pLg"), cf_delai_jours: Number(F.querySelector("#pCf").value) || 0 });
       } else if (cfgCle === "pub.carburant") {
         F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";

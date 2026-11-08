@@ -1370,7 +1370,7 @@ function analyseInstallerSections_() {
 function renderRapprochementAnalyse_() {
   const h = document.getElementById("statsRapprochement"); if (!h) return;
   h.innerHTML = `<h2 class="section-title">Rapprochement bancaire</h2>
-    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (ligue, comité, fédération, clubs).</p>
+    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (Ligue, CD67, FFBB, clubs).</p>
     <div id="rbZone">${rbHtml_()}</div>`;
   attachRapprochement_(h);
 }
@@ -1826,7 +1826,7 @@ function logoSuivant_(img) {
    img/competitions/ est lue sur GitHub (API publique, 1 fois par jour, mise
    en cache). Déposer « DMU18.png » dans le dossier suffit : plus besoin de
    toucher au code. Le nom du fichier = le code de compétition. */
-/* b70 — découverte des logos retirée (aucun logo tiers). */
+/* b73 — liste statique complète (img/competitions) : pas de découverte réseau (CSP). */
 
 /* b18 — Codes sans logo propre : on réutilise le logo de la famille. */
 const LOGOS_ALIAS_ = { "CMUT": "CPE", "ENCOU": "CPE" };
@@ -1834,9 +1834,17 @@ function logoCompetition(row) {
   const slug = slugCompetition(row);
   const alt = cleanText(get(row, "Libellé compétition")) || slug;
   if (!slug) return "";
-  // b70 — plus aucun logo de compétition (visuels appartenant à la fédération) : pastille texte uniforme, colorée par famille.
-  const fam = /^N[MF]/.test(slug) ? "france" : /^(PN|PR)[MF]/.test(slug) ? "pn" : /^R[MF]/.test(slug) ? "region" : /^D[MF]/.test(slug) ? "dep" : /3X3/.test(slug) ? "3x3" : "autre";
-  return `<span class="comp-logo comp-logo--txt comp-logo--${fam}" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
+  const fichier = LOGOS_DISPONIBLES[slug] || LOGOS_DISPONIBLES[LOGOS_ALIAS_[slug]];
+  /* b18 — Logo absent du dépôt (DM4, DMU18, PRM…) : pastille texte directe.
+     Avant, le site essayait 12 variantes de nom à chaque affichage
+     → ~150 erreurs 404 par session. Ajouter le fichier dans
+     img/competitions/ ET dans LOGOS_DISPONIBLES pour qu'il s'affiche. */
+  if (!fichier) return `<span class="comp-logo comp-logo--txt" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
+  const cands = [fichier];
+  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
+               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
+               data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
+               loading="lazy" decoding="async">`;
 }
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.
@@ -2368,7 +2376,7 @@ function paiementRegime_(row) {
 }
 
 function paiementPayeur_(regime) {
-  return ({ cd67: "CD67", region: "Région", federation: "Fédération" })[regime] || "Organisme payeur";
+  return ({ cd67: "CD67", region: "Région", federation: "FFBB" })[regime] || "Organisme payeur";
 }
 
 function dateInputValue_(v) {
@@ -2545,7 +2553,7 @@ function renderPaymentControl(row) {
         <form class="payment-regime-form" data-uid="${uid}">
           <select name="regime" aria-label="Régime de paiement">
             <option value="">Choisir le régime…</option>
-            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">Fédération</option>
+            <option value="cd67">CD67</option><option value="region">Région</option><option value="federation">FFBB</option>
             <option value="parts_egales">Deux clubs à parts égales</option><option value="recevante">Club recevant</option>
           </select>
           <button type="submit" class="small-btn">Valider</button>
@@ -2744,7 +2752,7 @@ function renderPaiements() {
   const barre = `<div class="tabs-mini" id="payVues"><button type="button" class="tabs-mini-btn${vue === "paiements" ? " active" : ""}" data-pay-vue="paiements">Paiements</button><button type="button" class="tabs-mini-btn${vue === "rapprochement" ? " active" : ""}" data-pay-vue="rapprochement">Rapprochement bancaire</button></div>`;
   if (vue === "rapprochement") {
     root.innerHTML = `${barre}<h2 class="section-title">Rapprochement bancaire</h2>
-    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (ligue, comité, fédération, clubs).</p>
+    <p class="card-sub" style="margin:0 0 12px">Dépose un relevé (CSV ou Excel) : chaque virement entrant est rapproché des missions attendues (Ligue, CD67, FFBB, clubs).</p>
     <div id="rbZone">${rbHtml_()}</div>`;
     attachRapprochement_(root);
     root.querySelectorAll("[data-pay-vue]").forEach(b => b.addEventListener("click", () => { state.paiementsVue = b.dataset.payVue; renderPaiements(); }));
@@ -3938,7 +3946,7 @@ function renderCashFlow_(cf) {
       <div class="kpi"><label>D'ici 90 jours</label><strong>${formatMoney(h.j90)}</strong></div>
       <div class="kpi${ret.montant > 0 ? " kpi-alert" : ""}"><label>En retard</label><strong>${formatMoney(ret.montant)}</strong><span class="sub">${ret.nb} échéance(s) dépassée(s)</span></div>
     </div>
-    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la fédération, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
+    <p class="card-sub cf-intro">Ce que tu vas encore toucher sur les missions jouées ou désignées et pas encore payées, rangé par date de versement prévue (échéancier CD67, calendrier Ligue, mois suivant pour la FFBB, J+30 pour les clubs). « En retard » = date prévue dépassée sans versement. Clubs : payé en salle le jour du match ou par virement sous 30 jours.</p>
     ${spark}
     ${cfTableau_()}
         <div class="stat-note">${escapeHtml(cf.note || "")}</div>`;
@@ -4839,7 +4847,7 @@ function renderProgression() {
     <details class="past-block" style="margin-top:12px">
       <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Ajouter un niveau</span></span></summary>
       <div class="past-body">
-        <p class="card-sub" style="margin:0 0 10px">Copie les valeurs depuis le tableau « Niveaux » de ton portail officiels.</p>
+        <p class="card-sub" style="margin:0 0 10px">Copie les valeurs depuis le tableau "Niveaux" de ton extranet officiels FFBB.</p>
         <form id="niveauForm" class="toolbar" style="grid-template-columns: repeat(4, 1fr); align-items:end; margin-top:10px; row-gap:12px">
           <div class="field"><label for="niveauType">Type d'officiel</label><input id="niveauType" type="text" value="Arbitre" /></div>
           <div class="field"><label for="niveauNiveau">Niveau</label><input id="niveauNiveau" type="text" placeholder="Ex. Championnats de France Jeunes" required /></div>
@@ -5210,7 +5218,7 @@ function renderContactsPanel_() {
       liste = groupes.map(g => `<h3 class="ct-group">${escapeHtml(g.t)} <span class="count">${g.l.length}</span></h3><div class="cc-grid">${g.l.map(carte).join("")}</div>`).join("");
     }
   } else liste = empty(q ? "Aucun contact ne correspond à cette recherche." : "Aucun contact enregistré pour l'instant.");
-  const collegues = q ? "" : renderColleguesAuto_(contacts);
+  const collegues = "";   // b73 : fiches collègues automatiques retirées de l'app (décision Clément)
   return `
     <div class="cc-bar">
       <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.contactsSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
@@ -6246,7 +6254,7 @@ const ALERTE_TYPES_ = [
   [/barème cd67|calculé via barème/i, "infos", "Barème CD67 appliqué", "Indemnité calculée d'après le barème : rien à faire, sauf si la convocation indique un autre montant."],
   [/indemnité (estimée|: ia|fixe 3x3|manquante|à compléter)|journée ou demi-journée/i, "infos", "Indemnité estimée", "Compare avec la convocation ou la fiche de frais et corrige le montant si besoin."],
   [/3x3/i, "infos", "Mission 3×3 à vérifier", "Lecture automatique incertaine : vérifie le format, le lieu et l'heure."],
-  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, comité, ligue, fédération) dans le bloc paiement du match."]
+  [/mode (recevant|visiteur) à choisir|indemniseur non reconnu/i, "infos", "Régime de paiement à préciser", "Choisis qui paie (club, CD67, Ligue, FFBB) dans le bloc paiement du match."]
 ];
 function classerAlerte_(r) {
   const ws = warningsAlerte_(r);
@@ -6953,7 +6961,7 @@ function generateExportPdf() {
   doc.text("REFEREE TRACKER", 12, 12);
   doc.setTextColor(gold[0], gold[1], gold[2]);
   doc.setFontSize(10);
-  doc.text(pdfSafe(`Arbitrage — ${exportPeriodLabel()}`), 12, 19);
+  doc.text(pdfSafe(`Arbitrage FFBB — ${exportPeriodLabel()}`), 12, 19);
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
@@ -9115,7 +9123,7 @@ function renderElicencePanel_() {
   const saison = e.saisonCourante || getCurrentSeason();
   const aDoc = !!(e.doc || e.docUrl);
   const ancienne = e.ancienneSaison ? `<p class="elic-vide">Nouvelle saison ${escapeHtml(saison)} : ta licence ${escapeHtml(e.ancienneSaison)} a été retirée. Dépose la licence de cette saison.</p>` : "";
-  const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
+  const doc = !aDoc ? `${ancienne}${dropZone_("elicDocFile", "application/pdf,image/*", "Dépose ta licence " + saison, "PDF officiel FFBB ou capture de l'app · glisse le fichier ici ou touche pour choisir")}`
     : e.carte && (e.carte.nom || e.carte.numero_licence) ? licCarteBloc_(e)
     : `<div class="elic-officiel">
         <div class="elic-officiel-head">
@@ -9146,7 +9154,7 @@ function licCarteHtml_(e, grand) {
   return `<div class="lic-card${grand ? " lic-card--grand" : ""}" role="img" aria-label="Licence ${escapeHtml(saison)} de ${escapeHtml([c.prenom, c.nom].filter(Boolean).join(" "))}">
     <div class="lic-shine" aria-hidden="true"></div>
     <div class="lic-top">
-      <span class="lic-fed">Licence officielle</span>
+      <span class="lic-fed">FFBB</span>
       <div class="lic-club"><small>N° association ${escapeHtml(c.numero_association || "—")}</small><strong>${escapeHtml(c.club || "")}</strong></div>
       <div class="lic-saison"><b>${escapeHtml(a1 || "")}</b><b>${escapeHtml(a2 || "")}</b></div>
     </div>
@@ -9413,11 +9421,11 @@ const RAPP_MES_TYPES_ = RAPP_TYPES_SAISIE_.concat(["Rapport d'incident", "Rappor
    Renseigne `url` quand tu as le lien exact ; à défaut, la page d'accueil du site officiel. */
 const RAPP_OFFICIEL_SITE_ = "https://www.ffbb.com/";
 const RAPP_OFFICIELS_ = [
-  { id: "disciplinaire", titre: "Incident(s) disciplinaire(s)", desc: "Commission fédérale de discipline.", url: "" },
-  { id: "disqualifiante", titre: "Faute(s) disqualifiante(s)", desc: "Commission fédérale de discipline.", url: "" },
-  { id: "reclamation", titre: "Réclamation", desc: "Commission fédérale 5x5.", url: "" },
-  { id: "materiel", titre: "Incident(s) matériel(s)", desc: "Commission fédérale équipements.", url: "" },
-  { id: "commotion", titre: "Protocole commotion cérébrale", desc: "Commission fédérale médicale.", url: "" }
+  { id: "disciplinaire", fichier: "docs/rapports/incident-disciplinaire.pdf", titre: "Incident(s) disciplinaire(s)", desc: "FFBB — Commission fédérale de discipline." },
+  { id: "disqualifiante", fichier: "docs/rapports/faute-disqualifiante.pdf", titre: "Faute(s) disqualifiante(s)", desc: "FFBB — Commission fédérale de discipline." },
+  { id: "reclamation", fichier: "docs/rapports/reclamation.pdf", titre: "Réclamation", desc: "FFBB — Commission fédérale 5x5." },
+  { id: "materiel", fichier: "docs/rapports/incident-materiel.pdf", titre: "Incident(s) matériel(s)", desc: "FFBB — Commission fédérale équipements." },
+  { id: "commotion", fichier: "docs/rapports/commotion-cerebrale.pdf", titre: "Protocole commotion cérébrale", desc: "FFBB — Commission fédérale médicale." }
 ];
 const RAPP_MODELES_ = [
   { id: "incident", titre: "Rapport d'incident / comportement", desc: "Faits, personnes concernées, décision prise, témoins, signature." },
@@ -9464,25 +9472,12 @@ function renderRapportsPanel_() {
   const mes = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) >= 0);
   const anciens = L.filter(r => RAPP_MES_TYPES_.indexOf(r.role) < 0);
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
-  const vue = state.rappVue || "assistant";
+  const vue = state.rappVue === "sauvegarde" ? "sauvegarde" : "officiels";   // b73 : formulaires officiels FFBB remplis dans l'app
   const sous = `<div class="tabs-mini rapp-seg" role="tablist">
-    <button type="button" class="tabs-mini-btn${vue === "assistant" ? " active" : ""}" data-rapp-vue="assistant">Assistant de rédaction</button>
-    <button type="button" class="tabs-mini-btn${vue === "formulaires" ? " active" : ""}" data-rapp-vue="formulaires">Formulaires</button>
+    <button type="button" class="tabs-mini-btn${vue === "officiels" ? " active" : ""}" data-rapp-vue="officiels">Rapports officiels FFBB</button>
     <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
   </div>`;
-  if (vue === "assistant") return sous + renderRapportAssistant_(ms);
-  if (vue === "formulaires") return sous + `
-    <h3 class="rapp-h3">Formulaires officiels</h3>
-    <p class="card-sub" style="margin:0 0 10px">Les formulaires officiels sont à télécharger sur le site de ta fédération (ils ne sont pas copiés ici). Prépare le texte avec l'assistant, puis recopie-le sur le formulaire.</p>
-    <div class="rapp-modeles">${RAPP_OFFICIELS_.map(m => `<div class="rapp-modele">
-      <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
-      <div class="rapp-act"><a class="small-btn secondary" href="${escapeHtml(safeUrl_(m.url || RAPP_OFFICIEL_SITE_))}" target="_blank" rel="noopener">Ouvrir sur le site officiel</a> <button type="button" class="small-btn" data-rapp-assist="${m.id}">Préparer le texte</button></div>
-    </div>`).join("")}</div>
-    <h3 class="rapp-h3">Modèles Referee Tracker (PDF générés ici)</h3>
-    <div class="rapp-modeles">${RAPP_MODELES_.map(m => `<div class="rapp-modele">
-      <strong>${escapeHtml(m.titre)}</strong><span class="card-sub">${escapeHtml(m.desc)}</span>
-      <div class="rapp-act"><button type="button" class="small-btn secondary" data-mod-voir="${m.id}">Voir</button> <button type="button" class="small-btn secondary" data-mod-imp="${m.id}">Imprimer</button> <button type="button" class="small-btn" data-mod-send="${m.id}">Envoyer par mail</button></div>
-    </div>`).join("")}</div>`;
+  if (vue === "officiels") return sous + renderRapportsOfficiels_(ms);
   return sous + `
     <div class="rapp-dossier">
       <span>Dossier Drive : <strong>${escapeHtml(dos.nom || "non créé")}</strong>${dos.url ? ` · <a href="${escapeHtml(safeUrl_(dos.url))}" target="_blank" rel="noopener">ouvrir</a>` : ""}</span>
@@ -9511,6 +9506,248 @@ function renderRapportsPanel_() {
       <tbody>${anciens.map(r => `<tr><td>${escapeHtml(dmy_(r.cree))}</td><td>${escapeHtml(r.match)}</td><td>${escapeHtml(r.role)}</td><td>${escapeHtml(r.statut)}</td><td class="rapp-act">${actions(r)}</td></tr>`).join("")}</tbody>
     </table></div></div>`, { count: anciens.length }) : ""}`;
 }
+/* ===================== b73 — RAPPORTS OFFICIELS FFBB REMPLIS DANS L'APP =====================
+   1. L'arbitre choisit le formulaire officiel et le match : tout ce que la convocation sait est pré-rempli
+      (auteur, fonction, compétition, date, lieu, n° de rencontre, équipes, fait à / le).
+   2. Il décrit ce qui s'est passé avec ses mots ; « Rédiger avec l'assistant » (Claude, poste « rapports »)
+      met en forme la description, coche les cases claires et liste ce qui manque. Rien n'est inventé.
+   3. Il relit, corrige, signe, puis « Générer le PDF » écrit tout aux emplacements prévus du formulaire officiel
+      (rt-formulaires.js + pdf-lib) : téléchargement + copie dans son Drive (dossier Rapports) + copie Supabase. */
+const RF_ = { cartes: null, chargement: null };
+function rfCartes_() {
+  if (RF_.cartes) return Promise.resolve(RF_.cartes);
+  if (!RF_.chargement) RF_.chargement = fetch("data/formulaires-rapports.json?v=" + (window.RT_VERSION || "b73"), { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error("Formulaires introuvables"); return r.json(); })
+    .then(j => { RF_.cartes = j; return j; })
+    .catch(e => { RF_.chargement = null; throw e; });
+  return RF_.chargement;
+}
+/* pdf-lib (525 Ko) n'est chargé qu'au moment de générer un rapport. */
+function rfLib_() {
+  const charger = src => new Promise((ok, ko) => { if (document.querySelector('script[data-rf="' + src + '"]')) return ok(); const s = document.createElement("script"); s.src = src; s.dataset.rf = src; s.onload = ok; s.onerror = () => ko(new Error("Chargement impossible : " + src)); document.head.appendChild(s); });
+  if (window.PDFLib && window.RT_FORMULAIRES) return Promise.resolve();
+  return charger("./vendor/pdf-lib.min.js").then(() => charger("./rt-formulaires.js?v=" + (window.RT_VERSION || "b73")));
+}
+function rfEtat_() { return state.rappForm || (state.rappForm = { id: "", uid: "", champs: {}, cases: {}, rep: {}, notes: "", description: "", manques: [], dq: [{}, {}, {}, {}], signes: {}, bin: {} }); }
+function rfProfil_() { return (typeof Profil !== "undefined" && Profil.config && Profil.config.profil) || {}; }
+function rfFonction_(r) {
+  const role = String(get(r, "Mon rôle") || "").toLowerCase();
+  if (/2|second|deuxi/.test(role)) return "2° Arbitre";
+  if (/3|troisi/.test(role)) return "3° Arbitre";
+  return "1° Arbitre";
+}
+function rfCompetition_(r) {
+  const code = String(codeCompetition(r) || "").toUpperCase();
+  if (["NM1", "NM2", "NM3", "NF1", "NF2", "NF3", "LFB", "LF2"].indexOf(code) >= 0) return { cle: code, autre: "" };
+  if (/COUPE|TROPH|CPE/.test(code + " " + String(get(r, "Libellé compétition") || "").toUpperCase())) return { cle: "Coupes et Trophées", autre: "" };
+  return { cle: "Autre compétition", autre: [code, cleanText(get(r, "Libellé compétition"))].filter(Boolean).join(" — ").slice(0, 60) };
+}
+/* Pré-remplissage à partir du match et du profil (ne remplace jamais une saisie de l'arbitre). */
+function rfPreRemplir_(c, r) {
+  const e = rfEtat_(), p = rfProfil_(), now = new Date();
+  const dmy = d => d ? String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear() : "";
+  const lieu = [cleanText(get(r, "Salle")), cleanText(get(r, "Ville"))].filter(Boolean).join(", ");
+  const comp = rfCompetition_(r);
+  const base = {
+    auteur: p.nom_ffbb || "", date: r && r._date ? dmy(r._date) : "", lieu, num_rencontre: cleanText(get(r, "N° rencontre")),
+    equipe_a: cleanText(get(r, "Recevant")), equipe_b: cleanText(get(r, "Visiteur / événement")), autre_comp: comp.autre,
+    fait_a: p.ville || cleanText(get(r, "Ville")), le: dmy(now), signature: p.nom_ffbb || ""
+  };
+  Object.keys(base).forEach(k => { if (!e.champs[k]) e.champs[k] = base[k]; });
+  if (!c.acroform) {
+    e.cases = {};
+    const f = (c.cases || []).find(x => x.groupe === "fonction" && x.label === rfFonction_(r)); if (f) e.cases[f.id] = true;
+    const k = (c.cases || []).find(x => x.groupe === "competition" && x.label === comp.cle); if (k) e.cases[k.id] = true;
+  } else {
+    e.niveau = /^N|LF/.test(String(codeCompetition(r) || "")) ? "Nationale préciser Ex LBWL NM1 etc" : /^R|^PN/.test(String(codeCompetition(r) || "")) ? "Régionale préciser Ex PNF RM2  etc" : "Departmentale préciser Ex PRF DM1  etc";
+    e.niveauTexte = cleanText(get(r, "Code compétition")) || cleanText(get(r, "Libellé compétition"));
+  }
+}
+function rfChamp_(k, lib, val, opts) {
+  const o = opts || {};
+  return `<div class="field${o.large ? " rf-large" : ""}"><label for="rf_${k}">${escapeHtml(lib)}</label><input id="rf_${k}" data-rf-champ="${k}" type="text" value="${escapeHtml(val || "")}"${o.ph ? ` placeholder="${escapeHtml(o.ph)}"` : ""} autocomplete="off" /></div>`;
+}
+function renderRapportsOfficiels_(ms) {
+  if (!RF_.cartes) { rfCartes_().then(() => rerenderPerso_()).catch(err => setStatus("Erreur : " + err.message, "error")); return chargementPerso_(); }
+  const C = RF_.cartes, e = rfEtat_();
+  if (!e.id) {
+    return `<p class="card-sub rf-intro">Choisis le formulaire officiel. L'app le pré-remplit avec ta convocation, l'assistant met en forme ta description, puis tout est écrit aux bons endroits du PDF officiel, prêt à envoyer.</p>
+      <div class="rapp-modeles rf-choix">${Object.values(C).map(f => `<button type="button" class="rapp-modele rf-carte" data-rf-form="${escapeHtml(f.id)}">
+        <strong>${escapeHtml(f.titre)}</strong><span class="card-sub">${escapeHtml(f.sous)}</span>
+        <span class="rf-go">Remplir →</span></button>`).join("")}</div>
+      <p class="card-sub" style="margin-top:12px">Formulaires vierges : ${Object.values(C).map(f => `<a href="${escapeHtml(f.fichier)}" target="_blank" rel="noopener">${escapeHtml(f.titre)}</a>`).join(" · ")}</p>`;
+  }
+  const c = C[e.id];
+  const r = ms.find(x => get(x, "UID") === e.uid) || ms[0];
+  if (r && e.uid !== get(r, "UID")) { e.uid = get(r, "UID"); e.champs = {}; }
+  if (r && !e._pre) { rfPreRemplir_(c, r); e._pre = e.uid; }
+  if (r && e._pre !== e.uid) { e.champs = {}; rfPreRemplir_(c, r); e._pre = e.uid; }
+  const ch = e.champs;
+  const qs = (c.questions || []).map(q => {
+    const pourquoi = (c.champs || []).find(x => x.pour === q.id);
+    return `<div class="rf-q"><span class="rf-q-t">${escapeHtml(q.texte)}</span><span class="rf-q-r">${q.choix.map(v => `<label class="rf-radio"><input type="radio" name="rfq_${q.id}" value="${v}" data-rf-q="${q.id}"${e.rep[q.id] === v ? " checked" : ""}> ${v}</label>`).join("")}<button type="button" class="rf-raz" data-rf-qraz="${q.id}" title="Effacer">✕</button></span>
+      ${pourquoi ? `<input type="text" class="rf-pq" data-rf-champ="${pourquoi.key}" placeholder="Si non, pourquoi ?" value="${escapeHtml(ch[pourquoi.key] || "")}"${e.rep[q.id] === "Non" ? "" : " hidden"} />` : ""}</div>`;
+  }).join("");
+  const groupe = (g, titre) => {
+    const L = (c.cases || []).filter(x => x.groupe === g);
+    if (!L.length) return "";
+    return `<fieldset class="rf-groupe"><legend>${titre}</legend>${L.map(x => `<label class="rf-case"><input type="checkbox" data-rf-case="${x.id}"${e.cases[x.id] ? " checked" : ""}> ${escapeHtml(x.label)}</label>`).join("")}</fieldset>`;
+  };
+  const momentHtml = groupe("moment", "Moment") + groupe("periode", "Période") + groupe("prolongation", "Prolongation");
+  const dqHtml = e.id === "faute-disqualifiante" ? `<fieldset class="rf-groupe rf-dq"><legend>Personne(s) disqualifiée(s)</legend>${[1, 2, 3, 4].map(i => `<div class="rf-dq-l">
+      ${["nom", "prenom", "club", "licence"].map(k => `<input type="text" data-rf-champ="dq_${k}_${i}" placeholder="${{ nom: "NOM", prenom: "Prénom", club: "Club", licence: "N° licence" }[k]}" value="${escapeHtml(ch["dq_" + k + "_" + i] || "")}" />`).join("")}</div>`).join("")}</fieldset>` : "";
+  const scoreHtml = e.id === "reclamation" ? `<div class="rf-grille">${rfChamp_("score_erreur_a", "Score A au moment de l'erreur", ch.score_erreur_a)}${rfChamp_("score_erreur_b", "Score B au moment de l'erreur", ch.score_erreur_b)}${rfChamp_("score_final_a", "Score final A", ch.score_final_a)}${rfChamp_("score_final_b", "Score final B", ch.score_final_b)}${rfChamp_("temps_reclamation", "Chrono au dépôt de la réclamation", ch.temps_reclamation, { ph: "ex. 2:30" })}</div>` : "";
+  const commotionHtml = c.acroform ? `<div class="rf-grille">${["Nom", "Prénom", "Club", "N°Licence"].map(k => rfChamp_("cc_" + k, "Joueur — " + k.replace("N°Licence", "n° de licence"), ch["cc_" + k])).join("")}</div>
+      <fieldset class="rf-groupe"><legend>Signes observés</legend>${c.signes.map(s => `<label class="rf-case"><input type="checkbox" data-rf-signe="${escapeHtml(s)}"${e.signes[s] ? " checked" : ""}> ${escapeHtml(s)}</label>`).join("")}</fieldset>
+      ${rfChamp_("cc_Autres Signes", "Autres signes", ch["cc_Autres Signes"], { large: true })}
+      <div class="rf-qs">${c.binaires.map(([t, oui, non]) => `<div class="rf-q"><span class="rf-q-t">${escapeHtml(t)}</span><span class="rf-q-r"><label class="rf-radio"><input type="radio" name="rfb_${escapeHtml(oui)}" value="${escapeHtml(oui)}" data-rf-bin="${escapeHtml(t)}"${e.bin[t] === oui ? " checked" : ""}> Oui</label><label class="rf-radio"><input type="radio" name="rfb_${escapeHtml(oui)}" value="${escapeHtml(non)}" data-rf-bin="${escapeHtml(t)}"${e.bin[t] === non ? " checked" : ""}> Non</label></span></div>`).join("")}</div>
+      ${rfChamp_("cc_Préciser par qui", "Score de Maddocks : par qui", ch["cc_Préciser par qui"], { large: true })}` : "";
+  return `<div class="rf">
+    <div class="rf-tete"><button type="button" class="small-btn secondary" data-rf-retour>← Formulaires</button> <strong>${escapeHtml(c.titre)}</strong> <span class="card-sub">${escapeHtml(c.sous)}</span></div>
+    <div class="field rf-large"><label for="rfMatch">Match</label><select id="rfMatch">${ms.map(x => `<option value="${escapeHtml(get(x, "UID"))}"${get(x, "UID") === e.uid ? " selected" : ""}>${escapeHtml(hotelMatchLabel_(x))}</option>`).join("")}</select></div>
+    <h4 class="rf-h">1. Rencontre (pré-rempli depuis ta convocation)</h4>
+    <div class="rf-grille">
+      ${rfChamp_("auteur", "Auteur du rapport", ch.auteur)}${rfChamp_("date", "Date", ch.date)}${rfChamp_("lieu", "Lieu", ch.lieu)}${rfChamp_("num_rencontre", "N° de rencontre", ch.num_rencontre)}
+      ${rfChamp_("equipe_a", "Équipe A", ch.equipe_a)}${rfChamp_("equipe_b", "Équipe B", ch.equipe_b)}
+      ${c.acroform ? "" : rfChamp_("quart_temps", "Quart-temps", ch.quart_temps, { ph: "ex. 3e" }) + rfChamp_("temps_jeu", "Temps de jeu affiché", ch.temps_jeu, { ph: "ex. 6:12" })}
+      ${rfChamp_("autre_comp", "Compétition (si « autre »)", ch.autre_comp)}
+    </div>
+    ${c.acroform ? "" : groupe("fonction", "Ta fonction") + groupe("competition", "Compétition")}
+    ${scoreHtml}${dqHtml}${commotionHtml}
+    ${momentHtml ? `<h4 class="rf-h">2. Moment</h4>${momentHtml}` : ""}
+    <h4 class="rf-h">${c.acroform ? "2" : "3"}. Ce qui s'est passé</h4>
+    <p class="card-sub">Écris avec tes mots, dans l'ordre : qui (numéro, nom, fonction), quand (période, chrono, score), quoi (gestes, propos exacts entre guillemets), ta décision, la suite. L'assistant ne rajoute rien.</p>
+    <textarea id="rfNotes" class="rf-notes" rows="6" placeholder="Ex. : 3e QT, 6:12, 45-47. Le n°7 de l'équipe A (M. X) conteste une faute et me dit « … ». Faute technique, puis…">${escapeHtml(e.notes || "")}</textarea>
+    <div class="rf-actions"><button type="button" class="small-btn" id="rfIa">Rédiger avec l'assistant</button> <span class="card-sub" id="rfIaMsg"></span></div>
+    ${e.manques && e.manques.length ? `<div class="rf-manques"><strong>À compléter ou vérifier :</strong><ul>${e.manques.map(m => `<li>${escapeHtml(m)}</li>`).join("")}</ul></div>` : ""}
+    <label class="rf-h" for="rfDesc">${c.acroform ? "Remarques complémentaires (texte du formulaire)" : "Description qui sera écrite sur le formulaire (recto puis verso)"}</label>
+    <textarea id="rfDesc" class="rf-notes" rows="9">${escapeHtml(e.description || "")}</textarea>
+    ${qs ? `<h4 class="rf-h">${c.acroform ? "3" : "4"}. Feuille de marque</h4><div class="rf-qs">${qs}</div>` : ""}
+    <h4 class="rf-h">Signature</h4>
+    <div class="rf-grille">${rfChamp_("fait_a", "Fait à", ch.fait_a)}${rfChamp_("le", "Le", ch.le)}${rfChamp_("signature", "Nom sous la signature", ch.signature)}</div>
+    <canvas id="rappSign" class="rapp-sign" width="720" height="240" aria-label="Signe ici"></canvas>
+    <div class="rf-actions"><button type="button" class="small-btn secondary" id="rappSignClear">Effacer la signature</button></div>
+    <div class="rf-actions rf-fin">
+      <button type="button" class="small-btn secondary" id="rfApercu">Aperçu du PDF</button>
+      <button type="button" class="small-btn" id="rfGenerer">Générer et enregistrer le PDF</button>
+      <span class="card-sub" id="rfMsg"></span>
+    </div>
+    <p class="card-sub">Le PDF officiel rempli est téléchargé, rangé dans ton Drive (dossier Rapports, onglet Sauvegarde) et gardé dans ton espace sécurisé. Tu l'envoies ensuite à la commission indiquée en bas du formulaire.</p>
+  </div>`;
+}
+/* Construit les données de remplissage depuis l'état. */
+function rfDonnees_(c, e, signaturePng) {
+  if (c.acroform) {
+    const champs = {
+      "Nom du 1er arbitre": e.champs.auteur, "Date": e.champs.date, "Lieu": e.champs.lieu, "Equipe A": e.champs.equipe_a, "Equipe B": e.champs.equipe_b,
+      "N° Rencontre": e.champs.num_rencontre, "Nom": e.champs["cc_Nom"], "Prénom": e.champs["cc_Prénom"], "Club": e.champs["cc_Club"], "N°Licence": e.champs["cc_N°Licence"],
+      "Autres Signes": e.champs["cc_Autres Signes"], "Préciser par qui": e.champs["cc_Préciser par qui"], "Remarques Complémentaires": e.description,
+      "Fait à": e.champs.fait_a, "Le": e.champs.le, "Signature": signaturePng ? "" : e.champs.signature
+    };
+    if (e.niveau) champs[c.niveaux[e.niveau]] = e.champs.autre_comp || e.niveauTexte || "";
+    const cases = {};
+    if (e.niveau) cases[e.niveau] = true;
+    Object.keys(e.signes || {}).forEach(s => { if (e.signes[s]) cases[s] = true; });
+    Object.values(e.bin || {}).forEach(v => { if (v) cases[v] = true; });
+    return { champs, cases };
+  }
+  const cases = Object.assign({}, e.cases);
+  (c.cases || []).forEach(x => { if (x.q && e.rep[x.q] === x.val) cases[x.id] = true; });
+  const champs = Object.assign({}, e.champs);
+  if (signaturePng) champs.signature = "";
+  return { champs, cases, description: e.description, signatureImage: signaturePng || null };
+}
+async function rfGenerer_(root, enregistrer) {
+  const e = rfEtat_(), c = RF_.cartes[e.id], msg = root.querySelector("#rfMsg");
+  const dire = t => { if (msg) msg.textContent = t; };
+  dire("Préparation…");
+  await rfLib_();
+  const cv = root.querySelector("#rappSign");
+  let sig = null;
+  if (cv && cv.dataset.signe === "1") { const b64 = cv.toDataURL("image/png").split(",")[1]; sig = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)); }
+  dire("Remplissage du formulaire officiel…");
+  const src = await fetch(c.fichier); if (!src.ok) throw new Error("Formulaire officiel introuvable");
+  const res = await RT_FORMULAIRES.remplir(new Uint8Array(await src.arrayBuffer()), c, rfDonnees_(c, e, sig));
+  const blob = new Blob([res.octets], { type: "application/pdf" });
+  const r = (matchsPourRapports_() || []).find(x => get(x, "UID") === e.uid);
+  const nom = (c.id + "_" + (e.champs.date || "").replace(/\//g, "-") + "_" + (e.champs.equipe_a || "match").replace(/[^A-Za-z0-9]+/g, "-").slice(0, 30) + ".pdf").replace(/-+/g, "-");
+  if (!enregistrer) { window.open(URL.createObjectURL(blob), "_blank", "noopener"); dire("Aperçu ouvert dans un nouvel onglet."); return; }
+  // 1. téléchargement immédiat
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  // 2. copie Supabase (bucket privé « rapports », dossier = ton identifiant)
+  let okSb = false;
+  try {
+    const sub = rtSubDuJeton_(), t = await SB.token();
+    if (sub && t) {
+      const rep = await fetch(SB_URL + "/storage/v1/object/rapports/" + encodeURIComponent(sub) + "/" + encodeURIComponent(Date.now() + "_" + nom), { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/pdf", "x-upsert": "false" }, body: blob });
+      okSb = rep.ok;
+    }
+  } catch (err) { okSb = false; }
+  // 3. copie Drive via ton moteur (même circuit que « Sauvegarde »)
+  dire("Rangement dans ton Drive…");
+  let bin = ""; const u8 = new Uint8Array(res.octets);
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  const out = await jsonp("rapport.add", { matchUid: e.uid, match: r ? hotelMatchLabel_(r) : (e.champs.equipe_a || ""), role: c.titre, notes: "Formulaire officiel rempli dans l'app", fNom: nom, fMime: "application/pdf", fData: btoa(bin) });
+  if (!out || out.success === false) throw new Error((out && out.error) || "Enregistrement Drive impossible");
+  state.rapports = undefined;
+  dire("PDF téléchargé, rangé dans ton Drive" + (okSb ? " et dans ton espace sécurisé." : ". (Copie sécurisée indisponible, réessaie plus tard.)"));
+  setStatus("Rapport officiel enregistré", "ok");
+}
+function attachRapportsOfficiels_(root) {
+  const e = rfEtat_();
+  root.querySelectorAll("[data-rf-form]").forEach(b => b.addEventListener("click", () => { state.rappForm = null; const n = rfEtat_(); n.id = b.dataset.rfForm; rerenderPerso_(); }));
+  const ret = root.querySelector("[data-rf-retour]"); if (ret) ret.addEventListener("click", () => { state.rappForm = null; rerenderPerso_(); });
+  if (!e.id || !RF_.cartes) return;
+  const sel = root.querySelector("#rfMatch"); if (sel) sel.addEventListener("change", () => { e.uid = sel.value; e.champs = {}; e._pre = ""; rerenderPerso_(); });
+  root.querySelectorAll("[data-rf-champ]").forEach(i => i.addEventListener("input", () => { e.champs[i.dataset.rfChamp] = i.value; }));
+  root.querySelectorAll("[data-rf-case]").forEach(i => i.addEventListener("change", () => { e.cases[i.dataset.rfCase] = i.checked; }));
+  root.querySelectorAll("[data-rf-signe]").forEach(i => i.addEventListener("change", () => { e.signes[i.dataset.rfSigne] = i.checked; }));
+  root.querySelectorAll("[data-rf-bin]").forEach(i => i.addEventListener("change", () => { e.bin[i.dataset.rfBin] = i.value; }));
+  root.querySelectorAll("[data-rf-q]").forEach(i => i.addEventListener("change", () => {
+    e.rep[i.dataset.rfQ] = i.value;
+    const pq = i.closest(".rf-q").querySelector(".rf-pq"); if (pq) pq.hidden = i.value !== "Non";
+  }));
+  root.querySelectorAll("[data-rf-qraz]").forEach(b => b.addEventListener("click", () => { delete e.rep[b.dataset.rfQraz]; rerenderPerso_(); }));
+  const notes = root.querySelector("#rfNotes"); if (notes) notes.addEventListener("input", () => { e.notes = notes.value; });
+  const desc = root.querySelector("#rfDesc"); if (desc) desc.addEventListener("input", () => { e.description = desc.value; });
+  initSignature_(root);
+  const ia = root.querySelector("#rfIa");
+  if (ia) ia.addEventListener("click", async () => {
+    const m = root.querySelector("#rfIaMsg"), c = RF_.cartes[e.id];
+    try {
+      if ((e.notes || "").trim().length < 30) throw new Error("Décris d'abord ce qui s'est passé (quelques phrases).");
+      ia.disabled = true; m.textContent = "L'assistant rédige…";
+      const ctx = { formulaire: c.titre, date: e.champs.date, lieu: e.champs.lieu, equipe_a: e.champs.equipe_a, equipe_b: e.champs.equipe_b, auteur: e.champs.auteur, fonction: ((c.cases || []).find(x => e.cases[x.id] && x.groupe === "fonction") || {}).label || "" };
+      const res = await jsonp("rapport.remplir", { formulaire: e.id, notes: e.notes, contexte: JSON.stringify(ctx), questions: JSON.stringify(c.questions || []) });
+      if (!res || res.success === false) throw new Error((res && res.error) || "Assistant indisponible");
+      const o = res.result || res.data || res;
+      e.description = o.description || e.description;
+      Object.keys(o.reponses || {}).forEach(q => { if (!e.rep[q]) e.rep[q] = o.reponses[q]; });
+      const ch = o.champs || {};
+      ["quart_temps", "temps_jeu", "score_erreur_a", "score_erreur_b", "score_final_a", "score_final_b", "temps_reclamation"].forEach(k => { if (ch[k] && !e.champs[k]) e.champs[k] = String(ch[k]); });
+      if (o.moment) { const mc = (c.cases || []).find(x => x.groupe === "moment" && x.moment === o.moment); if (mc) { (c.cases || []).filter(x => x.groupe === "moment").forEach(x => { e.cases[x.id] = false; }); e.cases[mc.id] = true; } }
+      if (c.acroform) {
+        (Array.isArray(ch.signes) ? ch.signes : []).forEach(s => { if (c.signes.indexOf(s) >= 0) e.signes[s] = true; });
+        if (/^(oui|non)$/i.test(ch.retour_jeu || "")) e.bin["Retour au jeu"] = /oui/i.test(ch.retour_jeu) ? "Oui retour en jeu" : "Non retour en jeu";
+        if (/^(oui|non)$/i.test(ch.centre_soins || "")) e.bin["Évacuation vers un centre de soins"] = /oui/i.test(ch.centre_soins) ? "Oui centre de soins" : "Non pas de centre de soins";
+        const p0 = (o.personnes || [])[0] || {};
+        [["Nom", "nom"], ["Prénom", "prenom"], ["Club", "club"], ["N°Licence", "licence"]].forEach(([k, s]) => { if (p0[s] && !e.champs["cc_" + k]) e.champs["cc_" + k] = String(p0[s]); });
+      } else if (e.id === "faute-disqualifiante") {
+        (o.personnes || []).slice(0, 4).forEach((p, i) => ["nom", "prenom", "club", "licence"].forEach(k => { const key = "dq_" + k + "_" + (i + 1); if (p[k] && !e.champs[key]) e.champs[key] = String(p[k]); }));
+      }
+      e.manques = o.manques || [];
+      rerenderPerso_();
+      setStatus("Rapport rédigé : relis la description et les cases avant de générer le PDF", "ok");
+    } catch (err) { m.textContent = "Erreur : " + err.message; ia.disabled = false; }
+  });
+  const ap = root.querySelector("#rfApercu"); if (ap) ap.addEventListener("click", () => rfGenerer_(root, false).catch(err => { const m = root.querySelector("#rfMsg"); if (m) m.textContent = "Erreur : " + err.message; }));
+  const gen = root.querySelector("#rfGenerer"); if (gen) gen.addEventListener("click", async () => {
+    gen.disabled = true;
+    try { await rfGenerer_(root, true); } catch (err) { const m = root.querySelector("#rfMsg"); if (m) m.textContent = "Erreur : " + err.message; }
+    finally { gen.disabled = false; }
+  });
+}
+
 /* ===================== b70 — ASSISTANT DE RÉDACTION DES RAPPORTS =====================
    Principe : l'app pose les questions, l'arbitre répond avec ses mots, le texte est assemblé
    dans l'ordre attendu par les commissions (rencontre → faits → décision → suites → observations).
@@ -9725,6 +9962,7 @@ function attachPersoListeners_(root) {
   root.querySelectorAll("[data-rapp-vue]").forEach(b => b.addEventListener("click", () => { state.rappVue = b.dataset.rappVue; rerenderPerso_(); }));
   root.querySelectorAll("[data-rapp-assist]").forEach(b => b.addEventListener("click", () => { state.rappVue = "assistant"; state.rappAssist = Object.assign(state.rappAssist || { uid: "", data: {} }, { type: b.dataset.rappAssist, data: {} }); rerenderPerso_(); }));
   attachRapportAssistant_(root);
+  attachRapportsOfficiels_(root);   // b73
   attachDropZones_(root);
   const rf = root.querySelector("#rappForm");
   if (rf) {
@@ -9956,7 +10194,7 @@ function cltPos_(row, cote) {
 }
 /* b70 — classements de championnat coupés : la seule source était un collecteur tournant sur un Mac (données figées au 16/10,
    et site tiers qui refuse les lectures automatisées). Réactiver uniquement avec une source officielle autorisée. */
-const CLASSEMENTS_ACTIFS_ = false;
+const CLASSEMENTS_ACTIFS_ = true;   // b73 : remis pendant la bêta (en attente d'autorisation fédération)
 function renderClassementMatch_(row) {
   if (!CLASSEMENTS_ACTIFS_) return "";
   if (row._isPast && row._date && Date.now() - row._date.getTime() > 7 * 86400000) return "";

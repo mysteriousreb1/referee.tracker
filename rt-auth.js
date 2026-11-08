@@ -1068,7 +1068,7 @@ function renderProfile() {
   body.innerHTML = `
     <section class="rt-sect">
       <h3>Identité &amp; adresse</h3>
-      <p class="rt-help">Le nom et l'e-mail officiels servent à te reconnaître dans le bloc arbitre d'une convocation ; l'adresse est le point de départ de tous les kilomètres.</p>
+      <p class="rt-help">Le nom et l'e-mail FFBB servent à te reconnaître dans le bloc arbitre d'une convocation ; l'adresse est le point de départ de tous les kilomètres.</p>
       <div class="rt-field"><label for="pfEmailC">Email de connexion</label>
         <input id="pfEmailC" type="email" value="${esc(p.email_connexion)}" disabled></div>
       <div class="rt-row">
@@ -1126,7 +1126,7 @@ function renderProfile() {
           <div class="rt-field"><label for="vhCv">Chevaux fiscaux</label>
             <input id="vhCv" type="text" placeholder="8"></div>
         </div>
-        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité kilométrique officielle (${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
+        <p class="rt-help">Les chevaux fiscaux n'entrent pas dans l'indemnité FFBB (${esc(t.indemnite_km)} €/km) : ils ne servent qu'à l'équivalent barème fiscal.</p>
         <button type="button" class="rt-btn" id="pfAddVeh">Ajouter</button>
       </details>
     </section>
@@ -1134,8 +1134,8 @@ function renderProfile() {
     <section class="rt-sect">
       <h3>Frais kilométriques</h3>
       <details class="rt-details">
-        <summary>Indemnité kilométrique : <b>${esc(t.indemnite_km)} €/km</b></summary>
-        <div class="rt-field"><label for="pfIndem">Indemnité kilométrique (€/km)</label>
+        <summary>Indemnité FFBB : <b>${esc(t.indemnite_km)} €/km</b></summary>
+        <div class="rt-field"><label for="pfIndem">Indemnité FFBB (€/km)</label>
           <input id="pfIndem" type="text" value="${esc(t.indemnite_km)}"></div>
         <input id="pfUsure" type="hidden" value="${esc(t.usure_km)}">
         <button type="button" class="rt-btn" id="pfSaveTarifs">Enregistrer</button>
@@ -1887,7 +1887,7 @@ const ONBOARD = {
       b.innerHTML = '<h2>Qui te paie ?</h2><p>Tes désignations viennent de trois niveaux. Choisis les tiens : l\'app applique les bons barèmes et les bonnes périodes de paiement.</p>' +
         '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>Comité départemental</strong><span class="rt-tag">obligatoire</span></div><p class="rt-help">Championnats départementaux, 3x3, jeunes. Payé par le comité ou le club selon la rencontre.</p><select id="onbZcd">' + opt(this.COMITES, D2.zcd) + '</select></div>' +
         '<div class="rt-onb-zone' + (D2.zligue ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZligueOn"' + (D2.zligue ? " checked" : "") + '> <strong>Ligue régionale</strong></label><span class="rt-tag">arbitre régional</span></div><p class="rt-help">RM2 / RF2 / PNM / PNF, U15-U18 régionaux… Payé par la ligue par virement, par périodes.</p><select id="onbZligue"' + (D2.zligue ? "" : " disabled") + '>' + opt(this.LIGUES, D2.zligue || "LRGEB") + '</select></div>' +
-        '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la la fédération par virement.</p></div>';
+        '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la FFBB par virement.</p></div>';
       const lo = document.getElementById("onbZligueOn"), ls = document.getElementById("onbZligue");
       lo.addEventListener("change", () => { ls.disabled = !lo.checked; lo.closest(".rt-onb-zone").classList.toggle("is-on", lo.checked); if (lo.checked && !ls.value) ls.value = "LRGEB"; RT_CARTE.maj(); });
       document.getElementById("onbZcf").addEventListener("change", ev => { ev.target.closest(".rt-onb-zone").classList.toggle("is-on", ev.target.checked); RT_CARTE.maj(); });
@@ -1899,10 +1899,10 @@ const ONBOARD = {
       ls.addEventListener("change", () => RT_CARTE.maj());
     } else if (e === 4) {
       const adr = this.reception || "(adresse communiquée par l'administrateur)";
-      b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations officielles vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
-        '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : (l\'adresse qui t\'envoie tes convocations) » → Transférer.</p></details>' +
-        '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur = l\'adresse qui t\'envoie tes convocations » → Transférer à l\'adresse ci-dessus.</p></details>' +
-        '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : l\'adresse qui t\'envoie tes convocations » → Transférer à l\'adresse ci-dessus.</p></details>' +
+      b.innerHTML = '<h2>Recevoir tes convocations</h2><p>Une seule chose à faire : <strong>transférer automatiquement</strong> tes convocations FFBB vers :</p><p class="rt-onb-adr">' + esc(adr) + '</p>' +
+        '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : ffbb » → Transférer.</p></details>' +
+        '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur contient ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
+        '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
         '<p class="rt-help">Transfère aussi une fois tes convocations déjà reçues cette saison : l\'app reconstruit ta saison.</p>';
     } else {
       b.innerHTML = '<h2>Notifications</h2><p>Sois prévenu d\'une nouvelle désignation, d\'un paiement sur place ou d\'une échéance dépassée.</p>' +
