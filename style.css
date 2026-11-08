@@ -4725,3 +4725,6 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .bp-card .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
 .bp-card .field input { padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line, rgba(255,255,255,.15)); background: transparent; color: inherit; }
 .bp-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+
+/* b79 — avertissement prix carburant manuel */
+.rt-help.rt-warn { color: #B45309; font-weight: 600; }

@@ -1142,6 +1142,8 @@ function renderProfile() {
       </details>
       <details class="rt-details">
         <summary><span>Prix du carburant</span><b>${esc(coutsResume_("prix"))}</b></summary>
+        <p class="rt-help">${prixAutoTexte_() ? "<b>Prix automatique :</b> " + esc(prixAutoTexte_()) + ". Il est relevé chaque jour et la moyenne du mois sert à tes calculs." : "Le prix est relevé automatiquement chaque jour dans les stations proches de ton domicile."}</p>
+        ${((Couts && Couts.prix) || []).length ? '<p class="rt-help rt-warn">Un prix saisi à la main remplace le prix automatique à partir de sa date. Supprime la ligne (×) pour revenir au prix automatique.</p>' : ""}
         ${coutsListe_("prix")}
         <div class="rt-row">
           <div class="rt-field"><label for="cpDate">À partir du</label>
@@ -1404,8 +1406,15 @@ function saveTarifs() {
 function _fr(iso) { const m = String(iso).split("-"); return m.length === 3 ? m[2] + "/" + m[1] + "/" + m[0] : iso; }
 function _n(v, d) { return Number(v).toLocaleString("fr-FR", { maximumFractionDigits: d }); }
 
+/* b79 — prix relevé automatiquement autour du domicile (fourni par le moteur). */
+function prixAutoTexte_() {
+  const m = window.RT_PRIX_META;
+  if (!m || !(m.prix > 0)) return "";
+  return _n(m.prix, 3) + " €/L · médiane de " + m.n + " station" + (m.n > 1 ? "s" : "") + " à moins de " + m.rayon_km + " km (prix de moins de " + m.fraicheur_j + " j) · relevé le " + _fr(m.jour);
+}
 function coutsResume_(type) {
   const l = (Couts && Couts[type]) || [];
+  if (!l.length && type === "prix") { const m = window.RT_PRIX_META; return m && m.prix > 0 ? "auto · " + _n(m.prix, 3) + " €/L" : "automatique"; }
   if (!l.length) return "barème par défaut";
   const d = l[l.length - 1];
   return type === "prix" ? _n(d.prix, 3) + " €/L" : _n(d.eur_km, 3) + " €/km";
@@ -1413,7 +1422,7 @@ function coutsResume_(type) {
 
 function coutsListe_(type) {
   const l = (Couts && Couts[type]) || [];
-  if (!l.length) return '<p class="rt-help">Aucune ligne : anciens barèmes appliqués.</p>';
+  if (!l.length) return type === "prix" ? "" : '<p class="rt-help">Aucune ligne : anciens barèmes appliqués.</p>';
   return '<ul class="rt-plist">' + l.map((p, i) => {
     const txt = type === "prix"
       ? _n(p.prix, 4) + " €/L"

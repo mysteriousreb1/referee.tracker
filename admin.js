@@ -467,7 +467,7 @@
     "pub.ia": { titre: "IA", desc: "Plafond mensuel et répartition par fonction · appliqué sous 10 min" },
     "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
-    "pub.carburant": { titre: "Carburant (info)", desc: "Non utilisé : chaque arbitre a son prix dans Mon profil" },
+    "pub.carburant": { titre: "Carburant", desc: "Prix relevé autour du domicile de chaque arbitre (rayon, fraîcheur, carburant) · prix imposé par mois · appliqué sous 10 min" },
     "pub.fonctions_defaut": { titre: "Fonctions par défaut (info)", desc: "Non utilisé pour l'instant" },
   };
   let cfgCle = "pub.baremes";
@@ -487,7 +487,7 @@
     // ---- formulaires dédiés ----
     const F = $("cfgForm"); let lireForm = () => lireJson();
     const num = (id, lab, v, step) => '<label class="f">' + lab + '<input type="number" step="' + (step || "0.01") + '" id="' + id + '" value="' + esc(v == null ? "" : v) + '"></label>';
-    const kv = (id, titre, obj, ph) => '<div class="subtab">' + titre + '</div><div class="liste-edit" id="' + id + '">' + Object.entries(obj || {}).map(([k, v]) => '<div class="row"><input value="' + esc(k) + '" placeholder="' + esc(ph) + '"><input type="number" step="0.5" value="' + esc(v) + '" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>').join("") + '</div><button class="btn sm" data-add="' + id + '">+ Ajouter</button>';
+    const kv = (id, titre, obj, ph) => '<div class="subtab">' + titre + '</div><div class="liste-edit" id="' + id + '">' + Object.entries(obj || {}).map(([k, v]) => '<div class="row"><input value="' + esc(k) + '" placeholder="' + esc(ph) + '"><input type="number" step="any" value="' + esc(v) + '" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>').join("") + '</div><button class="btn sm" data-add="' + id + '">+ Ajouter</button>';
     const lireKv = (id) => { const o = {}; F.querySelectorAll("#" + id + " .row").forEach((r) => { const [k, v] = r.querySelectorAll("input"); if (k.value.trim()) o[k.value.trim()] = Number(v.value) || 0; }); return o; };
     const periodes = (id, titre, arr) => '<div class="subtab">' + titre + ' (début · fin · paiement le)</div><div class="liste-edit" id="' + id + '">' + (arr || []).map((p) => '<div class="row"><input type="date" value="' + esc(p.debut) + '"><input type="date" value="' + esc(p.fin) + '"><input type="date" value="' + esc(p.paiement_le) + '"><button class="btn sm" data-del>✕</button></div>').join("") + '</div><button class="btn sm" data-addp="' + id + '">+ Période</button>';
     const lirePeriodes = (id) => Array.from(F.querySelectorAll("#" + id + " .row")).map((r) => { const [a, b, c] = r.querySelectorAll("input"); return { debut: a.value, fin: b.value, paiement_le: c.value }; }).filter((p) => p.debut && p.fin);
@@ -538,8 +538,15 @@
           F.querySelectorAll("[data-zaddb]").forEach((bt) => bt.addEventListener("click", () => { const i = bt.dataset.zaddb, n = F.querySelector('[data-zadd="' + i + '"]').value.trim().toLowerCase(); if (!/^[a-z0-9]{2,8}$/.test(n)) return toast("Code attendu : CD75, LIDF…", "err"); const o = lireForm(); const s = F.querySelectorAll("[data-saison]")[Number(i)].dataset.saison; if (!o[s][n]) { o[s][n] = []; if (!/^cd/.test(n)) o[s][n + "_marge_jours"] = 7; } formulaire(o); }));
         }, 0);
       } else if (cfgCle === "pub.carburant") {
-        F.innerHTML = '<div class="form-grid">' + num("cE10", "Prix E10 par défaut (€/L)", v.prix_e10 ?? 1.75, "0.001") + "</div>";
-        lireForm = () => ({ prix_e10: Number(F.querySelector("#cE10").value) || 0 });
+        // b79 — relevé automatique local (moteur) : stations à moins de N km, prix de moins de N jours, médiane, 1 relevé par jour → moyenne du mois.
+        const carbs = [["e10", "SP95-E10"], ["sp95", "SP95"], ["sp98", "SP98"], ["gazole", "Gazole"], ["e85", "E85"], ["gplc", "GPLc"]];
+        F.innerHTML = '<p class="mut tiny">Chaque moteur relève le prix une fois par jour dans les stations proches du domicile de l\'arbitre (open data du ministère de l\'Économie), prend la <b>médiane</b> et en fait la moyenne du mois. Un prix saisi par l\'arbitre dans Mon profil reste prioritaire.</p>' +
+          '<div class="form-grid">' + num("cRay", "Rayon autour du domicile (km)", v.rayon_km ?? 10, "1") + num("cFr", "Prix pris en compte s\'ils ont moins de (jours)", v.fraicheur_jours ?? 7, "1") +
+          '<label class="f">Carburant<select id="cCarb">' + carbs.map(([k, l]) => '<option value="' + k + '"' + ((v.carburant || "e10") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+          kv("cForce", "Prix imposé à tous pour un mois (AAAA-MM → €/L) — remplace le relevé automatique", v.force, "2026-11") +
+          '<p class="mut tiny">Moins de 3 stations dans le rayon : le moteur élargit à 15 puis 25 km.</p>';
+        lireForm = () => { const f = lireKv("cForce"), force = {}; Object.keys(f).forEach((k) => { if (/^\d{4}-\d{2}$/.test(k) && f[k] > 0.5 && f[k] < 4) force[k] = f[k]; });
+          return { carburant: F.querySelector("#cCarb").value, rayon_km: Math.min(50, Math.max(3, Number(F.querySelector("#cRay").value) || 10)), fraicheur_jours: Math.min(30, Math.max(1, Number(F.querySelector("#cFr").value) || 7)), force }; };
       } else if (cfgCle === "pub.fonctions_defaut") {
         F.innerHTML = '<div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, k, v[k])).join("") + "</div>";
         lireForm = () => { const o = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
@@ -554,7 +561,7 @@
         F.innerHTML = '<label class="f">Message du bandeau global (vide = aucun)<textarea id="tBand" rows="3" style="font-family:inherit">' + esc(v.bandeau || "") + "</textarea></label><div class=\"row\" style=\"margin-top:8px\">" + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente)", v.maintenance) + "</div>";
         lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), maintenance: F.querySelector("#tMaint").checked });
       } else { F.innerHTML = ""; lireForm = () => lireJson(); }
-      F.querySelectorAll("button[data-add]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.add).insertAdjacentHTML("beforeend", '<div class="row"><input placeholder="Niveau"><input type="number" step="0.5" value="0" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>')));
+      F.querySelectorAll("button[data-add]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.add).insertAdjacentHTML("beforeend", '<div class="row"><input placeholder="Niveau"><input type="number" step="any" value="0" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>')));
       F.querySelectorAll("button[data-addp]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.addp).insertAdjacentHTML("beforeend", '<div class="row"><input type="date"><input type="date"><input type="date"><button class="btn sm" data-del>✕</button></div>')));
       F.addEventListener("click", (e) => { const d = e.target.closest("button[data-del]"); if (d) d.closest(".row").remove(); });
     }
