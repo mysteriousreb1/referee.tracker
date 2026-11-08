@@ -2798,8 +2798,8 @@ function renderArgentTel_(root, rows) {
 function renderPaiements() {
   const root = document.getElementById("paiements");
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
-  if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); return; }
-  if (estTel_()) return renderArgentTel_(root, rows);
+  if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); baremeZone_(root); return; }
+  if (estTel_()) { renderArgentTel_(root, rows); baremeZone_(root); return; }
 
   // Les dossiers en retard figurent déjà dans le bloc « Warnings » : pas de doublon dessous.
   const dejaRelance = new Set(rows.filter(paiementEnRetard).map(r => get(r, "UID")));
@@ -2847,6 +2847,7 @@ function renderPaiements() {
   attachPastToggle(root);
   root.querySelectorAll("[data-goto-analyse]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.gotoAnalyse)));
   attachAnalysePaiements_(root, rows);
+  baremeZone_(root);   // b78f
 }
 
 /* ===================== b18 — ANALYSE DES PAIEMENTS =====================
@@ -3169,6 +3170,51 @@ function attachPaymentListeners(root) {
   });
 }
 
+
+/* b78f — comité / ligue sans barème connu : l'arbitre saisit la part fixe par catégorie et ses délais de paiement.
+   Son moteur s'en sert tout de suite (montants et dates estimés), l'admin valide ensuite. Le km (A/R × 0,40 €) est toujours calculé. */
+const BAREME_CATS_ = ["Séniors", "U21", "U20", "U18", "U17", "U15", "U13", "U11"];
+async function baremeZone_(root) {
+  try {
+    if (!root || !SB.actif) return;
+    const Z = zonesUser_(), cdK = Z.cd.toLowerCase(), lgK = Z.ligue.toLowerCase();
+    if (cdK === "cd67" && lgK === "lrgeb") return;
+    const cfg = await SB.get("config_globale?select=cle,valeur&cle=in.(pub.baremes,pub.periodes_paiement)");
+    const val = k => ((cfg || []).find(r => r.cle === k) || {}).valeur || {};
+    const bar = val("pub.baremes"), per = val("pub.periodes_paiement");
+    const cdConnu = cdK === "cd67" || !!bar[cdK];
+    const lgConnue = lgK === "lrgeb" || !lgK || Object.values(per).some(x => x && Array.isArray(x[lgK]) && x[lgK].length) || (bar.delais && bar.delais[lgK] != null);
+    if (cdConnu && lgConnue) return;
+    const l = await SB.get("baremes_proposes?select=*&limit=1"); const bp = (l && l[0]) || null;
+    const parts = (bp && bp.parts) || {};
+    let z = root.querySelector("#payBareme"); if (!z) { z = document.createElement("div"); z.id = "payBareme"; const h = root.querySelector(".section-title"); if (h && h.nextSibling) h.parentNode.insertBefore(z, h.nextSibling); else root.prepend(z); }
+    const etat = bp ? (bp.statut === "valide" ? "Validé par l'équipe ✓" : bp.statut === "rejete" ? "Refusé : vérifie les montants et renvoie" : "Envoyé · en cours de vérification (déjà utilisé pour tes calculs)") : "";
+    z.innerHTML = `<div class="table-card bp-card">
+      <div class="bp-head"><div><h3>${cdConnu ? "Ta ligue" : "Ton comité"} : montants à renseigner</h3>
+        <p class="card-sub">Nous ne connaissons pas encore ${!cdConnu ? "le barème du <b>" + escapeHtml(Z.cd) + "</b>" : ""}${!cdConnu && !lgConnue ? " ni " : ""}${!lgConnue ? "les délais de paiement de la <b>" + escapeHtml(Z.ligue) + "</b>" : ""}. Les kilomètres (aller-retour × 0,40 €) sont toujours calculés depuis ton adresse : il ne manque que la part fixe du match.</p></div>
+        ${etat ? `<span class="bp-etat">${escapeHtml(etat)}</span>` : ""}</div>
+      ${!cdConnu ? `<div class="bp-grid">${BAREME_CATS_.map(c => `<label class="field"><span>${c}</span><input type="number" min="0" max="300" step="0.5" inputmode="decimal" data-bp-cat="${c}" value="${parts[c] != null ? escapeHtml(String(parts[c])) : ""}" placeholder="€"></label>`).join("")}</div>
+        <label class="field"><span>Le comité paie combien de jours après le match (en moyenne) ?</span><input type="number" min="0" max="180" id="bpDelaiCd" value="${bp && bp.delai_cd != null ? bp.delai_cd : ""}" placeholder="ex. 40"></label>` : ""}
+      ${!lgConnue ? `<label class="field"><span>La ligue paie combien de jours après le match (en moyenne) ?</span><input type="number" min="0" max="180" id="bpDelaiLg" value="${bp && bp.delai_ligue != null ? bp.delai_ligue : ""}" placeholder="ex. 35"></label>` : ""}
+      <label class="field"><span>Précision (facultatif)</span><input type="text" maxlength="300" id="bpCom" value="${bp ? escapeHtml(bp.commentaire || "") : ""}" placeholder="ex. barème 2026/2027 envoyé par le comité"></label>
+      <div class="bp-actions"><button type="button" class="small-btn" id="bpSave">${bp ? "Mettre à jour" : "Envoyer"}</button><span class="card-sub" id="bpMsg">Part fixe seule, hors kilomètres. Laisse vide une catégorie que tu n'arbitres pas.</span></div>
+    </div>`;
+    z.querySelector("#bpSave").addEventListener("click", async () => {
+      const msg = z.querySelector("#bpMsg"), p = {};
+      z.querySelectorAll("[data-bp-cat]").forEach(i => { const v = Number(String(i.value).replace(",", ".")); if (i.value !== "" && isFinite(v) && v >= 0 && v <= 300) p[i.dataset.bpCat] = Math.round(v * 100) / 100; });
+      const num = id => { const e = z.querySelector("#" + id); if (!e || e.value === "") return null; const v = Math.round(Number(e.value)); return isFinite(v) && v >= 0 && v <= 180 ? v : null; };
+      if (!cdConnu && !Object.keys(p).length) { msg.textContent = "Indique au moins un montant."; return; }
+      const corps = { cd: Z.cd, ligue: Z.ligue, parts: p, delai_cd: num("bpDelaiCd"), delai_ligue: num("bpDelaiLg"), commentaire: (z.querySelector("#bpCom").value || "").trim().slice(0, 300), statut: "a_valider", maj: new Date().toISOString() };
+      msg.textContent = "Envoi…";
+      try {
+        if (bp) await SB.write("PATCH", "baremes_proposes?user_id=eq." + encodeURIComponent(rtSubDuJeton_()), corps);
+        else await SB.write("POST", "baremes_proposes", corps);
+        msg.textContent = "Merci ! Tes calculs l'utilisent dans les 10 minutes, l'équipe vérifie ensuite.";
+        setTimeout(() => baremeZone_(root), 1200);
+      } catch (e) { msg.textContent = "Envoi impossible : " + e.message; }
+    });
+  } catch (e) { /* jamais bloquant */ }
+}
 /* b78d — rapprochement bancaire SUPPRIMÉ (décision du 08/11/2026) : l'app ne lit ni ne traite aucun relevé bancaire. */
 try { Object.keys(localStorage).filter(k => k.indexOf("rt_rb_") === 0).forEach(k => localStorage.removeItem(k)); } catch (e) {}   // anciens réglages de relevé
 /* Classement d'une mission par payeur (Ligue / Comité / FFBB / clubs) — utilisé par Paiements. */

@@ -4714,3 +4714,14 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .acc-histo-i.is-ok { opacity: .7; }
 .acc-histo-i.is-ok .acc-histo-c { background: #16a34a; border-color: #16a34a; }
 .rt-check{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0;cursor:pointer}.rt-check input{width:18px;height:18px;margin-top:2px;accent-color:var(--gold,#F5B400);flex:none}
+/* b78f — barème à renseigner par l'arbitre (comité / ligue inconnus) */
+.bp-card { border: 1px solid rgba(245,180,0,.45); margin: 4px 0 18px; padding: 16px 18px !important; }
+.bp-card .field span { font-weight: 600; }
+.bp-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.bp-head h3 { margin: 0 0 4px; }
+.bp-etat { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(245,180,0,.15); color: var(--gold, #F5B400); }
+.bp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+@media (max-width: 700px) { .bp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.bp-card .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
+.bp-card .field input { padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line, rgba(255,255,255,.15)); background: transparent; color: inherit; }
+.bp-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }

@@ -218,6 +218,10 @@
         const cd = String(z.cd || "").toLowerCase(), lg = String(z.ligue || "").toLowerCase();
         if (cd && cd !== "cd67" && (!bar[cd] || !sais.some((x) => x && x[cd]))) manque.add(cd.toUpperCase());
         if (lg && lg !== "lrgeb" && !sais.some((x) => x && x[lg])) manque.add(lg.toUpperCase()); });
+      // b78f — barèmes saisis par des arbitres (comité inconnu), en attente de validation.
+      if (!cache.bp) cache.bp = (await admin("baremes_proposes.liste")).data || [];
+      const nbp = cache.bp.filter((x) => x.statut === "a_valider").length;
+      if (nbp) aFaire.push(["orange", nbp + " barème(s) proposé(s) par des arbitres", "À vérifier puis valider : Configuration → Barèmes des comités", "#config"]);
       if (manque.size) aFaire.push(["gold", "Barème / échéancier à renseigner : " + [...manque].join(", "), "Sans eux, les dates de paiement de ces arbitres sont estimées. Configuration → Barèmes / Échéanciers", "#config"]);
     } catch (e) {}
     if (t.alertes_non_traitees) aFaire.push(["orange", t.alertes_non_traitees + " alerte(s) non traitée(s)", "Voir dans la fiche de chaque arbitre", "#arbitres"]);
@@ -500,6 +504,14 @@
           '<p class="mut tiny">Indemnité d\'un match départemental = part fixe ci-dessous + km A/R × 0,40 €. Une catégorie absente : on garde le montant écrit sur la convocation' + (k === "cd67" ? " (pour le CD67, la valeur du code)" : "") + '.</p>' +
           kv("bDe", "Officiel désigné (catégorie → €)", c.designe, "Catégorie") + kv("bQr", "Jeunes qualification région, code -5 (catégorie → €)", c.qr, "Catégorie") +
           kv("bIn", "Interdépartemental, code -7 (catégorie → €)", c.interdepartemental, "Catégorie") + kv("bAm", "Amicaux / tournois (Séniors, Jeunes → €)", c.amicaux, "Séniors ou Jeunes");
+        // b78f — propositions des arbitres (comités sans barème connu) : déjà utilisées par leur moteur, à valider ici.
+        const bpHtml = (l) => '<div class="subtab">Barèmes proposés par les arbitres</div>' + (!l.length ? '<p class="vide">Aucune proposition</p>' : '<div class="tbl"><table><thead><tr><th>Arbitre</th><th>Comité · ligue</th><th>Part fixe (€)</th><th>Délais (j)</th><th>Statut</th><th></th></tr></thead><tbody>' + l.map((x) => '<tr><td>' + esc(((x.profil || {}).prenom || "") + " " + ((x.profil || {}).nom_ffbb || "")) + '<br><span class="mut tiny">' + fmt(x.maj) + '</span></td><td>' + esc(String(x.cd || "—").toUpperCase() + " · " + String(x.ligue || "—").toUpperCase()) + '</td><td class="tiny">' + esc(Object.entries(x.parts || {}).map(([c, m]) => c + " " + m).join(" · ") || "—") + (x.commentaire ? '<br><span class="mut">« ' + esc(x.commentaire) + ' »</span>' : "") + '</td><td class="tiny">comité ' + esc(x.delai_cd ?? "—") + " · ligue " + esc(x.delai_ligue ?? "—") + '</td><td>' + ({ a_valider: '<span class="badge orange">à valider</span>', valide: '<span class="badge green">validé</span>', rejete: '<span class="badge red">refusé</span>' }[x.statut] || esc(x.statut)) + '</td><td>' + (x.statut === "a_valider" ? '<button class="btn sm pri" data-bpv="' + x.id + '">Valider</button> <button class="btn sm" data-bpr="' + x.id + '">Refuser</button>' : "") + "</td></tr>").join("") + "</tbody></table></div>" + '<p class="mut tiny">Valider copie la part fixe et les délais dans ce barème (les valeurs déjà saisies ici priment). Refuser : le moteur de l\'arbitre repasse au montant de la convocation, sinon km seuls.</p>');
+        const bpBox = document.createElement("div"); bpBox.id = "bpBox"; bpBox.innerHTML = '<p class="mut tiny">Chargement des propositions…</p>';
+        setTimeout(async () => { F.appendChild(bpBox);
+          try { if (!cache.bp) cache.bp = (await admin("baremes_proposes.liste")).data || []; bpBox.innerHTML = bpHtml(cache.bp); } catch (e) { bpBox.innerHTML = '<p class="err tiny">' + esc(e.message) + "</p>"; }
+          bpBox.addEventListener("click", async (ev) => { const bt = ev.target.closest("[data-bpv],[data-bpr]"); if (!bt) return; const id = Number(bt.dataset.bpv || bt.dataset.bpr), statut = bt.dataset.bpv ? "valide" : "rejete";
+            if (statut === "valide" && !confirm("Copier ce barème dans la configuration ?")) return;
+            bt.disabled = true; try { await admin("bareme_propose.statut", { id, statut }); cache.bp = null; cache.config = null; cache.stats = null; toast(statut === "valide" ? "Barème validé et copié" : "Proposition refusée", "ok"); rendus.config(true); } catch (e) { bt.disabled = false; toast(e.message, "err"); } }); }, 0);
         lireForm = () => Object.assign({}, v, { indemnite_km: v.indemnite_km ?? 0.4, [k]: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
         setTimeout(() => {
           const sel = F.querySelector("#bCd"); if (sel) sel.addEventListener("change", () => { const o = lireForm(); formulaire._cd = sel.value; formulaire(o); });
