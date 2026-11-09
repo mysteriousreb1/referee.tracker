@@ -4753,3 +4753,38 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .franchise-bar i { display: block; height: 100%; background: #16a34a; border-radius: 999px; }
 .franchise.is-near .franchise-bar i { background: #d97706; }
 .franchise.is-over .franchise-bar i { background: #dc2626; }
+
+/* b87 — classement de poule lisible sur téléphone : tout tient dans la carte (plus de colonnes coupées) */
+.clt-table { table-layout: fixed; width: 100%; min-width: 0 !important; }
+.clt-table th:nth-child(1), .clt-table td:nth-child(1) { width: 26px; }
+.clt-table td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
+.clt-table .num { width: 38px; }
+@media (max-width: 720px) {
+  .clt-card { padding: 10px 10px; }
+  .clt-table, .clt-table td, .clt-table th { font-size: 12.5px !important; }
+  .clt-table th, .clt-table td { padding: 7px 3px; }
+  .clt-table th:nth-child(1), .clt-table td:nth-child(1) { width: 22px; }
+  .clt-table .num { width: 30px; }
+  .clt-table th:last-child, .clt-table td:last-child { width: 38px; }
+  .clt-table th:nth-child(5), .clt-table td:nth-child(5), .clt-table th:nth-child(6), .clt-table td:nth-child(6) { display: none; }
+  .clt-table td:nth-child(2) { white-space: normal; overflow: visible; line-height: 1.25; word-break: break-word; display: table-cell; -webkit-line-clamp: unset; }
+  .clt-head { flex-wrap: wrap; gap: 2px 8px; }
+}
+
+/* b87 — « Mon trajet » : sélecteur segmenté à pastilles */
+.trajet-seg { margin: 10px 0 4px; padding: 10px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.trajet-seg-t { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 2px 8px; }
+.trajet-seg-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.trajet-opt { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 4px 8px; border-radius: 11px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; font: inherit; text-align: center; transition: border-color .15s, background .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
+.trajet-opt:active { transform: scale(.97); }
+.trajet-opt svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .75; }
+.trajet-opt span { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.trajet-opt b { font-size: 13px; font-weight: 800; white-space: nowrap; }
+.trajet-opt small { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trajet-opt.is-on { border-color: var(--gold); background: var(--gold-soft, rgba(245,180,0,.15)); box-shadow: 0 0 0 1px var(--gold) inset; }
+.trajet-opt.is-on svg { opacity: 1; color: var(--gold); }
+.trajet-opt:disabled { cursor: progress; opacity: .8; }
+.trajet-seg-aide { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
+.trajet-opt span { width: 100%; }
+@media (max-width: 560px) { .trajet-opt small { display: none; } .trajet-opt { padding: 10px 4px; } }
+#mailSyncBtn[hidden] { display: none !important; }

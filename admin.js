@@ -163,8 +163,8 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes" };   // b86 : 2 espaces
+  const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données" };   // b86 : 2 espaces
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
@@ -399,7 +399,7 @@
       if (all) all.onclick = async (e) => { if (!(await confirmer("Tout marquer traité", "Marquer les <strong>" + nAct + "</strong> alertes de " + esc(nomDe(p, u.email)) + " comme traitées ? Elles disparaissent de son onglet Alertes (réversible ici).", "Tout marquer"))) return; go(e.target, { tout: true }, "marquée(s) traitée(s)"); };
     };
     // ---------- b81 : piloter le moteur de l'arbitre (commandes exécutées au prochain passage, ≤ 10 min) ----------
-    const LIB_CMD = { synchro: "Synchroniser maintenant", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule", vehicule_set: "Modifier un véhicule", alertes: "Alertes traitées / rétablies", profil: "Profil modifié" };
+    const LIB_CMD = { synchro: "Relever ses mails + synchroniser", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule", vehicule_set: "Modifier un véhicule", alertes: "Alertes traitées / rétablies", profil: "Profil modifié" };
     const BADGE_CMD = { en_attente: ["en attente", "orange"], en_cours: ["en cours", "gold"], ok: ["fait", "green"], erreur: ["erreur", "red"], annulee: ["annulée", ""] };
     const rendMoteur = async () => {
       const z = body.querySelector("#mtZ"); if (!z) return;
@@ -552,6 +552,105 @@
   const tuileB = (v, l, cl, sub) => '<div class="tile ' + (cl || "") + '"><b>' + esc(v) + "</b><span>" + l + "</span>" + (sub ? "<small>" + sub + "</small>" : "") + "</div>";
   const hm = (m) => { m = Math.round(Number(m) || 0); return m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : m + " min"; };
   const ficheDe = (uid) => (uid ? ouvrirFiche(uid) : null);
+
+  // =====================================================================
+  // b87 — INDICATEURS (cockpit) : application, arbitres, qualité des données — une seule requête kpi.complet
+  // =====================================================================
+  const kpiCharger = async (force) => { if (force || !cache.kpi || Date.now() - cache.kpi.t > 5 * 60000) cache.kpi = { t: Date.now(), d: await admin("kpi.complet") }; return cache.kpi.d; };
+  const ent = (n) => (Number(n) || 0).toLocaleString("fr-FR");
+  const pc1 = (v) => (v == null ? "—" : String(v).replace(".", ",") + " %");
+  const etat = (v, bon, moyen, inverse) => { if (v == null) return "gray"; return inverse ? (v <= bon ? "green" : v <= moyen ? "orange" : "red") : (v >= bon ? "green" : v >= moyen ? "orange" : "red"); };
+  const carte = (t, sub, html, cl) => '<div class="card' + (cl ? " " + cl : "") + '"><div class="card-head"><h3>' + t + "</h3>" + (sub ? '<span class="sub">' + sub + "</span>" : "") + "</div>" + html + "</div>";
+  const listeKN = (l, fmtV) => (l && l.length ? hbarres(l.map((x) => ({ l: x.k, v: x.n })), fmtV) : '<p class="vide">Aucune donnée</p>');
+  const entete = (d, id) => '<div class="toolbar"><span class="mut tiny">Calculé ' + esc(depuis(d.genere)) + " · saison " + esc(d.saison) + ' · recalcul automatique toutes les 5 min</span><span class="sp"></span><button class="btn sm" id="' + id + 'Csv">Export CSV</button><button class="btn sm" id="' + id + 'Maj">↻ Recalculer</button></div>';
+  const lignesCsv = (o, pre, out) => { Object.entries(o || {}).forEach(([k, v]) => { if (v && typeof v === "object" && !Array.isArray(v)) lignesCsv(v, pre + k + ".", out); else if (!Array.isArray(v)) out.push([pre + k, v]); }); return out; };
+
+  rendus.kpiapp = async function (force) {
+    const el = $("sec-kpiapp"); if (force || !cache.kpi) el.innerHTML = '<p class="mut">Calcul des indicateurs…</p>';
+    const d = await kpiCharger(force), A = d.app, M = A.moteurs, T = A.tickets, P = A.push;
+    const S = A.serie_60j || [], app = A.appareils_30j || {}, totApp = (app.tel || 0) + (app.pc || 0) + (app.tab || 0);
+    el.innerHTML = entete(d, "ka") +
+      '<div class="subtab">Audience</div><div class="tiles">' +
+        tuileB(A.dau, "Actifs aujourd'hui (DAU)", "", "sur " + A.comptes + " comptes") + tuileB(A.wau, "Actifs 7 j (WAU)", "", pct(A.wau, A.comptes) + " des comptes") + tuileB(A.mau, "Actifs 30 j (MAU)", etat(A.mau / Math.max(1, A.comptes) * 100, 70, 40), pct(A.mau, A.comptes) + " des comptes") +
+        tuileB(pc1(A.stickiness), "Fidélité DAU / MAU", etat(A.stickiness, 30, 15), "≥ 30 % = usage quotidien") + tuileB(pc1(A.wau_mau), "WAU / MAU", etat(A.wau_mau, 60, 35), "usage hebdomadaire") + tuileB(A.actifs_90j, "Actifs 90 j", "", "au moins 1 connexion") +
+        tuileB(hm(A.minutes_moy_actif_30j), "Temps moyen / actif", "", "30 jours") + tuileB(String(A.jours_actifs_moy).replace(".", ","), "Jours actifs / arbitre", "", "sur 30 jours") + tuileB(ent(A.sessions_30j), "Sessions (≈5 min)", "", "30 jours") +
+        tuileB(A.decrocheurs, "Décrocheurs", A.decrocheurs ? "orange" : "green", "actifs il y a 15-30 j, plus depuis") + tuileB(A.jamais_connectes, "Jamais connectés", A.jamais_connectes ? "orange" : "green", "compte créé, aucune connexion") + tuileB(A.comptes_30j, "Nouveaux comptes", "", "30 derniers jours") +
+      "</div>" +
+      '<div class="grid-2">' + carte("Arbitres actifs par jour", "60 derniers jours", barres(S.slice(-45).map((x) => ({ l: x.jour.slice(8, 10), v: x.actifs })))) +
+        carte("Temps d'écran par jour", "minutes, 60 j", barres(S.slice(-45).map((x) => ({ l: x.jour.slice(8, 10), v: x.minutes })), "gold")) + "</div>" +
+      '<div class="grid-2">' + carte("Appareils", "part du temps d'écran (30 j)", hbarres([{ l: "Téléphone", v: app.tel || 0 }, { l: "Ordinateur", v: app.pc || 0 }, { l: "Tablette", v: app.tab || 0 }], (v) => hm(v) + " · " + pct(v, totApp))) +
+        carte("Jour de la semaine", "minutes cumulées (90 j)", barres(["lun", "mar", "mer", "jeu", "ven", "sam", "dim"].map((l, i) => ({ l, v: (A.jours_semaine || [])[i] || 0 })))) + "</div>" +
+      '<div class="grid-2">' + carte("Heure de dernière activité", "heure de Paris (90 j)", barres((A.heures_derniere_activite || []).map((v, h) => ({ l: String(h), v })))) +
+        carte("Rétention par cohorte", "mois de création du compte → part active sur 30 j", (A.cohortes || []).length ? hbarres(A.cohortes.map((c) => ({ l: c.mois + " (" + c.n + ")", v: c.pct, cl: c.pct >= 60 ? "green" : c.pct >= 30 ? "orange" : "red" })), (v) => v + " %") : '<p class="vide">—</p>') + "</div>" +
+      '<div class="subtab">Acquisition & activation</div><div class="grid-2">' + carte("Entonnoir d'activation", "du compte créé à l'usage régulier", hbarres((A.entonnoir || []).map((e) => ({ l: e.k, v: e.n })), (v) => v + " · " + pct(v, (A.entonnoir[0] || {}).n))) +
+        carte("Inscriptions", "statuts", listeKN(A.inscriptions) + '<dl class="kv-mini"><dt>Délai d\'activation</dt><dd>' + (A.activation_h.mediane == null ? "—" : "médiane " + A.activation_h.mediane + " h · moyenne " + String(A.activation_h.moyenne).replace(".", ",") + " h (" + A.activation_h.n + ")") + "</dd><dt>Inscriptions en erreur</dt><dd>" + (A.inscriptions_erreur ? badge(A.inscriptions_erreur, "red") : badge("0", "green")) + "</dd><dt>Comptes confirmés</dt><dd>" + A.confirmes + " / " + A.comptes + "</dd><dt>Comptes suspendus</dt><dd>" + A.suspendus + "</dd></dl>") + "</div>" +
+      '<div class="subtab">Fonctions utilisées</div>' + carte("Adoption des fonctions", "arbitres ayant au moins 1 élément", (A.adoption || []).length ? hbarres(A.adoption.map((a) => ({ l: a.k, v: a.utilisateurs, cl: a.pct >= 50 ? "green" : a.pct >= 20 ? "orange" : "red" })), (v) => v + " arbitre(s) · " + pct(v, A.comptes)) + '<p class="mut tiny">Lignes enregistrées : ' + A.adoption.map((a) => esc(a.k) + " " + ent(a.lignes)).join(" · ") + "</p>" : '<p class="vide">—</p>') +
+      '<div class="subtab">Support & communication</div><div class="tiles">' +
+        tuileB(T.ouverts, "Tickets ouverts", T.ouverts ? "orange" : "green", T.ouverts_7j + " nouveau(x) en 7 j") + tuileB(T.resolution_h_mediane == null ? "—" : T.resolution_h_mediane + " h", "Résolution (médiane)", etat(T.resolution_h_mediane, 24, 72, true), T.fermes + " ticket(s) fermé(s)") + tuileB(T.age_ouverts_j_max + " j", "Plus vieux ticket ouvert", etat(T.age_ouverts_j_max, 3, 7, true), "") +
+        tuileB(P.arbitres, "Arbitres avec notifications", etat(P.taux, 60, 30), pc1(P.taux) + " des comptes") + tuileB(P.actifs + " / " + P.abonnements, "Abonnements push valides", "", P.livres_30j + " livré(s) en 30 j") + tuileB(A.optout_communications, "Désinscrits des communications", "", "RGPD") +
+      "</div>" +
+      '<div class="grid-2">' + carte("Tickets par catégorie", "", listeKN(T.par_categorie)) + carte("Tickets par gravité", "", listeKN(T.par_gravite)) + "</div>" +
+      '<div class="grid-2">' + carte("Consentements", A.consentements.arbitres + " arbitre(s) ont accepté", listeKN(A.consentements.versions)) + carte("Actions de l'administration", A.journal_30j.total + " entrée(s) au journal en 30 j", listeKN(A.journal_30j.top)) + "</div>" +
+      '<div class="subtab">Moteurs (Google Apps Script)</div><div class="tiles">' +
+        tuileB(M.installes, "Moteurs installés", "", "") + tuileB(M.sante.ok, "En bonne santé", "green", "passage < 30 min") + tuileB(M.sante.lent, "Lents", M.sante.lent ? "orange" : "green", "30 min à 3 h") + tuileB(M.sante.arrete, "Arrêtés", M.sante.arrete ? "red" : "green", "> 3 h sans passage") + tuileB(M.sante.inconnu, "État inconnu", M.sante.inconnu ? "orange" : "green", "pas encore publié (b86)") +
+        tuileB(M.latence_min_mediane == null ? "—" : M.latence_min_mediane + " min", "Dernier passage (médiane)", etat(M.latence_min_mediane, 15, 60, true), "") +
+        tuileB(M.commandes_30j, "Commandes envoyées", "", "30 jours") + tuileB(pc1(M.taux_succes), "Commandes réussies", etat(M.taux_succes, 95, 80), M.commandes_erreur + " en erreur") + tuileB(M.delai_cmd_min_median == null ? "—" : M.delai_cmd_min_median + " min", "Délai d'exécution", etat(M.delai_cmd_min_median, 10, 30, true), "médiane") +
+        tuileB(M.adresse_non_localisee, "Adresse non localisée", M.adresse_non_localisee ? "red" : "green", "km et carburant faux") + tuileB(M.synchro_ancienne_48h, "Sans synchro depuis 48 h", M.synchro_ancienne_48h ? "orange" : "green", "") +
+      "</div>" +
+      '<div class="grid-2">' + carte("Versions des moteurs", "à jour = b86 ou plus", listeKN(M.versions)) + carte("Commandes par type", "30 jours", listeKN(M.par_action)) + "</div>";
+    el.querySelector("#kaMaj").onclick = () => rendus.kpiapp(true);
+    el.querySelector("#kaCsv").onclick = () => csv([["Indicateur", "Valeur"], ...lignesCsv(A, "", [])], "indicateurs-application-" + new Date().toISOString().slice(0, 10) + ".csv");
+  };
+
+  rendus.kpiarb = async function (force) {
+    const el = $("sec-kpiarb"); if (force || !cache.kpi) el.innerHTML = '<p class="mut">Calcul des indicateurs…</p>';
+    const d = await kpiCharger(force), R = d.arbitres, F = d.franchise;
+    el.innerHTML = entete(d, "kr") +
+      '<div class="subtab">Activité</div><div class="tiles">' +
+        tuileB(ent(R.matchs_total), "Matchs enregistrés", "", ent(R.matchs_passes) + " joués") + tuileB(R.a_venir_7j, "Matchs dans les 7 j", "", R.a_venir_30j + " sur 30 j · " + R.a_venir + " au total") + tuileB(euro(R.indemnite_moy_match), "Indemnité moyenne", "", "par match") +
+        tuileB(ent(R.km_total) + " km", "Km parcourus", "", "moyenne " + R.km_moyen_match + " km A/R") + tuileB(ent(R.km_conduits) + " km", "Km conduits", "", "hors covoiturage / transport") + tuileB(ent(R.co2_kg_estime) + " kg", "CO₂ estimé", "", "5,5 L/100 · 2,25 kg/L") +
+        tuileB(R.sans_convocation_30j, "Sans convocation 30 j", R.sans_convocation_30j ? "orange" : "green", "moteur installé") + tuileB(R.franchise_proches, "Proches du plafond fiscal", R.franchise_proches ? "orange" : "green", "≥ 70 % de " + euro(F.plafond) + " (" + F.annee + ")") + tuileB(R.benevoles, "Matchs bénévoles", "", "") +
+      "</div>" +
+      '<div class="subtab">Argent</div><div class="tiles">' +
+        tuileB(euro(R.montant_total), "Indemnités totales", "", "tous matchs") + tuileB(euro(R.recu), "Encaissé", "green", "") + tuileB(euro(R.a_recevoir), "À recevoir", "gold", "matchs joués, dans les délais") +
+        tuileB(euro(R.en_retard), "En retard", R.en_retard ? "red" : "green", R.n_retard + " match(s)") + tuileB(pc1(R.taux_encaissement), "Taux d'encaissement", etat(R.taux_encaissement, 80, 50), "matchs joués payés") + tuileB(R.delai_paiement_j.mediane == null ? "—" : R.delai_paiement_j.mediane + " j", "Délai de paiement", etat(R.delai_paiement_j.mediane, 30, 60, true), "médiane · " + R.delai_paiement_j.n + " paiement(s) daté(s)") +
+      "</div>" +
+      '<div class="grid-2">' + carte("Matchs par mois", "12 mois glissants", barres((R.mois || []).map((m) => ({ l: moisLbl(m.mois), v: m.matchs })))) + carte("Indemnités par mois", "€ — dû et encaissé", barres((R.mois || []).map((m) => ({ l: moisLbl(m.mois), v: Math.round(m.montant) })), "gold")) + "</div>" +
+      '<div class="grid-2">' + carte("Convocations reçues par semaine", "12 semaines", barres((R.convocations_semaines || []).map((x) => ({ l: x.debut.slice(8, 10) + "/" + x.debut.slice(5, 7), v: x.n })))) + carte("Payeurs", "montant, retard, délai médian", (R.payeurs || []).length ? '<div class="tbl"><table><thead><tr><th>Payeur</th><th class="num right">Matchs</th><th class="num right">Montant</th><th class="num right">En retard</th><th class="num right">Délai</th></tr></thead><tbody>' + R.payeurs.map((x) => "<tr><td>" + esc(x.k) + '</td><td class="num right">' + x.n + '</td><td class="num right">' + euro(x.montant) + '</td><td class="num right">' + (x.retard ? '<span class="neg">' + euro(x.retard) + "</span>" : "—") + '</td><td class="num right">' + (x.delai_median_j == null ? "—" : x.delai_median_j + " j") + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">—</p>') + "</div>" +
+      '<div class="grid-2">' + carte("Saisons", "", (R.saisons || []).length ? '<div class="tbl"><table><thead><tr><th>Saison</th><th class="num right">Matchs</th><th class="num right">Indemnités</th><th class="num right">Km</th><th class="num right">Arbitres</th></tr></thead><tbody>' + R.saisons.map((x) => "<tr><td>" + esc(x.saison) + '</td><td class="num right">' + x.matchs + '</td><td class="num right">' + euro(x.montant) + '</td><td class="num right">' + ent(x.km) + '</td><td class="num right">' + x.arbitres + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">—</p>') +
+        carte("Mode de trajet", "", listeKN((R.transport || []).map((x) => ({ k: { voiture: "Je conduis", passager: "Covoiturage (passager)", transport: "Train / bus / tram" }[x.k] || x.k, n: x.n })))) + "</div>" +
+      '<div class="grid-2">' + carte("Niveaux des matchs", "", listeKN(R.niveaux)) + carte("Formats", "", listeKN(R.formats)) + "</div>" +
+      '<div class="grid-2">' + carte("Jour des matchs", "", listeKN(R.jours_match)) + carte("Heure des matchs", "", barres(Object.entries((R.heures_match || []).reduce((o, x) => { const h = parseInt(x.k, 10); if (!isNaN(h)) { const k = String(h).padStart(2, "0") + "h"; o[k] = (o[k] || 0) + x.n; } return o; }, {})).sort((a, c) => a[0].localeCompare(c[0])).map(([l, v]) => ({ l, v })))) + "</div>" +
+      '<div class="grid-2">' + carte("Compétitions les plus arbitrées", "top 10", listeKN(R.competitions)) + carte("Clubs recevants les plus fréquents", "top 10", listeKN(R.clubs)) + "</div>" +
+      '<div class="grid-2">' + carte("Niveau des arbitres", "profil", listeKN(R.niveaux_profils)) + carte("Comités", "profil", listeKN(R.comites)) + "</div>" +
+      carte("Tableau de bord par arbitre", "saison " + esc(d.saison) + " · clic = fiche", '<div id="krT"></div>');
+    tableCourante = tableau(el.querySelector("#krT"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc((x.prenom || "—") + (x.nom ? " · " + x.nom : "")) + (x.moteur ? "" : " " + badge("sans moteur", "")) },
+      { t: "Niveau", k: "niveau", r: (x) => '<span class="tiny">' + esc(x.niveau || "—") + "</span>" },
+      { t: "Matchs saison", k: "matchs_saison", cl: "num right", r: (x) => esc(x.matchs_saison) }, { t: "À venir", k: "a_venir", cl: "num right", r: (x) => esc(x.a_venir) },
+      { t: "Indemnités saison", k: "montant_saison", cl: "num right", r: (x) => euro(x.montant_saison) }, { t: "Encaissé", k: "recu_saison", cl: "num right", r: (x) => euro(x.recu_saison) },
+      { t: "En retard", k: "retard", cl: "num right", r: (x) => (x.retard ? '<span class="neg">' + euro(x.retard) + "</span>" : "—") }, { t: "Km saison", k: "km_saison", cl: "num right", r: (x) => ent(x.km_saison) },
+      { t: "Plafond fiscal " + F.annee, k: "franchise_pct", cl: "num right", r: (x) => badge(x.franchise_pct + " %", x.franchise_pct >= 90 ? "red" : x.franchise_pct >= 70 ? "orange" : "green") + '<br><span class="tiny mut">' + euro(x.franchise_annee) + "</span>" },
+      { t: "Usage 30 j", k: "minutes_30j", cl: "num right", r: (x) => hm(x.minutes_30j) + '<br><span class="tiny mut">' + x.jours_actifs_30j + " j actif(s)</span>" },
+      { t: "Alertes", k: "alertes", cl: "num right", r: (x) => (x.alertes ? badge(x.alertes, "orange") : "—") },
+      { t: "Dernière convocation", k: "derniere_convocation", r: (x) => (x.sans_convocation_30j && x.moteur ? badge(depuis(x.derniere_convocation), "orange") : esc(depuis(x.derniere_convocation))) },
+    ], R.par_arbitre || [], { recherche: rechercheCourante, tri: "Matchs saison", sens: -1, clic: (x) => ficheDe(x.user_id) });
+    el.querySelector("#krMaj").onclick = () => rendus.kpiarb(true);
+    el.querySelector("#krCsv").onclick = () => { const L = R.par_arbitre || []; csv([["Prénom", "Nom", "Niveau", "Matchs saison", "À venir", "Indemnités saison", "Encaissé", "En retard", "Km saison", "Plafond fiscal %", "Minutes 30 j", "Jours actifs 30 j", "Alertes", "Dernière convocation"], ...L.map((x) => [x.prenom, x.nom, x.niveau, x.matchs_saison, x.a_venir, x.montant_saison, x.recu_saison, x.retard, x.km_saison, x.franchise_pct, x.minutes_30j, x.jours_actifs_30j, x.alertes, x.derniere_convocation])], "indicateurs-arbitres-" + new Date().toISOString().slice(0, 10) + ".csv"); };
+  };
+
+  rendus.qualite = async function (force) {
+    const el = $("sec-qualite"); if (force || !cache.kpi) el.innerHTML = '<p class="mut">Calcul des indicateurs…</p>';
+    const d = await kpiCharger(force), Q = d.qualite, I = Q.indicateurs || [];
+    const score = I.length ? Math.max(0, Math.round(100 - I.reduce((t, x) => t + Math.min(x.pct, 100), 0) / I.length)) : 100;
+    el.innerHTML = entete(d, "kq") +
+      '<div class="tiles">' + tuileB(score + " / 100", "Score de qualité", etat(score, 90, 70), "100 = aucune donnée manquante") + tuileB(Q.doublons_uid, "Doublons de match", Q.doublons_uid ? "red" : "green", "même identifiant en double") + tuileB(Q.matchs_alerte_format, "Lignes « Alerte »", "", "messages du moteur, hors matchs") + "</div>" +
+      carte("Contrôles", "part des matchs concernés · plus c'est bas, mieux c'est", '<div class="tbl"><table><thead><tr><th>Contrôle</th><th class="num right">Matchs</th><th class="num right">Part</th><th>Conséquence</th></tr></thead><tbody>' +
+        I.map((x) => "<tr><td>" + esc(x.lib) + '</td><td class="num right">' + ent(x.n) + '</td><td class="num right">' + badge(pc1(x.pct), x.pct <= 2 ? "green" : x.pct <= 10 ? "orange" : "red") + '</td><td class="tiny mut">' + esc(x.aide) + "</td></tr>").join("") + "</tbody></table></div>" +
+        '<p class="mut tiny">Les corrections se font dans la fiche de l\'arbitre (onglets Matchs, Alertes, Moteur) ou par le moteur au prochain passage.</p>');
+    el.querySelector("#kqMaj").onclick = () => rendus.qualite(true);
+    el.querySelector("#kqCsv").onclick = () => csv([["Contrôle", "Matchs", "Part %", "Conséquence"], ...I.map((x) => [x.lib, x.n, x.pct, x.aide])], "qualite-donnees-" + new Date().toISOString().slice(0, 10) + ".csv");
+  };
 
   // ---- Connexions & usage
   let usageJours = 30;

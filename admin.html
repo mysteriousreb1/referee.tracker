@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-09-b86" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-09-b87" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -45,6 +45,7 @@
       <nav class="nav" id="nav">
         <div class="nav-grp">Application</div>
         <a href="#pilotage" data-sec="pilotage"><i>◧</i>Pilotage</a>
+        <a href="#kpiapp" data-sec="kpiapp"><i>◔</i>Indicateurs application</a>
         <a href="#dashboard" data-sec="dashboard"><i>▦</i>Tableau de bord</a>
         <a href="#usage" data-sec="usage"><i>◷</i>Connexions &amp; usage</a>
         <a href="#messages" data-sec="messages"><i>✎</i>Messages</a>
@@ -55,12 +56,14 @@
         <a href="#moteurs" data-sec="moteurs"><i>⛭</i>Moteurs<b id="navMoteurs" class="nav-count"></b></a>
         <a href="#journal" data-sec="journal"><i>☰</i>Journal d'audit</a>
         <div class="nav-grp">Arbitres</div>
+        <a href="#kpiarb" data-sec="kpiarb"><i>◔</i>Indicateurs arbitres</a>
         <a href="#arbitres" data-sec="arbitres"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
         <a href="#inscriptions" data-sec="inscriptions"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
         <a href="#stats" data-sec="stats"><i>▮</i>Statistiques arbitres</a>
         <a href="#agenda" data-sec="agenda"><i>▤</i>Matchs à venir</a>
         <a href="#paiements" data-sec="paiements"><i>€</i>Paiements</a>
         <a href="#alertes" data-sec="alertes"><i>⚠</i>Alertes<b id="navAlertes" class="nav-count"></b></a>
+        <a href="#qualite" data-sec="qualite"><i>✓</i>Qualité des données</a>
       </nav>
       <div class="side-foot">
         <span id="qui" class="mut"></span>
@@ -87,6 +90,9 @@
       <section id="sec-tickets" class="sec"></section>
       <section id="sec-sante" class="sec"></section>
       <section id="sec-stats" class="sec"></section>
+      <section id="sec-kpiapp" class="sec"></section>
+      <section id="sec-kpiarb" class="sec"></section>
+      <section id="sec-qualite" class="sec"></section>
       <section id="sec-usage" class="sec"></section>
       <section id="sec-communication" class="sec"></section>
       <section id="sec-moteurs" class="sec"></section>
@@ -107,7 +113,7 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
-  <script src="./admin-pilotage.js?v=2026-11-09-b86"></script>
-  <script src="./admin.js?v=2026-11-09-b86"></script>
+  <script src="./admin-pilotage.js?v=2026-11-09-b87"></script>
+  <script src="./admin.js?v=2026-11-09-b87"></script>
 </body>
 </html>

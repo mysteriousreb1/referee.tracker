@@ -292,6 +292,20 @@ const ECRITURES = {
    ====================================================================== */
 const SB_URL = "https://jlstedchnmdteazuqbly.supabase.co";
 const SB_KEY = "sb_publishable_B1w244FrkzbIn-SZ-T_z8w_4HVg9stb";
+/* b87 — bouton « relever les mails » réservé à l'administrateur. Le serveur admin répond « Accès réservé »
+   aux comptes qui ne sont pas dans la table admins : seul ce cas masque le bouton (aucune donnée lue). */
+async function rtEstAdmin_() {
+  try { const c = sessionStorage.getItem("rt-est-admin"); if (c === "1" || c === "0") return c === "1"; } catch (e) {}
+  try {
+    const t = await SB.token(); if (!t) return false;
+    const r = await fetch(SB_URL + "/functions/v1/admin", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ action: "ping" }) });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    const oui = r.status !== 401 && !/réservé/i.test(String(j.error || ""));
+    try { sessionStorage.setItem("rt-est-admin", oui ? "1" : "0"); } catch (e) {}
+    return oui;
+  } catch (e) { return false; }
+}
+window.rtEstAdmin_ = rtEstAdmin_;
 const SB_STORE = "rt_sb_session";
 const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, procedures: 1, hotels: 1, formations: 1, qcmStats: 1 };
 /* b27 — écritures directes Supabase (tables possédées par Supabase ; le Sheet

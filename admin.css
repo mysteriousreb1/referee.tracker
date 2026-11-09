@@ -363,3 +363,15 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .complet span { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(22, 163, 74, .12); color: #15803d; }
 .complet span.non { background: rgba(217, 119, 6, .12); color: #b45309; }
 @media (max-width: 900px) { .nav-grp { display: none; } }
+
+/* b87 — indicateurs */
+.hbars .trk i.orange { background: var(--orange); }
+.neg { color: var(--red); font-weight: 700; }
+#sec-kpiapp .bars, #sec-kpiarb .bars { overflow-x: auto; }
+#sec-kpiapp .bars .b span, #sec-kpiarb .bars .b span { font-size: 9.5px; }
+#sec-kpiapp .bars .b > b, #sec-kpiarb .bars .b > b { font-size: 9.5px; }
+#sec-kpiapp .grid-2 > .card, #sec-kpiarb .grid-2 > .card { min-width: 0; }
+#sec-kpiapp .tbl, #sec-kpiarb .tbl { overflow-x: auto; max-width: 100%; }
+#sec-kpiapp .bars, #sec-kpiarb .bars { gap: 2px; }
+#sec-kpiapp .hbars, #sec-kpiarb .hbars { grid-template-columns: minmax(90px, 32%) 1fr max-content; }
+#sec-kpiapp .hbars .val, #sec-kpiarb .hbars .val { white-space: nowrap; }

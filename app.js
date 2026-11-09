@@ -149,6 +149,7 @@ function bindUi() {
 
   // b86 — relève immédiate des convocations (le moteur passe sinon toutes les 10 min)
   const mailSync = document.getElementById("mailSyncBtn");
+  if (mailSync && typeof window.rtEstAdmin_ === "function") setTimeout(() => window.rtEstAdmin_().then(ok => { mailSync.hidden = !ok; }), 2500);   // b87 : admin uniquement
   if (mailSync) mailSync.addEventListener("click", () => {
     if (mailSync.disabled) return;
     mailSync.disabled = true; mailSync.classList.add("spin");
@@ -2100,22 +2101,39 @@ function renderMatchCard(row) {
 function renderTransport_(row, uid) {
   if (get(row, "Format") === "Alerte") return "";
   const m = get(row, "Mode transport") || "voiture";
-  const o = [["voiture", "Je conduis"], ["passager", "Passager (covoiturage)"], ["transport", "Train / bus / tram"]];
-  return `<div class="transport-ligne"><label>Trajet <select data-transport="${uid}">${o.map(([k, l]) => `<option value="${k}"${k === m ? " selected" : ""}>${l}</option>`).join("")}</select></label>${m !== "voiture" ? '<span class="mut">pas de carburant à ta charge</span>' : ""}</div>`;
+  // b87 — sélecteur segmenté (3 pastilles avec pictogramme) à la place de la liste déroulante
+  const ic = {
+    voiture: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V11l2-5h10l2 5v5M5 16h14M5 16v2M19 16v2M3 11h18"/><circle cx="8" cy="13.5" r="1"/><circle cx="16" cy="13.5" r="1"/></svg>',
+    passager: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.4"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14.5 14.3c.8-.2 1.6-.3 2.5-.3 2.5 0 4 1.8 4 4.5"/></svg>',
+    transport: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M9 21l-2-3M15 21l2-3"/><circle cx="9" cy="14" r=".9"/><circle cx="15" cy="14" r=".9"/></svg>'
+  };
+  const o = [["voiture", "Je conduis", "carburant compté"], ["passager", "Covoiturage", "je suis passager"], ["transport", "Train · bus", "transport en commun"]];
+  const aide = m === "voiture" ? "Carburant et usure comptés dans ton net." : "Pas de carburant ni d'usure à ta charge. L'indemnité km FFBB reste due.";
+  return `<div class="trajet-seg" role="radiogroup" aria-label="Comment tu te rends au match">
+    <div class="trajet-seg-t">Mon trajet</div>
+    <div class="trajet-seg-row">${o.map(([k, l, sub]) => `<button type="button" role="radio" class="trajet-opt${k === m ? " is-on" : ""}" aria-checked="${k === m}" data-transport="${uid}" data-mode="${k}">${ic[k]}<span><b>${l}</b><small>${sub}</small></span></button>`).join("")}</div>
+    <div class="trajet-seg-aide">${aide}</div>
+  </div>`;
 }
-document.addEventListener("change", e => {
-  const sel = e.target && e.target.closest && e.target.closest("select[data-transport]");
-  if (!sel) return;
-  const uid = sel.getAttribute("data-transport"), mode = sel.value;
-  sel.disabled = true;
+document.addEventListener("click", e => {
+  const btn = e.target && e.target.closest && e.target.closest("button[data-transport]");
+  if (!btn || btn.classList.contains("is-on")) return;
+  e.stopPropagation();
+  const uid = btn.getAttribute("data-transport"), mode = btn.getAttribute("data-mode");
+  const groupe = btn.closest(".trajet-seg");
+  const avant = groupe ? groupe.querySelector(".trajet-opt.is-on") : null;
+  if (groupe) groupe.querySelectorAll(".trajet-opt").forEach(b => { b.classList.toggle("is-on", b === btn); b.setAttribute("aria-checked", b === btn ? "true" : "false"); b.disabled = true; });
   jsonp("mission.transport", { uid, mode }).then(res => {
     if (!res || res.success === false) throw new Error((res && res.error) || "Échec");
     const r = state.allRows.find(x => get(x, "UID") === uid);
     if (r) { r["Mode transport"] = mode === "voiture" ? "" : mode; }
-    setStatus(mode === "voiture" ? "Trajet : en voiture" : "Trajet enregistré : pas de carburant compté", "ok");
+    setStatus(mode === "voiture" ? "Trajet : je conduis" : mode === "passager" ? "Trajet : covoiturage, pas de carburant compté" : "Trajet : transport en commun, pas de carburant compté", "ok");
     state.allRows = normalizeRows(state.allRows.map(x => { const c = {}; Object.keys(x).forEach(k => { if (k.charAt(0) !== "_") c[k] = x[k]; }); return c; }));
     renderAll();
-  }).catch(err => { setStatus(err.message || "Échec", "error"); sel.disabled = false; });
+  }).catch(err => {
+    setStatus(err.message || "Échec", "error");
+    if (groupe) groupe.querySelectorAll(".trajet-opt").forEach(b => { b.disabled = false; b.classList.toggle("is-on", b === avant); b.setAttribute("aria-checked", b === avant ? "true" : "false"); });
+  });
 });
 
 /* Bandeau "classement / enjeu" : uniquement s'il y a une donnée serveur
@@ -2476,7 +2494,12 @@ function buildSmsCollegue(row) {
   // court, pas de covoiturage à proposer même en France/Région.
   const kmAR = toNumber(get(row, "Km A/R stats"));
   const trajetAllerMin = kmAR > 0 ? (kmAR / 2) / 70 * 60 : 0;
-  if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
+  const modeT = get(row, "Mode transport");   // b87 — le SMS suit le trajet choisi dans la fiche du match
+  if (modeT === "passager") {
+    lignes.push("", "Je n'ai pas de voiture ce jour-là : est-ce que ça t'arrange qu'on fasse le trajet ensemble ? Je participe aux frais bien sûr.");
+  } else if (modeT === "transport") {
+    lignes.push("", "Je viens en transports en commun, je te tiens au courant si j'ai du retard.");
+  } else if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
     lignes.push("", "Si tu souhaite faire du covoiturage, pas de soucis dis moi juste comment tu veux qu'on s'organise");
   }
   lignes.push("", "A plus " + ((window.RT_AUTH && RT_AUTH.prenom) || "") + " !");   // b56 : prénom de l'utilisateur connecté
@@ -2754,7 +2777,17 @@ function attachCardListeners(root) {
       const uid = card.dataset.uid;
       const open = card.classList.toggle("open");
       head.setAttribute("aria-expanded", open ? "true" : "false");
-      if (open) state.cartesOuvertes.add(uid); else state.cartesOuvertes.delete(uid);
+      if (open) {
+        // b87 — accordéon : ouvrir une carte referme les autres (une seule fiche dépliée à la fois)
+        document.querySelectorAll(".match-card.open").forEach(c => {
+          if (c === card) return;
+          c.classList.remove("open");
+          const h = c.querySelector(".card-head"); if (h) h.setAttribute("aria-expanded", "false");
+        });
+        state.cartesOuvertes.clear();
+        state.cartesOuvertes.add(uid);
+        setTimeout(() => { const r = card.getBoundingClientRect(); if (r.top < 70) window.scrollBy({ top: r.top - 80, behavior: "smooth" }); }, 30);
+      } else state.cartesOuvertes.delete(uid);
       if (open) {
         const mapEl = card.querySelector(".card-map");
         if (mapEl) initMapFor(uid, mapEl.dataset.addr);
