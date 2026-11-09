@@ -609,7 +609,7 @@
       '<div class="subtab">Activité</div><div class="tiles">' +
         tuileB(ent(R.matchs_total), "Matchs enregistrés", "", ent(R.matchs_passes) + " joués") + tuileB(R.a_venir_7j, "Matchs dans les 7 j", "", R.a_venir_30j + " sur 30 j · " + R.a_venir + " au total") + tuileB(euro(R.indemnite_moy_match), "Indemnité moyenne", "", "par match") +
         tuileB(ent(R.km_total) + " km", "Km parcourus", "", "moyenne " + R.km_moyen_match + " km A/R") + tuileB(ent(R.km_conduits) + " km", "Km conduits", "", "hors covoiturage / transport") + tuileB(ent(R.co2_kg_estime) + " kg", "CO₂ estimé", "", "5,5 L/100 · 2,25 kg/L") +
-        tuileB(R.sans_convocation_30j, "Sans convocation 30 j", R.sans_convocation_30j ? "orange" : "green", "moteur installé") + tuileB(R.franchise_proches, "Proches du plafond fiscal", R.franchise_proches ? "orange" : "green", "≥ 70 % de " + euro(F.plafond) + " (" + F.annee + ")") + tuileB(R.benevoles, "Matchs bénévoles", "", "") +
+        tuileB(R.sans_convocation_30j, "Sans convocation 30 j", R.sans_convocation_30j ? "orange" : "green", "moteur installé") + tuileB(R.franchise_proches, "Proches du plafond fiscal", R.franchise_proches ? "orange" : "green", "≥ 70 % de " + euro(F.plafond) + " (" + F.annee + ")") + tuileB(R.benevoles, "Matchs bénévoles", "", "") + (R.equipement ? tuileB(euro(R.equipement.saison), "Équipement acheté", "", "saison · " + R.equipement.achats + " achat(s), " + euro(R.equipement.total) + " au total") : "") +
       "</div>" +
       '<div class="subtab">Argent</div><div class="tiles">' +
         tuileB(euro(R.montant_total), "Indemnités totales", "", "tous matchs") + tuileB(euro(R.recu), "Encaissé", "green", "") + tuileB(euro(R.a_recevoir), "À recevoir", "gold", "matchs joués, dans les délais") +
@@ -631,6 +631,7 @@
       { t: "Indemnités saison", k: "montant_saison", cl: "num right", r: (x) => euro(x.montant_saison) }, { t: "Encaissé", k: "recu_saison", cl: "num right", r: (x) => euro(x.recu_saison) },
       { t: "En retard", k: "retard", cl: "num right", r: (x) => (x.retard ? '<span class="neg">' + euro(x.retard) + "</span>" : "—") }, { t: "Km saison", k: "km_saison", cl: "num right", r: (x) => ent(x.km_saison) },
       { t: "Plafond fiscal " + F.annee, k: "franchise_pct", cl: "num right", r: (x) => badge(x.franchise_pct + " %", x.franchise_pct >= 90 ? "red" : x.franchise_pct >= 70 ? "orange" : "green") + '<br><span class="tiny mut">' + euro(x.franchise_annee) + "</span>" },
+      { t: "Équipement saison", k: "equipement_saison", cl: "num right", r: (x) => (x.equipement_saison ? euro(x.equipement_saison) : "—") },
       { t: "Usage 30 j", k: "minutes_30j", cl: "num right", r: (x) => hm(x.minutes_30j) + '<br><span class="tiny mut">' + x.jours_actifs_30j + " j actif(s)</span>" },
       { t: "Alertes", k: "alertes", cl: "num right", r: (x) => (x.alertes ? badge(x.alertes, "orange") : "—") },
       { t: "Dernière convocation", k: "derniere_convocation", r: (x) => (x.sans_convocation_30j && x.moteur ? badge(depuis(x.derniere_convocation), "orange") : esc(depuis(x.derniere_convocation))) },

@@ -10,15 +10,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Referee Tracker</title>
   <meta name="theme-color" content="#0B1F3B" />
-  <meta name="rt-version" content="2026-11-09-b87" />
+  <meta name="rt-version" content="2026-11-09-b88" />
   <!-- b70 — zéro requête tierce : polices et bibliothèques auto-hébergées (RGPD : aucune IP transmise à Google/CDN). -->
-  <link rel="stylesheet" href="./fonts/fonts.css?v=2026-11-09-b87" />
+  <link rel="stylesheet" href="./fonts/fonts.css?v=2026-11-09-b88" />
   <link rel="stylesheet" href="./vendor/leaflet.css" />
   <link rel="preconnect" href="https://script.google.com" crossorigin />
-  <link rel="stylesheet" href="./style.css?v=2026-11-09-b87" />
-  <link rel="manifest" href="./manifest.json?v=2026-11-09-b87" />
-  <link rel="icon" href="./favicon-32.png?v=2026-11-09-b87" sizes="32x32" type="image/png" />
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-11-09-b87" />
+  <link rel="stylesheet" href="./style.css?v=2026-11-09-b88" />
+  <link rel="manifest" href="./manifest.json?v=2026-11-09-b88" />
+  <link rel="icon" href="./favicon-32.png?v=2026-11-09-b88" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2026-11-09-b88" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -29,7 +29,7 @@
     <header class="app-header">
       <div class="header-inner">
         <div class="brand" id="brandHome" role="link" tabindex="0" aria-label="Retour à l'accueil" title="Accueil">
-          <img class="brand-logo" src="./img/logo-icon.png?v=2026-11-09-b87" alt="" width="44" height="40" decoding="async" />
+          <img class="brand-logo" src="./img/logo-icon.png?v=2026-11-09-b88" alt="" width="44" height="40" decoding="async" />
           <div class="brand-text">
             <h1>Referee<span>Tracker</span></h1>
           </div>
@@ -113,6 +113,7 @@
         <button class="tab" data-tab="stats" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg></span><span class="tab-label">Analyse</span></button>
         <button class="tab tab-tel-hide" data-tab="estimation" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M3 17l6-6 4 4 8-8'/><path d='M14 7h7v7'/></svg></span><span class="tab-label">Estimation</span></button>
         <button class="tab" data-tab="hotel" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19V7"/><path d="M3 14h18v5"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.5"/></svg></span><span class="tab-label">Hôtel</span></button>
+        <button class="tab" data-tab="equipement" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3c-.7 1.4-2.2 2.3-4 2.3S8.7 4.4 8 3z"/></svg></span><span class="tab-label">Équipement</span></button>
         <button class="tab" data-tab="alertes" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><path d="M12 17h.01"/></svg></span><span class="tab-label">Alertes</span><span class="tab-badge" id="badgeAlertes" hidden>0</span></button>
         <button class="tab" data-tab="export" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></span><span class="tab-label">Export</span></button>
         <button class="tab" data-tab="rapports" type="button"><span class="tab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z'/><path d='M14 3v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/></svg></span><span class="tab-label">Rapports</span></button>
@@ -142,6 +143,7 @@
         <div id="statsExport" style="display:none"></div>
       </section>
       <section id="hotel" class="panel"></section>
+      <section id="equipement" class="panel"></section>
       <section id="alertes" class="panel"></section>
       <section id="export" class="panel"></section>
       <section id="qcm" class="panel"></section>
@@ -161,8 +163,9 @@
   <script defer src="./vendor/jspdf.plugin.autotable.min.js"></script>
   <script defer src="./vendor/qrcode.js"></script>
   <script defer src="./vendor/france.js"></script>
-  <script defer src="./rt-auth.js?v=2026-11-09-b87"></script>
-  <script defer src="./rt-stats.js?v=2026-11-09-b87"></script>
-  <script defer src="./app.js?v=2026-11-09-b87"></script>
+  <script defer src="./rt-auth.js?v=2026-11-09-b88"></script>
+  <script defer src="./rt-stats.js?v=2026-11-09-b88"></script>
+  <script defer src="./app.js?v=2026-11-09-b88"></script>
+  <script defer src="./rt-equipement.js?v=2026-11-09-b88"></script>
 </body>
 </html>

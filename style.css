@@ -4788,3 +4788,63 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .trajet-opt span { width: 100%; }
 @media (max-width: 560px) { .trajet-opt small { display: none; } .trajet-opt { padding: 10px 4px; } }
 #mailSyncBtn[hidden] { display: none !important; }
+
+/* b88 — Équipement & frais */
+.eq-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.eq-cat { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); }
+.eq-cat b { font-family: var(--mono); font-weight: 700; }
+.eq-cat--tenue { border-color: var(--gold); } .eq-cat--chaussures { border-color: #3b82f6; } .eq-cat--materiel { border-color: #10b981; } .eq-cat--licence { border-color: #a855f7; } .eq-cat--formation { border-color: #f97316; }
+.eq-ajout { padding: 14px 16px; margin: 4px 0 8px; }
+.eq-ajout-t { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.eq-drop { display: flex; align-items: center; justify-content: center; min-height: 64px; padding: 12px; margin-bottom: 10px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; text-align: center; font-weight: 700; color: var(--muted); transition: border-color .15s, background .15s; }
+.eq-drop:hover { border-color: var(--gold); background: var(--gold-soft, rgba(245,180,0,.08)); }
+.eq-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.eq-liste { display: flex; flex-direction: column; gap: 8px; }
+.eq-item { display: grid; grid-template-columns: 110px 1fr auto; gap: 12px; align-items: start; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.eq-date strong { display: block; font-family: var(--mono); font-size: 13px; }
+.eq-date span, .eq-main small, .eq-side small { display: block; font-size: 12px; color: var(--muted); }
+.eq-main p { margin: 6px 0 2px; font-weight: 700; font-size: 14px; }
+.eq-main details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.eq-main ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; }
+.eq-side { text-align: right; }
+.eq-side strong { font-family: var(--mono); font-size: 15px; }
+.eq-act { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap; }
+.eq-joindre { cursor: pointer; }
+#eqMsg.is-err { color: var(--red, #e5484d); font-weight: 700; }
+@media (max-width: 720px) {
+  .eq-item { grid-template-columns: 1fr auto; }
+  .eq-date { grid-column: 1 / -1; display: flex; gap: 8px; align-items: baseline; }
+  .eq-date span { display: inline; }
+  .eq-side { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; text-align: left; border-top: 1px solid var(--line); padding-top: 8px; }
+  .eq-side small { flex: 1 1 auto; }
+  .eq-act { margin-top: 0; }
+}
+/* b88 — frais de déplacement d'un match */
+.frais-match { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; font-size: 13px; }
+.frais-match-t { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.frais-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; }
+.frais-chip b { font-family: var(--mono); }
+.frais-chip button { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 6px; }
+.frais-add { border: 1px dashed var(--line); background: transparent; color: var(--text); border-radius: 999px; padding: 4px 12px; font-weight: 700; cursor: pointer; font: inherit; font-size: 12.5px; }
+.frais-form { display: flex; gap: 6px; flex-basis: 100%; }
+.frais-form[hidden] { display: none; }
+.frais-form select, .frais-form input { font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); min-width: 0; }
+.frais-form input { width: 110px; }
+/* b88 — accueil : alerte silence + checklist de saison */
+.acc-alerte-silence { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); border-left: 5px solid #d97706; background: var(--surface); font-size: 13.5px; }
+.acc-alerte-silence strong { color: #d97706; font-size: 15px; }
+.checklist-saison { padding: 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); margin-bottom: 14px; }
+.cl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cl-head .section-title { margin: 0; }
+.cl-prog { font-family: var(--mono); font-weight: 800; color: var(--muted); white-space: nowrap; }
+.cl-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin: 8px 0 10px; }
+.cl-bar i { display: block; height: 100%; background: var(--gold); border-radius: 4px; transition: width .3s; }
+.cl-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cl-liste li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.cl-liste li:last-child { border-bottom: 0; }
+.cl-liste label { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; }
+.cl-liste input { width: 18px; height: 18px; accent-color: var(--gold); flex: 0 0 auto; }
+.cl-liste li.is-done span { color: var(--muted); text-decoration: line-through; }
+.cl-liste em { font-style: normal; font-size: 12px; color: var(--muted); }
+.cl-go { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.cl-masquer { margin-top: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer; padding: 0; }

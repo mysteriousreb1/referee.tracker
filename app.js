@@ -261,7 +261,7 @@ function setupMoreMenu_() {
   /* b18 — téléphone : barre du bas à 5 entrées (Accueil, 5×5, 3×3,
      Paiements, Plus). Hôtel et Alertes rejoignent le panneau « Plus ». */
   /* b19 — iPhone : Alertes et Export ne sont pas proposés (voir CSS). */
-  const SECONDARY = ["stats", "hotel", "qcm", "progression", "rapports", "reglement", "monespace", "alertes", "export"];   // b70 : Rapports dans « Plus »
+  const SECONDARY = ["stats", "hotel", "equipement", "qcm", "progression", "rapports", "reglement", "monespace", "alertes", "export"];   // b70 : Rapports dans « Plus »
   // b53 — téléphone : 3×3 fusionné dans « Matchs », « Paiements » devient « Argent ».
   const t3 = nav.querySelector('.tab[data-tab="troisx3"]'); if (t3) t3.classList.add("tab-tel-hide");
   const lab = (t, txt) => { const e = nav.querySelector(`.tab[data-tab="${t}"] .tab-label`); if (e && estTel_()) e.textContent = txt; };
@@ -1248,7 +1248,8 @@ const TAB_RENDERERS_ = {
   contacts:    [function () { renderContacts(); },    "Procédures"],
   elicence:    [function () { renderPersoTab_("elicence", "e-Licence", renderElicencePanel_); }, "e-Licence"],
   rapports:    [function () { renderPersoTab_("rapports", "Rapports", renderRapportsPanel_); }, "Rapports"],
-  hotel:       [function () { renderHotel(); },       "Hôtel"]
+  hotel:       [function () { renderHotel(); },       "Hôtel"],
+  equipement:  [function () { if (typeof window.renderEquipement === "function") window.renderEquipement(); }, "Équipement"]   // b88
 };
 
 /* Un seul grand titre par page : le premier h2 du panneau, les suivants deviennent des sous-titres. */
@@ -1736,6 +1737,8 @@ function renderAccueil() {
   </div>`;
   root.innerHTML = `
     ${bienvenue}
+    ${accSilence_(actifs)}
+    ${accChecklist_(actifs)}
     ${saisonHtml}
     <div class="acc-grid${compteurs ? "" : " acc-grid--solo"}">
       ${hero}
@@ -1753,6 +1756,59 @@ function renderAccueil() {
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
 }
+
+/* b88 — alerte « plus de convocation » : en saison (septembre → mai), aucun match à venir et dernier match il y a plus de
+   30 jours → la règle de transfert des convocations vers Referee Tracker est peut-être cassée. */
+function accSilence_(actifs) {
+  const m = new Date().getMonth(); if (m === 5 || m === 6 || m === 7) return "";
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  if (!actifs.length || actifs.some(r => r._date && r._date >= auj)) return "";
+  const dernier = actifs.filter(r => r._date).reduce((d, r) => (r._date > d ? r._date : d), new Date(0));
+  const j = Math.floor((auj - dernier) / 86400000);
+  if (j < 30) return "";
+  return `<div class="acc-alerte-silence" role="status"><strong>Aucune convocation depuis ${j} jours</strong>
+    <span>Pas de match à venir dans l'app. Si tu as été désigné entre-temps, vérifie que tes convocations sont toujours transférées vers ton adresse Referee Tracker (règle de transfert de ta boîte mail).</span></div>`;
+}
+
+/* b88 — checklist de début de saison (15 juillet → 31 octobre), cochée sur l'appareil, masquable. */
+const CHECKLIST_SAISON_ = [
+  ["licence", "Licence de la saison validée et e-Licence déposée", "elicence"],
+  ["medical", "Dossier médical d'arbitre à jour", ""],
+  ["stage", "Stage ou recyclage de début de saison fait", ""],
+  ["tenue", "Tenue complète et en bon état (chemises, pantalon, veste)", "equipement"],
+  ["profil", "Adresse de départ, véhicule et carburant vérifiés", "profil"],
+  ["baremes", "Indemnité kilométrique de la saison vérifiée", "profil"],
+  ["transfert", "Convocations bien transférées vers Referee Tracker", "auto"],
+  ["regles", "Règles de la saison révisées (QCM)", "qcm"]
+];
+function checklistEtat_() { try { return JSON.parse(localStorage.getItem("rt-checklist-" + getCurrentSeason()) || "{}") || {}; } catch (e) { return {}; } }
+function checklistSauver_(o) { try { localStorage.setItem("rt-checklist-" + getCurrentSeason(), JSON.stringify(o)); } catch (e) {} }
+function accChecklist_(actifs) {
+  const d = new Date(), md = (d.getMonth() + 1) * 100 + d.getDate();
+  if (md < 715 || md > 1031) return "";
+  const e = checklistEtat_(); if (e._masque) return "";
+  const saison = getCurrentSeason();
+  const auto = { transfert: actifs.some(r => r._season === saison) };
+  const fait = k => !!(e[k] || auto[k]);
+  const n = CHECKLIST_SAISON_.filter(([k]) => fait(k)).length;
+  if (n === CHECKLIST_SAISON_.length && e._fini) return "";
+  return `<section class="acc-bloc checklist-saison">
+    <div class="cl-head"><h2 class="section-title">Prêt pour la saison ${escapeHtml(saison)} ?</h2><span class="cl-prog">${n} / ${CHECKLIST_SAISON_.length}</span></div>
+    <div class="cl-bar"><i style="width:${Math.round(n / CHECKLIST_SAISON_.length * 100)}%"></i></div>
+    <ul class="cl-liste">${CHECKLIST_SAISON_.map(([k, l, go]) => `<li class="${fait(k) ? "is-done" : ""}"><label><input type="checkbox" data-cl="${k}"${fait(k) ? " checked" : ""}${go === "auto" ? " disabled" : ""}> <span>${escapeHtml(l)}${go === "auto" ? ' <em>(vérifié automatiquement)</em>' : ""}</span></label>${go && go !== "auto" ? `<button type="button" class="cl-go" data-cl-go="${go}">Ouvrir</button>` : ""}</li>`).join("")}</ul>
+    <button type="button" class="cl-masquer" data-cl-masquer>${n === CHECKLIST_SAISON_.length ? "C'est tout bon, masquer" : "Masquer pour cette saison"}</button>
+  </section>`;
+}
+document.addEventListener("change", ev => {
+  const c = ev.target && ev.target.closest && ev.target.closest("input[data-cl]"); if (!c) return;
+  const o = checklistEtat_(); o[c.dataset.cl] = c.checked; checklistSauver_(o); c.blur(); renderAllSoon_();
+});
+document.addEventListener("click", ev => {
+  const t = ev.target && ev.target.closest ? ev.target : null; if (!t) return;
+  const go = t.closest("[data-cl-go]");
+  if (go) { const g = go.dataset.clGo; if (g === "profil") { const b = document.getElementById("rtProfileBtn"); if (b) b.click(); } else setActiveTab(g); return; }
+  if (t.closest("[data-cl-masquer]")) { const o = checklistEtat_(); o._masque = true; o._fini = true; checklistSauver_(o); renderAllSoon_(); }
+});
 
 
 /* b84 — synthèse des observations sur l'accueil (lisible au téléphone) : dernière note, moyenne de la saison,
@@ -2045,7 +2101,8 @@ function renderMatchCard(row) {
   const isBenevole = paiement === BENEVOLE;
 
   const cost = realFuelCostClient(row._kmEff != null ? row._kmEff : row._km, row._date);
-  const net = round2(row._amount - cost);
+  const fraisM = typeof window.rtFraisMatch === "function" ? window.rtFraisMatch(get(row, "UID")) : 0;   // b88 : péage, parking
+  const net = round2(row._amount - cost - fraisM);
 
   const niv = niveauCarte(row);
   const reglement = reglementSpecial(row);   // MODIFICATION 10
@@ -2082,6 +2139,7 @@ function renderMatchCard(row) {
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
         ${renderTransport_(row, uid)}
+        ${typeof window.rtFraisMatchHtml === "function" ? window.rtFraisMatchHtml(row) : ""}
         ${estTel_() ? renderActions(row) : ""}
         ${renderClassementMatch_(row) || enjeu}
         ${renderDetails(row)}
@@ -6082,6 +6140,7 @@ function renderFranchise_(annee, total) {
   return `<div class="table-card franchise${depasse ? " is-over" : part >= 80 ? " is-near" : ""}" style="padding:14px 16px;margin:10px 0">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>Franchise des arbitres ${annee}</strong><span>${formatMoney(total)} / ${formatMoney(plafond)}</span></div>
     <div class="franchise-bar"><i style="width:${part}%"></i></div>
+    ${(() => { const eq = typeof window.rtEquipementAnnee === "function" ? window.rtEquipementAnnee(annee) : 0; return eq ? `<p class="card-sub" style="margin:6px 0 0">Équipement acheté en ${annee} : <strong>${formatMoney(eq)}</strong> · gain après équipement : <strong>${formatMoney(total - eq)}</strong> (onglet Équipement).</p>` : ""; })()}
     <p class="card-sub" style="margin:6px 0 0">${depasse ? "Plafond dépassé : l'ensemble des indemnités de l'année devient soumis à cotisations et à l'impôt. Parles-en à ton comité ou à un conseiller." : `Indemnités exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee} (${formatMoney(plafond)}). Il te reste ${formatMoney(Math.max(0, plafond - total))}.`} Information indicative.</p>
   </div>`;
 }
@@ -6149,7 +6208,7 @@ function renderExport() {
       <div class="field"><label for="exportYearSelect">Année</label>
         <select id="exportYearSelect">${exportAnnees_().map(y => `<option value="${y}"${y === Number(state.exportYear) ? " selected" : ""}>${y}</option>`).join("")}</select></div>
       <p class="card-sub" style="margin:auto 0">Missions jouées du 1er janvier au 31 décembre (les désignations à venir ne comptent pas) : total par payeur et par mois, puis le détail de chaque mission. C'est le document à garder pour la déclaration de revenus (indemnités d'arbitrage, franchise URSSAF).</p>
-    </section>${renderFranchise_(Number(state.exportYear), t.gross)}` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+    </section>${(typeof window.rtEquipementCharger === "function" && window.rtEquipementCharger(), renderFranchise_(Number(state.exportYear), t.gross))}` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
         <select id="exportSeasonSelect"${rng ? " disabled" : ""}>
