@@ -353,3 +353,13 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .tile.on { outline: 2px solid var(--gold, #F5B400); outline-offset: -2px; }
 .seg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 700px) { .tiles.mini, .seg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* b86 — deux espaces dans la navigation */
+.nav-grp { margin: 14px 10px 4px; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
+.nav-grp:first-child { margin-top: 2px; }
+.sante-ok { color: #16a34a; } .sante-lent { color: #d97706; } .sante-arrete { color: #dc2626; } .sante-inconnu { color: #6b7280; }
+.kv-mini { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+.kv-mini dt { color: var(--muted, #6b7280); }
+.complet { display: flex; flex-wrap: wrap; gap: 6px; }
+.complet span { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(22, 163, 74, .12); color: #15803d; }
+.complet span.non { background: rgba(217, 119, 6, .12); color: #b45309; }
+@media (max-width: 900px) { .nav-grp { display: none; } }

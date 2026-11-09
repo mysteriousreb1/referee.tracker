@@ -147,6 +147,21 @@ function bindUi() {
   });
   analyseInstallerSections_();
 
+  // b86 — relève immédiate des convocations (le moteur passe sinon toutes les 10 min)
+  const mailSync = document.getElementById("mailSyncBtn");
+  if (mailSync) mailSync.addEventListener("click", () => {
+    if (mailSync.disabled) return;
+    mailSync.disabled = true; mailSync.classList.add("spin");
+    setStatus("Relève de tes convocations en cours… (jusqu'à 1 minute)", "");
+    jsonp("mails.sync", {}).then(res => {
+      if (!res || res.success === false) throw new Error((res && res.error) || "Relève impossible");
+      const n = Number(res.nouvelles) || 0;
+      setStatus(n ? n + " nouvelle(s) convocation(s) importée(s)" : "Relève faite : aucune nouvelle convocation", "ok");
+      loadData();
+    }).catch(err => setStatus(err.message || "Relève impossible", "error"))
+      .finally(() => { mailSync.disabled = false; mailSync.classList.remove("spin"); });
+  });
+
   const refresh = document.getElementById("refreshBtn");
   refresh.addEventListener("click", () => {
     refresh.classList.remove("spin");
@@ -598,6 +613,7 @@ function loadPrixCarburant() {
         Object.keys(res.config.prix_e10_historique).forEach(k => { const v = Number(res.config.prix_e10_historique[k]); if (/^\d{4}-\d{2}$/.test(k) && v > 0.5 && v < 4) PRIX_E10[k] = v; });
       }
       if (res && res.config && res.config.prix_carburant_meta) window.RT_PRIX_META = res.config.prix_carburant_meta;   // b79
+      if (res && res.config && res.config.carburants && typeof res.config.carburants === "object") state.carburants = res.config.carburants;   // b86
       const p = res && res.config ? Number(res.config.prix_e10_actuel) : 0;
       if (p > 0.5 && p < 4 && p !== state.prixActuel) {
         state.prixActuel = p;
@@ -841,6 +857,8 @@ function appliquerDoubles_(rows) {
       r._double = { taille: grp.length };
     });
   });
+  // b86 — passager / transport en commun : aucun km conduit, donc ni carburant ni usure à ta charge
+  rows.forEach(r => { if (/^(passager|transport)$/.test(get(r, "Mode transport"))) { r._kmEff = 0; r._sansVoiture = true; } });
 }
 /* Lieu normalisé pour détecter un doublé : salle en priorité, sinon adresse,
    sinon ville. */
@@ -1332,7 +1350,8 @@ function renderTabBadges_() {
     badgeAlertes.textContent = nbAlertes > 99 ? "99+" : String(nbAlertes);
     badgeAlertes.hidden = nbAlertes === 0;
   }
-  const montrerAlertes = nbAlertes > 0 || state.activeTab === "alertes";
+  // b86 — l'onglet reste accessible dès qu'il y a quelque chose (infos comprises) : l'admin et l'arbitre voient la même chose. Le badge ne compte que « À régler ».
+  const montrerAlertes = nbAlertes > 0 || actives.length > 0 || state.activeTab === "alertes";
   const tabAl = document.querySelector('nav.tabs .tab[data-tab="alertes"]'); if (tabAl) tabAl.classList.toggle("tab-masque", !montrerAlertes);
   const plusAl = document.querySelector('.tab-more-item[data-goto="alertes"]'); if (plusAl) plusAl.classList.toggle("tab-masque", !montrerAlertes);
 
@@ -2061,6 +2080,7 @@ function renderMatchCard(row) {
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
+        ${renderTransport_(row, uid)}
         ${estTel_() ? renderActions(row) : ""}
         ${renderClassementMatch_(row) || enjeu}
         ${renderDetails(row)}
@@ -2074,6 +2094,29 @@ function renderMatchCard(row) {
     </article>
   `;
 }
+
+/* b86 — comment je me rends au match : en voiture (défaut), passager d'un covoiturage, transport en commun.
+   Passager / transport : pas de carburant ni d'usure à ta charge (l'indemnité km FFBB reste due). */
+function renderTransport_(row, uid) {
+  if (get(row, "Format") === "Alerte") return "";
+  const m = get(row, "Mode transport") || "voiture";
+  const o = [["voiture", "Je conduis"], ["passager", "Passager (covoiturage)"], ["transport", "Train / bus / tram"]];
+  return `<div class="transport-ligne"><label>Trajet <select data-transport="${uid}">${o.map(([k, l]) => `<option value="${k}"${k === m ? " selected" : ""}>${l}</option>`).join("")}</select></label>${m !== "voiture" ? '<span class="mut">pas de carburant à ta charge</span>' : ""}</div>`;
+}
+document.addEventListener("change", e => {
+  const sel = e.target && e.target.closest && e.target.closest("select[data-transport]");
+  if (!sel) return;
+  const uid = sel.getAttribute("data-transport"), mode = sel.value;
+  sel.disabled = true;
+  jsonp("mission.transport", { uid, mode }).then(res => {
+    if (!res || res.success === false) throw new Error((res && res.error) || "Échec");
+    const r = state.allRows.find(x => get(x, "UID") === uid);
+    if (r) { r["Mode transport"] = mode === "voiture" ? "" : mode; }
+    setStatus(mode === "voiture" ? "Trajet : en voiture" : "Trajet enregistré : pas de carburant compté", "ok");
+    state.allRows = normalizeRows(state.allRows.map(x => { const c = {}; Object.keys(x).forEach(k => { if (k.charAt(0) !== "_") c[k] = x[k]; }); return c; }));
+    renderAll();
+  }).catch(err => { setStatus(err.message || "Échec", "error"); sel.disabled = false; });
+});
 
 /* Bandeau "classement / enjeu" : uniquement s'il y a une donnée serveur
    pour au moins une des 2 équipes (silencieux sinon — le module classement
@@ -5996,6 +6039,19 @@ function exportRecap_(rows) {
   const ordre = PAYEURS_ORDRE_.map(k => PAYEURS_LIB_[k]);
   return { payeurs: Object.values(parP).sort((a, b) => ordre.indexOf(a.lib) - ordre.indexOf(b.lib)), mois: Object.keys(parM).sort().map(k => parM[k]) };
 }
+/* b86 — franchise des arbitres (loi 2006-1294, art. L.241-16 CSS et 81 du CGI) : par année civile, les sommes versées
+   pour l'arbitrage sont exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond annuel de la Sécurité sociale (PASS).
+   Au-delà : tout devient imposable. Information indicative, à vérifier sur service-public.fr. */
+const PASS_ANNUEL_ = { 2024: 46368, 2025: 47100, 2026: 48060 };
+function renderFranchise_(annee, total) {
+  const pass = PASS_ANNUEL_[annee] || PASS_ANNUEL_[Math.max.apply(null, Object.keys(PASS_ANNUEL_).map(Number))];
+  const plafond = round2(pass * 0.145), part = plafond ? Math.min(100, Math.round(total / plafond * 100)) : 0, depasse = total > plafond;
+  return `<div class="table-card franchise${depasse ? " is-over" : part >= 80 ? " is-near" : ""}" style="padding:14px 16px;margin:10px 0">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>Franchise des arbitres ${annee}</strong><span>${formatMoney(total)} / ${formatMoney(plafond)}</span></div>
+    <div class="franchise-bar"><i style="width:${part}%"></i></div>
+    <p class="card-sub" style="margin:6px 0 0">${depasse ? "Plafond dépassé : l'ensemble des indemnités de l'année devient soumis à cotisations et à l'impôt. Parles-en à ton comité ou à un conseiller." : `Indemnités exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee} (${formatMoney(plafond)}). Il te reste ${formatMoney(Math.max(0, plafond - total))}.`} Information indicative.</p>
+  </div>`;
+}
 function exportTotals(rows) {
   const gross = rows.reduce((t, r) => t + r._amount, 0);
   const cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
@@ -6060,7 +6116,7 @@ function renderExport() {
       <div class="field"><label for="exportYearSelect">Année</label>
         <select id="exportYearSelect">${exportAnnees_().map(y => `<option value="${y}"${y === Number(state.exportYear) ? " selected" : ""}>${y}</option>`).join("")}</select></div>
       <p class="card-sub" style="margin:auto 0">Missions jouées du 1er janvier au 31 décembre (les désignations à venir ne comptent pas) : total par payeur et par mois, puis le détail de chaque mission. C'est le document à garder pour la déclaration de revenus (indemnités d'arbitrage, franchise URSSAF).</p>
-    </section>` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+    </section>${renderFranchise_(Number(state.exportYear), t.gross)}` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
         <select id="exportSeasonSelect"${rng ? " disabled" : ""}>
@@ -6719,9 +6775,31 @@ window.rtCoutsMaj = function (c) {
   renderAllSoon_();
 };
 
+/* b86 — carburant du véhicule utilisé à cette date (Mon profil), comme le serveur. */
+function vehiculePour_(date) {
+  const l = state.vehicles; if (!Array.isArray(l) || !l.length) return null;
+  if (!date) return l[l.length - 1];
+  const iso = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  const isoDe = d => { d = String(d || "").trim(); let m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3]; m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; };
+  let v = l[0], vDe = ""; l.forEach(x => { const d = isoDe(x.depuis); if (d && d <= iso && d >= vDe) { v = x; vDe = d; } });
+  return v;
+}
+function carburantPour_(date) { const v = vehiculePour_(date); const c = v && v.carburant; return c || (state.carburants && state.carburants.defaut) || "e10"; }
 function prixCarburantPour(date) {
+  const carb = carburantPour_(date);
   const pp = prixPeriode_(date);
   if (pp) return pp;
+  if (carb === "electrique") return (state.carburants && Number(state.carburants.prix_kwh)) || 0.25;
+  if (carb !== "e10") {
+    const C = state.carburants || {}, cle = date ? date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") : "";
+    const rel = cle && C.prix_mois && C.prix_mois[carb] && Number(C.prix_mois[carb][cle]);
+    if (rel > 0.3) return rel;
+    const f = Number(C.facteurs && C.facteurs[carb]) || ({ sp95: 1.03, sp98: 1.08, gazole: 0.98, e85: 0.47, gplc: 0.56 })[carb] || 1;
+    return round2(prixCarburantE10_(date) * f * 1000) / 1000;
+  }
+  return prixCarburantE10_(date);
+}
+function prixCarburantE10_(date) {
   if (!date) return PRIX_DEFAUT;
   const cle = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
   if (PRIX_E10[cle]) return PRIX_E10[cle];
@@ -6757,7 +6835,7 @@ function consoPour_(date) {
     // par Mon profil) ; on prend la DERNIÈRE période applicable.
     const isoDe = d => { d = String(d || "").trim(); let m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3]; m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; };
     let v = null, vDe = "";
-    l.forEach(x => { const d = isoDe(x.depuis); const c = Number(x.consoL100 || x.conso); if (d && d <= iso && c > 0 && c < 30 && d >= vDe) { v = x; vDe = d; } });
+    l.forEach(x => { const d = isoDe(x.depuis); const c = Number(x.consoL100 || x.conso); if (d && d <= iso && c > 0 && c <= 40 && d >= vDe) { v = x; vDe = d; } });
     if (v) return Number(v.consoL100 || v.conso);
   }
   // b74 — repli neutre (plus les véhicules du fondateur) : 1er véhicule du profil, sinon 6 L/100.

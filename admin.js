@@ -163,12 +163,13 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", arbitres: "Arbitres", inscriptions: "Inscriptions", messages: "Messages", config: "Configuration", tickets: "Tickets", sante: "Santé", stats: "Statistiques" };
+  const SECTIONS = { pilotage: "Pilotage", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
+    arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes" };   // b86 : 2 espaces
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
     const h = (location.hash || "#pilotage").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "pilotage";
-    courant = sec; effacerMsg();
+    courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.sec === sec));
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("active", s.id === "sec-" + sec));
     $("topTitre").textContent = SECTIONS[sec];
@@ -224,7 +225,7 @@
       if (nbp) aFaire.push(["orange", nbp + " barème(s) proposé(s) par des arbitres", "À vérifier puis valider : Configuration → Barèmes des comités", "#config"]);
       if (manque.size) aFaire.push(["gold", "Barème / échéancier à renseigner : " + [...manque].join(", "), "Sans eux, les dates de paiement de ces arbitres sont estimées. Configuration → Barèmes / Échéanciers", "#config"]);
     } catch (e) {}
-    if (t.alertes_non_traitees) aFaire.push(["orange", t.alertes_non_traitees + " alerte(s) non traitée(s)", "Voir dans la fiche de chaque arbitre", "#arbitres"]);
+    if (t.alertes_non_traitees) aFaire.push(["orange", t.alertes_non_traitees + " alerte(s) à traiter (« À régler » / « Avant le match »)", (t.alertes_infos ? t.alertes_infos + " info(s) en plus · " : "") + "même tri que dans l'app des arbitres", "#alertes"]);
     const aFaireHtml = '<div class="card afaire"><div class="card-head"><h2>À traiter</h2><span class="sub">' + (aFaire.length ? aFaire.length + " point(s)" : "rien en attente") + "</span></div>" +
       (aFaire.length ? '<ul class="afaire-l">' + aFaire.map((a) => '<li class="clic" data-lien="' + a[3] + '"><span class="dot ' + a[0] + '"></span><div><strong>' + esc(a[1]) + '</strong><span class="mut tiny">' + esc(a[2]) + '</span></div><span class="afaire-go">→</span></li>').join("") + "</ul>" : '<p class="vide">Tout est à jour. ✓</p>') + "</div>";
     el.innerHTML = aFaireHtml +
@@ -331,7 +332,14 @@
     const nonTraitees = f.alertes ? f.alertes.non_traitees : 0;
     const matchsHtml = (f.matchs || []).length ? '<div class="tbl"><table><thead><tr><th>Date</th><th>Rencontre</th><th>Rôle</th><th class="right">Indemnité</th><th>Paiement</th><th>Alertes</th></tr></thead><tbody>' +
       f.matchs.map((m) => "<tr><td>" + esc(m.date_match) + ' <span class="mut tiny">' + esc(m.heure_rdv || "") + "</span></td><td>" + esc(m.libelle_competition || "") + '<br><span class="mut">' + esc(m.recevant || "") + " – " + esc(m.visiteur_evenement || "") + "</span></td><td>" + esc(m.mon_role || "") + '</td><td class="num right">' + esc(m.indemnite_totale != null ? m.indemnite_totale + " €" : "—") + "</td><td>" + badge(m.statut_paiement || "—", { "Reçu": "green", "Bénévole": "gray", "En attente": "orange", "En retard": "red" }[m.statut_paiement] || "") + '</td><td class="warn tiny">' + esc([m.warning_general, m.warning_finance, m.warning_fbi].filter((w) => w && !/^\s*INFO\s*:/i.test(w)).join(" · ")) + (m.alerte_traitee_sig ? " " + badge("traitée", "green") : "") + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucun match</p>';
-    const alertesHtml = f.alertes && f.alertes.total ? hbarres(Object.entries(f.alertes.par_type).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ l: k, v })), null, "red") + '<p class="mut tiny" style="margin-top:8px">' + f.alertes.total + " alerte(s) au total · " + nonTraitees + " non traitée(s)</p>" : '<p class="vide">Aucune alerte</p>';
+    // b86 — complétude de la fiche (ce qui manque et pourquoi)
+    const ME = p.moteur_etat || {}, MA = ME.adresse || {};
+    const crit = [["Nom officiel", !!p.nom_ffbb], ["Niveau", !!p.niveau], ["Zones de paiement", !!(z.cd || z.ligue)], ["Adresse de réception", !!p.adresse_reception], ["Moteur relié", !!p.api_url],
+      ["E-mail fédération", !!(p.email_ffbb || ME.email_ffbb)], ["Téléphone (WhatsApp)", !!p.telephone], ["Fournisseur de mail", !!p.fournisseur_mail], ["Adresse de départ", !!MA.renseignee], ["Adresse localisée", !!MA.localisee],
+      ["Carburant du véhicule", !!((ME.vehicules || []).slice(-1)[0] || {}).carburant], ["Onboarding terminé", !!p.onboarding_fait], ["CGU acceptées", !!(f.consentements && f.consentements.length)], ["Notifications", !!(f.push && f.push.length)], ["Double authentification", !!u.mfa]];
+    const nOk = crit.filter((c) => c[1]).length;
+    const completHtml = '<div class="card"><div class="card-head"><h3>Complétude de la fiche</h3><span class="sub">' + nOk + " / " + crit.length + " (" + Math.round(nOk / crit.length * 100) + ' %)</span></div><div class="complet">' + crit.map((c) => '<span class="' + (c[1] ? "" : "non") + '">' + (c[1] ? "✓ " : "✗ ") + esc(c[0]) + "</span>").join("") + '</div><p class="mut tiny" style="margin-top:8px">Téléphone : facultatif à l\'inscription. Fournisseur de mail : vide pour un compte créé à la main (Clément). E-mail fédération et adresse de départ : lus dans le moteur (onglet Moteur).</p></div>';
+    const alertesHtml = f.alertes && f.alertes.total ? hbarres(Object.entries(f.alertes.par_type).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ l: k, v })), null, "red") + '<p class="mut tiny" style="margin-top:8px">' + f.alertes.total + " alerte(s) au total · <b>" + nonTraitees + "</b> à traiter (" + (f.alertes.regler || 0) + " à régler, " + (f.alertes.avant || 0) + " avant le match) · " + (f.alertes.infos || 0) + " info(s), visibles dans l'onglet Alertes de l'arbitre</p>" : '<p class="vide">Aucune alerte</p>';
     const ticketsHtml = (f.tickets || []).length ? '<div class="tbl"><table><thead><tr><th>Date</th><th>Type</th><th>Gravité</th><th>Description</th><th>Statut</th></tr></thead><tbody>' + f.tickets.map((t) => "<tr><td>" + fmt(t.created_at) + "</td><td>" + esc(t.categorie) + "</td><td>" + esc(t.gravite) + "</td><td>" + esc((t.description || "").slice(0, 160)) + (t.reponse ? '<br><i class="mut">↳ ' + esc(t.reponse.slice(0, 160)) + "</i>" : "") + "</td><td>" + badgeStatut(t.statut || "Ouvert") + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucun ticket</p>';
     const sel = (id, lab, opts, val) => '<label class="f">' + lab + '<select id="' + id + '">' + opts.map((o) => '<option value="' + esc(o[0]) + '"' + (o[0] === val ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("") + "</select></label>";
     const inp = (id, lab, val, ph, type) => '<label class="f">' + lab + '<input id="' + id + '" type="' + (type || "text") + '" value="' + esc(val || "") + '" placeholder="' + esc(ph || "") + '"></label>';
@@ -345,13 +353,13 @@
         '<button class="btn sm" id="fSusp">' + (u.banni ? "Réactiver" : "Suspendre") + "</button>" + '<button class="btn sm" id="fPing">Tester le moteur</button><span id="fPingRes" class="mut tiny"></span></div>' +
       '<div class="tabs"><button class="on" data-tab="profil">Profil</button><button data-tab="matchs">Matchs (' + (f.matchs || []).length + ')</button><button data-tab="alertes">Alertes (' + (f.alertes ? f.alertes.total : 0) + ')</button><button data-tab="tickets">Tickets (' + (f.tickets || []).length + ")</button><button data-tab=\"notes\">Notes & message</button><button data-tab=\"moteur\">Moteur</button><button data-tab=\"danger\">Compte</button></div>" +
       '<div class="tabpane on" data-pane="profil"><div class="card"><div class="form-grid">' +
-        inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom officiel", p.nom_ffbb) + inp("pEmailF", "E-mail fédération", p.email_ffbb, "", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
+        inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom officiel", p.nom_ffbb) + inp("pEmailF", "E-mail fédération", p.email_ffbb, ME.email_ffbb ? "moteur : " + ME.email_ffbb : "non renseigné", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
         inp("pCd", "Zone CD", z.cd, "CD67") + inp("pLigue", "Ligue", z.ligue, "LRGEB") + '<label class="f">Championnat de France<span style="padding-top:8px">' + chk("pCf", "Oui", z.cf) + "</span></label>" +
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
         '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, LIB_FN[k] || k, fn[k] !== false)).join("") + "</div>" +
         '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></div>' +
-        (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
+        completHtml + (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
       '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · consultation journalisée</span><span class="sp"></span><button class="btn sm" id="fSolder" title="Historique importé jamais pointé (saisons passées)">Solder l\'historique…</button><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
       '<div class="tabpane" data-pane="alertes"><div class="card">' + alertesHtml + '</div><div class="card" id="alZ"><p class="mut">Chargement des alertes…</p></div></div>' +
@@ -374,7 +382,7 @@
       z.innerHTML = '<div class="card-head"><h3>Alertes de l\'arbitre</h3><span class="sub">' + nAct + " à traiter · " + (l.length - nAct) + " traitée(s) · même affichage que dans son app</span></div>" +
         '<div class="toolbar"><select id="alF"><option value="actives">À traiter</option><option value="traitees">Traitées</option><option value="toutes">Toutes</option></select><label class="chk"><input type="checkbox" id="alTous">Tout cocher</label><span class="sp"></span>' +
         '<button class="btn sm pri" id="alOk">Marquer la sélection traitée</button><button class="btn sm" id="alRet">Rétablir la sélection</button>' + (nAct ? '<button class="btn sm" id="alAll">Tout marquer traité (' + nAct + ")</button>" : "") + '<button class="btn sm" id="alMaj">↻</button></div>' +
-        (vue.length ? '<div class="tbl"><table><thead><tr><th></th><th>Date</th><th>Mission</th><th>Alerte</th><th>État</th></tr></thead><tbody>' + vue.map((a) => '<tr><td><input type="checkbox" class="alC" value="' + esc(a.uid) + '"></td><td class="tiny">' + esc(a.date || "—") + "</td><td>" + esc(a.libelle || a.format || "") + '<br><span class="mut tiny">' + esc(a.rencontre || "") + '</span></td><td class="warn tiny">' + a.alertes.map(esc).join("<br>") + "</td><td>" + (a.traitee ? badge("traitée", "green") : badge("à traiter", "orange")) + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">' + (alFiltre === "actives" ? "Aucune alerte à traiter" : "Rien à afficher") + "</p>");
+        (vue.length ? '<div class="tbl"><table><thead><tr><th></th><th>Date</th><th>Mission</th><th>Type</th><th>Alerte</th><th>État</th></tr></thead><tbody>' + vue.map((a) => '<tr><td><input type="checkbox" class="alC" value="' + esc(a.uid) + '"></td><td class="tiny">' + esc(a.date || "—") + "</td><td>" + esc(a.libelle || a.format || "") + '<br><span class="mut tiny">' + esc(a.rencontre || "") + "</span></td><td>" + ({ regler: badge("À régler", "red"), avant: badge("Avant le match", "orange"), infos: badge("Info", "gray") }[a.section] || "") + '<br><span class="tiny">' + esc(a.titre || "") + '</span></td><td class="warn tiny">' + a.alertes.map(esc).join("<br>") + "</td><td>" + (a.traitee ? badge("traitée", "green") : badge("active", "orange")) + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">' + (alFiltre === "actives" ? "Aucune alerte à traiter" : "Rien à afficher") + "</p>");
       z.querySelector("#alF").value = alFiltre;
       z.querySelector("#alF").onchange = (e) => { alFiltre = e.target.value; rendAlertes(); };
       z.querySelector("#alMaj").onclick = rendAlertes;
@@ -391,26 +399,41 @@
       if (all) all.onclick = async (e) => { if (!(await confirmer("Tout marquer traité", "Marquer les <strong>" + nAct + "</strong> alertes de " + esc(nomDe(p, u.email)) + " comme traitées ? Elles disparaissent de son onglet Alertes (réversible ici).", "Tout marquer"))) return; go(e.target, { tout: true }, "marquée(s) traitée(s)"); };
     };
     // ---------- b81 : piloter le moteur de l'arbitre (commandes exécutées au prochain passage, ≤ 10 min) ----------
-    const LIB_CMD = { synchro: "Synchroniser maintenant", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule", alertes: "Alertes traitées / rétablies", profil: "Profil modifié" };
+    const LIB_CMD = { synchro: "Synchroniser maintenant", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule", vehicule_set: "Modifier un véhicule", alertes: "Alertes traitées / rétablies", profil: "Profil modifié" };
     const BADGE_CMD = { en_attente: ["en attente", "orange"], en_cours: ["en cours", "gold"], ok: ["fait", "green"], erreur: ["erreur", "red"], annulee: ["annulée", ""] };
     const rendMoteur = async () => {
       const z = body.querySelector("#mtZ"); if (!z) return;
       if (!p.api_url) { z.innerHTML = '<p class="vide">Aucun moteur pour ce compte.</p>'; return; }
       let l = []; try { l = (await admin("commandes.liste", { user_id: userId })).data || []; } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
       const resTxt = (c) => { if (c.action === "diagnostic" && c.statut === "ok") { try { const d = JSON.parse(c.resultat); return '<pre class="code tiny">' + esc(JSON.stringify(d, null, 1)) + "</pre>"; } catch (e) {} } return esc(c.resultat || ""); };
-      z.innerHTML = '<div class="card-head"><h3>Piloter le moteur</h3><span class="sub">exécuté au prochain passage du moteur (10 min au plus)</span></div>' +
+      const E = p.moteur_etat || null, A = (E && E.adresse) || {}, T = (E && E.tarifs) || {}, V = (E && E.vehicules) || [];
+      const bat = E && E.battement ? depuis(E.battement) : "inconnu";
+      const etatHtml = '<div class="card-head"><h3>Qu\'est-ce que le moteur ?</h3></div><p class="mut tiny" style="margin-top:0">Le moteur est le programme (Google Apps Script) propre à cet arbitre : toutes les 10 minutes il lit les convocations reçues sur <b>' + esc(p.adresse_reception || "son adresse Referee Tracker") + '</b>, crée les matchs, calcule les km, les indemnités, le carburant, l\'agenda et les alertes, puis envoie tout à l\'app. Ses réglages (adresse de départ, véhicules, tarifs) vivent dans le moteur : ils s\'affichent ici dès qu\'il publie son état (1 fois par heure, ou tout de suite avec « Diagnostic complet »).</p>' +
+        (E ? '<div class="subtab">État publié par le moteur</div><dl class="kv-mini"><dt>Version</dt><dd>' + esc(E.version || "?") + ' · publié ' + depuis(E.publie) + '</dd><dt>Dernier passage</dt><dd>' + esc(bat) + '</dd><dt>Adresse de départ</dt><dd>' + (A.renseignee ? esc([A.code_postal, A.ville].filter(Boolean).join(" ")) + (A.localisee ? " " + badge("localisée", "green") : " " + badge("non localisée", "red")) : badge("non renseignée", "red")) + "</dd>" +
+          '<dt>Tarifs</dt><dd>indemnité ' + esc(T.indemnite_km ?? "?") + ' €/km · usure ' + esc(T.usure_km ?? "?") + ' €/km</dd><dt>Carburant</dt><dd>' + (E.carburant ? esc(String(E.carburant.carburant || "").toUpperCase()) + " " + esc(E.carburant.prix) + " €/L (médiane de " + esc(E.carburant.n) + " station(s), " + esc(E.carburant.rayon_km) + " km)" : "aucun relevé") + "</dd>" +
+          '<dt>Déclencheurs</dt><dd>' + esc((E.declencheurs || []).join(", ") || "aucun") + '</dd><dt>Classeur</dt><dd>' + esc((E.compteurs || {}).matchs ?? "?") + " match(s) · " + esc((E.compteurs || {}).mails_traites ?? "?") + " mail(s) traité(s)</dd>" +
+          (E.rattrapage_b84 ? '<dt>Rattrapage b84</dt><dd class="tiny mono">' + esc(String(E.rattrapage_b84).slice(0, 260)) + "</dd>" : "") + "</dl>" +
+          '<div class="subtab">Véhicules du moteur</div>' + (V.length ? '<div class="tbl"><table><thead><tr><th>Véhicule</th><th>Conso</th><th>CV</th><th>Depuis</th><th>Carburant</th></tr></thead><tbody>' + V.map((v, i) => "<tr><td>" + esc(v.nom) + "</td><td>" + esc(v.conso) + (v.carburant === "electrique" ? " kWh" : " L") + "/100</td><td>" + esc(v.cv) + "</td><td>" + esc(v.depuis) + '</td><td><select data-vcarb="' + i + '">' + CARBS_ADM.map(([k, l]) => '<option value="' + k + '"' + ((v.carburant || "") === k ? " selected" : "") + ">" + esc(l) + "</option>").join("") + "</select></td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucun véhicule publié</p>')
+          : '<p class="warn">Le moteur n\'a pas encore publié son état (version antérieure à b86 ou pas encore passé). Lance « Diagnostic complet » : le résultat s\'affiche dans l\'historique ci-dessous.</p>');
+      z.innerHTML = etatHtml + '<div class="card-head" style="margin-top:14px"><h3>Piloter le moteur</h3><span class="sub">exécuté au prochain passage du moteur (10 min au plus)</span></div>' +
         '<div class="row" style="flex-wrap:wrap;gap:6px">' + ["synchro", "carburant", "diagnostic", "declencheurs"].map((k) => '<button class="btn sm" data-cmd="' + k + '">' + LIB_CMD[k] + "</button>").join("") + '<button class="btn sm" id="mtMaj">↻ Actualiser</button></div>' +
         '<div class="subtab">Adresse de départ (calcul des km et du carburant)</div><div class="form-grid"><label class="f">Adresse<input id="mtAdr" maxlength="120"></label><label class="f">Code postal<input id="mtCp" maxlength="5" inputmode="numeric"></label><label class="f">Ville<input id="mtVille" maxlength="60"></label></div><button class="btn sm" data-cmd="adresse">Envoyer au moteur</button>' +
         '<div class="subtab">Tarifs de l\'arbitre</div><div class="form-grid"><label class="f">Indemnité km (€/km)<input id="mtIk" inputmode="decimal" placeholder="0,40"></label><label class="f">Usure (€/km)<input id="mtUs" inputmode="decimal" placeholder="0,19"></label></div><button class="btn sm" data-cmd="tarifs">Envoyer au moteur</button>' +
-        '<div class="subtab">Nouveau véhicule (les matchs passés gardent l\'ancien)</div><div class="form-grid"><label class="f">Nom<input id="mtVn" maxlength="60" placeholder="Peugeot 208"></label><label class="f">Conso (L/100 km)<input id="mtVc" inputmode="decimal"></label><label class="f">CV fiscaux<input id="mtVcv" inputmode="numeric"></label><label class="f">Depuis (JJ/MM/AAAA)<input id="mtVd" placeholder="01/11/2026"></label></div><button class="btn sm" data-cmd="vehicule">Envoyer au moteur</button>' +
+        '<div class="subtab">Nouveau véhicule (les matchs passés gardent l\'ancien)</div><div class="form-grid"><label class="f">Nom<input id="mtVn" maxlength="60" placeholder="Peugeot 208"></label><label class="f">Conso (L/100 km)<input id="mtVc" inputmode="decimal"></label><label class="f">CV fiscaux<input id="mtVcv" inputmode="numeric"></label><label class="f">Depuis (JJ/MM/AAAA)<input id="mtVd" placeholder="01/11/2026"></label><label class="f">Carburant<select id="mtVcarb">' + CARBS_ADM.filter((x) => x[0]).map(([k, l]) => '<option value="' + k + '">' + esc(l) + "</option>").join("") + '</select></label></div><button class="btn sm" data-cmd="vehicule">Envoyer au moteur</button>' +
         '<div class="subtab">Historique des commandes</div>' + (l.length ? '<div class="tbl"><table><thead><tr><th>Déposée</th><th>Commande</th><th>État</th><th>Résultat</th><th></th></tr></thead><tbody>' + l.map((c) => "<tr><td class=\"tiny\">" + fmt(c.cree) + "</td><td>" + esc(LIB_CMD[c.action] || c.action) + "</td><td>" + badge(...(BADGE_CMD[c.statut] || [c.statut, ""])) + '</td><td class="tiny">' + resTxt(c) + "</td><td>" + (c.statut === "en_attente" ? '<button class="btn sm" data-annul="' + c.id + '">Annuler</button>' : "") + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucune commande</p>');
+      if (E) { const sv = (id, v) => { const x = z.querySelector("#" + id); if (x && v != null && v !== "") x.value = String(v).replace(".", ","); };
+        sv("mtCp", A.code_postal); sv("mtVille", A.ville); sv("mtIk", T.indemnite_km); sv("mtUs", T.usure_km); }
+      z.querySelectorAll("[data-vcarb]").forEach((sel) => sel.addEventListener("change", async () => {
+        if (!sel.value) return;
+        try { await admin("commande.creer", { user_id: userId, action_moteur: "vehicule_set", params: { index: Number(sel.dataset.vcarb), carburant: sel.value } }); toast("Carburant envoyé au moteur (≤ 10 min)", "ok"); rendMoteur(); } catch (e) { toast(e.message, "err"); }
+      }));
       z.querySelector("#mtMaj").onclick = rendMoteur;
       z.querySelectorAll("[data-annul]").forEach((b) => b.addEventListener("click", async () => { try { await admin("commande.annuler", { id: Number(b.dataset.annul) }); toast("Commande annulée", "ok"); rendMoteur(); } catch (e) { toast(e.message, "err"); } }));
       z.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", async () => {
         const a = b.dataset.cmd, v = (id) => (z.querySelector("#" + id).value || "").trim(); let params = {};
         if (a === "adresse") params = { adresse: v("mtAdr"), code_postal: v("mtCp"), ville: v("mtVille") };
         if (a === "tarifs") params = { indemnite_km: v("mtIk").replace(",", "."), usure_km: v("mtUs").replace(",", ".") };
-        if (a === "vehicule") params = { nom: v("mtVn"), conso: v("mtVc").replace(",", "."), cv: v("mtVcv"), depuis: v("mtVd") };
+        if (a === "vehicule") params = { nom: v("mtVn"), conso: v("mtVc").replace(",", "."), cv: v("mtVcv"), depuis: v("mtVd"), carburant: v("mtVcarb") };
         if (["adresse", "tarifs", "vehicule"].includes(a) && !(await confirmer(LIB_CMD[a], "Envoyer cette modification au moteur de <strong>" + esc(nomDe(p, u.email)) + "</strong> ? Elle sera appliquée dans les 10 minutes et journalisée.", "Envoyer"))) return;
         b.disabled = true;
         try { await admin("commande.creer", { user_id: userId, action_moteur: a, params }); toast("Commande envoyée : exécution dans les 10 min", "ok"); rendMoteur(); } catch (e) { b.disabled = false; toast(e.message, "err"); }
@@ -524,6 +547,164 @@
   };
 
   // =====================================================================
+  // b86 — NOUVELLES SECTIONS (espace Application / espace Arbitres)
+  // =====================================================================
+  const tuileB = (v, l, cl, sub) => '<div class="tile ' + (cl || "") + '"><b>' + esc(v) + "</b><span>" + l + "</span>" + (sub ? "<small>" + sub + "</small>" : "") + "</div>";
+  const hm = (m) => { m = Math.round(Number(m) || 0); return m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : m + " min"; };
+  const ficheDe = (uid) => (uid ? ouvrirFiche(uid) : null);
+
+  // ---- Connexions & usage
+  let usageJours = 30;
+  rendus.usage = async function (force) {
+    const el = $("sec-usage");
+    if (force || !cache.usage || cache.usage.j !== usageJours) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.usage = { j: usageJours, d: await admin("usage.detail", { jours: usageJours }) }; }
+    const d = cache.usage.d, J = d.jours || [], U = d.par_arbitre || [];
+    const tot = J.reduce((t, x) => t + x.minutes, 0), tel = J.reduce((t, x) => t + x.tel, 0), pc = J.reduce((t, x) => t + x.pc, 0), tab = J.reduce((t, x) => t + x.tab, 0);
+    const actifsJ = J.length ? Math.round(J.reduce((t, x) => t + x.utilisateurs, 0) / J.length * 10) / 10 : 0;
+    el.innerHTML = '<div class="toolbar"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Période <select id="usJ">' + [7, 30, 90].map((n) => '<option value="' + n + '"' + (n === usageJours ? " selected" : "") + ">" + n + " jours</option>").join("") + "</select></label></div>" +
+      '<div class="tiles">' + tuileB(hm(tot), "Temps d'écran total", "", usageJours + " jours") + tuileB(pct(tel, tel + pc + tab), "Sur téléphone", "", hm(tel)) + tuileB(pct(pc, tel + pc + tab), "Sur ordinateur", "", hm(pc)) + tuileB(pct(tab, tel + pc + tab), "Sur tablette", "", hm(tab)) +
+        tuileB(U.length, "Arbitres connectés", "", "sur la période") + tuileB(actifsJ, "Arbitres actifs / jour", "", "moyenne") + tuileB(U.length ? hm(tot / U.length) : "—", "Temps moyen / arbitre", "", "sur la période") + "</div>" +
+      '<div class="grid-2"><div class="card"><div class="card-head"><h3>Minutes par jour</h3><span class="sub">toutes plateformes</span></div>' + barres(J.slice(-31).map((x) => ({ l: x.jour.slice(8, 10) + "/" + x.jour.slice(5, 7), v: x.minutes }))) + "</div>" +
+      '<div class="card"><div class="card-head"><h3>Par jour de la semaine</h3><span class="sub">minutes cumulées</span></div>' + barres(["lun", "mar", "mer", "jeu", "ven", "sam", "dim"].map((l, i) => ({ l, v: (d.semaine || [])[i] || 0 }))) + "</div></div>" +
+      '<div class="card"><div class="card-head"><h3>Par arbitre</h3><span class="sub">clic = fiche</span></div><div id="usT"></div></div>';
+    el.querySelector("#usJ").onchange = (e) => { usageJours = Number(e.target.value); rendus.usage(true); };
+    tableCourante = tableau(el.querySelector("#usT"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(x.prenom || "—") }, { t: "Total", k: "minutes", cl: "num right", r: (x) => hm(x.minutes) },
+      { t: "Téléphone", k: "tel", cl: "num right", r: (x) => hm(x.tel) }, { t: "Ordinateur", k: "pc", cl: "num right", r: (x) => hm(x.pc) }, { t: "Tablette", k: "tab", cl: "num right", r: (x) => hm(x.tab) },
+      { t: "Jours actifs", k: "jours", cl: "num right", r: (x) => esc(x.jours) }, { t: "Moyenne / jour actif", k: (x) => x.minutes / Math.max(1, x.jours), cl: "num right", r: (x) => hm(x.minutes / Math.max(1, x.jours)) },
+      { t: "Dernière activité", k: "derniere", r: (x) => esc(depuis(x.derniere)) },
+    ], U, { recherche: rechercheCourante, tri: "Total", sens: -1, clic: (x) => ficheDe(x.user_id) });
+  };
+
+  // ---- Communication (bandeau, textes des e-mails, historique des envois)
+  rendus.communication = async function (force) {
+    const el = $("sec-communication");
+    if (force || !cache.config || !cache.journalMsg) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); cache.journalMsg = await admin("journal.liste", { filtre_action: "message" }); }
+    const cfgV = (k) => ((cache.config.data || []).find((r) => r.cle === k) || {}).valeur || {};
+    const tx = cfgV("pub.textes"), ml = cfgV("pub.mails"), env = (cache.journalMsg.data || []).filter((x) => /message\.envoyer/.test(x.action || ""));
+    const MOD = [["attente", "Liste d'attente"], ["recue", "Demande reçue"], ["guides", "Guide et manuel"], ["compte_pret", "Compte prêt"]];
+    el.innerHTML = '<div class="grid-2"><div class="card"><div class="card-head"><h3>Bandeau dans l\'app</h3><span class="sub">' + (tx.bandeau ? "affiché" : "aucun") + "</span></div>" +
+        (tx.bandeau ? '<p class="rt-bandeau-apercu">' + esc(tx.bandeau) + '</p><p class="mut tiny">Du ' + esc(tx.bandeau_debut || "maintenant") + " au " + esc(tx.bandeau_fin || "sans fin") + " · style " + esc(tx.bandeau_style || "info") + "</p>" : '<p class="vide">Aucun bandeau</p>') +
+        '<p class="mut tiny">Mode maintenance : ' + (tx.maintenance ? badge("ACTIVÉ", "red") : badge("désactivé", "green")) + '</p><div class="row"><a class="btn sm" href="#messages">Publier / retirer un bandeau</a><button class="btn sm" id="coCfgT">Planifier (Configuration)</button></div></div>' +
+      '<div class="card"><div class="card-head"><h3>Textes des e-mails</h3><span class="sub">4 modèles envoyés aux arbitres</span></div><div class="tbl"><table><thead><tr><th>Modèle</th><th>Sujet</th><th>Message ajouté</th></tr></thead><tbody>' +
+        MOD.map(([k, l]) => "<tr><td>" + esc(l) + "</td><td>" + (ml[k] && ml[k].sujet ? esc(ml[k].sujet) : '<span class="mut">texte d\'origine</span>') + "</td><td>" + (ml[k] && ml[k].message ? esc(ml[k].message.slice(0, 80)) : '<span class="mut">—</span>') + "</td></tr>").join("") +
+        '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn sm pri" id="coCfgM">Modifier les textes</button></div></div></div>' +
+      '<div class="card"><div class="card-head"><h3>Historique des envois</h3><span class="sub">messages, diffusions, notifications (journal d\'audit)</span></div><div id="coT"></div></div>';
+    el.querySelector("#coCfgM").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; };
+    el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
+    const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };
+    tableCourante = tableau(el.querySelector("#coT"), [
+      { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Destinataire", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
+      { t: "Détail", k: (x) => JSON.stringify(x.details || {}), r: (x) => '<span class="tiny">' + esc(JSON.stringify(x.details || {}).slice(0, 180)) + "</span>" },
+    ], env, { recherche: rechercheCourante });
+  };
+
+  // ---- Moteurs (tous les arbitres)
+  rendus.moteurs = async function (force) {
+    const el = $("sec-moteurs");
+    if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = (await admin("moteurs.liste")).data || []; }
+    const l = cache.moteurs, n = (st) => l.filter((x) => x.sante === st).length;
+    $("navMoteurs").textContent = (n("arrete") + n("lent")) || "";
+    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 10 min. Vert : passé il y a moins de 30 min · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
+      '<div class="tiles">' + tuileB(l.length, "Moteurs", "") + tuileB(n("ok"), "En marche", "green") + tuileB(n("lent"), "En retard", "orange") + tuileB(n("arrete"), "Arrêtés", "red") + tuileB(n("inconnu"), "État inconnu", "") +
+        tuileB(l.reduce((t, x) => t + x.commandes.attente, 0), "Commandes en attente", "") + tuileB(l.reduce((t, x) => t + x.commandes.erreur, 0), "Commandes en erreur (7 j)", "") + "</div>" +
+      '<div class="row" style="margin:10px 0"><button class="btn sm" id="moDiag">Diagnostic de tous les moteurs</button><button class="btn sm" id="moSync">Synchroniser tous les moteurs</button></div><div id="moT"></div>';
+    const tous = async (act, lib) => { if (!(await confirmer(lib, "Envoyer « " + esc(lib) + " » aux " + l.length + " moteur(s) ? Exécution dans les 10 minutes.", "Envoyer"))) return; let ok = 0; for (const m of l) { try { await admin("commande.creer", { user_id: m.user_id, action_moteur: act, params: {} }); ok++; } catch (e) {} } toast(ok + " commande(s) envoyée(s)", "ok"); rendus.moteurs(true); };
+    el.querySelector("#moDiag").onclick = () => tous("diagnostic", "Diagnostic complet");
+    el.querySelector("#moSync").onclick = () => tous("synchro", "Synchroniser maintenant");
+    const S = { ok: badge("en marche", "green"), lent: badge("en retard", "orange"), arrete: badge("arrêté", "red"), inconnu: badge("inconnu", "gray") };
+    tableCourante = tableau(el.querySelector("#moT"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(nomDe({ prenom: x.prenom, nom_ffbb: x.nom })) + '<br><span class="mut tiny mono">' + esc(x.reception || "") + "</span>" },
+      { t: "État", k: "sante", r: (x) => S[x.sante] || "" }, { t: "Dernier passage", k: (x) => x.battement_min ?? 1e9, r: (x) => (x.battement_min == null ? "—" : "il y a " + hm(x.battement_min)) },
+      { t: "Version", k: (x) => x.etat.version || "", r: (x) => esc(x.etat.version || "—") },
+      { t: "Départ", k: (x) => (x.etat.adresse || {}).ville || "", r: (x) => { const a = x.etat.adresse || {}; return a.renseignee ? esc([a.code_postal, a.ville].filter(Boolean).join(" ")) + (a.localisee ? "" : " " + badge("non localisée", "red")) : x.etat.publie ? badge("manquante", "red") : "—"; } },
+      { t: "Véhicule", k: (x) => ((x.etat.vehicules || []).slice(-1)[0] || {}).nom || "", r: (x) => { const v = (x.etat.vehicules || []).slice(-1)[0]; return v ? esc(v.nom) + '<br><span class="tiny mut">' + esc(v.conso) + " · " + esc(v.carburant || "E10 par défaut") + "</span>" : "—"; } },
+      { t: "Carburant relevé", k: (x) => (x.etat.carburant || {}).prix || 0, r: (x) => (x.etat.carburant ? esc(x.etat.carburant.prix) + " €/L" : "—") },
+      { t: "Déclencheurs", k: (x) => (x.etat.declencheurs || []).length, cl: "num right", r: (x) => esc((x.etat.declencheurs || []).length || (x.etat.publie ? "0 ⚠" : "—")) },
+      { t: "Convocations 30 j", k: "convocations_30j", cl: "num right", r: (x) => esc(x.convocations_30j) },
+      { t: "Commandes", k: (x) => x.commandes.attente + x.commandes.erreur, r: (x) => (x.commandes.attente ? badge(x.commandes.attente + " en attente", "orange") : "") + (x.commandes.erreur ? badge(x.commandes.erreur + " erreur(s)", "red") : "") || '<span class="mut">—</span>' },
+    ], l, { recherche: rechercheCourante, tri: "État", clic: (x) => ficheDe(x.user_id) });
+  };
+
+  // ---- Journal d'audit
+  let jrPage = 0, jrFiltre = "";
+  rendus.journal = async function (force) {
+    const el = $("sec-journal");
+    if (force || !cache.journal || cache.journal.p !== jrPage || cache.journal.f !== jrFiltre) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.journal = { p: jrPage, f: jrFiltre, d: await admin("journal.liste", { page: jrPage, filtre_action: jrFiltre || undefined }) }; }
+    const d = cache.journal.d, l = d.data || [];
+    const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) + "…" : "—"); };
+    el.innerHTML = '<p class="mut tiny">Toutes les actions de l\'administration sont tracées (RGPD) : consultation d\'une fiche, envoi, modification, commande au moteur…</p><div class="toolbar"><input id="jrF" placeholder="Filtrer par action (ex. profil, message, commande)" value="' + esc(jrFiltre) + '"><button class="btn sm" id="jrGo">Filtrer</button><span class="sp"></span><span class="mut tiny">' + d.total + " entrée(s) · page " + (jrPage + 1) + '</span><button class="btn sm" id="jrP"' + (jrPage ? "" : " disabled") + '>← Plus récentes</button><button class="btn sm" id="jrN"' + ((jrPage + 1) * (d.taille || 100) < d.total ? "" : " disabled") + ">Plus anciennes →</button></div><div id=\"jrT\"></div>";
+    el.querySelector("#jrGo").onclick = () => { jrFiltre = el.querySelector("#jrF").value.trim(); jrPage = 0; rendus.journal(true); };
+    el.querySelector("#jrP").onclick = () => { jrPage = Math.max(0, jrPage - 1); rendus.journal(true); };
+    el.querySelector("#jrN").onclick = () => { jrPage++; rendus.journal(true); };
+    tableCourante = tableau(el.querySelector("#jrT"), [
+      { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Action", k: "action", r: (x) => '<span class="mono tiny">' + esc(x.action || "") + "</span>" },
+      { t: "Arbitre concerné", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
+      { t: "Détail", k: (x) => JSON.stringify(x.details || {}), r: (x) => '<span class="tiny">' + esc(JSON.stringify(x.details || {}).slice(0, 200)) + "</span>" },
+    ], l, { recherche: rechercheCourante });
+  };
+
+  // ---- Matchs à venir (tous les arbitres)
+  let agJours = 14;
+  rendus.agenda = async function (force) {
+    const el = $("sec-agenda");
+    if (force || !cache.agenda || cache.agenda.j !== agJours) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.agenda = { j: agJours, d: (await admin("matchs.avenir", { jours: agJours })).data || [] }; }
+    const l = cache.agenda.d;
+    el.innerHTML = '<div class="toolbar"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Horizon <select id="agJ">' + [7, 14, 30, 60].map((n) => '<option value="' + n + '"' + (n === agJours ? " selected" : "") + ">" + n + " jours</option>").join("") + '</select></label><span class="sp"></span><span class="mut tiny">' + l.length + " match(s) · " + euro(l.reduce((t, x) => t + (Number(x.indemnite_totale) || 0), 0)) + " d'indemnités · " + Math.round(l.reduce((t, x) => t + (Number(x.km_a_r_stats) || 0), 0)) + ' km A/R</span></div><div id="agT"></div>';
+    el.querySelector("#agJ").onchange = (e) => { agJours = Number(e.target.value); rendus.agenda(true); };
+    tableCourante = tableau(el.querySelector("#agT"), [
+      { t: "Date", k: "date_match", r: (x) => esc(fmtD(x.date_match)) + ' <span class="mut tiny">' + esc(x.heure_rdv || "") + "</span>" }, { t: "Arbitre", k: "prenom", r: (x) => esc(x.prenom || "—") },
+      { t: "Compétition", k: "libelle_competition", r: (x) => esc(x.libelle_competition || "") + '<br><span class="mut tiny">' + esc(x.niveau_administratif || x.format || "") + "</span>" },
+      { t: "Rencontre", k: "recevant", r: (x) => esc([x.recevant, x.visiteur_evenement].filter(Boolean).join(" – ")) + '<br><span class="mut tiny">' + esc(x.ville || "") + "</span>" },
+      { t: "Rôle", k: "mon_role", r: (x) => esc(x.mon_role || "") }, { t: "Collègue", k: "collegue_nom", r: (x) => esc(x.collegue_nom || "—") },
+      { t: "Km A/R", k: (x) => Number(x.km_a_r_stats) || 0, cl: "num right", r: (x) => esc(x.km_a_r_stats || "—") }, { t: "Indemnité", k: (x) => Number(x.indemnite_totale) || 0, cl: "num right", r: (x) => (x.indemnite_totale != null ? esc(x.indemnite_totale) + " €" : "—") },
+    ], l, { recherche: rechercheCourante, clic: (x) => ficheDe(x.user_id) });
+  };
+
+  // ---- Paiements (tous les arbitres)
+  rendus.paiements = async function (force) {
+    const el = $("sec-paiements");
+    if (force || !cache.paiements) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.paiements = await admin("paiements.global"); }
+    const d = cache.paiements, t = d.total || {}, l = d.par_arbitre || [];
+    el.innerHTML = '<p class="mut tiny">Matchs passés seulement (hors annulés). « En retard » : date de paiement prévue dépassée ou statut « En retard ». Un historique importé jamais pointé apparaît en retard : fiche → Matchs → « Solder l\'historique… » (à la demande de l\'arbitre).</p>' +
+      '<div class="tiles">' + tuileB(euro(t.recu), "Reçu", "green") + tuileB(euro(t.attendu), "À recevoir (dans les délais)", "") + tuileB(euro(t.retard), "En retard", "red") + tuileB((d.retards || []).length, "Matchs en retard", "red") + "</div>" +
+      '<div class="card"><div class="card-head"><h3>Par arbitre</h3><span class="sub">clic = fiche</span></div><div id="paT"></div></div><div class="card"><div class="card-head"><h3>Retards</h3><span class="sub">du plus ancien au plus récent</span></div><div id="paR"></div></div>';
+    tableau(el.querySelector("#paT"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(nomDe({ prenom: x.prenom, nom_ffbb: x.nom })) }, { t: "Reçu", k: "recu", cl: "num right", r: (x) => euro(x.recu) + ' <span class="mut tiny">(' + x.n_recu + ")</span>" },
+      { t: "À recevoir", k: "attendu", cl: "num right", r: (x) => euro(x.attendu) + ' <span class="mut tiny">(' + x.n_attendu + ")</span>" }, { t: "En retard", k: "retard", cl: "num right", r: (x) => (x.retard ? '<b class="err">' + euro(x.retard) + "</b>" : euro(0)) + ' <span class="mut tiny">(' + x.n_retard + ")</span>" },
+      { t: "Bénévole", k: "benevole", cl: "num right", r: (x) => esc(x.benevole) }, { t: "Saisons en retard", k: (x) => Object.keys(x.saisons).filter((k) => x.saisons[k].retard).length, r: (x) => esc(Object.keys(x.saisons).filter((k) => x.saisons[k].retard).sort().join(", ") || "—") },
+    ], l, { tri: "En retard", sens: -1, clic: (x) => ficheDe(x.user_id) });
+    tableCourante = tableau(el.querySelector("#paR"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(x.prenom || "—") }, { t: "Match", k: "date", r: (x) => esc(fmtD(x.date)) }, { t: "Prévu le", k: "attendue", r: (x) => esc(x.attendue ? fmtD(x.attendue) : "—") },
+      { t: "Compétition", k: "libelle", r: (x) => esc(x.libelle || "") + '<br><span class="mut tiny">' + esc(x.rencontre || "") + "</span>" }, { t: "Payeur", k: "payeur", r: (x) => esc(x.payeur || "—") }, { t: "Montant", k: "montant", cl: "num right", r: (x) => esc(x.montant) + " €" },
+    ], d.retards || [], { recherche: rechercheCourante, clic: (x) => ficheDe(x.user_id) });
+  };
+
+  // ---- Alertes (tous les arbitres)
+  let alSec = "action";
+  rendus.alertes = async function (force) {
+    const el = $("sec-alertes");
+    if (force || !cache.alertesG) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.alertesG = await admin("alertes.global"); }
+    const d = cache.alertesG, P = d.par_arbitre || [], I = d.items || [];
+    const nR = P.reduce((t, x) => t + x.regler, 0), nA = P.reduce((t, x) => t + x.avant, 0), nI = P.reduce((t, x) => t + x.infos, 0);
+    $("navAlertes").textContent = (nR + nA) || "";
+    el.innerHTML = '<p class="mut tiny">Même tri que l\'onglet Alertes de l\'app : <b>À régler</b> (badge rouge chez l\'arbitre), <b>Avant le match</b> (match à venir incomplet), <b>Infos</b> (rien d\'obligatoire). Traiter / rétablir : fiche de l\'arbitre → Alertes.</p>' +
+      '<div class="tiles">' + tuileB(nR, "À régler", "red") + tuileB(nA, "Avant le match", "orange") + tuileB(nI, "Infos", "") + tuileB(P.reduce((t, x) => t + x.traitees, 0), "Traitées", "green") + "</div>" +
+      '<div class="card"><div class="card-head"><h3>Par arbitre</h3></div><div id="alP"></div></div><div class="card"><div class="card-head"><h3>Détail</h3><select id="alS"><option value="action">À régler + avant le match</option><option value="regler">À régler</option><option value="avant">Avant le match</option><option value="infos">Infos</option><option value="tout">Tout</option></select></div><div id="alI"></div></div>';
+    el.querySelector("#alS").value = alSec; el.querySelector("#alS").onchange = (e) => { alSec = e.target.value; rendus.alertes(false); };
+    tableau(el.querySelector("#alP"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(nomDe({ prenom: x.prenom, nom_ffbb: x.nom })) }, { t: "À régler", k: "regler", cl: "num right", r: (x) => (x.regler ? badge(x.regler, "red") : "0") },
+      { t: "Avant le match", k: "avant", cl: "num right", r: (x) => (x.avant ? badge(x.avant, "orange") : "0") }, { t: "Infos", k: "infos", cl: "num right", r: (x) => esc(x.infos) }, { t: "Traitées", k: "traitees", cl: "num right", r: (x) => esc(x.traitees) },
+    ], P, { tri: "À régler", sens: -1, clic: (x) => ficheDe(x.user_id) });
+    const vue = I.filter((x) => alSec === "tout" || (alSec === "action" ? x.section !== "infos" : x.section === alSec));
+    tableCourante = tableau(el.querySelector("#alI"), [
+      { t: "Arbitre", k: "prenom", r: (x) => esc(x.prenom || "—") }, { t: "Date", k: "date", r: (x) => esc(fmtD(x.date)) },
+      { t: "Type", k: "section", r: (x) => ({ regler: badge("À régler", "red"), avant: badge("Avant le match", "orange"), infos: badge("Info", "gray") }[x.section] || "") + '<br><span class="tiny">' + esc(x.titre) + "</span>" },
+      { t: "Mission", k: "libelle", r: (x) => esc(x.libelle || "") + '<br><span class="mut tiny">' + esc(x.rencontre || "") + "</span>" }, { t: "Détail", k: (x) => (x.alertes || []).join(" "), r: (x) => '<span class="warn tiny">' + (x.alertes || []).map(esc).join("<br>") + "</span>" },
+    ], vue, { recherche: rechercheCourante, clic: (x) => ficheDe(x.user_id) });
+  };
+
+  // =====================================================================
   // 4. CONFIGURATION
   // =====================================================================
   const CFG = {
@@ -536,6 +717,7 @@
     "pub.mails": { titre: "Textes des e-mails", desc: "Sujet, titre et message des 4 e-mails envoyés aux arbitres (liste d'attente, demande reçue, guides, compte prêt) · immédiat" },
     "pub.fonctions_defaut": { titre: "Fonctions par défaut", desc: "Modules visibles pour un arbitre sans réglage perso (fiche → Fonctions) : Progression, e-Licence, classements · immédiat" },
   };
+  const CARBS_ADM = [["", "— non précisé (E10) —"], ["e10", "SP95-E10"], ["sp95", "SP95"], ["sp98", "SP98"], ["gazole", "Gazole"], ["e85", "E85"], ["gplc", "GPL"], ["electrique", "Électrique"]];   // b86
   const LIB_FN = { ia: "IA (budget : Configuration → IA)", evaluations: "Progression (évaluations)", elicence: "e-Licence", classements: "Classements et enjeux" };   // b80
   let cfgCle = "pub.baremes";
   rendus.config = async function (force) {
@@ -609,11 +791,13 @@
         const carbs = [["e10", "SP95-E10"], ["sp95", "SP95"], ["sp98", "SP98"], ["gazole", "Gazole"], ["e85", "E85"], ["gplc", "GPLc"]];
         F.innerHTML = '<p class="mut tiny">Chaque moteur relève le prix une fois par jour dans les stations proches du domicile de l\'arbitre (open data du ministère de l\'Économie), prend la <b>médiane</b> et en fait la moyenne du mois. Un prix saisi par l\'arbitre dans Mon profil reste prioritaire.</p>' +
           '<div class="form-grid">' + num("cRay", "Rayon autour du domicile (km)", v.rayon_km ?? 10, "1") + num("cFr", "Prix pris en compte s\'ils ont moins de (jours)", v.fraicheur_jours ?? 7, "1") +
-          '<label class="f">Carburant<select id="cCarb">' + carbs.map(([k, l]) => '<option value="' + k + '"' + ((v.carburant || "e10") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
-          kv("cForce", "Prix imposé à tous pour un mois (AAAA-MM → €/L) — remplace le relevé automatique", v.force, "2026-11") +
+          '<label class="f">Carburant par défaut (véhicule sans type)<select id="cCarb">' + carbs.map(([k, l]) => '<option value="' + k + '"' + ((v.carburant || "e10") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+          '<div class="form-grid">' + num("cKwh", "Prix du kWh (véhicules électriques, €)", v.prix_kwh ?? 0.25, "0.001") + "</div>" +
+          '<p class="mut tiny">b86 : chaque véhicule a son carburant (Mon profil de l\'arbitre, ou fiche → Moteur). Le moteur relève tous les carburants autour du domicile ; un mois sans relevé = prix E10 × rapport mesuré localement.</p>' +
+          kv("cForce", "Prix imposé à tous pour un mois (AAAA-MM → €/L, en équivalent E10) — remplace le relevé automatique", v.force, "2026-11") +
           '<p class="mut tiny">Moins de 3 stations dans le rayon : le moteur élargit à 15 puis 25 km.</p>';
         lireForm = () => { const f = lireKv("cForce"), force = {}; Object.keys(f).forEach((k) => { if (/^\d{4}-\d{2}$/.test(k) && f[k] > 0.5 && f[k] < 4) force[k] = f[k]; });
-          return { carburant: F.querySelector("#cCarb").value, rayon_km: Math.min(50, Math.max(3, Number(F.querySelector("#cRay").value) || 10)), fraicheur_jours: Math.min(30, Math.max(1, Number(F.querySelector("#cFr").value) || 7)), force }; };
+          return { carburant: F.querySelector("#cCarb").value, prix_kwh: Math.min(1.5, Math.max(0.05, Number(F.querySelector("#cKwh").value) || 0.25)), rayon_km: Math.min(50, Math.max(3, Number(F.querySelector("#cRay").value) || 10)), fraicheur_jours: Math.min(30, Math.max(1, Number(F.querySelector("#cFr").value) || 7)), force }; };
       } else if (cfgCle === "pub.fonctions_defaut") {
         F.innerHTML = '<div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, LIB_FN[k] || k, v[k])).join("") + "</div>";
         lireForm = () => { const o = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
@@ -919,6 +1103,8 @@
         courant === "arbitres" ? null : admin("arbitres.liste").then((j) => { cache.arbitres = j.data || []; $("navArbitres").textContent = cache.arbitres.length; }),
         courant === "inscriptions" ? null : admin("inscriptions.liste").then((j) => { cache.inscriptions = j.data || []; $("navInscriptions").textContent = cache.inscriptions.filter((i) => i.statut === "recue" || i.statut === "erreur").length || ""; }),
         courant === "tickets" ? null : admin("tickets.liste").then((j) => { cache.tickets = j.data || []; $("navTickets").textContent = cache.tickets.filter((t) => t.statut !== "Fermé").length || ""; }),
+        courant === "alertes" ? null : admin("alertes.global").then((j) => { cache.alertesG = j; const P = j.par_arbitre || []; $("navAlertes").textContent = P.reduce((t, x) => t + x.regler + x.avant, 0) || ""; }),
+        courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = j.data || []; $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
       ].filter(Boolean));
     } catch (e) {
       if (/AUTH_REQUIRED/.test(e.message)) return voir("vLogin");

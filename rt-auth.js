@@ -134,7 +134,7 @@ function buildApiUrl(action, extra = {}) {
    (404, 5xx, coupure réseau / « Load failed » Safari). Les écritures portent
    un identifiant unique (rid) : le serveur ne les exécute qu'une seule fois. */
 const API_RETRY_PAUSES = [700, 1800];
-const API_TIMEOUTS = { "reglement.ask": 150000, "elicence.document": 120000, "elicence.carte": 90000, "rapport.add": 120000, "rapport.file": 120000, "evaluation.upload": 180000, "evaluation.reanalyse": 180000 };
+const API_TIMEOUTS = { "reglement.ask": 150000, "elicence.document": 120000, "elicence.carte": 90000, "rapport.add": 120000, "rapport.file": 120000, "evaluation.upload": 180000, "evaluation.reanalyse": 180000, "mails.sync": 240000, "settings.vehicule.set": 60000 };
 function _rid() {
   try { if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ""); } catch (e) {}
   return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -298,7 +298,7 @@ const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, proced
    n'est plus la référence pour celles-ci). Hôtels (facture Drive), paiements,
    évaluations (IA) restent sur Apps Script. */
 const SB_ECRITURES = { addContact: 1, updateContact: 1, deleteContact: 1, addProcedure: 1, updateProcedure: 1, deleteProcedure: 1, addNiveau: 1, deleteNiveau: 1, addFormation: 1, deleteFormation: 1, addQcmSession: 1, deleteQcmSession: 1 };
-const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court", "Alerte traitée": "alerte_traitee_sig"};
+const SB_MATCH_COLS = {"UID": "uid", "Source": "source", "Saison": "saison", "Format": "format", "Statut": "statut", "Date match": "date_match", "Heure/RDV": "heure_rdv", "Niveau administratif": "niveau_administratif", "Type compétition": "type_competition", "Code compétition": "code_competition", "Libellé compétition": "libelle_competition", "Poule / phase compétition": "poule_phase_competition", "Genre": "genre", "Catégorie d'âge": "categorie_d_age", "N° rencontre": "n_rencontre", "Recevant": "recevant", "Code club recevant": "code_club_recevant", "N° équipe recevant": "n_equipe_recevant", "Visiteur / événement": "visiteur_evenement", "Code club visiteur": "code_club_visiteur", "Salle": "salle", "Adresse": "adresse", "Ville": "ville", "Téléphone salle": "telephone_salle", "Code e-Marque": "code_e_marque", "Mon rôle": "mon_role", "Collègue nom": "collegue_nom", "Collègue rôle": "collegue_role", "Collègue téléphone": "collegue_telephone", "Contact collègue": "contact_collegue", "Club du collègue (groupement)": "club_du_collegue_groupement", "Km aller collègue": "km_aller_collegue", "Indemnité collègue": "indemnite_collegue", "Référent 3x3": "referent_3x3", "Observateur": "observateur", "OTM Chronométreur": "otm_chronometreur", "OTM Chronométreur tirs": "otm_chronometreur_tirs", "Km A/R stats": "km_a_r_stats", "Indemnité totale": "indemnite_totale", "Indemnisé par": "indemnise_par", "Paiement Type": "paiement_type", "Statut paiement": "statut_paiement", "Date paiement": "date_paiement", "Attendu recevant": "attendu_recevant", "Reçu recevant": "recu_recevant", "Mode recevant": "mode_recevant", "Date reçu recevant": "date_recu_recevant", "Attendu visiteur": "attendu_visiteur", "Reçu visiteur": "recu_visiteur", "Mode visiteur": "mode_visiteur", "Date reçu visiteur": "date_recu_visiteur", "Montant reçu": "montant_recu", "Date réception": "date_reception", "Mode paiement": "mode_paiement", "Mode paiement OTM": "mode_paiement_otm", "À trancher": "a_trancher", "Note paiement": "note_paiement", "Correspondant recevant (nom + tél)": "correspondant_recevant_nom_tel", "Maillot recevant": "maillot_recevant", "Correspondant visiteur (nom + tél)": "correspondant_visiteur_nom_tel", "Maillot visiteur": "maillot_visiteur", "Warning général": "warning_general", "Warning finance": "warning_finance", "Warning FBI": "warning_fbi", "Agenda Event ID": "agenda_event_id", "Dernière MAJ": "derniere_maj", "Sujet mail": "sujet_mail", "Gmail Message ID": "gmail_message_id", "Régime": "regime", "Date attendue": "date_attendue", "Raison à trancher": "raison_a_trancher", "Statut manuel": "statut_manuel", "Recevant court": "recevant_court", "Visiteur court": "visiteur_court", "Alerte traitée": "alerte_traitee_sig", "Mode transport": "mode_transport"};
 const SB_DATES = { date_match: 1, date_paiement: 1, date_reception: 1, date_recu_recevant: 1, date_recu_visiteur: 1, date_attendue: 1 };
 const SB = {
   get session() { try { return JSON.parse(localStorage.getItem(SB_STORE) || "null"); } catch (e) { return null; } },
@@ -1106,7 +1106,8 @@ function renderProfile() {
           <li class="rt-veh${v === actuel ? " is-current" : ""}">
             <div>
               <strong>${esc(v.nom)}</strong>${v === actuel ? ' <span class="rt-tag">actuel</span>' : ""}
-              <span class="rt-veh-meta">${esc(v.conso)} L/100 · ${esc(v.cv)} CV · depuis le ${esc(v.depuis)}</span>
+              <span class="rt-veh-meta">${esc(v.conso)} ${v.carburant === "electrique" ? "kWh" : "L"}/100 · ${esc(v.cv)} CV · depuis le ${esc(v.depuis)}</span>
+              <label class="rt-veh-carb">Carburant <select data-veh-carb="${i}">${optsCarb_(v.carburant)}</select></label>
             </div>
             ${vs.length > 1 ? `<button type="button" class="rt-mini" data-del="${i}" title="Supprimer">&times;</button>` : ""}
           </li>`).join("")}
@@ -1121,7 +1122,9 @@ function renderProfile() {
             <input id="vhDepuis" type="text" placeholder="01/09/2026"></div>
         </div>
         <div class="rt-row">
-          <div class="rt-field"><label for="vhConso">Consommation (L/100 km)</label>
+          <div class="rt-field"><label for="vhCarb">Carburant</label>
+            <select id="vhCarb">${optsCarb_("e10")}</select></div>
+          <div class="rt-field"><label for="vhConso">Consommation (L/100 km, ou kWh/100 km si électrique)</label>
             <input id="vhConso" type="text" placeholder="6.0"></div>
           <div class="rt-field"><label for="vhCv">Chevaux fiscaux</label>
             <input id="vhCv" type="text" placeholder="8"></div>
@@ -1309,6 +1312,7 @@ function renderProfile() {
   document.getElementById("pfSaveProfil").addEventListener("click", saveProfil);
   document.getElementById("pfSaveTarifs").addEventListener("click", saveTarifs);
   document.getElementById("pfAddVeh").addEventListener("click", addVehicule);
+  document.querySelectorAll("[data-veh-carb]").forEach(sel => sel.addEventListener("change", () => setVehiculeCarb(Number(sel.getAttribute("data-veh-carb")), sel.value)));
   document.getElementById("cpAddPrix").addEventListener("click", addCoutPrix);
   document.getElementById("ceAdd").addEventListener("click", addCoutEntretien);
   document.querySelectorAll("[data-couts-del]").forEach(b => b.addEventListener("click", () => {
@@ -1471,9 +1475,17 @@ function delCout(type, i) {
   saveCouts_(c, "Ligne supprimée.");
 }
 
+/* b86 — type de carburant par véhicule (le prix relevé autour du domicile suit ce carburant). */
+const CARBURANTS_RT = [["e10", "SP95-E10"], ["sp95", "SP95"], ["sp98", "SP98"], ["gazole", "Gazole (diesel)"], ["e85", "E85 (bioéthanol)"], ["gplc", "GPL"], ["electrique", "Électrique"]];
+const libCarb_ = c => (CARBURANTS_RT.find(x => x[0] === c) || [0, "SP95-E10 (par défaut)"])[1];
+function optsCarb_(v) { return CARBURANTS_RT.map(([k, l]) => `<option value="${k}"${k === (v || "e10") ? " selected" : ""}>${esc(l)}</option>`).join(""); }
+function setVehiculeCarb(i, carburant) {
+  envoyer("settings.vehicule.set", { index: i, carburant }, "Carburant enregistré : les coûts sont recalculés.")
+    .then(() => { try { if (typeof loadPrixCarburant === "function") loadPrixCarburant(); if (typeof window.rtCoutsMaj === "function") window.rtCoutsMaj(Couts); } catch (e) {} });
+}
 function addVehicule() {
   envoyer("settings.vehicule.add", {
-    vehicule: { nom: val("vhNom"), depuis: val("vhDepuis"), conso: val("vhConso"), cv: val("vhCv") }
+    vehicule: { nom: val("vhNom"), depuis: val("vhDepuis"), conso: val("vhConso"), cv: val("vhCv"), carburant: val("vhCarb") }
   }, "Véhicule ajouté. Les matchs passés ne changent pas.");
 }
 
@@ -1884,7 +1896,7 @@ function cablerPremiereConnexion_() {
 }
 
 const ONBOARD = {
-  etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
+  etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", carb: "e10", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
   N_ETAPES: 7,   // b77 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 historique · 6 notifications
   COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
   LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
@@ -1897,7 +1909,7 @@ const ONBOARD = {
   /* b74 — mode démo : l'assistant de 1re connexion rejoué à blanc, sans rien lire ni écrire sur le compte. */
   ouvrirDemo() {
     this.demo = true; this.etape = 0; this.sug = { noms: [] }; this.reception = "prenom@referee-tracker.fr";
-    this.data = { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false };
+    this.data = { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", carb: "e10", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false };
     const d = document.createElement("div"); d.id = "rtOnb"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
     d.innerHTML = '<div class="rt-consent-box rt-onb"><p class="rt-demo-tag">Mode démo · rien n\'est enregistré</p><div class="rt-onb-prog" id="rtOnbProg"></div><div id="rtOnbBody"></div><p class="rt-consent-msg" id="rtOnbMsg"></p><div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="rtOnbPrev">Retour</button><button type="button" class="rt-btn" id="rtOnbNext">Suivant</button><button type="button" class="rt-btn-ghost" id="rtOnbQuit">Quitter la démo</button></div></div>';
     document.body.appendChild(d);
@@ -1923,7 +1935,7 @@ const ONBOARD = {
   champ(id, label, val, extra) { return '<div class="rt-field"><label for="' + id + '">' + label + '</label><input id="' + id + '" value="' + esc(val || "") + '" ' + (extra || "") + '></div>'; },
   lire() {
     const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
-    const m = { onbNom: "nom_ffbb", onbPrenom: "prenom", onbNiveau: "niveau", onbAdr: "adresse", onbCp: "code_postal", onbVille: "ville", onbVnom: "vnom", onbConso: "conso", onbCv: "cv", onbZcd: "zcd", onbZligue: "zligue" };
+    const m = { onbNom: "nom_ffbb", onbPrenom: "prenom", onbNiveau: "niveau", onbAdr: "adresse", onbCp: "code_postal", onbVille: "ville", onbVnom: "vnom", onbCarb: "carb", onbConso: "conso", onbCv: "cv", onbZcd: "zcd", onbZligue: "zligue" };
     Object.keys(m).forEach(id => { const x = v(id); if (x !== undefined) this.data[m[id]] = x; });
     const cf = document.getElementById("onbZcf"); if (cf) this.data.zcf = !!cf.checked;
     const lig = document.getElementById("onbZligueOn"); if (lig && !lig.checked) this.data.zligue = "";
@@ -1951,7 +1963,8 @@ const ONBOARD = {
     } else if (e === 2) {
       b.innerHTML = '<h2>Ton véhicule</h2><p>Pour le coût réel de tes déplacements. Valeurs proposées : moyenne d\'une citadine.</p>' +
         this.champ("onbVnom", "Modèle", D.vnom, 'placeholder="ex. Peugeot 208"') +
-        this.champ("onbConso", "Consommation (L/100 km)", D.conso, 'inputmode="decimal"') +
+        '<div class="rt-field"><label for="onbCarb">Carburant</label><select id="onbCarb">' + optsCarb_(D.carb) + '</select></div>' +
+        this.champ("onbConso", "Consommation (L/100 km, ou kWh/100 km si électrique)", D.conso, 'inputmode="decimal"') +
         this.champ("onbCv", "Puissance fiscale (CV, sur la carte grise)", D.cv, 'inputmode="numeric"');
     } else if (e === 3) {
       const D2 = this.data, opt = (l, v) => l.map(x => '<option value="' + x[0] + '"' + (x[0] === v ? " selected" : "") + '>' + esc(x[1]) + '</option>').join("");
@@ -1995,7 +2008,7 @@ const ONBOARD = {
     const D = this.data, e = this.etape;
     if (e === 0 && String(D.nom_ffbb).trim().split(/\s+/).filter(w => w.length >= 2).length < 2) return "Indique ton NOM et ton PRÉNOM comme sur tes convocations.";
     if (e === 1 && (!D.adresse || !/^\d{5}$/.test(D.code_postal) || !D.ville)) return "Adresse incomplète (rue, code postal à 5 chiffres, ville).";
-    if (e === 2) { const c = Number(String(D.conso).replace(",", ".")), v = Number(D.cv); if (!(c > 2 && c < 30)) return "Consommation entre 2 et 30 L/100 km."; if (!(v >= 1 && v <= 60)) return "Puissance fiscale entre 1 et 60 CV."; }
+    if (e === 2) { const c = Number(String(D.conso).replace(",", ".")), v = Number(D.cv); if (D.carb === "electrique" ? !(c >= 5 && c <= 40) : !(c > 2 && c < 30)) return D.carb === "electrique" ? "Consommation entre 5 et 40 kWh/100 km." : "Consommation entre 2 et 30 L/100 km."; if (!(v >= 1 && v <= 60)) return "Puissance fiscale entre 1 et 60 CV."; }
     if (e === 3 && !D.zcd) return "Choisis ton comité départemental.";
     return "";
   },
@@ -2017,6 +2030,7 @@ const ONBOARD = {
       if (!r || r.success === false) throw new Error((r && r.error) || "Enregistrement refusé");
       if (r.config) { Profil.config = r.config; try { localStorage.setItem(CFG_KEY, JSON.stringify(r.config)); } catch (e) {} }
       if (D.prenom) window.RT_AUTH.prenom = D.prenom;
+      if (D.carb && D.carb !== "e10") { try { const rv = await jsonp("settings.vehicule.set", { index: 0, carburant: D.carb }); if (rv && rv.vehicules && Profil.config) Profil.config.vehicules = rv.vehicules; } catch (e) {} }   // b86
       document.getElementById("rtOnb").remove();
       try { setStatus("Profil enregistré : tes convocations vont être lues dans les 10 minutes.", "ok"); } catch (e) {}
       setTimeout(() => { try { TOUR.ouvrir(); } catch (e) {} }, 400);   // b69 : visite guidée obligatoire une fois

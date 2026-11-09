@@ -4741,3 +4741,15 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .acc-ev-sub { font-size: 12px; opacity: .7; }
 .acc-ev-up { color: #16A34A; } .acc-ev-down { color: #DC2626; }
 .acc-ev-axes { margin: 10px 0; } .acc-ev-axes ul { margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
+/* b86 — carburant par véhicule (Mon profil) */
+.rt-veh-carb { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--muted, #6b7280); }
+.rt-veh-carb select { font-size: 12px; padding: 3px 6px; border-radius: 8px; }
+#mailSyncBtn.spin svg { animation: rtSpin 1s linear infinite; }
+@keyframes rtSpin { to { transform: rotate(360deg); } }
+.transport-ligne { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; font-size: 13px; }
+.transport-ligne select { font-size: 13px; padding: 4px 8px; border-radius: 8px; margin-left: 6px; }
+.transport-ligne .mut { font-size: 12px; opacity: .75; }
+.franchise-bar { height: 8px; border-radius: 999px; background: rgba(127,127,127,.18); overflow: hidden; margin-top: 8px; }
+.franchise-bar i { display: block; height: 100%; background: #16a34a; border-radius: 999px; }
+.franchise.is-near .franchise-bar i { background: #d97706; }
+.franchise.is-over .franchise-bar i { background: #dc2626; }
