@@ -1870,7 +1870,7 @@ function accHistorique_(z) {
   const passees = saisons.length > 1;
   histoCompter_().then(c => {
     const pts = [
-      { ok: passees, t: "Tes saisons passées", d: passees ? saisons.length + " saisons dans l'app" : "Transfère aussi tes anciennes convocations : l'app reconstruit tes saisons, tes kilomètres et tes comparaisons.", go: "", lib: "" },
+      { ok: passees, t: "Tes saisons passées", d: passees ? saisons.length + " saisons dans l'app" : "Transfère aussi tes anciennes convocations : l'app reconstruit tes saisons, tes kilomètres et tes comparaisons.", go: "", lib: "", adr: true },
       { ok: c.ev > 0, t: "Tes fiches d'observation", d: c.ev > 0 ? c.ev + " fiche(s) analysée(s)" : "Dépose les PDF de tes observations : notes, grille critère par critère et plan de développement.", go: "progression", lib: "Déposer mes fiches" },
       { ok: c.el > 0, t: "Ton e-Licence", d: c.el > 0 ? "Enregistrée" : "Photo ou PDF de ta licence, affichée en plein écran à la table de marque.", go: "elicence", lib: "Ajouter" },
       { ok: c.ni > 0, t: "Ton parcours d'arbitre", d: c.ni > 0 ? "Niveaux renseignés" : "Tes niveaux et examens passés (date, niveau, résultat) : la base de ta progression.", go: "progression", lib: "Ajouter un niveau" }
@@ -1878,7 +1878,22 @@ function accHistorique_(z) {
     const faits = pts.filter(p => p.ok).length;
     if (faits === pts.length) { z.innerHTML = ""; return; }
     z.innerHTML = `<section class="acc-bloc acc-histo"><div class="acc-histo-h"><h2 class="section-title">Complète ton historique <span class="count">${faits} / ${pts.length}</span></h2><button type="button" class="small-btn secondary" id="accHistoMasquer">Masquer</button></div>
-      <div class="acc-histo-g">${pts.map(p => `<div class="acc-histo-i${p.ok ? " is-ok" : ""}"><span class="acc-histo-c">${p.ok ? "✓" : ""}</span><div><strong>${escapeHtml(p.t)}</strong><span class="card-sub">${escapeHtml(p.d)}</span>${!p.ok && p.go ? `<button type="button" class="small-btn" data-tab-go="${p.go}">${escapeHtml(p.lib)} →</button>` : ""}</div></div>`).join("")}</div></section>`;
+      <div class="acc-histo-g">${pts.map(p => `<div class="acc-histo-i${p.ok ? " is-ok" : ""}"><span class="acc-histo-c">${p.ok ? "✓" : ""}</span><div><strong>${escapeHtml(p.t)}</strong><span class="card-sub">${escapeHtml(p.d)}</span>${!p.ok && p.go ? `<button type="button" class="small-btn" data-tab-go="${p.go}">${escapeHtml(p.lib)} →</button>` : ""}${!p.ok && p.adr ? `<button type="button" class="small-btn" data-histo-adr="1">Comment les transférer →</button><div class="acc-histo-adr" hidden></div>` : ""}</div></div>`).join("")}</div></section>`;
+    // b88d — « Tes saisons passées » : bouton qui affiche l'adresse Referee Tracker (copiable) et la marche à suivre.
+    const ba = z.querySelector("[data-histo-adr]");
+    if (ba) ba.addEventListener("click", async () => {
+      const box = ba.nextElementSibling; if (!box) return;
+      if (!box.hidden) { box.hidden = true; return; }
+      let adr = "";
+      try { const l = await SB.get("profils?select=adresse_reception&limit=1"); adr = (l && l[0] && l[0].adresse_reception) || ""; } catch (e) {}
+      box.innerHTML = adr
+        ? `<p class="card-sub" style="margin:8px 0 4px">Ton adresse Referee Tracker :</p><p style="margin:0 0 6px"><code style="user-select:all;word-break:break-all">${escapeHtml(adr)}</code> <button type="button" class="small-btn secondary" data-histo-copier>Copier</button></p>
+           <p class="card-sub" style="margin:0">Dans ta boîte mail, ouvre une ancienne convocation → <strong>Transférer</strong> → colle cette adresse → Envoyer. Tu peux en transférer plusieurs d'un coup (sélectionne-les puis « Transférer »). Chaque match apparaît ici en quelques minutes.</p>`
+        : `<p class="card-sub" style="margin:8px 0 0">Ton adresse Referee Tracker est dans Mon profil. Transfère-y tes anciennes convocations : chaque match apparaît ici en quelques minutes.</p>`;
+      box.hidden = false;
+      const c = box.querySelector("[data-histo-copier]");
+      if (c) c.addEventListener("click", () => { try { navigator.clipboard.writeText(adr).then(() => { c.textContent = "Copiée ✓"; }); } catch (e) { window.prompt("Copie cette adresse :", adr); } });
+    });
     const m = z.querySelector("#accHistoMasquer"); if (m) m.addEventListener("click", () => { try { localStorage.setItem(HISTO_CLE_, "1"); } catch (e) {} z.innerHTML = ""; });
   });
 }
