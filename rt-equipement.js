@@ -26,8 +26,12 @@
   async function charger(force) {
     if (ST.charge && !force) return;
     ST.charge = true;
-    try { ST.liste = await SB.get("depenses?select=*&order=date_achat.desc,id.desc&limit=1000"); }
-    catch (e) { ST.liste = []; ST.msg = "Lecture impossible : " + e.message; }
+    try { ST.liste = await SB.get("depenses?select=*&order=date_achat.desc,id.desc&limit=1000"); ST.msg = ""; }
+    catch (e) {
+      ST.charge = false;   // b88.1 — session pas encore prête au démarrage : nouvel essai automatique
+      if (/session/i.test(e.message || "") && (ST.essais = (ST.essais || 0) + 1) < 15) { setTimeout(() => charger(false), 1500); return; }
+      ST.liste = []; ST.msg = "Lecture impossible : " + e.message;
+    }
     window.RT_EQUIPEMENT = ST.liste;
     rendre();
     try { if (state.activeTab !== "equipement" && typeof renderAllSoon_ === "function") renderAllSoon_(); } catch (e) {}
