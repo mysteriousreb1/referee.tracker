@@ -7635,7 +7635,7 @@ function enrichirPourAnalyse_(r) {
     _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
     _paye: get(r, "Statut paiement") === "Reçu",
     // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
-    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition")),
+    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition"), get(r, "Format")),
     _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
   };
 }
@@ -7649,7 +7649,7 @@ function normUp(v) {
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
-function detecterGenreClient(code, libelle) {
+function detecterGenreClient(code, libelle, format) {
   const c = normUp(code);
   const t = (c + " " + normUp(libelle)).replace(/[_.]+/g, " ").trim();
 
@@ -7666,6 +7666,16 @@ function detecterGenreClient(code, libelle) {
 
   m = t.match(/\bRS(M|F)\b/);
   if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+
+  // b88 — code fédéral glissé dans le libellé (« 16 - AMI NMU15 », amical / coupe) : NMU15, DF2, PNM, RFU18…
+  m = t.match(/\b(?:D|R|N|PR|PN)(M|F)(?:U?\d{1,2})?\b/);
+  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+  m = t.match(/\bU\d{2}(M|F)/);   // « U18FQR-PH2 »
+  if (m) return m[1] === "M" ? "Masculin" : "Féminin";
+  if (/\b(FEMININ(E|ES)?|FILLES|DAMES)\b/.test(t)) return "Féminin";
+  if (/\b(MASCULIN(S)?|GARCONS|HOMMES)\b/.test(t)) return "Masculin";
+  // 3x3 (tournois Junior League, Business League…) : catégories ouvertes à tous sauf mention contraire
+  if (String(format || "") === "3x3" || /\b3X3\b/.test(t)) return "Mixte";
 
   return "";
 }
