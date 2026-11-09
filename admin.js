@@ -353,8 +353,8 @@
         '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></div>' +
         (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
-      '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · lecture seule (consultation journalisée)</span><span class="sp"></span><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
-      '<div class="tabpane" data-pane="alertes"><div class="card">' + alertesHtml + "</div></div>" +
+      '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · consultation journalisée</span><span class="sp"></span><button class="btn sm" id="fSolder" title="Historique importé jamais pointé (saisons passées)">Solder l\'historique…</button><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
+      '<div class="tabpane" data-pane="alertes"><div class="card">' + alertesHtml + '</div><div class="card" id="alZ"><p class="mut">Chargement des alertes…</p></div></div>' +
       '<div class="tabpane" data-pane="tickets">' + ticketsHtml + '<p style="margin-top:8px"><a href="#tickets/' + esc(u.id) + '" id="fTickets">Ouvrir dans Tickets →</a></p></div>' +
       '<div class="tabpane" data-pane="notes"><div class="grid-2"><div class="card"><div class="card-head"><h3>Notes internes</h3><span class="sub">visibles par toi seul · jamais par l\'arbitre</span></div>' +
         '<div class="row"><select id="nCat"><option value="retour">Retour client</option><option value="demande">Demande</option><option value="bug">Bug</option><option value="suivi" selected>Suivi</option><option value="autre">Autre</option></select></div><textarea id="nTxt" rows="3" placeholder="Ex. : souhaite un export par mois ; a signalé un écart sur un match du 12/10…" style="width:100%;margin-top:8px;font-family:inherit"></textarea><div class="row" style="margin-top:8px"><button class="btn pri sm" id="nAdd">Ajouter la note</button></div><div id="nListe" style="margin-top:12px"><p class="mut">Chargement…</p></div></div>' +
@@ -364,9 +364,34 @@
       '<div class="tabpane" data-pane="moteur"><div class="card" id="mtZ"><p class="mut">Ouvre cet onglet pour piloter le moteur.</p></div></div>' +
       '<div class="tabpane" data-pane="danger"><div class="card danger-zone"><h3>Supprimer le compte</h3><p>Supprime définitivement : matchs, évaluations, tickets, appareils push, consentements, profil, inscription, fichiers Storage import/, puis le compte de connexion. Irréversible.</p><button class="btn danger" id="fSuppr">Supprimer le compte…</button></div></div>';
     const body = $("drawerBody");
-    body.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { body.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b)); body.querySelectorAll(".tabpane").forEach((x) => x.classList.toggle("on", x.dataset.pane === b.dataset.tab)); if (b.dataset.tab === "moteur") rendMoteur(); }));
+    body.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { body.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b)); body.querySelectorAll(".tabpane").forEach((x) => x.classList.toggle("on", x.dataset.pane === b.dataset.tab)); if (b.dataset.tab === "moteur") rendMoteur(); if (b.dataset.tab === "alertes") rendAlertes(); }));
+    // ---------- b85 : traiter les alertes de l'arbitre (mêmes règles que son app ; le moteur est prévenu) ----------
+    let alFiltre = "actives";
+    const rendAlertes = async () => {
+      const z = body.querySelector("#alZ"); if (!z) return;
+      let l = []; try { l = (await admin("alertes.liste", { user_id: userId })).data || []; } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
+      const nAct = l.filter((a) => !a.traitee).length, vue = l.filter((a) => alFiltre === "toutes" || (alFiltre === "actives" ? !a.traitee : a.traitee));
+      z.innerHTML = '<div class="card-head"><h3>Alertes de l\'arbitre</h3><span class="sub">' + nAct + " à traiter · " + (l.length - nAct) + " traitée(s) · même affichage que dans son app</span></div>" +
+        '<div class="toolbar"><select id="alF"><option value="actives">À traiter</option><option value="traitees">Traitées</option><option value="toutes">Toutes</option></select><label class="chk"><input type="checkbox" id="alTous">Tout cocher</label><span class="sp"></span>' +
+        '<button class="btn sm pri" id="alOk">Marquer la sélection traitée</button><button class="btn sm" id="alRet">Rétablir la sélection</button>' + (nAct ? '<button class="btn sm" id="alAll">Tout marquer traité (' + nAct + ")</button>" : "") + '<button class="btn sm" id="alMaj">↻</button></div>' +
+        (vue.length ? '<div class="tbl"><table><thead><tr><th></th><th>Date</th><th>Mission</th><th>Alerte</th><th>État</th></tr></thead><tbody>' + vue.map((a) => '<tr><td><input type="checkbox" class="alC" value="' + esc(a.uid) + '"></td><td class="tiny">' + esc(a.date || "—") + "</td><td>" + esc(a.libelle || a.format || "") + '<br><span class="mut tiny">' + esc(a.rencontre || "") + '</span></td><td class="warn tiny">' + a.alertes.map(esc).join("<br>") + "</td><td>" + (a.traitee ? badge("traitée", "green") : badge("à traiter", "orange")) + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">' + (alFiltre === "actives" ? "Aucune alerte à traiter" : "Rien à afficher") + "</p>");
+      z.querySelector("#alF").value = alFiltre;
+      z.querySelector("#alF").onchange = (e) => { alFiltre = e.target.value; rendAlertes(); };
+      z.querySelector("#alMaj").onclick = rendAlertes;
+      z.querySelector("#alTous").onchange = (e) => z.querySelectorAll(".alC").forEach((c) => { c.checked = e.target.checked; });
+      const coches = () => [...z.querySelectorAll(".alC:checked")].map((c) => c.value);
+      const go = async (btn, corps, txt) => {
+        btn.disabled = true;
+        try { const r = await admin("alertes.traiter", { user_id: userId, ...corps }); toast(r.n + " alerte(s) " + txt + (r.moteur ? " · moteur prévenu (≤ 10 min)" : ""), "ok"); rendAlertes(); }
+        catch (e) { btn.disabled = false; toast(e.message, "err"); }
+      };
+      z.querySelector("#alOk").onclick = (e) => { const u = coches(); if (!u.length) return toast("Coche au moins une alerte", "err"); go(e.target, { uids: u }, "marquée(s) traitée(s)"); };
+      z.querySelector("#alRet").onclick = (e) => { const u = coches(); if (!u.length) return toast("Coche au moins une alerte", "err"); go(e.target, { uids: u, retablir: true }, "rétablie(s)"); };
+      const all = z.querySelector("#alAll");
+      if (all) all.onclick = async (e) => { if (!(await confirmer("Tout marquer traité", "Marquer les <strong>" + nAct + "</strong> alertes de " + esc(nomDe(p, u.email)) + " comme traitées ? Elles disparaissent de son onglet Alertes (réversible ici).", "Tout marquer"))) return; go(e.target, { tout: true }, "marquée(s) traitée(s)"); };
+    };
     // ---------- b81 : piloter le moteur de l'arbitre (commandes exécutées au prochain passage, ≤ 10 min) ----------
-    const LIB_CMD = { synchro: "Synchroniser maintenant", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule" };
+    const LIB_CMD = { synchro: "Synchroniser maintenant", carburant: "Relever le prix du carburant", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", adresse: "Changer l'adresse de départ", tarifs: "Changer les tarifs", vehicule: "Ajouter un véhicule", alertes: "Alertes traitées / rétablies", profil: "Profil modifié" };
     const BADGE_CMD = { en_attente: ["en attente", "orange"], en_cours: ["en cours", "gold"], ok: ["fait", "green"], erreur: ["erreur", "red"], annulee: ["annulée", ""] };
     const rendMoteur = async () => {
       const z = body.querySelector("#mtZ"); if (!z) return;
@@ -392,6 +417,16 @@
       }));
     };
     body.querySelector("#fSaison").addEventListener("change", (e) => ouvrirFiche(userId, e.target.value));
+    // b85 — saisons passées importées sans pointage (ex. historique d'un nouvel arbitre) : « Reçu » en une fois, à la demande de l'arbitre.
+    body.querySelector("#fSolder").addEventListener("click", async (e) => {
+      const d = new Date(), y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1, avant = y + "/" + (y + 1);
+      let c; try { c = await admin("paiements.solder", { user_id: userId, saison_avant: avant, motif: "comptage", compter: true }); } catch (er) { return toast(er.message, "err"); }
+      if (!c.n) return toast("Rien à solder : toutes les saisons avant " + avant + " sont pointées", "ok");
+      const motif = prompt(c.n + " match(s) des saisons avant " + avant + " ne sont pas marqués payés (" + String(c.total).replace(".", ",") + " €).\nIls passeront en « Reçu » (montant = indemnité). À faire seulement si l'arbitre confirme qu'ils sont payés.\n\nMotif (journalisé), ex. : confirmé par l'arbitre le " + d.toLocaleDateString("fr-FR") + " :");
+      if (!motif || motif.trim().length < 5) return;
+      e.target.disabled = true;
+      try { const r = await admin("paiements.solder", { user_id: userId, saison_avant: avant, motif: motif.trim() }); toast(r.n + " match(s) passé(s) en « Reçu » · le moteur les reprend au prochain passage", "ok"); ouvrirFiche(userId, saison); } catch (er) { e.target.disabled = false; toast(er.message, "err"); }
+    });
     // b77 — notes internes + message direct
     const CAT_NOTE = { retour: ["Retour client", "gold"], demande: ["Demande", "blue"], bug: ["Bug", "red"], suivi: ["Suivi", "gray"], autre: ["Autre", "gray"] };
     async function chargerNotes() {
@@ -498,6 +533,7 @@
     "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
     "pub.carburant": { titre: "Carburant", desc: "Prix relevé autour du domicile de chaque arbitre (rayon, fraîcheur, carburant) · prix imposé par mois · appliqué sous 10 min" },
+    "pub.mails": { titre: "Textes des e-mails", desc: "Sujet, titre et message des 4 e-mails envoyés aux arbitres (liste d'attente, demande reçue, guides, compte prêt) · immédiat" },
     "pub.fonctions_defaut": { titre: "Fonctions par défaut", desc: "Modules visibles pour un arbitre sans réglage perso (fiche → Fonctions) : Progression, e-Licence, classements · immédiat" },
   };
   const LIB_FN = { ia: "IA (budget : Configuration → IA)", evaluations: "Progression (évaluations)", elicence: "e-Licence", classements: "Classements et enjeux" };   // b80
@@ -588,6 +624,17 @@
       } else if (cfgCle === "pub.beta") {
         F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";
         lireForm = () => ({ max: Number(F.querySelector("#btMax").value) || 0, ouvert: F.querySelector("#btOuv").checked });
+      } else if (cfgCle === "pub.mails") {
+        // b85 — 4 modèles. Vide = texte d'origine. Le message s'ajoute sous « Bonjour Prénom, » ; code, liens et mode d'emploi restent automatiques.
+        const MODS = [["attente", "Liste d'attente", "Referee Tracker — ta demande est sur liste d'attente", "Ta demande est sur liste d'attente", "{prenom}"],
+          ["recue", "Demande reçue", "Referee Tracker — nous configurons ton compte", "Nous configurons ton compte", "{prenom}"],
+          ["guides", "Guide et manuel (PDF joints)", "Referee Tracker — ton guide de démarrage et ton manuel", "Ton guide et ton manuel", "{prenom}"],
+          ["compte_pret", "Compte prêt (code de 1re connexion)", "Ton compte Referee Tracker est prêt", "Ton compte est prêt !", "{prenom} {code} {adresse}"]];
+        F.innerHTML = '<p class="mut tiny">Laisse un champ vide pour garder le texte d\'origine. Texte simple, sans HTML ; une ligne vide = nouveau paragraphe. Le code, les boutons, les liens des PDF et le mode d\'emploi du transfert sont toujours ajoutés automatiquement.</p>' +
+          MODS.map(([k, t, sj, ti, vars]) => { const o = v[k] || {}; return '<div class="card" data-mail="' + k + '"><div class="card-head"><h3>' + esc(t) + '</h3><span class="sub">variables : ' + esc(vars) + "</span></div>" +
+            '<div class="form-grid"><label class="f">Sujet<input data-c="sujet" maxlength="140" value="' + esc(o.sujet || "") + '" placeholder="' + esc(sj) + '"></label><label class="f">Titre dans le mail<input data-c="titre" maxlength="80" value="' + esc(o.titre || "") + '" placeholder="' + esc(ti) + '"></label></div>' +
+            '<label class="f">Message ajouté sous « Bonjour {prenom}, »<textarea data-c="message" rows="3" maxlength="1500" style="font-family:inherit" placeholder="Ex. : Merci de faire partie des premiers testeurs !">' + esc(o.message || "") + "</textarea></label></div>"; }).join("");
+        lireForm = () => { const o = {}; F.querySelectorAll("[data-mail]").forEach((c) => { const m = {}; c.querySelectorAll("[data-c]").forEach((x) => { const t = x.value.trim(); if (t) m[x.dataset.c] = t; }); if (Object.keys(m).length) o[c.dataset.mail] = m; }); return o; };
       } else if (cfgCle === "pub.textes") {
         // b81 — bandeau programmable (début / fin, style) + écran de maintenance personnalisable.
         const dt = (x) => (x ? String(x).slice(0, 16) : "");

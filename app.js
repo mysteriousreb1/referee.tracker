@@ -2219,7 +2219,7 @@ function initMapFor(uid, addr) {
     // (renderAll recrée le DOM : l'ancienne instance resterait blanche).
     let ok = false;
     try { ok = ex.getContainer() === el && !!el.querySelector(".leaflet-pane"); } catch (e) { ok = false; }
-    if (ok) { setTimeout(() => ex.invalidateSize(), 60); return; }
+    if (ok) { setTimeout(() => { try { if (ex._mapPane) ex.invalidateSize(); } catch (e) {} }, 60); return; }
     try { ex.remove(); } catch (e) { /* déjà détruite */ }
     delete state.maps[uid];
   }
@@ -2232,29 +2232,33 @@ function initMapFor(uid, addr) {
   if (homeValide) L.marker([HOME.lat, HOME.lon]).addTo(map).bindPopup("Domicile");
   state.maps[uid] = map;
   mapMsg_(el, "Localisation en cours…");
+  // b85 — l'écran peut être redessiné pendant le géocodage : on n'agit plus sur une carte retirée (erreur Leaflet « _leaflet_pos »).
+  const vivante = () => { try { return state.maps[uid] === map && !!map._mapPane && document.body.contains(el); } catch (e) { return false; } };
 
   geocode(addr).then(dest => {
+    if (!vivante()) return;
     if (!dest) { mapMsg_(el, "Adresse introuvable sur la carte."); return; }
     mapMsg_(el, "");
     L.marker([dest.lat, dest.lon]).addTo(map).bindPopup("Salle");
-    if (!homeValide) { map.setView([dest.lat, dest.lon], 12); return; }
+    if (!homeValide) { map.setView([dest.lat, dest.lon], 12, { animate: false }); return; }
     mapMsg_(el, "Calcul de l'itinéraire…");
     route(HOME, dest).then(r => {
+      if (!vivante()) return;
       mapMsg_(el, "");
       if (r && r.geometry) {
         const line = L.geoJSON(r.geometry, { style: { color: "#E4002B", weight: 4, opacity: 0.85 } }).addTo(map);
-        map.fitBounds(line.getBounds().pad(0.2));
+        map.fitBounds(line.getBounds().pad(0.2), { animate: false });
         const km = Math.round(r.distanceKm * 2);
         L.popup().setLatLng([dest.lat, dest.lon])
           .setContent(`<b>${km} km A/R</b><br>carburant réel ≈ ${formatMoney(realFuelCostClient(km, null))}`).openOn(map);
       } else {
         L.polyline([[HOME.lat, HOME.lon], [dest.lat, dest.lon]], { color: "#E4002B", weight: 3, dashArray: "6 8" }).addTo(map);
-        map.fitBounds(L.latLngBounds([[HOME.lat, HOME.lon], [dest.lat, dest.lon]]).pad(0.3));
+        map.fitBounds(L.latLngBounds([[HOME.lat, HOME.lon], [dest.lat, dest.lon]]).pad(0.3), { animate: false });
         mapMsg_(el, "Itinéraire indisponible (ligne droite).");
       }
     });
   });
-  setTimeout(() => map.invalidateSize(), 80);
+  setTimeout(() => { if (vivante()) map.invalidateSize(); }, 80);
 }
 
 function geocode(address) {
