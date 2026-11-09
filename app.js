@@ -7635,7 +7635,7 @@ function enrichirPourAnalyse_(r) {
     _partCarburant: brut > 0 ? (carburant / brut) * 100 : 0,
     _paye: get(r, "Statut paiement") === "Reçu",
     // Lus de la colonne si le Sheet est enrichi, sinon déduits à la volée
-    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition"), get(r, "Format")),
+    _genre: get(r, "Genre") || detecterGenreClient(get(r, "Code compétition"), get(r, "Libellé compétition") + (get(r, "Format") === "3x3" ? " " + get(r, "Visiteur / événement") : ""), get(r, "Format")),
     _categorie: get(r, "Catégorie d'âge") || detecterCategorieClient(get(r, "Code compétition"), get(r, "Libellé compétition"))
   };
 }
@@ -7675,6 +7675,7 @@ function detecterGenreClient(code, libelle, format) {
   if (/\b(FEMININ(E|ES)?|FILLES|DAMES)\b/.test(t)) return "Féminin";
   if (/\b(MASCULIN(S)?|GARCONS|HOMMES)\b/.test(t)) return "Masculin";
   // 3x3 (tournois Junior League, Business League…) : catégories ouvertes à tous sauf mention contraire
+  if (/\bELLES? RETOURNE/.test(t)) return "Féminin";   // b88 — « Elle retourne le Game » : tournoi 3x3 féminin
   if (String(format || "") === "3x3" || /\b3X3\b/.test(t)) return "Mixte";
 
   return "";

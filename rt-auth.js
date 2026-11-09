@@ -2001,6 +2001,8 @@ const ONBOARD = {
         '<details><summary>Gmail</summary><p class="rt-help">Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert, puis un filtre « De : ffbb » → Transférer.</p></details>' +
         '<details><summary>Orange</summary><p class="rt-help">Mail Orange → Paramètres → Règles de tri → Nouvelle règle « Expéditeur contient ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
         '<details><summary>Outlook / Hotmail</summary><p class="rt-help">Paramètres → Courrier → Règles → Ajouter une règle « De : ffbb » → Transférer à l\'adresse ci-dessus.</p></details>' +
+        '<p class="rt-help"><strong>Garde toujours une copie</strong> dans ta boîte : la règle transfère, elle ne déplace pas (dans Gmail, choisis « Conserver la copie Gmail dans la boîte de réception »). Ta convocation reste ta référence officielle.</p>' +
+        '<p class="rt-help">Gmail t\'envoie un code de confirmation : il apparaît dans l\'app (Alertes) en quelques minutes. Outlook et Orange n\'en demandent pas.</p>' +
         '<p class="rt-help">Transfère aussi une fois tes convocations déjà reçues cette saison : l\'app reconstruit ta saison.</p>';
     } else if (e === 5) {   // b77 — l'historique : sans lui, pas de progression ni de comparaison
       const it = (t, d) => '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>' + t + '</strong><span class="rt-tag">facultatif</span></div><p class="rt-help">' + d + '</p></div>';
