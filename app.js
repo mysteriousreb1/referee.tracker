@@ -1353,9 +1353,11 @@ function renderTabBadges_() {
     badgeAlertes.hidden = nbAlertes === 0;
   }
   // b86 — l'onglet reste accessible dès qu'il y a quelque chose (infos comprises) : l'admin et l'arbitre voient la même chose. Le badge ne compte que « À régler ».
-  const montrerAlertes = nbAlertes > 0 || actives.length > 0 || state.activeTab === "alertes";
+  // b88e — retour à la règle b70 : l'onglet de la barre n'apparaît QUE s'il y a quelque chose « À régler » (badge > 0).
+  // Les simples infos restent consultables via « Plus ».
+  const montrerAlertes = nbAlertes > 0 || state.activeTab === "alertes";
   const tabAl = document.querySelector('nav.tabs .tab[data-tab="alertes"]'); if (tabAl) tabAl.classList.toggle("tab-masque", !montrerAlertes);
-  const plusAl = document.querySelector('.tab-more-item[data-goto="alertes"]'); if (plusAl) plusAl.classList.toggle("tab-masque", !montrerAlertes);
+  const plusAl = document.querySelector('.tab-more-item[data-goto="alertes"]'); if (plusAl) plusAl.classList.toggle("tab-masque", !(montrerAlertes || actives.length > 0));
 
 
   const nbPaiements = rows.filter(paiementEnRetard).length;
