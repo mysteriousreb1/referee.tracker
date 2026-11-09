@@ -1748,9 +1748,11 @@ function renderAccueil() {
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
+    <div id="accImport"></div>
     <div id="accEvals"></div>
     <div id="accHisto"></div>
   `;
+  try { accImport_(root.querySelector("#accImport"), actifs); } catch (e) { /* carte facultative */ }
   try { accEvals_(root.querySelector("#accEvals")); } catch (e) { /* carte facultative */ }
   try { accHistorique_(root.querySelector("#accHisto")); } catch (e) { /* carte facultative */ }
 
@@ -1833,6 +1835,24 @@ function accEvals_(z) {
     <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
   const b = z.querySelector(".acc-ev-go"); if (b) b.addEventListener("click", () => setActiveTab("progression"));
 }
+/* b88d — convocations jointes au formulaire d'inscription mais jamais arrivées dans l'app (bug d'envoi corrigé) :
+   tant qu'aucun match n'est là, on demande de les transférer à l'adresse Referee Tracker. Disparaît seule au 1er match. */
+const IMPORT_CLE_ = "rt-import-masque";
+let _importEtat_ = null;
+function accImport_(z, actifs) {
+  if (!z || (actifs && actifs.length)) return;
+  try { if (localStorage.getItem(IMPORT_CLE_)) return; } catch (e) {}
+  if (!_importEtat_) _importEtat_ = SB.write("POST", "rpc/rt_import_etat", {});
+  Promise.all([_importEtat_, SB.get("profils?select=adresse_reception&limit=1").catch(() => [])]).then(([j, pr]) => {
+    const n = Number(j && j.declares) || 0; if (!n) return;
+    const adr = (pr && pr[0] && pr[0].adresse_reception) || "ton adresse Referee Tracker";
+    z.innerHTML = `<div class="acc-alerte-silence" role="status"><strong>${n > 1 ? "Tes " + n + " convocations jointes à l'inscription ne sont pas arrivées" : "Ta convocation jointe à l'inscription n'est pas arrivée"}</strong>
+      <span>Un souci technique (corrigé depuis) ${n > 1 ? "les a bloquées" : "l'a bloquée"}. Transfère-${n > 1 ? "les" : "la"} simplement à <strong>${escapeHtml(adr)}</strong> : ${n > 1 ? "les matchs apparaissent" : "le match apparaît"} ici en quelques minutes.</span>
+      <button type="button" class="small-btn secondary" id="accImportOk" style="margin-top:8px">C'est fait</button></div>`;
+    const b = z.querySelector("#accImportOk"); if (b) b.addEventListener("click", () => { try { localStorage.setItem(IMPORT_CLE_, "1"); } catch (e) {} z.innerHTML = ""; });
+  }).catch(() => {});
+}
+
 /* b77 — « Complète ton historique » : sans historique, pas de progression ni de comparaison.
    4 points, chacun avec son action directe ; la carte disparaît quand tout est fait ou si on la masque. */
 const HISTO_CLE_ = "rt-histo-masque";
