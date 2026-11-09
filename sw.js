@@ -1,13 +1,13 @@
 /* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop)
    + b66 : cache de l'application (ouverture instantanée, lecture hors-ligne de la coquille).
    Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
-const VERSION = "2026-11-09-b82";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
+const VERSION = "2026-11-09-b83";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
 const CACHE = "rt-" + VERSION;
 const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION,
   "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,
   "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png",
   // b70 — polices et bibliothèques auto-hébergées (plus aucune requête tierce)
-  "./fonts/fonts.css?v=2026-11-09-b82", "./fonts/montserrat-latin-500-normal.woff2", "./fonts/montserrat-latin-600-normal.woff2", "./fonts/montserrat-latin-700-normal.woff2", "./fonts/montserrat-latin-800-normal.woff2",
+  "./fonts/fonts.css?v=2026-11-09-b83", "./fonts/montserrat-latin-500-normal.woff2", "./fonts/montserrat-latin-600-normal.woff2", "./fonts/montserrat-latin-700-normal.woff2", "./fonts/montserrat-latin-800-normal.woff2",
   "./fonts/jetbrains-mono-latin-500-normal.woff2", "./fonts/jetbrains-mono-latin-700-normal.woff2", "./vendor/leaflet.css", "./vendor/leaflet.js", "./vendor/chart.umd.min.js"];
 
 self.addEventListener("install", e => {
@@ -33,7 +33,8 @@ self.addEventListener("fetch", e => {
     return;
   }
   // 2) Pages et autres fichiers du site : réseau d'abord, cache en secours (hors-ligne).
-  e.respondWith(fetch(req).then(r => {
+  // b82 — pages : on revalide toujours auprès du serveur (sinon une ancienne version de l'admin peut rester affichée).
+  e.respondWith(fetch(req, req.mode === "navigate" ? { cache: "no-cache" } : undefined).then(r => {
     if (r && r.ok) caches.open(CACHE).then(c => c.put(req, r.clone()));
     return r;
   }).catch(() => caches.match(req, { ignoreSearch: req.mode === "navigate" }).then(hit => hit || (req.mode === "navigate" ? caches.match("./index.html") : undefined))));

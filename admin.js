@@ -418,8 +418,8 @@
       const fonctions = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (fonctions[k] = body.querySelector("#fn_" + k).checked));
       msg.textContent = "Enregistrement…"; msg.className = "mut";
       try {
-        await admin("profil.set", { user_id: userId, prenom: v("pPrenom"), nom_ffbb: v("pNom"), email_ffbb: v("pEmailF"), telephone: v("pTel"), niveau: v("pNiveau"), statut: v("pStatut"), zones: { cd: v("pCd"), ligue: v("pLigue"), cf: body.querySelector("#pCf").checked }, adresse_reception: recep, api_url: api, fonctions });
-        msg.textContent = "Enregistré ✓"; msg.className = "ok"; toast("Profil enregistré", "ok"); cache.arbitres = null; cache.stats = null; if (courant === "arbitres") rendus.arbitres(true);
+        const rProf = await admin("profil.set", { user_id: userId, prenom: v("pPrenom"), nom_ffbb: v("pNom"), email_ffbb: v("pEmailF"), telephone: v("pTel"), niveau: v("pNiveau"), statut: v("pStatut"), zones: { cd: v("pCd"), ligue: v("pLigue"), cf: body.querySelector("#pCf").checked }, adresse_reception: recep, api_url: api, fonctions });
+        msg.textContent = "Enregistré ✓"; msg.className = "ok"; toast("Profil enregistré" + (rProf && rProf.moteur ? " · envoyé au moteur (appliqué sous 10 min)" : ""), "ok"); cache.arbitres = null; cache.stats = null; if (courant === "arbitres") rendus.arbitres(true);
       } catch (e) { msg.textContent = e.message; msg.className = "err"; }
     });
     body.querySelector("#fLien").addEventListener("click", async () => { if (!(await confirmer("Lien mot de passe", "Envoyer à <strong>" + esc(u.email) + "</strong> le mail « définis ton mot de passe » ?", "Envoyer"))) return; try { await admin("user.lien", { user_id: userId }); toast("Lien envoyé", "ok"); } catch (e) { toast(e.message, "err"); } });
