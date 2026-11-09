@@ -1750,10 +1750,12 @@ function renderAccueil() {
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
+    <div id="accAnnonces"></div>
     <div id="accImport"></div>
     <div id="accEvals"></div>
     <div id="accHisto"></div>
   `;
+  try { accAnnonces_(root.querySelector("#accAnnonces")); } catch (e) { /* carte facultative */ }
   try { accImport_(root.querySelector("#accImport"), actifs); } catch (e) { /* carte facultative */ }
   try { accEvals_(root.querySelector("#accEvals")); } catch (e) { /* carte facultative */ }
   try { accHistorique_(root.querySelector("#accHisto")); } catch (e) { /* carte facultative */ }
@@ -1837,6 +1839,28 @@ function accEvals_(z) {
     <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
   const b = z.querySelector(".acc-ev-go"); if (b) b.addEventListener("click", () => setActiveTab("progression"));
 }
+/* b88f — annonces personnelles (table « annonces », écrites par l'administrateur) : bannière en haut de l'accueil,
+   « OK » la masque définitivement (masque_le). Action : un onglet de l'app, ou « profil » (ouvre Mon profil). */
+function accAnnonces_(z) {
+  if (!z || typeof SB === "undefined" || !SB.actif) return;
+  SB.get("annonces?select=id,texte,action,lib_action,style,expire_le&masque_le=is.null&order=cree_le.asc").then(l => {
+    const now = Date.now(), a = (l || []).filter(x => !x.expire_le || Date.parse(x.expire_le) > now);
+    if (!a.length) { z.innerHTML = ""; return; }
+    z.innerHTML = a.map(x => `<div class="acc-annonce acc-annonce--${escapeHtml(x.style || "info")}" role="status" data-ann="${Number(x.id)}">
+      <span class="acc-annonce-t">${escapeHtml(x.texte)}</span>
+      <span class="acc-annonce-b">${x.action ? `<button type="button" class="small-btn" data-ann-go="${escapeHtml(x.action)}">${escapeHtml(x.lib_action || "Voir")} →</button>` : ""}<button type="button" class="small-btn secondary" data-ann-ok="${Number(x.id)}">OK</button></span></div>`).join("");
+    z.querySelectorAll("[data-ann-go]").forEach(b => b.addEventListener("click", () => {
+      const go = b.getAttribute("data-ann-go");
+      if (go === "profil") { const pb = document.getElementById("rtProfileBtn"); if (pb) pb.click(); }
+      else if (typeof setActiveTab === "function") setActiveTab(go);
+    }));
+    z.querySelectorAll("[data-ann-ok]").forEach(b => b.addEventListener("click", async () => {
+      const id = Number(b.getAttribute("data-ann-ok")); const el = z.querySelector(`[data-ann="${id}"]`); if (el) el.remove();
+      try { await SB.write("PATCH", "annonces?id=eq." + id, { masque_le: new Date().toISOString() }); } catch (e) {}
+    }));
+  }).catch(() => {});
+}
+
 /* b88d — convocations jointes au formulaire d'inscription mais jamais arrivées dans l'app (bug d'envoi corrigé) :
    tant qu'aucun match n'est là, on demande de les transférer à l'adresse Referee Tracker. Disparaît seule au 1er match. */
 const IMPORT_CLE_ = "rt-import-masque";

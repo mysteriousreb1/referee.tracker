@@ -4848,3 +4848,13 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .cl-liste em { font-style: normal; font-size: 12px; color: var(--muted); }
 .cl-go { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .cl-masquer { margin-top: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer; padding: 0; }
+
+/* b88f — annonces personnelles (accueil) */
+.acc-annonce { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:12px 14px; margin:0 0 12px; border-radius:12px; border-left:5px solid #2563EB; background:#EAF1FE; color:inherit; }
+.acc-annonce--alerte { border-left-color:#D97706; background:#FFF4E0; }
+.acc-annonce--ok { border-left-color:#16A34A; background:#E8F7EE; }
+.acc-annonce-t { flex:1 1 260px; font-size:14px; line-height:1.45; }
+.acc-annonce-b { display:flex; gap:8px; flex-wrap:wrap; }
+:root[data-theme="dark"] .acc-annonce { background:#14213D; }
+:root[data-theme="dark"] .acc-annonce--alerte { background:#3A2A10; }
+:root[data-theme="dark"] .acc-annonce--ok { background:#123322; }
