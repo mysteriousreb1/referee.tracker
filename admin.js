@@ -346,7 +346,7 @@
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
         inp("pCd", "Zone CD", z.cd, "CD67") + inp("pLigue", "Ligue", z.ligue, "LRGEB") + '<label class="f">Championnat de France<span style="padding-top:8px">' + chk("pCf", "Oui", z.cf) + "</span></label>" +
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
-        '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, k, fn[k])).join("") + "</div>" +
+        '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, LIB_FN[k] || k, fn[k] !== false)).join("") + "</div>" +
         '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></div>' +
         (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
@@ -468,8 +468,9 @@
     "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
     "pub.carburant": { titre: "Carburant", desc: "Prix relevé autour du domicile de chaque arbitre (rayon, fraîcheur, carburant) · prix imposé par mois · appliqué sous 10 min" },
-    "pub.fonctions_defaut": { titre: "Fonctions par défaut (info)", desc: "Non utilisé pour l'instant" },
+    "pub.fonctions_defaut": { titre: "Fonctions par défaut", desc: "Modules visibles pour un arbitre sans réglage perso (fiche → Fonctions) : Progression, e-Licence, classements · immédiat" },
   };
+  const LIB_FN = { ia: "IA (budget : Configuration → IA)", evaluations: "Progression (évaluations)", elicence: "e-Licence", classements: "Classements et enjeux" };   // b80
   let cfgCle = "pub.baremes";
   rendus.config = async function (force) {
     const el = $("sec-config");
@@ -548,7 +549,7 @@
         lireForm = () => { const f = lireKv("cForce"), force = {}; Object.keys(f).forEach((k) => { if (/^\d{4}-\d{2}$/.test(k) && f[k] > 0.5 && f[k] < 4) force[k] = f[k]; });
           return { carburant: F.querySelector("#cCarb").value, rayon_km: Math.min(50, Math.max(3, Number(F.querySelector("#cRay").value) || 10)), fraicheur_jours: Math.min(30, Math.max(1, Number(F.querySelector("#cFr").value) || 7)), force }; };
       } else if (cfgCle === "pub.fonctions_defaut") {
-        F.innerHTML = '<div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, k, v[k])).join("") + "</div>";
+        F.innerHTML = '<div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fd_" + k, LIB_FN[k] || k, v[k])).join("") + "</div>";
         lireForm = () => { const o = {}; ["ia", "evaluations", "elicence", "classements"].forEach((k) => (o[k] = F.querySelector("#fd_" + k).checked)); return o; };
       } else if (cfgCle === "pub.ia") {
         // b74 — même structure que le moteur (Ia.gs) : plafond en $ par moteur et par mois, part de chaque fonction en % (total ≤ 100).
@@ -638,17 +639,57 @@
     if (force || !cache.arbitres) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.arbitres = (await admin("arbitres.liste")).data || []; }
     const l = cache.arbitres.filter((a) => !a.banni);
     const actifs = l.filter((a) => (a.profil || {}).statut === "actif").length;
+    // b80 — segments (comité, ligue, niveau) construits depuis les profils
+    const valSeg = (a, k) => { const p = a.profil || {}; return k === "niveau" ? String(p.niveau || "") : String((p.zones || {})[k] || "").toUpperCase(); };
+    const segOpts = (k) => [...new Set(l.map((a) => valSeg(a, k)).filter(Boolean))].sort().map((v) => '<option value="' + esc(v) + '">' + esc(v) + "</option>").join("");
     el.innerHTML = '<div class="grid-2 msg-grid"><div class="card"><div class="card-head"><h2>Nouveau message</h2><span class="sub">e-mail au design Referee Tracker et/ou notification sur le téléphone</span></div>' +
       '<label class="f">Destinataires<select id="msCible"><option value="actifs">Arbitres actifs (' + actifs + ')</option><option value="tous">Tous les comptes non suspendus (' + l.length + ")</option>" + l.map((a) => '<option value="' + a.id + '">' + esc(nomDe(a.profil, a.email)) + "</option>").join("") + "</select></label>" +
+      '<div class="form-grid seg-grid"><label class="f">Comité<select id="msCd"><option value="">Tous</option>' + segOpts("cd") + '</select></label><label class="f">Ligue<select id="msLg"><option value="">Toutes</option>' + segOpts("ligue") + '</select></label><label class="f">Niveau<select id="msNiv"><option value="">Tous</option>' + segOpts("niveau") + "</select></label></div>" +
+      '<p class="mut tiny" id="msCompte"></p>' +
       '<label class="f">Modèle<select id="msModele">' + MODELES_MSG.map((m, i) => '<option value="' + i + '">' + esc(m[1] && i ? m[0] : m[1]) + "</option>").join("") + "</select></label>" +
       '<label class="f">Sujet<input id="msSujet" maxlength="120" placeholder="Ex. : Nouvelle version de l\'application"></label>' +
       '<label class="f">Message<textarea id="msTxt" rows="9" style="font-family:inherit" placeholder="Commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
       '<label class="f">Type<select id="msType"><option value="service">Information de service (nouvelle version, maintenance, compte) · tous les destinataires</option><option value="promo">Promotion / nouveautés commerciales · sauf ceux qui s\'y sont opposés</option></select></label>' +
       '<label class="f">Canal<select id="msCanal"><option value="les2">E-mail + notification</option><option value="mail">E-mail seulement</option><option value="push">Notification seulement</option><option value="wa">WhatsApp (un clic par arbitre)</option></select></label>' +
       '<div id="msWa" class="wa-liste" hidden></div>' +
-      '<div class="row" style="margin-top:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
+      '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn" id="msTest">Envoyer un test à moi</button><button class="btn" id="msBrSave">Enregistrer le brouillon</button><button class="btn" id="msBrLoad">Reprendre le brouillon</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
+      '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
+    // ---------- b80 : liste de diffusion (qui reçoit quoi, opposition, réinscription sur demande, export) ----------
+    const etatComm = (a) => { const c = comm(a); return !c.date ? "non_informe" : c.offres === true ? "abonne" : "oppose"; };
+    const diff = { q: "", etat: "", cd: "" };
+    const rendDiff = () => {
+      const z = $("diffCard"); if (!z) return;
+      const nb = (f) => l.filter(f).length;
+      let d = l.filter((a) => { const p = a.profil || {}; const t = (nomDe(p, a.email) + " " + a.email + " " + (p.telephone || "")).toLowerCase();
+        return (!diff.q || t.includes(diff.q)) && (!diff.etat || etatComm(a) === diff.etat || (diff.etat === "wa" && comm(a).whatsapp === true && waNum(p.telephone))) && (!diff.cd || valSeg(a, "cd") === diff.cd); });
+      z.innerHTML = '<div class="card-head"><h2>Liste de diffusion</h2><span class="sub">' + l.length + " compte(s) · seuls les abonnés reçoivent les offres ; les messages de service vont à tous</span></div>" +
+        '<div class="tiles mini">' + [["abonne", "Abonnés offres", nb((a) => etatComm(a) === "abonne"), "green"], ["wa", "WhatsApp possible", nb((a) => comm(a).whatsapp === true && waNum((a.profil || {}).telephone)), "green"], ["oppose", "Opposés", nb((a) => etatComm(a) === "oppose"), "red"], ["non_informe", "Pas encore informés", nb((a) => etatComm(a) === "non_informe"), "orange"]].map((t) => '<div class="tile ' + t[3] + ' clic' + (diff.etat === t[0] ? " on" : "") + '" data-etat="' + t[0] + '"><b>' + t[2] + "</b><span>" + t[1] + "</span></div>").join("") + "</div>" +
+        '<div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0"><input id="dfQ" placeholder="Rechercher (nom, e-mail, téléphone)" value="' + esc(diff.q) + '" style="flex:1;min-width:200px"><select id="dfCd"><option value="">Tous comités</option>' + segOpts("cd").replace('value="' + esc(diff.cd) + '"', 'value="' + esc(diff.cd) + '" selected') + '</select><button class="btn sm" id="dfTous">Tout afficher</button><button class="btn sm" id="dfCsv">Exporter CSV (' + d.length + ")</button></div>" +
+        '<div class="tbl"><table><thead><tr><th>Arbitre</th><th>Contact</th><th>Comité · ligue</th><th>Offres</th><th>WhatsApp</th><th>Choix</th><th></th></tr></thead><tbody>' +
+        (d.length ? d.map((a) => { const p = a.profil || {}, c = comm(a), e = etatComm(a);
+          return "<tr><td><strong>" + esc(nomDe(p, a.email)) + "</strong><br>" + badgeStatut(p.statut) + '</td><td class="tiny">' + esc(p.email_connexion || a.email || "") + "<br>" + esc(p.telephone || "—") + '</td><td class="tiny">' + esc(valSeg(a, "cd") || "—") + " · " + esc(valSeg(a, "ligue") || "—") + "</td><td>" + (e === "abonne" ? badge("abonné", "green") : e === "oppose" ? badge("opposé", "red") : badge("pas informé", "orange")) + "</td><td>" + (c.whatsapp === true && waNum(p.telephone) ? badge("oui", "green") : badge(p.telephone ? "non" : "sans n°", "")) + '</td><td class="tiny mut">' + (c.date ? fmt(c.date) + "<br>" + esc(c.source || "") : "—") + "</td><td>" +
+            (e === "abonne" || c.whatsapp === true ? '<button class="btn sm" data-dret="' + a.id + '">Retirer</button>' : "") + (e !== "abonne" ? ' <button class="btn sm" data-drein="' + a.id + '">Réinscrire (sur demande)</button>' : "") + "</td></tr>"; }).join("") : '<tr><td colspan="7" class="vide">Aucun compte</td></tr>') + "</tbody></table></div>" +
+        '<p class="mut tiny">Pas encore informés : comptes créés avant le choix « Je ne souhaite pas les recevoir » ; le choix leur est demandé à la prochaine connexion. Réinscrire n\'est permis qu\'à la demande de l\'arbitre (motif journalisé).</p>';
+      z.querySelectorAll("[data-etat]").forEach((t) => t.addEventListener("click", () => { diff.etat = diff.etat === t.dataset.etat ? "" : t.dataset.etat; rendDiff(); }));
+      const q = z.querySelector("#dfQ"); q.addEventListener("input", () => { diff.q = q.value.trim().toLowerCase(); const pos = q.selectionStart; rendDiff(); const q2 = $("dfQ"); q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {} });
+      z.querySelector("#dfCd").addEventListener("change", (e) => { diff.cd = e.target.value; rendDiff(); });
+      z.querySelector("#dfTous").addEventListener("click", () => { diff.q = ""; diff.etat = ""; diff.cd = ""; rendDiff(); });
+      z.querySelector("#dfCsv").addEventListener("click", () => {
+        const cel = (v) => { v = String(v == null ? "" : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+        const lignes = [["Prénom", "Nom", "E-mail", "Téléphone", "Statut", "Comité", "Ligue", "Niveau", "Offres", "WhatsApp", "Choix le", "Source"]].concat(d.map((a) => { const p = a.profil || {}, c = comm(a); return [p.prenom, p.nom_ffbb, p.email_connexion || a.email, p.telephone, p.statut, valSeg(a, "cd"), valSeg(a, "ligue"), p.niveau, etatComm(a), c.whatsapp === true ? "oui" : "non", c.date ? fmt(c.date) : "", c.source || ""]; }));
+        const blob = new Blob(["\ufeff" + lignes.map((r) => r.map(cel).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+        const lien = document.createElement("a"); lien.href = URL.createObjectURL(blob); lien.download = "referee-tracker-diffusion-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(lien); lien.click(); setTimeout(() => { URL.revokeObjectURL(lien.href); lien.remove(); }, 500); });
+      z.querySelectorAll("[data-dret]").forEach((b) => b.addEventListener("click", async () => { const a = l.find((x) => x.id === b.dataset.dret);
+        if (!(await confirmer("Retirer de la liste", "Retirer <strong>" + esc(nomDe(a.profil, a.email)) + "</strong> des offres (e-mail et WhatsApp) ? Les messages de service continuent.", "Retirer", true))) return;
+        try { const j = await admin("communications.retirer", { user_id: a.id, canal: "tout" }); a.profil.communications = j.communications; toast("Retiré de la liste", "ok"); rendDiff(); majCompte(); } catch (e) { toast(e.message, "err"); } }));
+      z.querySelectorAll("[data-drein]").forEach((b) => b.addEventListener("click", async () => { const a = l.find((x) => x.id === b.dataset.drein);
+        const motif = await saisir("Réinscrire à la demande de l'arbitre", "Uniquement si <strong>" + esc(nomDe(a.profil, a.email)) + "</strong> l'a demandé. Indique comment et quand (journalisé).", "Ex. : demande par e-mail du 09/11", (v) => v.length < 5 ? "Motif obligatoire" : null, "Réinscrire");
+        if (!motif) return;
+        try { const j = await admin("communications.reinscrire", { user_id: a.id, canal: (a.profil || {}).telephone ? "tout" : "offres", motif }); a.profil.communications = j.communications; toast("Réinscrit aux offres", "ok"); rendDiff(); majCompte(); } catch (e) { toast(e.message, "err"); } }));
+    };
+    setTimeout(rendDiff, 0);
     $("msModele").addEventListener("change", (e) => { const m = MODELES_MSG[Number(e.target.value)]; if (m && m[0] && Number(e.target.value)) { $("msSujet").value = m[0]; $("msTxt").value = m[1]; } });
     const apercu = () => { const sujet = $("msSujet").value.trim() || "Sujet", texte = $("msTxt").value.trim() || "…";
       $("msPrev").innerHTML = '<div class="mp-head">REFEREE <b>TRACKER</b></div><div class="mp-body"><h3>' + esc(sujet) + "</h3><p>Bonjour Prénom,</p>" + texte.split(/\n{2,}/).map((x) => "<p>" + esc(x).replace(/\n/g, "<br>") + "</p>").join("") + '<span class="mp-btn">Ouvrir l\'application</span><small>Message de l\'équipe Referee Tracker · une question ? contact@referee-tracker.fr</small></div>'; };
@@ -657,7 +698,12 @@
     const destinataires = () => { const c = $("msCible").value, promo = $("msType").value === "promo";
       let d = c === "tous" ? l : c === "actifs" ? l.filter((a) => (a.profil || {}).statut === "actif") : l.filter((a) => a.id === c);
       if (promo) d = d.filter((a) => comm(a).offres === true);
+      const cd = $("msCd").value, lg = $("msLg").value, nv = $("msNiv").value;
+      if (cd) d = d.filter((a) => valSeg(a, "cd") === cd); if (lg) d = d.filter((a) => valSeg(a, "ligue") === lg); if (nv) d = d.filter((a) => valSeg(a, "niveau") === nv);
       return d; };
+    const filtres = () => { const o = {}; if ($("msCd").value) o.cd = [$("msCd").value]; if ($("msLg").value) o.ligue = [$("msLg").value]; if ($("msNiv").value) o.niveau = [$("msNiv").value]; return o; };
+    const majCompte = () => { const d = destinataires(); $("msCompte").textContent = d.length + " destinataire(s) : " + d.slice(0, 12).map((a) => (a.profil || {}).prenom || a.email).join(", ") + (d.length > 12 ? "…" : ""); };
+    ["msCible", "msType", "msCd", "msLg", "msNiv"].forEach((id) => $(id).addEventListener("change", majCompte)); setTimeout(majCompte, 0);
     const majWa = () => { const z = $("msWa"), wa = $("msCanal").value === "wa"; z.hidden = !wa; $("msEnv").hidden = wa; if (!wa) return;
       const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(); let envoyes = {}; try { envoyes = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); } catch (e) {}
       const d = destinataires(), ok = d.filter((a) => comm(a).whatsapp === true && waNum((a.profil || {}).telephone)), exclus = d.length - ok.length;
@@ -665,14 +711,21 @@
         (ok.length ? ok.map((a) => { const p = a.profil || {}, k = a.id + "|" + sujet; const msg = "Bonjour " + (p.prenom || "") + ",\n\n" + (sujet ? "*" + sujet + "*\n\n" : "") + texte + ($("msType").value === "promo" ? "\n\n(Réponds STOP pour ne plus recevoir ces messages.)" : "") + "\n\n— Referee Tracker";
           return '<div class="wa-l"><strong>' + esc(nomDe(p, a.email)) + '</strong><span class="mut tiny">' + esc(p.telephone || "") + '</span><span class="sp"></span>' + (envoyes[k] ? badge("ouvert", "green") : "") + '<a class="btn sm wa-btn" target="_blank" rel="noopener" data-k="' + esc(k) + '" href="' + esc(waLien(p.telephone, msg)) + '">WhatsApp</a></div>'; }).join("") : '<p class="vide">Aucun destinataire WhatsApp.</p>');
       z.querySelectorAll(".wa-btn").forEach((b) => b.addEventListener("click", () => { try { const e = JSON.parse(localStorage.getItem("rt-wa-envoyes") || "{}"); e[b.dataset.k] = Date.now(); localStorage.setItem("rt-wa-envoyes", JSON.stringify(e)); } catch (x) {} setTimeout(majWa, 300); })); };
-    ["msCible", "msType", "msCanal"].forEach((id) => $(id).addEventListener("change", majWa)); ["msSujet", "msTxt"].forEach((id) => $(id).addEventListener("input", () => { if ($("msCanal").value === "wa") majWa(); }));
+    ["msCible", "msType", "msCanal", "msCd", "msLg", "msNiv"].forEach((id) => $(id).addEventListener("change", majWa)); ["msSujet", "msTxt"].forEach((id) => $(id).addEventListener("input", () => { if ($("msCanal").value === "wa") majWa(); }));
     $("msEnv").addEventListener("click", async () => {
       const cible = $("msCible").value, sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim(), canal = $("msCanal").value, type = $("msType").value;
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
       const lib = $("msCible").selectedOptions[0].textContent;
-      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong>" + (type === "promo" ? " (sauf ceux qui se sont opposés aux offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
-      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type }); toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
+      if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong> (" + destinataires().length + " destinataire(s) après filtres)" + (type === "promo" ? " (sauf ceux qui se sont opposés aux offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
+      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type, filtres: filtres() }); try { localStorage.removeItem("rt-msg-brouillon"); } catch (e) {} toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
     });
+    // b80 — test à soi-même, brouillon (gardé dans ce navigateur)
+    $("msTest").addEventListener("click", async () => { const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim();
+      if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
+      try { const j = await admin("message.envoyer", { cible: $("msCible").value, sujet, texte, canal: "mail", type: $("msType").value, filtres: filtres(), test: true }); toast(j.ok ? "Test envoyé à " + j.a + " (" + j.destinataires_reels + " destinataire(s) réel(s))" : "Envoi du test impossible", j.ok ? "ok" : "err"); } catch (e) { toast(e.message, "err"); } });
+    $("msBrSave").addEventListener("click", () => { try { localStorage.setItem("rt-msg-brouillon", JSON.stringify({ sujet: $("msSujet").value, texte: $("msTxt").value, type: $("msType").value, canal: $("msCanal").value, cd: $("msCd").value, lg: $("msLg").value, nv: $("msNiv").value, le: Date.now() })); toast("Brouillon enregistré (dans ce navigateur)", "ok"); } catch (e) { toast("Impossible d'enregistrer", "err"); } });
+    $("msBrLoad").addEventListener("click", () => { let b = null; try { b = JSON.parse(localStorage.getItem("rt-msg-brouillon") || "null"); } catch (e) {} if (!b) return toast("Aucun brouillon", "err");
+      $("msSujet").value = b.sujet || ""; $("msTxt").value = b.texte || ""; $("msType").value = b.type || "service"; $("msCanal").value = b.canal || "les2"; $("msCd").value = b.cd || ""; $("msLg").value = b.lg || ""; $("msNiv").value = b.nv || ""; majCompte(); apercu(); toast("Brouillon repris", "ok"); });
     $("msHist").addEventListener("click", async () => {
       $("msHistZ").innerHTML = '<p class="mut">Chargement…</p>';
       try { const j = await admin("journal.liste", { page: 0, filtre_action: "message.envoyer" }); const d = j.data || [];

@@ -303,8 +303,23 @@ function setupMoreMenu_() {
 // b70 — Rapports devient une page à part entière (barre gauche PC, menu « Plus » téléphone).
 const MON_ESPACE_ = [["elicence", "e-Licence"], ["procedures", "Procédures"], ["contacts", "Contacts"]];
 const ONGLETS_MON_ESPACE_ = ["elicence", "contacts"];
+/* b80 — fonctions activées par l'admin (profil.fonctions, sinon config pub.fonctions_defaut, sinon activé). */
+window.RT_FONCTIONS = window.RT_FONCTIONS || {};
+function fonctionActive_(k) { const v = window.RT_FONCTIONS[k]; return v !== false; }
+function appliquerFonctions_() {
+  const prog = document.querySelectorAll('[data-tab="progression"]'); prog.forEach(b => { b.hidden = !fonctionActive_("evaluations"); });
+  if (!fonctionActive_("evaluations") && document.querySelector('.tab.active[data-tab="progression"]')) setActiveTab("accueil");
+}
+function chargerFonctions_() {
+  if (!SB.actif) return;
+  Promise.all([SB.get("profils?select=fonctions&limit=1").catch(() => []), SB.get("config_globale?select=valeur&cle=eq.pub.fonctions_defaut&limit=1").catch(() => [])]).then(([p, d]) => {
+    const def = (d && d[0] && d[0].valeur) || {}, perso = (p && p[0] && p[0].fonctions) || {}, out = {};
+    ["evaluations", "elicence", "classements", "ia"].forEach(k => { out[k] = typeof perso[k] === "boolean" ? perso[k] : (typeof def[k] === "boolean" ? def[k] : true); });
+    window.RT_FONCTIONS = out; appliquerFonctions_();
+  });
+}
 function monEspaceBar_(actif) {
-  return `<h2 class="section-title">Mon espace</h2><div class="tabs-mini me-tabs">${MON_ESPACE_.map(([k, l]) =>
+  return `<h2 class="section-title">Mon espace</h2><div class="tabs-mini me-tabs">${MON_ESPACE_.filter(([k]) => k !== "elicence" || fonctionActive_("elicence")).map(([k, l]) =>
     `<button type="button" class="tabs-mini-btn${k === actif ? " active" : ""}" data-me="${k}">${l}</button>`).join("")}</div>`;
 }
 document.addEventListener("click", e => {
@@ -441,7 +456,7 @@ const RECH = {
 };
 function setActiveTab(tab) {
   if (tab === "monespace") {
-    const d = (state.meLast && state.meLast !== "rapports") ? state.meLast : "elicence";
+    const d = (state.meLast && state.meLast !== "rapports" && (state.meLast !== "elicence" || fonctionActive_("elicence"))) ? state.meLast : (fonctionActive_("elicence") ? "elicence" : "contacts");
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
@@ -518,6 +533,7 @@ function loadData() {
       const _plus = (fn, nom, ms) => setTimeout(() => { try { fn(); } catch (e) { console.warn(nom + " indisponible :", e); } }, ms);
       _plus(loadStats, "Stats serveur", 300);
       _plus(loadPrixCarburant, "Prix carburant", 1200);
+      try { chargerFonctions_(); } catch (e) {}   // b80
       if (CLASSEMENTS_ACTIFS_) { _plus(loadClassements, "Classements", 2200); _plus(loadEnjeux, "Enjeux", 3500); _plus(chargerResultatsFfbb_, "Résultats (classements)", 1600); }   // b70 : désactivé (source non autorisée, données périmées)
       // b19 : page Indispos supprimée (pas de connexion FBI possible).
     })
@@ -596,6 +612,7 @@ function loadPrixCarburant() {
    ici ne doit jamais bloquer l'affichage des matchs : la carte s'affiche
    simplement sans le bandeau enjeu. */
 function loadClassements() {
+  if (!fonctionActive_("classements")) return;   // b80 — désactivé par l'admin
   jsonp("classements")
     .then(res => {
       const avant = JSON.stringify(state.classements || []);   // b67 : re-rendu seulement si le contenu change

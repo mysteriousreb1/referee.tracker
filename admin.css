@@ -345,3 +345,11 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .wa-l { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
 .wa-l:first-of-type { border-top: 0; }
 .wa-l .sp { flex: 1; }
+
+/* b80 — liste de diffusion */
+.tiles.mini { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 6px 0 4px; }
+.tiles.mini .tile { padding: 10px 12px; }
+.tiles.mini .tile b { font-size: 22px; }
+.tile.on { outline: 2px solid var(--gold, #F5B400); outline-offset: -2px; }
+.seg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 700px) { .tiles.mini, .seg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
