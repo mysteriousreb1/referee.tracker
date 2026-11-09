@@ -2656,7 +2656,8 @@ function renderActions(row) {
      disponible 3 jours autour du match tant que rien n'a été payé. */
   const paie = cleanText(get(row, "Statut paiement"));
   const t = row._date ? row._date.getTime() : 0;
-  if (t && Math.abs(t - Date.now()) < 3 * 86400000 && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
+  // b88g — 5x5 comme 3x3 : bouton disponible pour tout match à venir (et jusqu'à 3 jours après), tant que rien n'est payé.
+  if (t && t > Date.now() - 3 * 86400000 && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
     links.push(`<button type="button" class="action-link secondary alerte-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé (dernière minute)</button>`);
   }
   // b20 — 3x3 : supprimer une mission créée par erreur (passe en « Annulé », agenda nettoyé).
@@ -6069,7 +6070,7 @@ document.addEventListener("click", async e => {
   if (!b) return;
   e.preventDefault(); e.stopPropagation();
   const uid = b.getAttribute("data-annuler-mission");
-  if (!uid || !confirm("Marquer ce match comme annulé à la dernière minute ?\nIl sort des revenus, des km et des paiements attendus. Si une indemnité de déplacement t'est quand même due, laisse-le et note-le dans le Sheet.")) return;
+  if (!uid || !confirm("Marquer ce match comme annulé ?\nIl sort des revenus, des km et des paiements attendus, et son événement d'agenda est supprimé. Si une indemnité de déplacement t'est quand même due (annulation sur place), ne l'annule pas : signale-le au répartiteur.")) return;
   b.disabled = true;
   try {
     const res = await jsonp("mission.annuler", { uid });
