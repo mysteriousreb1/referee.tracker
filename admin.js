@@ -232,7 +232,8 @@
       tuile(t.arbitres_actifs ?? 0, "Arbitres actifs", "green", (t.comptes ?? 0) + " comptes", "#arbitres") + tuile(t.inscrits_attente ?? 0, "Inscrits en attente", "orange", "", "#inscriptions") +
       tuile(t.moteurs_prets ?? 0, "Moteurs prêts", "gold", "en attente de 1re connexion", "#arbitres") + tuile(t.suspendus ?? 0, "Suspendus", "red", "", "#arbitres") +
       tuile(t.matchs_total ?? 0, "Matchs total", "", (t.matchs_30j ?? 0) + " sur 30 j") + tuile(t.convocations_7j ?? 0, "Convocations 7 j", "", "reçues toutes instances") +
-      tuile(t.connexions_7j ?? 0, "Connexions 7 j", "green", "comptes vus") + tuile(t.actifs_7j ?? 0, "Utilisateurs actifs 7 j", "green", (t.minutes_7j ?? 0) >= 60 ? Math.round((t.minutes_7j || 0) / 60) + " h d'utilisation cumulée" : (t.minutes_7j ?? 0) + " min cumulées") + tuile(t.tickets_ouverts ?? 0, "Tickets ouverts", t.tickets_ouverts ? "red" : "gray", "", "#tickets") +
+      tuile(t.connexions_7j ?? 0, "Connexions 7 j", "green", "comptes vus") + tuile(t.actifs_7j ?? 0, "Utilisateurs actifs 7 j", "green", (t.minutes_7j ?? 0) >= 60 ? Math.round((t.minutes_7j || 0) / 60) + " h d'utilisation cumulée" : (t.minutes_7j ?? 0) + " min cumulées") +
+      tuile(minutesTxt(t.minutes_30j || 0), "Temps d'écran 30 j", "", "téléphone " + minutesTxt(t.minutes_tel_30j || 0) + " · ordinateur " + minutesTxt(t.minutes_pc_30j || 0)) + tuile(t.tickets_ouverts ?? 0, "Tickets ouverts", t.tickets_ouverts ? "red" : "gray", "", "#tickets") +
       tuile(t.push_actifs ?? 0, "Appareils push", "", "actifs (< 5 échecs)", "#sante") + tuile(t.alertes_non_traitees ?? 0, "Alertes non traitées", t.alertes_non_traitees ? "orange" : "gray", "warnings hors INFO") +
       "</div>" +
       '<div class="grid-3">' +
@@ -249,6 +250,8 @@
       { t: "Dernière synchro", k: (r) => r.derniere_synchro || "", r: (r) => '<span class="' + (rouge(r) ? "err" : "") + '">' + fmt(r.derniere_synchro) + ' <span class="tiny">' + depuis(r.derniere_synchro) + "</span></span>" },
       { t: "Convoc. 7 j / 30 j", k: (r) => (r.convocations || {}).j30 || 0, cl: "num right", r: (r) => ((r.convocations || {}).j7 || 0) + " / " + ((r.convocations || {}).j30 || 0) },
       { t: "Utilisation 7 j", k: (r) => (r.usage || {}).minutes_7j || 0, cl: "num right", r: (r) => minutesTxt((r.usage || {}).minutes_7j) + ' <span class="mut tiny">' + ((r.usage || {}).jours_actifs_30j || 0) + " j actifs / 30</span>" },
+      // b84 — répartition de l'écran : téléphone / ordinateur, et durée moyenne par jour d'utilisation
+      { t: "Téléphone / PC 30 j", k: (r) => (r.usage || {}).minutes_30j || 0, cl: "num right", r: (r) => { const u = r.usage || {}; const tot = (u.tel_30j || 0) + (u.pc_30j || 0) + (u.tab_30j || 0); const pct = tot ? Math.round((u.tel_30j || 0) * 100 / tot) : 0; return tot ? "Tél. " + minutesTxt(u.tel_30j) + " · PC " + minutesTxt(u.pc_30j) + (u.tab_30j ? " · tab. " + minutesTxt(u.tab_30j) : "") + '<br><span class="mut tiny">' + pct + " % sur téléphone · " + minutesTxt(u.moy_jour_actif) + " / jour actif</span>" : '<span class="mut">—</span>'; } },
       { t: "Dernière activité", k: (r) => (r.usage || {}).derniere_activite || "", cl: "nw", r: (r) => esc(depuis((r.usage || {}).derniere_activite)) },
     ], sante, { recherche: rechercheCourante, tri: "Dernière synchro", sens: 1, clic: (r) => (location.hash = "#arbitres/" + r.user_id) });
   };
@@ -687,6 +690,7 @@
       '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn" id="msTest">Envoyer un test à moi</button><button class="btn" id="msBrSave">Enregistrer le brouillon</button><button class="btn" id="msBrLoad">Reprendre le brouillon</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
+      '<div class="card" id="bandCard"></div>' +
       '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
     // ---------- b80 : liste de diffusion (qui reçoit quoi, opposition, réinscription sur demande, export) ----------
@@ -723,6 +727,24 @@
         try { const j = await admin("communications.reinscrire", { user_id: a.id, canal: (a.profil || {}).telephone ? "tout" : "offres", motif }); a.profil.communications = j.communications; toast("Réinscrit aux offres", "ok"); rendDiff(); majCompte(); } catch (e) { toast(e.message, "err"); } }));
     };
     setTimeout(rendDiff, 0);
+    // ---------- b84 : bandeau affiché en haut de l'app de tous les arbitres (maintenance, sauvegarde, nouveauté) ----------
+    const MODELES_BANDEAU = [["", "— Modèle —", "info"], ["maint", "Maintenance prévue ce soir de 22 h à 23 h : l'app peut être indisponible quelques minutes.", "alerte"], ["sauv", "Sauvegarde en cours : tes données sont protégées, certaines mises à jour peuvent prendre quelques minutes de plus.", "info"], ["nouv", "Nouvelle version disponible : recharge l'app pour en profiter.", "succes"], ["inc", "Incident en cours sur la lecture des convocations : nous corrigeons, rien n'est perdu.", "alerte"]];
+    const rendBandeau = async () => {
+      const z = $("bandCard"); if (!z) return;
+      let v = {}; try { if (!cache.config) cache.config = await admin("config.get"); v = ((cache.config.data || []).find((r) => r.cle === "pub.textes") || {}).valeur || {}; } catch (e) {}
+      const actif = String(v.bandeau || "").trim(), dt = (x) => (x ? String(x).slice(0, 16) : "");
+      z.innerHTML = '<div class="card-head"><h2>Bandeau dans l\'app</h2><span class="sub">' + (actif ? "en ligne : « " + esc(actif.slice(0, 80)) + (actif.length > 80 ? "…" : "") + " »" : "aucun bandeau affiché") + "</span></div>" +
+        '<div class="form-grid"><label class="f">Modèle<select id="bdMod">' + MODELES_BANDEAU.map((m, i) => '<option value="' + i + '">' + esc(m[0] ? m[1].slice(0, 60) + "…" : m[1]) + "</option>").join("") + '</select></label>' +
+        '<label class="f">Style<select id="bdSty">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+        '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
+        '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="bdDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="bdFin" value="' + esc(dt(v.bandeau_fin)) + '"></label></div>' +
+        '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier le bandeau</button><button class="btn" id="bdOff">Retirer le bandeau</button><span class="mut tiny">Visible à la prochaine ouverture de l\'app (ou rechargement). Le mode maintenance complet se règle dans Configuration.</span></div>';
+      z.querySelector("#bdMod").addEventListener("change", (e) => { const m = MODELES_BANDEAU[Number(e.target.value)]; if (m && m[0]) { z.querySelector("#bdTxt").value = m[1]; z.querySelector("#bdSty").value = m[2]; } });
+      const ecrire = async (nv) => { try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, v, nv) }); cache.config = null; toast(nv.bandeau ? "Bandeau publié" : "Bandeau retiré", "ok"); rendBandeau(); } catch (e) { toast(e.message, "err"); } };
+      z.querySelector("#bdPub").addEventListener("click", () => { const t = z.querySelector("#bdTxt").value.trim(); if (t.length < 5) return toast("Texte trop court", "err"); ecrire({ bandeau: t, bandeau_style: z.querySelector("#bdSty").value, bandeau_debut: z.querySelector("#bdDeb").value || "", bandeau_fin: z.querySelector("#bdFin").value || "" }); });
+      z.querySelector("#bdOff").addEventListener("click", () => ecrire({ bandeau: "", bandeau_debut: "", bandeau_fin: "" }));
+    };
+    setTimeout(rendBandeau, 0);
     $("msModele").addEventListener("change", (e) => { const m = MODELES_MSG[Number(e.target.value)]; if (m && m[0] && Number(e.target.value)) { $("msSujet").value = m[0]; $("msTxt").value = m[1]; } });
     const apercu = () => { const sujet = $("msSujet").value.trim() || "Sujet", texte = $("msTxt").value.trim() || "…";
       $("msPrev").innerHTML = '<div class="mp-head">REFEREE <b>TRACKER</b></div><div class="mp-body"><h3>' + esc(sujet) + "</h3><p>Bonjour Prénom,</p>" + texte.split(/\n{2,}/).map((x) => "<p>" + esc(x).replace(/\n/g, "<br>") + "</p>").join("") + '<span class="mp-btn">Ouvrir l\'application</span><small>Message de l\'équipe Referee Tracker · une question ? contact@referee-tracker.fr</small></div>'; };

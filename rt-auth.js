@@ -1581,7 +1581,7 @@ const PUSH = {
   async etat() {
     if (!this.supporte()) return { ok: false, texte: this.standaloneIos() ? "Ajoute d'abord l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil), puis reviens ici." : "Navigateur sans notifications push." };
     if (this.standaloneIos()) return { ok: false, texte: "Sur iPhone, ouvre l'app depuis l'écran d'accueil pour activer les notifications." };
-    try { const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription(); return { ok: !!sub, texte: sub ? "Activées sur cet appareil." : (Notification.permission === "denied" ? "Refusées dans les réglages du téléphone (Réglages → Notifications → Referee Tracker)." : "Désactivées.") }; } catch (e) { return { ok: false, texte: "" }; }
+    try { const r = await navigator.serviceWorker.getRegistration("./"); const sub = r && await r.pushManager.getSubscription(); return { ok: !!sub, texte: sub ? "Activées sur cet appareil." : (Notification.permission === "denied" ? (/iphone|ipad|ipod/i.test(navigator.userAgent) ? "Bloquées pour cette fenêtre. Si elles sont autorisées dans Réglages → Notifications → Referee Tracker : ferme complètement l'app (balaye-la vers le haut), rouvre-la depuis son icône de l'écran d'accueil, puis appuie sur Activer. Dans Safari (onglet), les notifications ne fonctionnent pas." : "Refusées dans les réglages du navigateur (icône cadenas → Notifications → Autoriser).") : "Désactivées : appuie sur Activer.") }; } catch (e) { return { ok: false, texte: "" }; }
   },
   async _enregistrer(j, dejaRecree) {
     // b57 (audit F08) — un succès n'est annoncé que si le serveur a bien rattaché l'abonnement à CE compte.
@@ -1605,7 +1605,8 @@ const PUSH = {
   },
   async activer() {
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") throw new Error("Permission refusée");
+    // b84 — iPhone : la permission peut être accordée dans Réglages mais lue « denied » par une ancienne fenêtre ; on tente quand même l'abonnement.
+    if (perm !== "granted" && !/iphone|ipad|ipod/i.test(navigator.userAgent)) throw new Error("Permission refusée");
     const r = await this.reg(); await navigator.serviceWorker.ready;
     const sub = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64(PUSH_VAPID_PUBLIC) });
     await this._enregistrer(sub.toJSON());
@@ -1887,7 +1888,11 @@ const ONBOARD = {
   N_ETAPES: 7,   // b77 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 historique · 6 notifications
   COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
   LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
-  NIVEAUX: ["Stagiaire départemental", "Départemental", "Stagiaire régional", "Régional 3", "Régional 2 – JPR Rouge", "Régional 1", "Championnat de France", "Haut niveau / Fédéral"],
+  // b84 — liste complétée (retour de Clément) ; les anciennes valeurs restent valables pour les profils existants.
+  NIVEAUX: ["École d'arbitrage / arbitre club", "Stagiaire départemental", "Départemental 3", "Départemental 2", "Départemental 1", "Départemental",
+    "Stagiaire régional", "Régional 3", "Régional 2", "Régional 2 – JPR Rouge", "Régional 1", "Jeune Potentiel Régional (JPR)",
+    "Championnat de France – Jeunes", "Championnat de France – NM3 / NF3", "Championnat de France – NM2 / NF2", "Championnat de France",
+    "Haut niveau – HN3 (NM1 / LF2)", "Haut niveau – HN2 / HN1 (Pro B / LFB / Betclic Élite)", "Haut niveau / Fédéral", "International (FIBA)", "Autre"],
   demo: false,
   /* b74 — mode démo : l'assistant de 1re connexion rejoué à blanc, sans rien lire ni écrire sur le compte. */
   ouvrirDemo() {

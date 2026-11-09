@@ -466,7 +466,7 @@ const RT_STATS = (function () {
   const parMois = aggregate_(filtered, e => monthKey_(e.date));
   parMois.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
   const NIVEAUX_VALIDES_ = ["Amical", "Départemental", "Régional", "Championnat de France", "3x3"];
-  const parNiveau = aggregate_(filtered, e => NIVEAUX_VALIDES_.includes(e.niveau) ? e.niveau : (e.niveau ? "Autre" : "Inconnu"));
+  const parNiveau = aggregate_(filtered, e => { const n = e.niveau || (e.format === "3x3" ? "3x3" : ""); return NIVEAUX_VALIDES_.includes(n) ? n : (n ? "Autre" : "Non renseigné"); });   // b84 : 3x3 sans niveau administratif → « 3x3 »
   const parClub = aggregate_(five, e => e.recevant);
   const parSalle = aggregate_(five, e => e.salle); // 5x5 seulement (salles réelles)
   const parVille = aggregate_(filtered, e => e.ville);

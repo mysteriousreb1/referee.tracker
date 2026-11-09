@@ -1725,14 +1725,38 @@ function renderAccueil() {
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
+    <div id="accEvals"></div>
     <div id="accHisto"></div>
   `;
+  try { accEvals_(root.querySelector("#accEvals")); } catch (e) { /* carte facultative */ }
   try { accHistorique_(root.querySelector("#accHisto")); } catch (e) { /* carte facultative */ }
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
 }
 
 
+/* b84 — synthèse des observations sur l'accueil (lisible au téléphone) : dernière note, moyenne de la saison,
+   tendance, axes de travail de la dernière fiche. Détail complet : page Progression. */
+function accEvals_(z) {
+  if (!z || (typeof fonctionActive_ === "function" && !fonctionActive_("evaluations"))) return;
+  if (state.evaluations == null) { if (!state._evaluationsEnCours && !state._evaluationsErreur) { loadEvaluations(); setTimeout(() => accEvals_(document.getElementById("accEvals")), 2500); } return; }
+  const ev = (state.evaluations || []).filter(e => Number(e.note20) > 0).map(e => ({ e, d: parseFrDate(e.dateEval || e.dateMatch) })).filter(x => x.d).sort((a, b) => b.d - a.d);
+  if (!ev.length) { z.innerHTML = ""; return; }
+  const der = ev[0].e, saison = getCurrentSeason();
+  const saisonDe_ = d => { const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return y + "/" + (y + 1); };
+  const sais = ev.filter(x => saisonDe_(x.d) === saison);
+  const moy = sais.length ? sais.reduce((t, x) => t + Number(x.e.note20), 0) / sais.length : null;
+  const prec = ev[1] ? Number(ev[1].e.note20) : null, delta = prec !== null ? Number(der.note20) - prec : null;
+  const axes = [der.axe1, der.axe2].filter(Boolean).map(a => String(a).replace(/^\[[^\]]*\]\s*/, "")).slice(0, 2);
+  z.innerHTML = `<section class="acc-bloc acc-evals"><h2 class="section-title">Mes observations <span class="count">${ev.length}</span></h2>
+    <div class="acc-ev-grid">
+      <div class="acc-ev-k"><span class="acc-ev-val">${Number(der.note20).toFixed(1).replace(".", ",")}<small>/20</small></span><span class="acc-ev-lbl">Dernière note${delta !== null && delta !== 0 ? ` <b class="${delta > 0 ? "acc-ev-up" : "acc-ev-down"}">${delta > 0 ? "▲ +" : "▼ "}${delta.toFixed(1).replace(".", ",")}</b>` : ""}</span><span class="acc-ev-sub">${escapeHtml(der.championnat || "")} · ${escapeHtml(formatDateShort(ev[0].d))}</span></div>
+      <div class="acc-ev-k"><span class="acc-ev-val">${moy !== null ? moy.toFixed(1).replace(".", ",") + "<small>/20</small>" : "—"}</span><span class="acc-ev-lbl">Moyenne saison</span><span class="acc-ev-sub">${sais.length} fiche(s)</span></div>
+    </div>
+    ${axes.length ? `<div class="acc-ev-axes"><span class="acc-ev-lbl">À travailler</span><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul></div>` : ""}
+    <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
+  const b = z.querySelector(".acc-ev-go"); if (b) b.addEventListener("click", () => setActiveTab("progression"));
+}
 /* b77 — « Complète ton historique » : sans historique, pas de progression ni de comparaison.
    4 points, chacun avec son action directe ; la carte disparaît quand tout est fait ou si on la masque. */
 const HISTO_CLE_ = "rt-histo-masque";
@@ -7270,6 +7294,8 @@ function estInfoHtml_(e) {
     <p>Hôtels : nuits saisies + nuits conseillées à venir, au budget maximum réglé.</p>`;
 }
 
+/* b84 — un écart négatif = payé AVANT la date prévue : on l'écrit en clair au lieu de « -8 j ». */
+function ecartJours_(j) { j = Number(j); if (!isFinite(j)) return "—"; if (j === 0) return "à la date prévue"; return j < 0 ? Math.abs(j) + " j d'avance" : j + " j de retard"; }
 function renderStatsAvancees(stats) {
   const cc = stats.cout_complet || {};
   const emp = stats.empreinte || {};
@@ -7291,15 +7317,15 @@ function renderStatsAvancees(stats) {
     <h2 class="section-title">Délais de paiement réels</h2>
     ${dp.par_type && dp.par_type.length ? `
       <div class="kpi-grid">
-        ${kpi("Délai moyen constaté", dp.delai_moyen_jours !== null ? dp.delai_moyen_jours + " j" : "—", "réception − date prévue (négatif = payé en avance)")}
+        ${kpi("Écart avec la date prévue", dp.delai_moyen_jours === null ? "—" : ecartJours_(dp.delai_moyen_jours), "en moyenne, par rapport à l'échéance du payeur")}
         ${kpi("Paiements avec délai connu", dp.nb_avec_delai_connu)}
       </div>
       <div class="table-card"><div class="table-wrap"><table>
-        <thead><tr><th>Type de paiement</th><th class="num">Paiements</th><th class="num">Délai moyen</th><th class="num">En retard</th></tr></thead>
+        <thead><tr><th>Type de paiement</th><th class="num">Paiements</th><th class="num">Écart moyen</th><th class="num">En retard</th></tr></thead>
         <tbody>${dp.par_type.map(t => `<tr>
           <td>${escapeHtml(t.label)}</td>
           <td class="num">${t.nb_paiements}</td>
-          <td class="num">${t.delai_moyen_jours >= 0 ? t.delai_moyen_jours + " j" : t.delai_moyen_jours + " j (anticipé)"}</td>
+          <td class="num">${ecartJours_(t.delai_moyen_jours)}</td>
           <td class="num">${t.nb_en_retard}</td>
         </tr>`).join("")}</tbody>
       </table></div></div>
