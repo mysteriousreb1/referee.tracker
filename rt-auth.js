@@ -2184,9 +2184,11 @@ async function startApp() {
   // b74 — bandeau global et mode maintenance réglés par l'admin (config_globale pub.textes, lisible par tout connecté).
   SB.get("config_globale?select=valeur&cle=eq.pub.textes&limit=1").then(l => {
     const v = (l && l[0] && l[0].valeur) || {};
-    const b = String(v.bandeau || "").trim().slice(0, 300);
-    if (b && !document.getElementById("rtBandeauGlobal")) { const d = document.createElement("div"); d.id = "rtBandeauGlobal"; d.className = "rt-bandeau-global"; d.setAttribute("role", "status"); d.textContent = b; const m = document.querySelector("main.content") || document.body; m.insertBefore(d, m.firstChild); }
-    if (v.maintenance && !document.getElementById("rtMaintenance")) { const d = document.createElement("div"); d.id = "rtMaintenance"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.innerHTML = '<div class="rt-consent-box"><h2>Maintenance en cours</h2><p>Referee Tracker est en cours de mise à jour. Tes données sont en sécurité : reviens dans quelques minutes.</p></div>'; document.body.appendChild(d); }
+    // b81 — bandeau programmé (début / fin, heure de Paris saisie dans l'admin) et style.
+    const maint = Date.now(), deb = v.bandeau_debut ? Date.parse(v.bandeau_debut) : 0, fin = v.bandeau_fin ? Date.parse(v.bandeau_fin) : 0;
+    const b = (deb && maint < deb) || (fin && maint > fin) ? "" : String(v.bandeau || "").trim().slice(0, 300);
+    if (b && !document.getElementById("rtBandeauGlobal")) { const d = document.createElement("div"); d.id = "rtBandeauGlobal"; d.className = "rt-bandeau-global rt-bandeau-" + (["succes", "alerte"].indexOf(v.bandeau_style) >= 0 ? v.bandeau_style : "info"); d.setAttribute("role", "status"); d.textContent = b; const m = document.querySelector("main.content") || document.body; m.insertBefore(d, m.firstChild); }
+    if (v.maintenance && !document.getElementById("rtMaintenance")) { const d = document.createElement("div"); d.id = "rtMaintenance"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.innerHTML = '<div class="rt-consent-box"><h2>Maintenance en cours</h2><p></p></div>'; d.querySelector("p").textContent = String(v.maintenance_texte || "").trim().slice(0, 300) || "Referee Tracker est en cours de mise à jour. Tes données sont en sécurité : reviens dans quelques minutes."; document.body.appendChild(d); }
   }).catch(() => {});
   jsonp("me")
     .then(res => {

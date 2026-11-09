@@ -4728,3 +4728,7 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 
 /* b79 — avertissement prix carburant manuel */
 .rt-help.rt-warn { color: #B45309; font-weight: 600; }
+/* b81 — styles du bandeau global */
+.rt-bandeau-global.rt-bandeau-info { background: rgba(37,99,235,.10); border-left-color: #2563EB; }
+.rt-bandeau-global.rt-bandeau-succes { background: rgba(22,163,74,.10); border-left-color: #16A34A; }
+.rt-bandeau-global.rt-bandeau-alerte { background: rgba(234,88,12,.12); border-left-color: #EA580C; }

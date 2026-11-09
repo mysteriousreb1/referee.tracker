@@ -501,7 +501,7 @@
         if (!cles.length) cles.push("cd67");
         if (!formulaire._cd || cles.indexOf(formulaire._cd) < 0) formulaire._cd = cles[0];
         const k = formulaire._cd, c = v[k] || {};
-        F.innerHTML = '<div class="row" style="align-items:flex-end;gap:8px;flex-wrap:wrap"><label class="f">Comité<select id="bCd">' + cles.map((x) => '<option value="' + esc(x) + '"' + (x === k ? " selected" : "") + ">" + esc(x.toUpperCase()) + "</option>").join("") + '</select></label><label class="f">Ajouter un comité<input id="bCdNew" placeholder="CD75" style="max-width:110px"></label><button class="btn sm" id="bCdAdd">+ Ajouter</button></div>' +
+        F.innerHTML = '<div class="form-grid">' + num("bKm", "Indemnité kilométrique nationale (€/km A/R) — appliquée aux arbitres qui ont gardé 0,40", v.indemnite_km ?? 0.4, "0.01") + "</div>" + '<div class="row" style="align-items:flex-end;gap:8px;flex-wrap:wrap"><label class="f">Comité<select id="bCd">' + cles.map((x) => '<option value="' + esc(x) + '"' + (x === k ? " selected" : "") + ">" + esc(x.toUpperCase()) + "</option>").join("") + '</select></label><label class="f">Ajouter un comité<input id="bCdNew" placeholder="CD75" style="max-width:110px"></label><button class="btn sm" id="bCdAdd">+ Ajouter</button></div>' +
           '<p class="mut tiny">Indemnité d\'un match départemental = part fixe ci-dessous + km A/R × 0,40 €. Une catégorie absente : on garde le montant écrit sur la convocation' + (k === "cd67" ? " (pour le CD67, la valeur du code)" : "") + '.</p>' +
           kv("bDe", "Officiel désigné (catégorie → €)", c.designe, "Catégorie") + kv("bQr", "Jeunes qualification région, code -5 (catégorie → €)", c.qr, "Catégorie") +
           kv("bIn", "Interdépartemental, code -7 (catégorie → €)", c.interdepartemental, "Catégorie") + kv("bAm", "Amicaux / tournois (Séniors, Jeunes → €)", c.amicaux, "Séniors ou Jeunes");
@@ -513,7 +513,7 @@
           bpBox.addEventListener("click", async (ev) => { const bt = ev.target.closest("[data-bpv],[data-bpr]"); if (!bt) return; const id = Number(bt.dataset.bpv || bt.dataset.bpr), statut = bt.dataset.bpv ? "valide" : "rejete";
             if (statut === "valide" && !confirm("Copier ce barème dans la configuration ?")) return;
             bt.disabled = true; try { await admin("bareme_propose.statut", { id, statut }); cache.bp = null; cache.config = null; cache.stats = null; toast(statut === "valide" ? "Barème validé et copié" : "Proposition refusée", "ok"); rendus.config(true); } catch (e) { bt.disabled = false; toast(e.message, "err"); } }); }, 0);
-        lireForm = () => Object.assign({}, v, { indemnite_km: v.indemnite_km ?? 0.4, [k]: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
+        lireForm = () => Object.assign({}, v, { indemnite_km: Math.min(2, Math.max(0, Number(F.querySelector("#bKm").value) || 0.4)), [k]: { designe: lireKv("bDe"), qr: lireKv("bQr"), interdepartemental: lireKv("bIn"), amicaux: lireKv("bAm") } });
         setTimeout(() => {
           const sel = F.querySelector("#bCd"); if (sel) sel.addEventListener("change", () => { const o = lireForm(); formulaire._cd = sel.value; formulaire(o); });
           const add = F.querySelector("#bCdAdd"); if (add) add.addEventListener("click", () => { const n = F.querySelector("#bCdNew").value.trim().toLowerCase(); if (!/^cd\d{2,3}[ab]?$/.test(n)) return toast("Format attendu : CD75, CD2A…", "err"); const o = lireForm(); o[n] = o[n] || { designe: {}, qr: {}, interdepartemental: {}, amicaux: {} }; formulaire._cd = n; formulaire(o); });
@@ -559,8 +559,14 @@
         F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";
         lireForm = () => ({ max: Number(F.querySelector("#btMax").value) || 0, ouvert: F.querySelector("#btOuv").checked });
       } else if (cfgCle === "pub.textes") {
-        F.innerHTML = '<label class="f">Message du bandeau global (vide = aucun)<textarea id="tBand" rows="3" style="font-family:inherit">' + esc(v.bandeau || "") + "</textarea></label><div class=\"row\" style=\"margin-top:8px\">" + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente)", v.maintenance) + "</div>";
-        lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), maintenance: F.querySelector("#tMaint").checked });
+        // b81 — bandeau programmable (début / fin, style) + écran de maintenance personnalisable.
+        const dt = (x) => (x ? String(x).slice(0, 16) : "");
+        F.innerHTML = '<label class="f">Message du bandeau (vide = aucun)<textarea id="tBand" rows="3" maxlength="300" style="font-family:inherit">' + esc(v.bandeau || "") + "</textarea></label>" +
+          '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="tDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="tFin" value="' + esc(dt(v.bandeau_fin)) + '"></label>' +
+          '<label class="f">Style<select id="tStyle">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+          '<div class="row" style="margin-top:8px">' + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente à tous, l'admin reste accessible)", v.maintenance) + "</div>" +
+          '<label class="f">Texte de l\'écran de maintenance (vide = texte standard)<textarea id="tMaintTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(v.maintenance_texte || "") + "</textarea></label>";
+        lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), bandeau_debut: F.querySelector("#tDeb").value || "", bandeau_fin: F.querySelector("#tFin").value || "", bandeau_style: F.querySelector("#tStyle").value, maintenance: F.querySelector("#tMaint").checked, maintenance_texte: F.querySelector("#tMaintTxt").value.trim() });
       } else { F.innerHTML = ""; lireForm = () => lireJson(); }
       F.querySelectorAll("button[data-add]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.add).insertAdjacentHTML("beforeend", '<div class="row"><input placeholder="Niveau"><input type="number" step="any" value="0" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>')));
       F.querySelectorAll("button[data-addp]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.addp).insertAdjacentHTML("beforeend", '<div class="row"><input type="date"><input type="date"><input type="date"><button class="btn sm" data-del>✕</button></div>')));
