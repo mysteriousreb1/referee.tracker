@@ -2656,8 +2656,8 @@ function renderActions(row) {
      disponible 3 jours autour du match tant que rien n'a été payé. */
   const paie = cleanText(get(row, "Statut paiement"));
   const t = row._date ? row._date.getTime() : 0;
-  // b88g — 5x5 comme 3x3 : bouton disponible pour tout match à venir (et jusqu'à 3 jours après), tant que rien n'est payé.
-  if (t && t > Date.now() - 3 * 86400000 && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
+  // b88i — 5x5 comme 3x3 : bouton disponible pour TOUT match (à venir ou passé), tant que rien n'est payé.
+  if (t && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
     links.push(`<button type="button" class="action-link secondary alerte-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé (dernière minute)</button>`);
   }
   // b20 — 3x3 : supprimer une mission créée par erreur (passe en « Annulé », agenda nettoyé).
