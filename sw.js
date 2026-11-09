@@ -3,7 +3,7 @@
    Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
 const VERSION = "2026-11-09-b88";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
 const CACHE = "rt-" + VERSION;
-const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION,
+const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION, "./rt-equipement.js?v=" + VERSION,
   "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,
   "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png",
   // b70 — polices et bibliothèques auto-hébergées (plus aucune requête tierce)
