@@ -375,3 +375,20 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 #sec-kpiapp .bars, #sec-kpiarb .bars { gap: 2px; }
 #sec-kpiapp .hbars, #sec-kpiarb .hbars { grid-template-columns: minmax(90px, 32%) 1fr max-content; }
 #sec-kpiapp .hbars .val, #sec-kpiarb .hbars .val { white-space: nowrap; }
+
+/* b88l — configuration visuelle */
+.cfa fieldset.cfa-bloc { grid-column: 1 / -1; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.cfa fieldset.cfa-bloc legend { font-weight: 700; padding: 0 6px; }
+.cfg-avance { margin-top: 12px; } .cfg-avance textarea { width: 100%; margin-top: 6px; }
+.fiche-id .kv { grid-template-columns: minmax(150px, 34%) 1fr; }
+
+/* b88l — anti-chevauchement : les grilles et rangées se replient au lieu de déborder */
+.row { flex-wrap: wrap; row-gap: 8px; }
+.grid-2, .grid-3, .cfg-grid, .form-grid, .kpis, .tiles { min-width: 0; }
+.grid-2 > *, .grid-3 > *, .cfg-grid > *, .form-grid > *, .kpis > *, .tiles > * { min-width: 0; }
+.card { min-width: 0; overflow-wrap: anywhere; }
+.tbl { overflow-x: auto; max-width: 100%; }
+.tbl table { min-width: max-content; }
+.card-head { flex-wrap: wrap; gap: 6px 12px; }
+.badge, .nav-count { white-space: nowrap; }
+@media (max-width: 1100px) { .grid-2, .grid-3 { grid-template-columns: 1fr !important; } }

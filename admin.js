@@ -352,13 +352,24 @@
       '<div class="row" style="margin-bottom:12px"><button class="btn sm" id="fLien">Lien mot de passe</button><button class="btn sm" id="fCode">Régénérer le code 1re connexion</button>' +
         '<button class="btn sm" id="fSusp">' + (u.banni ? "Réactiver" : "Suspendre") + "</button>" + '<button class="btn sm" id="fPing">Tester le moteur</button><span id="fPingRes" class="mut tiny"></span></div>' +
       '<div class="tabs"><button class="on" data-tab="profil">Profil</button><button data-tab="matchs">Matchs (' + (f.matchs || []).length + ')</button><button data-tab="alertes">Alertes (' + (f.alertes ? f.alertes.total : 0) + ')</button><button data-tab="tickets">Tickets (' + (f.tickets || []).length + ")</button><button data-tab=\"notes\">Notes & message</button><button data-tab=\"moteur\">Moteur</button><button data-tab=\"danger\">Compte</button></div>" +
-      '<div class="tabpane on" data-pane="profil"><div class="card"><div class="form-grid">' +
+      // b88l — carte « Identité » lisible en 5 secondes (avant le formulaire d'édition)
+      (function () {
+        const v = (ME.vehicules || []).slice(-1)[0] || {}, tel = p.telephone || "", wa = waNum(tel);
+        const lig = [["Nom", (p.prenom || "") + " " + (p.nom_ffbb || "")], ["E-mail de connexion", u.email], ["E-mail fédération", p.email_ffbb || ME.email_ffbb || "—"],
+          ["Téléphone", tel ? esc(tel) + (wa ? ' · <a href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : "") + ' · <a href="tel:' + esc(tel) + '">Appeler</a>' : "—"],
+          ["Domicile (départ des trajets)", MA.renseignee ? esc([MA.code_postal, MA.ville].filter(Boolean).join(" ")) + (MA.localisee ? "" : " · non localisé") : "—"],
+          ["Véhicule", v.nom ? esc(v.nom + (v.conso ? " · " + v.conso + " L/100" : "") + (v.carburant ? " · " + v.carburant : "")) : "—"],
+          ["Niveau", esc(p.niveau || "—")], ["Zones", esc([z.cd, z.ligue, z.cf ? "Championnat de France" : ""].filter(Boolean).join(" · ") || "—")],
+          ["Reçoit ses convocations sur", esc(p.adresse_reception || "—")], ["Matchs dans l'app", String((f.matchs || []).length) + ((f.matchs || []).length >= 50 ? "+" : "")]];
+        return '<div class="card fiche-id"><div class="card-head"><h3>Identité</h3></div><dl class="kv">' + lig.map(([k, x]) => "<dt>" + k + "</dt><dd>" + (k === "Nom" || k === "E-mail de connexion" || k === "E-mail fédération" ? esc(x) : x) + "</dd>").join("") + "</dl></div>";
+      })() +
+      '<details class="card"><summary><b>Modifier le profil</b></summary><div class="form-grid">' +
         inp("pPrenom", "Prénom", p.prenom) + inp("pNom", "Nom officiel", p.nom_ffbb) + inp("pEmailF", "E-mail fédération", p.email_ffbb, ME.email_ffbb ? "moteur : " + ME.email_ffbb : "non renseigné", "email") + inp("pTel", "Téléphone", p.telephone) + inp("pNiveau", "Niveau", p.niveau, "ex. Départemental, Région, CF") +
         sel("pStatut", "Statut", [["inscrit", "inscrit"], ["moteur_pret", "moteur prêt"], ["actif", "actif"], ["suspendu", "suspendu"]], p.statut || "inscrit") +
         inp("pCd", "Zone CD", z.cd, "CD67") + inp("pLigue", "Ligue", z.ligue, "LRGEB") + '<label class="f">Championnat de France<span style="padding-top:8px">' + chk("pCf", "Oui", z.cf) + "</span></label>" +
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
         '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, LIB_FN[k] || k, fn[k] !== false)).join("") + "</div>" +
-        '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></div>' +
+        '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></details>' +
         completHtml + (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
       '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · consultation journalisée</span><span class="sp"></span><button class="btn sm" id="fSolder" title="Historique importé jamais pointé (saisons passées)">Solder l\'historique…</button><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
@@ -827,7 +838,7 @@
     const ligne = rows.find((r) => r.cle === cfgCle) || { cle: cfgCle, valeur: {} };
     el.innerHTML = '<div class="cfg-grid"><div class="cfg-list">' + Object.keys(CFG).map((k) => '<button data-k="' + k + '" class="' + (k === cfgCle ? "on" : "") + '">' + esc(CFG[k].titre) + "<small>" + esc(CFG[k].desc) + "</small>" + (rows.find((r) => r.cle === k) ? "" : '<small class="warn">non initialisée (exécuter 22_admin.sql)</small>') + "</button>").join("") + "</div>" +
       '<div><div class="card"><div class="card-head"><h2>' + esc(CFG[cfgCle].titre) + '</h2><span class="sub mono">' + esc(cfgCle) + "</span><span class=\"sub\">maj " + fmt(ligne.maj_le) + '</span></div><div id="cfgForm"></div>' +
-      '<div class="subtab">JSON brut</div><textarea id="cfgJson" rows="10"></textarea><p id="cfgErr" class="err tiny"></p><div class="row"><button class="btn" id="cfgFormToJson">Formulaire → JSON</button><button class="btn pri" id="cfgSave">Enregistrer</button><span class="mut tiny">Le formulaire et le JSON décrivent la même valeur ; le JSON fait foi à l\'enregistrement.</span></div></div>' +
+      '<details class="cfg-avance"><summary class="mut tiny">Mode avancé (JSON brut)</summary><textarea id="cfgJson" rows="10"></textarea></details><p id="cfgErr" class="err tiny"></p><div class="row"><button class="btn" id="cfgFormToJson">Formulaire → JSON</button><button class="btn pri" id="cfgSave">Enregistrer</button><span class="mut tiny">Le formulaire et le JSON décrivent la même valeur ; le JSON fait foi à l\'enregistrement.</span></div></div>' +
       '<div class="card"><div class="card-head"><h3>Historique (10 dernières valeurs)</h3></div>' + ((hist[cfgCle] || []).length ? '<div class="tbl"><table><thead><tr><th>Remplacée le</th><th>Valeur précédente</th><th></th></tr></thead><tbody>' + hist[cfgCle].map((h, i) => "<tr><td>" + fmt(h.maj_le) + '</td><td class="mono tiny">' + esc(JSON.stringify(h.valeur).slice(0, 180)) + '</td><td><button class="btn sm" data-h="' + i + '">Restaurer dans l\'éditeur</button></td></tr>').join("") + "</tbody></table></div>" : '<p class="vide">Aucune modification enregistrée</p>') + "</div></div></div>";
     el.querySelectorAll(".cfg-list button").forEach((b) => b.addEventListener("click", () => { cfgCle = b.dataset.k; rendus.config(false); }));
     const ta = $("cfgJson"); ta.value = JSON.stringify(ligne.valeur, null, 2);
@@ -928,7 +939,29 @@
           '<div class="row" style="margin-top:8px">' + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente à tous, l'admin reste accessible)", v.maintenance) + "</div>" +
           '<label class="f">Texte de l\'écran de maintenance (vide = texte standard)<textarea id="tMaintTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(v.maintenance_texte || "") + "</textarea></label>";
         lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), bandeau_debut: F.querySelector("#tDeb").value || "", bandeau_fin: F.querySelector("#tFin").value || "", bandeau_style: F.querySelector("#tStyle").value, maintenance: F.querySelector("#tMaint").checked, maintenance_texte: F.querySelector("#tMaintTxt").value.trim() });
-      } else { F.innerHTML = ""; lireForm = () => lireJson(); }
+      } else {
+        // b88l — formulaire AUTOMATIQUE pour toutes les autres clés : oui/non, nombres, textes, listes, sous-blocs (2 niveaux). Plus de JSON à taper.
+        const lib = (k) => k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+        const champ = (chemin, k, x) => {
+          const id = "cfa_" + chemin.join("__");
+          if (typeof x === "boolean") return '<label class="chk"><input type="checkbox" data-cfa="' + esc(chemin.join(".")) + '" data-t="b"' + (x ? " checked" : "") + ">" + esc(lib(k)) + "</label>";
+          if (typeof x === "number") return '<label class="f">' + esc(lib(k)) + '<input type="number" step="any" data-cfa="' + esc(chemin.join(".")) + '" data-t="n" value="' + esc(x) + '"></label>';
+          if (Array.isArray(x) && x.every((y) => typeof y !== "object")) return '<label class="f">' + esc(lib(k)) + ' <span class="mut tiny">(séparés par des virgules)</span><input data-cfa="' + esc(chemin.join(".")) + '" data-t="a" value="' + esc(x.join(", ")) + '"></label>';
+          if (x && typeof x === "object" && !Array.isArray(x) && chemin.length < 3) return '<fieldset class="cfa-bloc"><legend>' + esc(lib(k)) + "</legend>" + Object.entries(x).map(([k2, y]) => champ(chemin.concat(k2), k2, y)).join("") + "</fieldset>";
+          if (x && typeof x === "object") return '<label class="f">' + esc(lib(k)) + ' <span class="mut tiny">(structure complexe : mode avancé)</span><input disabled value="' + esc(JSON.stringify(x).slice(0, 80)) + '…"></label>';
+          return '<label class="f">' + esc(lib(k)) + (String(x || "").length > 60 ? '<textarea rows="3" data-cfa="' + esc(chemin.join(".")) + '" data-t="s">' + esc(x == null ? "" : x) + "</textarea>" : '<input data-cfa="' + esc(chemin.join(".")) + '" data-t="s" value="' + esc(x == null ? "" : x) + '">') + "</label>";
+        };
+        F.innerHTML = Object.keys(v).length ? '<div class="form-grid cfa">' + Object.entries(v).map(([k, x]) => champ([k], k, x)).join("") + "</div>" : '<p class="mut">Aucune valeur pour cette clé : utilise le mode avancé pour en créer une.</p>';
+        lireForm = () => {
+          const o = JSON.parse(JSON.stringify(v));
+          F.querySelectorAll("[data-cfa]").forEach((e) => {
+            const ch = e.getAttribute("data-cfa").split("."), t = e.getAttribute("data-t"); let cur = o;
+            for (let i = 0; i < ch.length - 1; i++) cur = cur[ch[i]];
+            cur[ch[ch.length - 1]] = t === "b" ? e.checked : t === "n" ? Number(e.value) : t === "a" ? e.value.split(",").map((y) => y.trim()).filter(Boolean) : e.value;
+          });
+          return o;
+        };
+      }
       F.querySelectorAll("button[data-add]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.add).insertAdjacentHTML("beforeend", '<div class="row"><input placeholder="Niveau"><input type="number" step="any" value="0" style="max-width:110px"><button class="btn sm" data-del>✕</button></div>')));
       F.querySelectorAll("button[data-addp]").forEach((b) => b.addEventListener("click", () => F.querySelector("#" + b.dataset.addp).insertAdjacentHTML("beforeend", '<div class="row"><input type="date"><input type="date"><input type="date"><button class="btn sm" data-del>✕</button></div>')));
       F.addEventListener("click", (e) => { const d = e.target.closest("button[data-del]"); if (d) d.closest(".row").remove(); });
@@ -937,7 +970,8 @@
     ta.addEventListener("change", () => { const v = lireJson(); if (v) formulaire(v); });
     $("cfgFormToJson").addEventListener("click", () => { const v = lireForm(); if (v) { ta.value = JSON.stringify(v, null, 2); $("cfgErr").textContent = ""; } });
     $("cfgSave").addEventListener("click", async () => {
-      const fromForm = lireForm(); const v = ta.value.trim() ? lireJson() : fromForm; if (!v) return;
+      const fromForm = lireForm(); const avance = el.querySelector(".cfg-avance") && el.querySelector(".cfg-avance").open;
+      const v = avance && ta.value.trim() ? lireJson() : fromForm; if (!v) return;
       if (JSON.stringify(v) !== JSON.stringify(fromForm) && !(await confirmer("Enregistrer la configuration", "Le JSON brut diffère du formulaire : c'est le <strong>JSON</strong> qui sera enregistré. Continuer ?", "Enregistrer"))) return;
       else if (JSON.stringify(v) === JSON.stringify(fromForm) && !(await confirmer("Enregistrer la configuration", "Enregistrer <code>" + esc(cfgCle) + "</code> ? La valeur actuelle est conservée dans l'historique et l'app lira la nouvelle immédiatement.", "Enregistrer"))) return;
       try { await admin("config.set", { cle: cfgCle, valeur: v }); toast("Configuration enregistrée", "ok"); cache.config = null; rendus.config(true); } catch (e) { toast(e.message, "err"); }

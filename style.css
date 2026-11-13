@@ -4858,3 +4858,22 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 :root[data-theme="dark"] .acc-annonce { background:#14213D; }
 :root[data-theme="dark"] .acc-annonce--alerte { background:#3A2A10; }
 :root[data-theme="dark"] .acc-annonce--ok { background:#123322; }
+
+/* b88l — partage des frais de covoiturage */
+.trajet-seg-partage { margin-top:8px; padding:8px 10px; border-radius:10px; background:rgba(245,180,0,.12); font-size:13px; line-height:1.4; }
+.trajet-seg-partage small { display:block; opacity:.8; margin-top:2px; }
+
+/* b88l — « J'ai reçu un virement » */
+.vir-zone { padding:12px 14px; margin:0 0 14px; }
+.vir-zone summary { cursor:pointer; }
+.vir-f { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 6px; }
+.vir-f label { display:flex; flex-direction:column; font-size:12.5px; gap:4px; flex:1 1 150px; }
+.vir-ul { list-style:none; padding:0; margin:6px 0; max-height:320px; overflow:auto; }
+.vir-ul li { padding:6px 0; border-bottom:1px solid rgba(127,127,127,.15); font-size:13.5px; }
+.vir-tot { margin:8px 0; font-size:13.5px; } .vir-tot .ok { color:#16A34A; } .vir-tot .ko { color:#DC2626; }
+
+/* b88l — téléphone : clavier ouvert dans Règlement (la barre d'onglets est masquée, le composeur colle au clavier) */
+@media (max-width: 767px) {
+  body.rt-clavier #reglement .regl-form { bottom: 6px; }
+  body.rt-clavier .rt-annonce, body.rt-clavier #reglement .regl-chat { overscroll-behavior: contain; }
+}

@@ -2228,10 +2228,24 @@ function renderTransport_(row, uid) {
   };
   const o = [["voiture", "Je conduis", "carburant compté"], ["passager", "Covoiturage", "je suis passager"], ["transport", "Train · bus", "transport en commun"]];
   const aide = m === "voiture" ? "Carburant et usure comptés dans ton net." : "Pas de carburant ni d'usure à ta charge. L'indemnité km FFBB reste due.";
+  // b88l — covoiturage : partage des frais. Usage courant entre arbitres : le passager rembourse au conducteur la moitié
+  // du carburant et des péages du trajet aller-retour (l'indemnité km reste versée à chacun par le payeur).
+  let partage = "";
+  try {
+    const km = toNumber(get(row, "Km A/R stats"));
+    if (km > 0 && m !== "transport") {
+      const carb = typeof realFuelCostClient === "function" ? realFuelCostClient(km, row._date) : 0;
+      const peage = typeof window.rtFraisMatch === "function" ? window.rtFraisMatch(uid) : 0;
+      const part = Math.round(((carb || 0) + (peage || 0)) / 2);
+      if (part > 0) partage = m === "passager"
+        ? `<div class="trajet-seg-partage"><b>À donner au conducteur : ~${part} €</b> <small>moitié du carburant${peage ? " et des péages" : ""} (${Math.round(km)} km A/R). C'est l'usage courant : ajustez entre vous.</small></div>`
+        : `<div class="trajet-seg-partage"><small>Si tu emmènes un collègue : il te rembourse ~${part} € (moitié du carburant${peage ? " et des péages" : ""}).</small></div>`;
+    }
+  } catch (e) { partage = ""; }
   return `<div class="trajet-seg" role="radiogroup" aria-label="Comment tu te rends au match">
     <div class="trajet-seg-t">Mon trajet</div>
     <div class="trajet-seg-row">${o.map(([k, l, sub]) => `<button type="button" role="radio" class="trajet-opt${k === m ? " is-on" : ""}" aria-checked="${k === m}" data-transport="${uid}" data-mode="${k}">${ic[k]}<span><b>${l}</b><small>${sub}</small></span></button>`).join("")}</div>
-    <div class="trajet-seg-aide">${aide}</div>
+    <div class="trajet-seg-aide">${aide}</div>${partage}
   </div>`;
 }
 document.addEventListener("click", e => {
@@ -2615,7 +2629,7 @@ function buildSmsCollegue(row) {
   const trajetAllerMin = kmAR > 0 ? (kmAR / 2) / 70 * 60 : 0;
   const modeT = get(row, "Mode transport");   // b87 — le SMS suit le trajet choisi dans la fiche du match
   if (modeT === "passager") {
-    lignes.push("", "Je n'ai pas de voiture ce jour-là : est-ce que ça t'arrange qu'on fasse le trajet ensemble ? Je participe aux frais bien sûr.");
+    lignes.push("", "Je n'ai pas de voiture ce jour-là : est-ce que ça t'arrange qu'on fasse le trajet ensemble ? Je participe aux frais bien sûr (moitié du carburant et des péages).");
   } else if (modeT === "transport") {
     lignes.push("", "Je viens en transports en commun, je te tiens au courant si j'ai du retard.");
   } else if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
@@ -3041,7 +3055,7 @@ function renderPaiements() {
   const root = document.getElementById("paiements");
   const rows = state.filteredRows.filter(r => r._format !== "Alerte" && r._isActive).sort(sortByPaymentThenDate);
   if (!rows.length) { root.innerHTML = empty("Aucun paiement pour cette saison."); baremeZone_(root); return; }
-  if (estTel_()) { renderArgentTel_(root, rows); baremeZone_(root); return; }
+  if (estTel_()) { renderArgentTel_(root, rows); virementZone_(root); baremeZone_(root); return; }
 
   // Les dossiers en retard figurent déjà dans le bloc « Warnings » : pas de doublon dessous.
   const dejaRelance = new Set(rows.filter(paiementEnRetard).map(r => get(r, "UID")));
@@ -3089,7 +3103,7 @@ function renderPaiements() {
   attachPastToggle(root);
   root.querySelectorAll("[data-goto-analyse]").forEach(b => b.addEventListener("click", () => setActiveTab(b.dataset.gotoAnalyse)));
   attachAnalysePaiements_(root, rows);
-  baremeZone_(root);   // b78f
+  virementZone_(root); baremeZone_(root);   // b78f
 }
 
 /* ===================== b18 — ANALYSE DES PAIEMENTS =====================
@@ -3416,6 +3430,68 @@ function attachPaymentListeners(root) {
 /* b78f — comité / ligue sans barème connu : l'arbitre saisit la part fixe par catégorie et ses délais de paiement.
    Son moteur s'en sert tout de suite (montants et dates estimés), l'admin valide ensuite. Le km (A/R × 0,40 €) est toujours calculé. */
 const BAREME_CATS_ = ["Séniors", "U21", "U20", "U18", "U17", "U15", "U13", "U11"];
+/* b88l — « J'ai reçu un virement » : un comité / une ligue / la FFBB vire en une fois plusieurs matchs, souvent avec
+   1 à 5 € d'écart (arrondis, distancier du payeur). On saisit le montant du virement, l'app coche les matchs en attente
+   de ce payeur (les plus anciens dont le total colle au montant), répartit le montant réel au prorata et les passe
+   en « Reçu » (tolérance ±5 € côté moteur). */
+const VIR_PAYEURS_ = { cd: "Comité départemental", ligue: "Ligue régionale", ffbb: "FFBB" };
+function virCandidats_(payeur) {
+  return (state.allRows || []).filter(r => r._isActive && r._format !== "Alerte" && rbClasse_(r) === payeur && (r._reste || 0) > 0
+    && !/^(Reçu|Bénévole|Annulé)$/.test(get(r, "Statut paiement")) && r._date && r._date <= new Date()).sort((a, b) => a._date - b._date);
+}
+function virSelection_(cands, montant) {
+  // 1) plus anciens d'abord : premier préfixe dont le total est à ±5 € ; 2) sinon meilleur sous-ensemble (au centime, 22 matchs max)
+  let t = 0;
+  for (let i = 0; i < cands.length; i++) { t += cands[i]._reste; if (Math.abs(t - montant) <= 5) return new Set(cands.slice(0, i + 1).map(r => get(r, "UID"))); }
+  const c = cands.slice(0, 22), cible = Math.round(montant * 100);
+  let best = { d: Infinity, m: 0 }; const n = c.length, vals = c.map(r => Math.round(r._reste * 100));
+  if (n <= 16) { for (let m = 1; m < (1 << n); m++) { let s = 0; for (let k = 0; k < n; k++) if (m & (1 << k)) s += vals[k]; const d = Math.abs(s - cible); if (d < best.d) best = { d, m }; } }
+  return best.d <= 500 ? new Set(c.filter((_, k) => best.m & (1 << k)).map(r => get(r, "UID"))) : new Set();
+}
+function virementZone_(root) {
+  if (!root || root.querySelector(".vir-zone")) return;
+  const z = document.createElement("details"); z.className = "vir-zone table-card";
+  z.innerHTML = `<summary><b>J'ai reçu un virement</b> <span class="card-sub">comité, ligue ou FFBB : l'app répartit le montant sur les bons matchs</span></summary>
+    <div class="vir-f"><label>Payeur<select id="virP">${Object.entries(VIR_PAYEURS_).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
+    <label>Montant reçu (€)<input id="virM" type="number" step="0.01" min="0" inputmode="decimal" placeholder="201,00"></label>
+    <label>Date du virement<input id="virD" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+    <div id="virL" class="vir-l"></div>`;
+  root.prepend(z);
+  const P = z.querySelector("#virP"), M = z.querySelector("#virM"), D = z.querySelector("#virD"), L = z.querySelector("#virL");
+  const maj = () => {
+    const cands = virCandidats_(P.value), montant = toNumber(M.value);
+    if (!cands.length) { L.innerHTML = '<p class="card-sub">Aucun match en attente pour ce payeur.</p>'; return; }
+    const sel = montant > 0 ? virSelection_(cands, montant) : new Set();
+    L.innerHTML = `<p class="card-sub">${montant > 0 ? (sel.size ? "Matchs cochés automatiquement : vérifie, puis enregistre." : "Aucune combinaison ne colle à ±5 € : coche les matchs à la main.") : "Saisis le montant du virement."}</p>
+      <ul class="vir-ul">${cands.map(r => `<li><label><input type="checkbox" data-vir="${escapeHtml(get(r, "UID"))}"${sel.has(get(r, "UID")) ? " checked" : ""}> ${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(codeCompetition(r) || r._format)} · ${escapeHtml(rbEquipes_(r))} <b>${formatMoney(r._reste)}</b></label></li>`).join("")}</ul>
+      <div class="vir-tot" id="virT"></div><button type="button" class="small-btn" id="virGo">Enregistrer le virement</button>`;
+    const tot = () => {
+      const ch = [...L.querySelectorAll("[data-vir]:checked")].map(x => cands.find(r => get(r, "UID") === x.getAttribute("data-vir")));
+      const s = ch.reduce((t, r) => t + r._reste, 0), e = montant - s;
+      L.querySelector("#virT").innerHTML = ch.length ? `Attendu ${formatMoney(s)} · reçu ${formatMoney(montant)} · écart <b class="${Math.abs(e) <= 5 ? "ok" : "ko"}">${e >= 0 ? "+" : ""}${formatMoney(e)}</b>${Math.abs(e) > 5 ? " (plus de 5 € : vérifie la sélection)" : ""}` : "";
+      return { ch, s };
+    };
+    L.querySelectorAll("[data-vir]").forEach(x => x.addEventListener("change", tot)); tot();
+    L.querySelector("#virGo").addEventListener("click", async () => {
+      const { ch, s } = tot();
+      if (!ch.length || !(montant > 0)) { setStatus("Saisis le montant et coche au moins un match", "error"); return; }
+      if (Math.abs(montant - s) > 5 && !confirm("L'écart dépasse 5 € : les matchs resteront « Reçu partiel » ou « À vérifier ». Continuer ?")) return;
+      const b = L.querySelector("#virGo"); b.disabled = true;
+      let reste = Math.round(montant * 100), ok = 0;
+      for (let i = 0; i < ch.length; i++) {
+        const part = i === ch.length - 1 ? reste : Math.round(ch[i]._reste * 100 * montant / s); reste -= part;
+        try {
+          const res = await jsonp("payment.update", { uid: get(ch[i], "UID"), recu_recevant: (part / 100).toFixed(2), mode_recevant: "Virement", date_recu_recevant: D.value });
+          if (res && res.success !== false) { ok++; if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(get(ch[i], "UID"), res.row); }
+        } catch (e) { /* on continue, compte rendu à la fin */ }
+      }
+      setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length ? "ok" : "error");
+      renderAll();
+    });
+  };
+  P.addEventListener("change", maj); M.addEventListener("input", maj); maj();
+}
+
 async function baremeZone_(root) {
   try {
     if (!root || !SB.actif) return;
@@ -10048,7 +10124,8 @@ function renderClassementMatch_(row) {
       // b67 — clavier ouvert (champ actif ou viewport visuel réduit de 25 %) : la barre sort de l'écran au lieu de
       // venir se coller au-dessus du clavier, exactement là où iOS fait défiler le champ en cours de saisie.
       const a = document.activeElement, clavier = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio") || vv.height < window.innerHeight * 0.75;
-      if (clavier) { nav.style.transform = "translateY(200%)"; return; }
+      document.body.classList.toggle("rt-clavier", !!clavier);   // b88l — Règlement : le composeur ne garde plus la place de la barre
+      if (clavier) { nav.style.transform = "translateY(200%)"; const f = document.querySelector("#reglement.active .regl-form"); if (f && a && f.contains(a)) setTimeout(() => { try { f.scrollIntoView({ block: "end" }); } catch (e) {} }, 60); return; }
       const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
       nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
     };
