@@ -164,13 +164,27 @@
 
   // ---------- navigation ----------
   const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques" };   // b86 : 2 espaces
+  const PAGES = [
+    { id: "app-vue", secs: ["pilotage", "dashboard", "kpiapp"] }, { id: "app-tech", secs: ["tech", "usage"] },
+    { id: "app-sante", secs: ["sante", "moteurs"] }, { id: "app-config", secs: ["config"] }, { id: "app-journal", secs: ["journal"] },
+    { id: "arb-vue", secs: ["kpiarb", "stats"] }, { id: "arb-liste", secs: ["arbitres"] }, { id: "arb-insc", secs: ["inscriptions"] },
+    { id: "arb-com", secs: ["communication", "messages", "tickets"] }, { id: "arb-matchs", secs: ["agenda", "paiements", "alertes", "qualite"] }];
+  function espace(e) {
+    document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
+    document.querySelectorAll("#nav > div[data-esp]").forEach((d) => d.classList.toggle("hidden", d.dataset.esp !== e));
+  }
+  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = "#" + PAGES.find((x) => x.id.startsWith(b.dataset.esp)).secs[0]; }));
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
     const h = (location.hash || "#pilotage").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "pilotage";
     courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
-    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.sec === sec));
+    // b89 — 2 espaces (Application / Arbitres), des pages, et des onglets dans chaque page
+    const pg = PAGES.find((x) => x.secs.includes(sec)) || PAGES[0];
+    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === pg.id));
+    espace(pg.id.slice(0, 3));
+    $("sousNav").innerHTML = pg.secs.length > 1 ? pg.secs.map((x) => '<a href="#' + x + '" class="' + (x === sec ? "active" : "") + '">' + esc(SECTIONS[x]) + "</a>").join("") : "";
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("active", s.id === "sec-" + sec));
     $("topTitre").textContent = SECTIONS[sec];
     $("recherche").value = recherches[sec] || "";
@@ -651,6 +665,52 @@
     el.querySelector("#krCsv").onclick = () => { const L = R.par_arbitre || []; csv([["Prénom", "Nom", "Niveau", "Matchs saison", "À venir", "Indemnités saison", "Encaissé", "En retard", "Km saison", "Plafond fiscal %", "Minutes 30 j", "Jours actifs 30 j", "Alertes", "Dernière convocation"], ...L.map((x) => [x.prenom, x.nom, x.niveau, x.matchs_saison, x.a_venir, x.montant_saison, x.recu_saison, x.retard, x.km_saison, x.franchise_pct, x.minutes_30j, x.jours_actifs_30j, x.alertes, x.derniere_convocation])], "indicateurs-arbitres-" + new Date().toISOString().slice(0, 10) + ".csv"); };
   };
 
+  // =====================================================================
+  // b89 — STATISTIQUES TECHNIQUES (RPC rt_stats_tech, admin + double authentification) + export Excel
+  // =====================================================================
+  const TECH_FEUILLES = [
+    ["moteurs", "Moteurs", { prenom: "Arbitre", statut: "Statut", version: "Version moteur", battement: "Dernier battement", minutes_depuis_battement: "Minutes depuis battement", moteur_relie: "Moteur relié", ia_mois: "Mois IA", ia_cout_mois: "Coût IA du mois ($)", carburant_prix: "Prix carburant local (€/L)", adresse_localisee: "Domicile localisé", push_appareils: "Appareils push", push_echecs: "Échecs push", onboarding_fait: "Accueil terminé" }],
+    ["matchs", "Matchs & qualité", { prenom: "Arbitre", total: "Lignes", f5x5: "5x5", f3x3: "3x3", alertes: "Alertes", annules: "Annulés", warning_general: "Avertissements", warning_finance: "Avertissements finance", a_trancher: "À trancher", sans_km: "Sans km", maj_7j: "Mis à jour 7 j", crees_30j: "Créés 30 j", derniere_maj: "Dernière mise à jour" }],
+    ["paiements", "Paiements", { prenom: "Arbitre", du: "Dû (€)", recu: "Reçu (€)", en_retard: "En retard", a_verifier: "À vérifier", recus: "Matchs reçus" }],
+    ["usage", "Usage 30 j", { prenom: "Arbitre", minutes_30j: "Minutes", jours_actifs_30j: "Jours actifs", minutes_tel: "Téléphone (min)", minutes_pc: "Ordinateur (min)", minutes_tablette: "Tablette (min)", derniere: "Dernière activité" }],
+    ["commandes", "Commandes moteur 30 j", { action: "Action", statut: "Statut", nombre: "Nombre", delai_moyen_s: "Délai moyen (s)", derniere: "Dernière" }],
+    ["tickets", "Tickets", { statut: "Statut", gravite: "Gravité", nombre: "Nombre" }],
+    ["journal", "Journal admin 30 j", { action: "Action", nombre_30j: "Nombre", derniere: "Dernière" }]];
+  rendus.tech = async function (force) {
+    const el = $("sec-tech");
+    if (force || !cache.tech) {
+      el.innerHTML = '<p class="mut">Chargement…</p>';
+      const r = await fetch(SB_URL + "/rest/v1/rpc/rt_stats_tech", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: "{}" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
+      cache.tech = j;
+    }
+    const T = cache.tech, M = T.moteurs || [], somme = (l, k) => l.reduce((t, x) => t + (Number(x[k]) || 0), 0);
+    const actifs = M.filter((m) => m.moteur_relie), lents = actifs.filter((m) => !(m.minutes_depuis_battement < 90));
+    const P = T.paiements || [], Mt = T.matchs || [], C = T.commandes || [];
+    const echecsCmd = C.filter((c) => /erreur|echec|échec/i.test(c.statut)).reduce((t, c) => t + c.nombre, 0);
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Données du ' + fmt(T.genere) + '</span><button class="btn pri" id="techXlsx">⬇ Exporter en Excel</button></div>' +
+      '<div class="tiles">' +
+      tuileB(actifs.length - lents.length + " / " + actifs.length, "Moteurs à l'heure", lents.length ? "orange" : "green", lents.length ? lents.map((m) => m.prenom).join(", ") + " en retard" : "battement < 90 min") +
+      tuileB(somme(M, "ia_cout_mois").toFixed(2) + " $", "Coût IA du mois", "", "tous moteurs") +
+      tuileB(somme(Mt, "total"), "Lignes en base", "", somme(Mt, "crees_30j") + " créées sur 30 j") +
+      tuileB(somme(Mt, "warning_finance") + somme(Mt, "warning_general"), "Avertissements ouverts", somme(Mt, "warning_finance") ? "orange" : "gray", somme(Mt, "sans_km") + " match(s) sans km") +
+      tuileB(Math.round(somme(P, "recu")) + " / " + Math.round(somme(P, "du")) + " €", "Reçu / dû", "", somme(P, "en_retard") + " en retard · " + somme(P, "a_verifier") + " à vérifier") +
+      tuileB(somme(C, "nombre"), "Commandes moteur 30 j", echecsCmd ? "red" : "gray", echecsCmd + " en échec") +
+      tuileB(somme(M, "push_appareils"), "Appareils push", somme(M, "push_echecs") ? "orange" : "gray", somme(M, "push_echecs") + " échec(s) cumulés") +
+      tuileB(somme(T.usage || [], "minutes_30j"), "Minutes d'usage 30 j", "", (T.usage || []).filter((u) => u.jours_actifs_30j > 0).length + " arbitre(s) actif(s)") +
+      "</div>" + TECH_FEUILLES.map(([k, titre]) => '<div class="card"><div class="card-head"><h2>' + esc(titre) + '</h2></div><div id="tech-' + k + '"></div></div>').join("");
+    TECH_FEUILLES.forEach(([k, , lib]) => {
+      const rows = T[k] || [];
+      tableau($("tech-" + k), Object.keys(lib).map((c) => ({ t: lib[c], k: c, r: (x) => { const v = x[c]; if (v === true) return "oui"; if (v === false) return "non"; if (v == null || v === "") return '<span class="mut">—</span>'; return /^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? fmt(v) : esc(v); } })), rows, { recherche: rechercheCourante });
+    });
+    $("techXlsx").onclick = () => {
+      if (typeof window.rtXlsx !== "function") return toast("Export indisponible : recharge la page", "err");
+      window.rtXlsx("Referee-Tracker-stats-techniques-" + new Date().toISOString().slice(0, 10), TECH_FEUILLES.map(([k, titre, lib]) => ({ nom: titre, lignes: [Object.values(lib)].concat((T[k] || []).map((x) => Object.keys(lib).map((c) => x[c]))) })));
+      toast("Export Excel téléchargé", "ok");
+    };
+  };
+
   rendus.qualite = async function (force) {
     const el = $("sec-qualite"); if (force || !cache.kpi) el.innerHTML = '<p class="mut">Calcul des indicateurs…</p>';
     const d = await kpiCharger(force), Q = d.qualite, I = Q.indicateurs || [];
@@ -688,6 +748,52 @@
   };
 
   // ---- Communication (bandeau, textes des e-mails, historique des envois)
+  // ---- b89 — Bannières par arbitre (table annonces) : publier, cibler, suivre « vu / masqué », retirer
+  async function sbRest(chemin, methode, corps) {
+    const r = await fetch(SB_URL + "/rest/v1/" + chemin, { method: methode || "GET", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json", Prefer: "return=minimal" }, body: corps ? JSON.stringify(corps) : undefined });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || "Erreur " + r.status); }
+    return r.status === 204 || r.status === 201 ? null : r.json();
+  }
+  const ANN_MODELES = {
+    sans_match: { t: "Bonjour {prenom} ! Aucun match n'est encore arrivé dans ton espace. Pour que tout se remplisse tout seul, transfère tes convocations FBI vers {adresse} (en gardant une copie). Le guide de démarrage t'explique tout en 5 minutes.", a: "guide", l: "Ouvrir le guide" },
+    dispo: { t: "{prenom}, pense à mettre à jour tes indisponibilités pour les prochaines semaines : ça évite les désignations impossibles.", a: "", l: "" },
+    profil: { t: "{prenom}, ton profil est incomplet (adresse de départ, véhicule) : sans lui, les km et les frais ne peuvent pas être calculés.", a: "profil", l: "Compléter mon profil" } };
+  async function bannieres(box) {
+    if (!cache.arbitres) cache.arbitres = (await admin("arbitres.liste")).data || [];
+    const A = cache.arbitres.filter((a) => a.profil && a.profil.statut !== "suspendu");
+    const ann = (await sbRest("annonces?select=id,user_id,texte,action,lib_action,style,cree_le,expire_le,masque_le&order=cree_le.desc&limit=200")) || [];
+    const nom = (id) => { const a = cache.arbitres.find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : id.slice(0, 8); };
+    box.innerHTML = '<div class="card-head"><h3>Bannières dans l\'app</h3><span class="sub">un message affiché en haut de l\'accueil de chaque arbitre ciblé, jusqu\'à ce qu\'il clique « OK »</span></div>' +
+      '<div class="ann-f"><label>Destinataires<select id="annCible"><option value="tous">Tous les arbitres (' + A.length + ')</option><option value="sans">Sans aucun match (' + A.filter((a) => !a.matchs).length + ')</option><option value="choix">Choisir…</option></select></label>' +
+      '<label>Modèle<select id="annMod"><option value="">— texte libre —</option><option value="sans_match">Relance : aucun match reçu</option><option value="dispo">Rappel : indisponibilités</option><option value="profil">Rappel : profil incomplet</option></select></label>' +
+      '<label>Style<select id="annStyle"><option value="info">Information</option><option value="alerte">Important</option></select></label>' +
+      '<label>Fin d\'affichage<input id="annFin" type="date"></label></div>' +
+      '<div id="annChoix" class="ann-choix hidden">' + A.map((a) => '<label><input type="checkbox" value="' + esc(a.id) + '"> ' + esc(nomDe(a.profil, a.email)) + ' <span class="mut tiny">' + (a.matchs || 0) + " match(s)</span></label>").join("") + "</div>" +
+      '<label class="ann-t">Message <span class="mut tiny">{prenom} et {adresse} sont remplacés pour chaque arbitre</span><textarea id="annTxt" rows="3" maxlength="400"></textarea></label>' +
+      '<div class="row"><label>Bouton<select id="annAct"><option value="">Aucun</option><option value="profil">Ouvrir le profil</option><option value="guide">Ouvrir le guide</option></select></label><input id="annLib" placeholder="Texte du bouton" maxlength="40"><button class="btn pri" id="annGo">Publier</button></div>' +
+      '<div class="subtab">Bannières publiées</div><div id="annT"></div>';
+    const $b = (id) => box.querySelector("#" + id);
+    $b("annCible").onchange = () => $b("annChoix").classList.toggle("hidden", $b("annCible").value !== "choix");
+    $b("annMod").onchange = () => { const m = ANN_MODELES[$b("annMod").value]; if (!m) return; $b("annTxt").value = m.t; $b("annAct").value = m.a; $b("annLib").value = m.l; if ($b("annMod").value === "sans_match") { $b("annCible").value = "sans"; $b("annChoix").classList.add("hidden"); } };
+    $b("annGo").onclick = async () => {
+      const txt = $b("annTxt").value.trim(), c = $b("annCible").value;
+      if (txt.length < 5) return toast("Écris le message", "err");
+      const cibles = c === "tous" ? A : c === "sans" ? A.filter((a) => !a.matchs) : A.filter((a) => box.querySelector('#annChoix input[value="' + a.id + '"]:checked'));
+      if (!cibles.length) return toast("Aucun destinataire", "err");
+      if (!(await confirmer("Publier la bannière", "Afficher ce message à <strong>" + cibles.length + "</strong> arbitre(s) ?<br><br><em>" + esc(txt.slice(0, 200)) + "</em>", "Publier"))) return;
+      const fin = $b("annFin").value ? new Date($b("annFin").value + "T23:59:00").toISOString() : null, act = $b("annAct").value;
+      const lignes = cibles.map((a) => ({ user_id: a.id, texte: txt.replace(/\{prenom\}/g, a.profil.prenom || "").replace(/\{adresse\}/g, a.profil.adresse_reception || "ton adresse Referee Tracker"), action: act || null, lib_action: act ? ($b("annLib").value.trim() || "Ouvrir") : null, style: $b("annStyle").value, expire_le: fin }));
+      try { await sbRest("annonces", "POST", lignes); toast(lignes.length + " bannière(s) publiée(s)", "ok"); bannieres(box); } catch (e) { erreur(e); }
+    };
+    tableau($b("annT"), [
+      { t: "Arbitre", k: (x) => nom(x.user_id), r: (x) => esc(nom(x.user_id)) },
+      { t: "Message", k: "texte", r: (x) => '<span class="tiny">' + esc(x.texte.slice(0, 140)) + (x.texte.length > 140 ? "…" : "") + "</span>" },
+      { t: "Publiée", k: "cree_le", r: (x) => fmt(x.cree_le) },
+      { t: "État", k: (x) => (x.masque_le ? 2 : x.expire_le && new Date(x.expire_le) < new Date() ? 1 : 0), r: (x) => (x.masque_le ? badge("lue le " + fmt(x.masque_le).slice(0, 8), "green") : x.expire_le && new Date(x.expire_le) < new Date() ? badge("expirée", "gray") : badge("affichée", "gold")) },
+      { t: "", cl: "actions", r: () => '<button class="btn sm danger" data-act="suppr">Retirer</button>' },
+    ], ann, { action: async (act, x) => { if (act !== "suppr") return; if (!(await confirmer("Retirer la bannière", "Retirer la bannière de " + esc(nom(x.user_id)) + " ?", "Retirer"))) return; try { await sbRest("annonces?id=eq." + x.id, "DELETE"); toast("Bannière retirée", "ok"); bannieres(box); } catch (e) { erreur(e); } } });
+  }
+
   rendus.communication = async function (force) {
     const el = $("sec-communication");
     if (force || !cache.config || !cache.journalMsg) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); cache.journalMsg = await admin("journal.liste", { filtre_action: "message" }); }
@@ -700,9 +806,11 @@
       '<div class="card"><div class="card-head"><h3>Textes des e-mails</h3><span class="sub">4 modèles envoyés aux arbitres</span></div><div class="tbl"><table><thead><tr><th>Modèle</th><th>Sujet</th><th>Message ajouté</th></tr></thead><tbody>' +
         MOD.map(([k, l]) => "<tr><td>" + esc(l) + "</td><td>" + (ml[k] && ml[k].sujet ? esc(ml[k].sujet) : '<span class="mut">texte d\'origine</span>') + "</td><td>" + (ml[k] && ml[k].message ? esc(ml[k].message.slice(0, 80)) : '<span class="mut">—</span>') + "</td></tr>").join("") +
         '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn sm pri" id="coCfgM">Modifier les textes</button></div></div></div>' +
+      '<div class="card" id="coAnn"><p class="mut">Chargement des bannières…</p></div>' +
       '<div class="card"><div class="card-head"><h3>Historique des envois</h3><span class="sub">messages, diffusions, notifications (journal d\'audit)</span></div><div id="coT"></div></div>';
     el.querySelector("#coCfgM").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; };
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
+    bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
     const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };
     tableCourante = tableau(el.querySelector("#coT"), [
       { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Destinataire", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
@@ -716,11 +824,11 @@
     if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = (await admin("moteurs.liste")).data || []; }
     const l = cache.moteurs, n = (st) => l.filter((x) => x.sante === st).length;
     $("navMoteurs").textContent = (n("arrete") + n("lent")) || "";
-    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 10 min. Vert : passé il y a moins de 30 min · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
+    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 5 min. Vert : passé il y a moins de 30 min · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
       '<div class="tiles">' + tuileB(l.length, "Moteurs", "") + tuileB(n("ok"), "En marche", "green") + tuileB(n("lent"), "En retard", "orange") + tuileB(n("arrete"), "Arrêtés", "red") + tuileB(n("inconnu"), "État inconnu", "") +
         tuileB(l.reduce((t, x) => t + x.commandes.attente, 0), "Commandes en attente", "") + tuileB(l.reduce((t, x) => t + x.commandes.erreur, 0), "Commandes en erreur (7 j)", "") + "</div>" +
       '<div class="row" style="margin:10px 0"><button class="btn sm" id="moDiag">Diagnostic de tous les moteurs</button><button class="btn sm" id="moSync">Synchroniser tous les moteurs</button></div><div id="moT"></div>';
-    const tous = async (act, lib) => { if (!(await confirmer(lib, "Envoyer « " + esc(lib) + " » aux " + l.length + " moteur(s) ? Exécution dans les 10 minutes.", "Envoyer"))) return; let ok = 0; for (const m of l) { try { await admin("commande.creer", { user_id: m.user_id, action_moteur: act, params: {} }); ok++; } catch (e) {} } toast(ok + " commande(s) envoyée(s)", "ok"); rendus.moteurs(true); };
+    const tous = async (act, lib) => { if (!(await confirmer(lib, "Envoyer « " + esc(lib) + " » aux " + l.length + " moteur(s) ? Exécution dans les 5 minutes.", "Envoyer"))) return; let ok = 0; for (const m of l) { try { await admin("commande.creer", { user_id: m.user_id, action_moteur: act, params: {} }); ok++; } catch (e) {} } toast(ok + " commande(s) envoyée(s)", "ok"); rendus.moteurs(true); };
     el.querySelector("#moDiag").onclick = () => tous("diagnostic", "Diagnostic complet");
     el.querySelector("#moSync").onclick = () => tous("synchro", "Synchroniser maintenant");
     const S = { ok: badge("en marche", "green"), lent: badge("en retard", "orange"), arrete: badge("arrêté", "red"), inconnu: badge("inconnu", "gray") };

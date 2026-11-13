@@ -392,3 +392,23 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .card-head { flex-wrap: wrap; gap: 6px 12px; }
 .badge, .nav-count { white-space: nowrap; }
 @media (max-width: 1100px) { .grid-2, .grid-3 { grid-template-columns: 1fr !important; } }
+/* b89 — 2 espaces + onglets de page */
+.espaces { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: rgba(255,255,255,.08); border-radius: var(--r-md); padding: 4px; }
+.espaces button { border: 0; background: transparent; color: rgba(255,255,255,.75); font: 700 12px/1 inherit; font-family: inherit; padding: 9px 4px; border-radius: calc(var(--r-md) - 2px); cursor: pointer; }
+.espaces button.active { background: var(--gold); color: var(--navy-900); }
+.nav > div[data-esp] { display: flex; flex-direction: column; gap: 3px; }
+.nav > div.hidden { display: none; }
+.sous-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; border-bottom: 1px solid var(--line, rgba(127,127,127,.25)); }
+.sous-nav:empty { display: none; }
+.sous-nav a { padding: 8px 12px; text-decoration: none; color: inherit; opacity: .7; font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.sous-nav a.active { opacity: 1; border-bottom-color: var(--gold); }
+.tech-actions { justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 900px) { .espaces { grid-template-columns: 1fr; } .espaces button { font-size: 10px; padding: 7px 2px; } }
+.ann-f { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 6px 0 10px; }
+.ann-f label, .ann-t, #coAnn .row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; }
+.ann-t { margin-bottom: 10px; } .ann-t textarea { width: 100%; resize: vertical; }
+.ann-choix { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 12px; margin-bottom: 10px; padding: 10px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: var(--r-md); }
+.ann-choix label { font-weight: 500; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+#coAnn .row { align-items: flex-end; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.ann-t textarea { font-family: inherit; font-size: 14px; }
+#coAnn { margin-top: 16px; } #coAnn .row input { flex: 1; min-width: 160px; max-width: 320px; width: auto; }

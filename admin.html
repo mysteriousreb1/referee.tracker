@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-13-b89" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b90" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -42,28 +42,22 @@
   <div id="vAdmin" class="app hidden">
     <aside class="side">
       <div class="brand"><img src="./apple-touch-icon.png" alt="" /><div><strong>Referee Tracker</strong><span>Super admin</span></div></div>
+      <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button></div>
       <nav class="nav" id="nav">
-        <div class="nav-grp">Application</div>
-        <a href="#pilotage" data-sec="pilotage"><i>◧</i>Pilotage</a>
-        <a href="#kpiapp" data-sec="kpiapp"><i>◔</i>Indicateurs application</a>
-        <a href="#dashboard" data-sec="dashboard"><i>▦</i>Tableau de bord</a>
-        <a href="#usage" data-sec="usage"><i>◷</i>Connexions &amp; usage</a>
-        <a href="#messages" data-sec="messages"><i>✎</i>Messages</a>
-        <a href="#communication" data-sec="communication"><i>✆</i>Communication</a>
-        <a href="#config" data-sec="config"><i>⚙</i>Configuration</a>
-        <a href="#tickets" data-sec="tickets"><i>✉</i>Tickets<b id="navTickets" class="nav-count"></b></a>
-        <a href="#sante" data-sec="sante"><i>♥</i>Santé technique</a>
-        <a href="#moteurs" data-sec="moteurs"><i>⛭</i>Moteurs<b id="navMoteurs" class="nav-count"></b></a>
-        <a href="#journal" data-sec="journal"><i>☰</i>Journal d'audit</a>
-        <div class="nav-grp">Arbitres</div>
-        <a href="#kpiarb" data-sec="kpiarb"><i>◔</i>Indicateurs arbitres</a>
-        <a href="#arbitres" data-sec="arbitres"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
-        <a href="#inscriptions" data-sec="inscriptions"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
-        <a href="#stats" data-sec="stats"><i>▮</i>Statistiques arbitres</a>
-        <a href="#agenda" data-sec="agenda"><i>▤</i>Matchs à venir</a>
-        <a href="#paiements" data-sec="paiements"><i>€</i>Paiements</a>
-        <a href="#alertes" data-sec="alertes"><i>⚠</i>Alertes<b id="navAlertes" class="nav-count"></b></a>
-        <a href="#qualite" data-sec="qualite"><i>✓</i>Qualité des données</a>
+        <div data-esp="app">
+          <a href="#pilotage" data-page="app-vue"><i>◧</i>Vue d'ensemble</a>
+          <a href="#tech" data-page="app-tech"><i>◔</i>Statistiques techniques</a>
+          <a href="#sante" data-page="app-sante"><i>♥</i>Santé &amp; moteurs<b id="navMoteurs" class="nav-count"></b></a>
+          <a href="#config" data-page="app-config"><i>⚙</i>Réglages</a>
+          <a href="#journal" data-page="app-journal"><i>☰</i>Journal d'audit</a>
+        </div>
+        <div data-esp="arb">
+          <a href="#kpiarb" data-page="arb-vue"><i>◔</i>Vue d'ensemble</a>
+          <a href="#arbitres" data-page="arb-liste"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
+          <a href="#inscriptions" data-page="arb-insc"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
+          <a href="#communication" data-page="arb-com"><i>✆</i>Communication<b id="navTickets" class="nav-count"></b></a>
+          <a href="#agenda" data-page="arb-matchs"><i>€</i>Matchs &amp; paiements<b id="navAlertes" class="nav-count"></b></a>
+        </div>
       </nav>
       <div class="side-foot">
         <span id="qui" class="mut"></span>
@@ -80,6 +74,7 @@
       </header>
       <div id="chargement" class="loader hidden"><span></span></div>
       <p id="msg" class="msg hidden"></p>
+      <div id="sousNav" class="sous-nav"></div>
 
       <section id="sec-pilotage" class="sec"></section>
       <section id="sec-dashboard" class="sec"></section>
@@ -100,6 +95,7 @@
       <section id="sec-agenda" class="sec"></section>
       <section id="sec-paiements" class="sec"></section>
       <section id="sec-alertes" class="sec"></section>
+      <section id="sec-tech" class="sec"></section>
     </div>
 
     <!-- Panneau latéral (fiche arbitre…) -->
@@ -113,7 +109,8 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
-  <script src="./admin-pilotage.js?v=2026-11-13-b89"></script>
-  <script src="./admin.js?v=2026-11-13-b89"></script>
+  <script src="./rt-xlsx.js?v=2026-11-14-b90"></script>
+  <script src="./admin-pilotage.js?v=2026-11-14-b90"></script>
+  <script src="./admin.js?v=2026-11-14-b90"></script>
 </body>
 </html>

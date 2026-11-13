@@ -1852,6 +1852,7 @@ function accAnnonces_(z) {
     z.querySelectorAll("[data-ann-go]").forEach(b => b.addEventListener("click", () => {
       const go = b.getAttribute("data-ann-go");
       if (go === "profil") { const pb = document.getElementById("rtProfileBtn"); if (pb) pb.click(); }
+      else if (go === "guide") window.open("./manuel/pdf/Referee-Tracker-Guide-de-demarrage.pdf", "_blank", "noopener");
       else if (typeof setActiveTab === "function") setActiveTab(go);
     }));
     z.querySelectorAll("[data-ann-ok]").forEach(b => b.addEventListener("click", async () => {
