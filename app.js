@@ -3439,19 +3439,45 @@ function virCandidats_(payeur) {
   return (state.allRows || []).filter(r => r._isActive && r._format !== "Alerte" && rbClasse_(r) === payeur && (r._reste || 0) > 0
     && !/^(Reçu|Bénévole|Annulé)$/.test(get(r, "Statut paiement")) && r._date && r._date <= new Date()).sort((a, b) => a._date - b._date);
 }
+function virTaux_() { const t = Number(((typeof Profil !== "undefined" && Profil.config && Profil.config.tarifs) || {}).indemnite_km); return t > 0 && t < 2 ? t : 0.40; }
+// b89 — km estimés par Referee Tracker (pas lus sur une convocation) : 3x3, mails FBI sans montant.
+function virEstime_(r) { return r._format === "3x3" || /estim|calcul/i.test(get(r, "Warning finance") || ""); }
+function virLieu_(r) { return cleanText(get(r, "Salle") || "").toLowerCase() + "|" + cleanText(get(r, "Ville") || "").toLowerCase(); }
+// b89 — l'écart s'explique-t-il par les km retenus par le payeur sur les matchs estimés ? (centime exact, km entiers)
+function virExplique_(ch, ecartC) {
+  if (!ecartC) return null;
+  const tauxC = Math.round(virTaux_() * 100), groupes = {};
+  ch.filter(virEstime_).forEach(r => { (groupes[virLieu_(r)] = groupes[virLieu_(r)] || []).push(r); });
+  for (const g of Object.values(groupes)) {
+    if (ecartC % g.length) continue;
+    const d = ecartC / g.length, km = toNumber(get(g[0], "Km A/R stats"));
+    if (g.some(r => toNumber(get(r, "Km A/R stats")) !== km)) continue;
+    // part fixe = indemnité − km × taux ; les km retenus par le payeur doivent être un nombre entier
+    const indC = Math.round(toNumber(get(g[0], "Indemnité totale")) * 100), fixeC = indC - Math.round(km * tauxC), kmN = (indC + d - fixeC) / tauxC;
+    if (!(kmN > 0) || Math.abs(kmN - Math.round(kmN)) > 0.001 || Math.abs(kmN - km) > 120) continue;
+    return { matchs: g, km, kmN: Math.round(kmN), dEur: d / 100 };
+  }
+  return null;
+}
 function virSelection_(cands, montant) {
-  // 1) plus anciens d'abord : premier préfixe dont le total est à ±5 € ; 2) sinon meilleur sous-ensemble (au centime, 22 matchs max)
+  // b89 — AUCUNE tolérance : on cherche le total exact au centime, sinon un écart expliqué par des km estimés.
+  const cible = Math.round(montant * 100), c = cands.slice(0, 22), vals = c.map(r => Math.round(r._reste * 100)), n = c.length;
   let t = 0;
-  for (let i = 0; i < cands.length; i++) { t += cands[i]._reste; if (Math.abs(t - montant) <= 5) return new Set(cands.slice(0, i + 1).map(r => get(r, "UID"))); }
-  const c = cands.slice(0, 22), cible = Math.round(montant * 100);
-  let best = { d: Infinity, m: 0 }; const n = c.length, vals = c.map(r => Math.round(r._reste * 100));
-  if (n <= 16) { for (let m = 1; m < (1 << n); m++) { let s = 0; for (let k = 0; k < n; k++) if (m & (1 << k)) s += vals[k]; const d = Math.abs(s - cible); if (d < best.d) best = { d, m }; } }
-  return best.d <= 500 ? new Set(c.filter((_, k) => best.m & (1 << k)).map(r => get(r, "UID"))) : new Set();
+  for (let i = 0; i < n; i++) { t += vals[i]; if (t === cible) return { sel: new Set(c.slice(0, i + 1).map(r => get(r, "UID"))), exp: null }; }
+  let expl = null;
+  t = 0;
+  for (let i = 0; i < n && !expl; i++) { t += vals[i]; const e = virExplique_(c.slice(0, i + 1), cible - t); if (e) expl = { m: c.slice(0, i + 1), e }; }
+  if (n <= 16) {
+    for (let m = 1; m < (1 << n); m++) { let s = 0; for (let k = 0; k < n; k++) if (m & (1 << k)) s += vals[k];
+      if (s === cible) return { sel: new Set(c.filter((_, k) => m & (1 << k)).map(r => get(r, "UID"))), exp: null };
+      if (!expl) { const ch = c.filter((_, k) => m & (1 << k)), e = virExplique_(ch, cible - s); if (e) expl = { m: ch, e }; } }
+  }
+  return expl ? { sel: new Set(expl.m.map(r => get(r, "UID"))), exp: expl.e } : { sel: new Set(), exp: null };
 }
 function virementZone_(root) {
   if (!root || root.querySelector(".vir-zone")) return;
   const z = document.createElement("details"); z.className = "vir-zone table-card";
-  z.innerHTML = `<summary><b>J'ai reçu un virement</b> <span class="card-sub">comité, ligue ou FFBB : l'app répartit le montant sur les bons matchs</span></summary>
+  z.innerHTML = `<summary><b>J'ai reçu un virement</b> <span class="card-sub">comité, ligue ou FFBB : l'app retrouve les matchs payés, au centime près</span></summary>
     <div class="vir-f"><label>Payeur<select id="virP">${Object.entries(VIR_PAYEURS_).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
     <label>Montant reçu (€)<input id="virM" type="number" step="0.01" min="0" inputmode="decimal" placeholder="201,00"></label>
     <label>Date du virement<input id="virD" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
@@ -3461,31 +3487,53 @@ function virementZone_(root) {
   const maj = () => {
     const cands = virCandidats_(P.value), montant = toNumber(M.value);
     if (!cands.length) { L.innerHTML = '<p class="card-sub">Aucun match en attente pour ce payeur.</p>'; return; }
-    const sel = montant > 0 ? virSelection_(cands, montant) : new Set();
-    L.innerHTML = `<p class="card-sub">${montant > 0 ? (sel.size ? "Matchs cochés automatiquement : vérifie, puis enregistre." : "Aucune combinaison ne colle à ±5 € : coche les matchs à la main.") : "Saisis le montant du virement."}</p>
-      <ul class="vir-ul">${cands.map(r => `<li><label><input type="checkbox" data-vir="${escapeHtml(get(r, "UID"))}"${sel.has(get(r, "UID")) ? " checked" : ""}> ${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(codeCompetition(r) || r._format)} · ${escapeHtml(rbEquipes_(r))} <b>${formatMoney(r._reste)}</b></label></li>`).join("")}</ul>
+    const auto = montant > 0 ? virSelection_(cands, montant) : { sel: new Set(), exp: null };
+    L.innerHTML = `<p class="card-sub">${montant > 0 ? (auto.sel.size ? "Matchs retrouvés automatiquement : vérifie, puis enregistre." : "Aucune combinaison de matchs ne donne ce montant : coche les matchs à la main.") : "Saisis le montant du virement."}</p>
+      <ul class="vir-ul">${cands.map(r => `<li><label><input type="checkbox" data-vir="${escapeHtml(get(r, "UID"))}"${auto.sel.has(get(r, "UID")) ? " checked" : ""}> ${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(codeCompetition(r) || r._format)} · ${escapeHtml(rbEquipes_(r))} <b>${formatMoney(r._reste)}</b>${virEstime_(r) ? ' <span class="card-sub">(km estimés)</span>' : ""}</label></li>`).join("")}</ul>
       <div class="vir-tot" id="virT"></div><button type="button" class="small-btn" id="virGo">Enregistrer le virement</button>`;
+    let etat = null;
     const tot = () => {
       const ch = [...L.querySelectorAll("[data-vir]:checked")].map(x => cands.find(r => get(r, "UID") === x.getAttribute("data-vir")));
-      const s = ch.reduce((t, r) => t + r._reste, 0), e = montant - s;
-      L.querySelector("#virT").innerHTML = ch.length ? `Attendu ${formatMoney(s)} · reçu ${formatMoney(montant)} · écart <b class="${Math.abs(e) <= 5 ? "ok" : "ko"}">${e >= 0 ? "+" : ""}${formatMoney(e)}</b>${Math.abs(e) > 5 ? " (plus de 5 € : vérifie la sélection)" : ""}` : "";
-      return { ch, s };
+      const sC = ch.reduce((t, r) => t + Math.round(r._reste * 100), 0), eC = Math.round(montant * 100) - sC, exp = virExplique_(ch, eC);
+      etat = { ch, sC, eC, exp };
+      const T = L.querySelector("#virT");
+      if (!ch.length) { T.innerHTML = ""; return etat; }
+      let h = `Attendu ${formatMoney(sC / 100)} · reçu ${formatMoney(montant)}`;
+      if (!eC) h += ` · <b class="ok">montant exact</b>`;
+      else if (exp) h += ` · écart ${eC > 0 ? "+" : ""}${formatMoney(eC / 100)}<br><b>Écart expliqué :</b> le payeur a retenu <b>${exp.kmN} km A/R</b> au lieu de ${exp.km} km estimés pour ${exp.matchs.length > 1 ? exp.matchs.length + " matchs" : "le match"} ${escapeHtml(cleanText(get(exp.matchs[0], "Salle") || ""))} (${exp.matchs.map(r => escapeHtml(rbFmtDate_(r._date))).join(", ")}). En enregistrant, l'app corrige ces km et les retient pour tes prochains matchs dans cette salle.`;
+      else h += ` · écart <b class="ko">${eC > 0 ? "+" : ""}${formatMoney(eC / 100)}</b> non expliqué : vérifie la sélection. Si tu enregistres quand même, les matchs concernés passeront « Reçu partiel » ou « À vérifier ».`;
+      T.innerHTML = h; return etat;
     };
     L.querySelectorAll("[data-vir]").forEach(x => x.addEventListener("change", tot)); tot();
     L.querySelector("#virGo").addEventListener("click", async () => {
-      const { ch, s } = tot();
+      const { ch, eC, exp } = tot();
       if (!ch.length || !(montant > 0)) { setStatus("Saisis le montant et coche au moins un match", "error"); return; }
-      if (Math.abs(montant - s) > 5 && !confirm("L'écart dépasse 5 € : les matchs resteront « Reçu partiel » ou « À vérifier ». Continuer ?")) return;
+      if (eC && !exp && !confirm("Le montant ne correspond pas aux matchs cochés. Les matchs passeront « Reçu partiel » ou « À vérifier ». Continuer ?")) return;
       const b = L.querySelector("#virGo"); b.disabled = true;
-      let reste = Math.round(montant * 100), ok = 0;
-      for (let i = 0; i < ch.length; i++) {
-        const part = i === ch.length - 1 ? reste : Math.round(ch[i]._reste * 100 * montant / s); reste -= part;
-        try {
-          const res = await jsonp("payment.update", { uid: get(ch[i], "UID"), recu_recevant: (part / 100).toFixed(2), mode_recevant: "Virement", date_recu_recevant: D.value });
-          if (res && res.success !== false) { ok++; if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(get(ch[i], "UID"), res.row); }
-        } catch (e) { /* on continue, compte rendu à la fin */ }
+      const du = new Map(ch.map(r => [get(r, "UID"), Math.round(r._reste * 100)]));
+      let ok = 0;
+      // 1) km retenus par le payeur : la convocation n'avait pas de km, on corrige l'indemnité au centime.
+      if (exp) {
+        const dC = Math.round(exp.dEur * 100);
+        for (const r of exp.matchs) {
+          const nouv = Math.round(toNumber(get(r, "Indemnité totale")) * 100) + dC;
+          try { const res = await jsonp("km.comite", { uid: get(r, "UID"), indemnite: (nouv / 100).toFixed(2) });
+            if (res && res.success !== false) { du.set(get(r, "UID"), du.get(get(r, "UID")) + dC); if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(get(r, "UID"), res.row); }
+            else { setStatus("Correction des km refusée : " + ((res && res.error) || "erreur"), "error"); b.disabled = false; return; }
+          } catch (e) { setStatus("Correction des km impossible : réessaie", "error"); b.disabled = false; return; }
+        }
       }
-      setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length ? "ok" : "error");
+      // 2) chaque match reçoit exactement son dû ; un reste non expliqué va sur le dernier (reçu partiel / trop-perçu → à vérifier).
+      let reste = Math.round(montant * 100);
+      for (let i = 0; i < ch.length; i++) {
+        const uid = get(ch[i], "UID"), deja = Math.round(toNumber(get(ch[i], "Reçu recevant")) * 100);
+        const part = i === ch.length - 1 ? reste : Math.min(du.get(uid), reste); reste -= part;
+        try {
+          const res = await jsonp("payment.update", { uid, recu_recevant: ((deja + part) / 100).toFixed(2), mode_recevant: "Virement", date_recu_recevant: D.value });
+          if (res && res.success !== false) { ok++; if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(uid, res.row); }
+        } catch (e) { /* compte rendu à la fin */ }
+      }
+      setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)${exp ? " · km corrigés" : ""}` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length ? "ok" : "error");
       renderAll();
     });
   };
