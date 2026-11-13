@@ -127,7 +127,7 @@
   }
   const badge = (txt, cl) => '<span class="badge ' + (cl || "") + '">' + esc(txt) + "</span>";
   const badgeStatut = (s) => ({ actif: badge("actif", "green"), inscrit: badge("inscrit", "orange"), moteur_pret: badge("moteur prêt", "gold"), suspendu: badge("suspendu", "red"),
-    attente: badge("attente", "blue"), recue: badge("reçue", "orange"), moteur_cree: badge("moteur créé", "gold"), prete: badge("prête", "green"), erreur: badge("erreur", "red"),
+    attente: badge("attente", "blue"), recue: badge("reçue", "orange"), moteur_attribue: badge("moteur en route", "blue"), moteur_cree: badge("moteur créé", "gold"), prete: badge("prête", "green"), erreur: badge("erreur", "red"),
     Ouvert: badge("Ouvert", "red"), "En cours": badge("En cours", "orange"), "Fermé": badge("Fermé", "green") }[s] || badge(s || "—"));
   const ouiNon = (v) => (v ? badge("oui", "green") : badge("non", "gray"));
   const API_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
@@ -529,7 +529,7 @@
     const el = $("sec-inscriptions");
     if (force || !cache.inscriptions) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.inscriptions = (await admin("inscriptions.liste")).data || []; }
     const l = cache.inscriptions; $("navInscriptions").textContent = l.filter((i) => i.statut === "recue" || i.statut === "erreur" || i.statut === "attente").length || "";
-    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["attente", "recue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(s.replace("_", " ")) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
+    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["attente", "recue", "moteur_attribue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(s.replace("_", " ")) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
       '<span class="sp"></span><button class="btn sm" id="btnCmdFile">Copier la commande file d\'attente</button><button class="btn sm" id="btnCsvInsc">Export CSV</button></div>' +
       '<p class="mut tiny">Places : <code>pub.beta</code> (Configuration) — au-delà de <em>max</em>, les demandes arrivent en « attente » et tu les acceptes ici une par une. Parcours : inscription reçue → <code>zsh rt-beta.sh --file-attente</code> crée le moteur → « Marquer moteur créé » (api_url) → « Envoyer le code » (statut prête). Une erreur de route Cloudflare se lève avec « Route faite ».</p><div id="tblInsc"></div>';
     el.querySelectorAll(".pill").forEach((p) => p.addEventListener("click", () => { filtreInsc = p.dataset.f; rendus.inscriptions(false); }));
@@ -685,7 +685,7 @@
   const SEV = { 1: ["Critique", "red"], 2: ["Élevée", "orange"], 3: ["Moyenne", "gold"], 4: ["Info", "gray"] };
   rendus.cockpit = async function (force) {
     const el = $("sec-cockpit");
-    if (force || !cache.cockpit) { if (!cache.cockpit) el.innerHTML = '<p class="mut">Chargement du cockpit…</p>'; cache.cockpit = await rpcAdmin("rt_cockpit"); }
+    if (force || !cache.cockpit) { if (!cache.cockpit) el.innerHTML = '<p class="mut">Chargement du cockpit…</p>'; cache.cockpit = await rpcAdmin("rt_cockpit"); try { cache.cockpit.stock = await rpcAdmin("rt_stock_etat"); } catch (e) { cache.cockpit.stock = null; } }
     const C = cache.cockpit, S = C.series || [], col = (k) => S.map((d) => d[k]), som = (k, n) => col(k).slice(-n).reduce((t, x) => t + (Number(x) || 0), 0);
     const M = C.moteurs || [], F = C.file || {}, B = C.base || {}, E = C.env || {}, P = {}; (C.perf || []).forEach((p) => (P[p.metrique] = p));
     const vRef = M.map((m) => m.version).filter(Boolean).sort().pop() || "";
@@ -711,6 +711,10 @@
     if (F.a_verifier) AL.push({ s: 3, d: "Paiements", m: F.a_verifier + " paiement(s) à vérifier", o: "", l: "#paiements" });
     if (F.warnings) AL.push({ s: 4, d: "Qualité", m: F.warnings + " avertissement(s) finance sur la saison", o: "", l: "#qualite" });
     if (F.sans_km) AL.push({ s: 3, d: "Qualité", m: F.sans_km + " match(s) sans kilométrage", o: "", l: "#qualite" });
+    const ST = C.stock || [], stLibres = ST.filter((x) => x.statut === "libre").length;
+    if (C.stock) { if (stLibres < 2) AL.push({ s: stLibres ? 2 : 1, d: "Inscriptions", m: (stLibres ? "Plus que " + stLibres + " moteur libre" : "Plus aucun moteur libre") + " en réserve : les inscriptions passeront en file d'attente", o: "zsh rt-beta.sh --stock 5", l: "#inscriptions" });
+      ST.filter((x) => x.statut === "erreur").forEach((x) => AL.push({ s: 1, d: "Inscriptions", m: "Mise en route du moteur " + x.nom + " en échec" + (x.erreur ? " : " + x.erreur.slice(0, 120) : ""), o: x.arbitre || "", l: "#inscriptions" }));
+      ST.filter((x) => x.statut === "attribue" && x.attribue_le && Date.now() - Date.parse(x.attribue_le) > 3600000).forEach((x) => AL.push({ s: 2, d: "Inscriptions", m: "Moteur " + x.nom + " attribué depuis plus d'1 h sans être prêt", o: x.arbitre || "", l: "#inscriptions" })); }
     if (som("alertes", 7)) AL.push({ s: 4, d: "Moteurs", m: som("alertes", 7) + " mail(s) non reconnu(s) sur 7 jours", o: "", l: "#alertes" });
     if (P.api && P.api.moyenne_ms > 1500) AL.push({ s: 3, d: "Performance", m: "Base lente : " + P.api.moyenne_ms + " ms en moyenne", o: "", l: "#cockpit" });
     if (P.chargement && P.chargement.moyenne_ms > 4000) AL.push({ s: 3, d: "Performance", m: "Chargement lent : " + (P.chargement.moyenne_ms / 1000).toFixed(1) + " s", o: "", l: "#cockpit" });
@@ -740,6 +744,7 @@
         fTuile({ titre: "Matchs importés", sous: "7 jours", val: som("matchs", 7), tdc: tendance(col("matchs"), 7), spark: spark(col("matchs"), "gold"), pied: "saison : " + (fin.matchs ?? 0) + " matchs", lien: "#userstats" }),
         fTuile({ titre: "Mails non reconnus", sous: "7 jours", val: som("alertes", 7), etat: som("alertes", 7) > 5 ? "warn" : "", spark: spark(col("alertes"), "orange"), pied: "convocations à rattacher", lien: "#alertes" }),
         fTuile({ titre: "Inscriptions", sous: "30 jours", val: som("inscriptions", 30), spark: spark(col("inscriptions")), pied: (F.inscriptions_attente || 0) + " à traiter", etat: F.inscriptions_erreur ? "err" : F.inscriptions_attente ? "warn" : "", lien: "#inscriptions" }),
+        fTuile({ titre: "Moteurs en réserve", sous: "inscriptions automatiques", val: C.stock ? stLibres + " / " + ST.length : "—", etat: !C.stock ? "" : stLibres >= 3 ? "ok" : stLibres >= 1 ? "warn" : "err", pied: C.stock ? ST.filter((x) => x.statut === "pret").length + " attribué(s) et prêt(s)" : "", lien: "#inscriptions", aide: "Recharger : zsh rt-beta.sh --stock 5" }),
         fTuile({ titre: "Tickets", sous: "ouverts", val: F.tickets_ouverts ?? 0, etat: F.tickets_bloquants ? "err" : F.tickets_ouverts ? "warn" : "ok", pied: (F.tickets_bloquants || 0) + " bloquant(s) · " + som("tickets", 30) + " sur 30 j", lien: "#tickets" }),
         fTuile({ titre: "Kilomètres", sous: "saison", val: eur(fin.km), unite: "km", pied: fin.matchs ? Math.round((fin.km || 0) / fin.matchs) + " km A/R par match" : "", lien: "#userstats" }),
       ]) +
