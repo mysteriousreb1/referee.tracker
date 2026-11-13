@@ -471,6 +471,7 @@ const RECH = {
   }
 };
 function setActiveTab(tab) {
+  try { if (window.rtUsage && tab !== state.activeTab) window.rtUsage.visite(tab); } catch (e) {}
   if (tab === "monespace") {
     const d = (state.meLast && state.meLast !== "rapports" && (state.meLast !== "elicence" || fonctionActive_("elicence"))) ? state.meLast : (fonctionActive_("elicence") ? "elicence" : "contacts");
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
@@ -3534,6 +3535,7 @@ function virementZone_(root) {
           if (res && res.success !== false) { ok++; if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(uid, res.row); }
         } catch (e) { /* compte rendu à la fin */ }
       }
+      try { window.rtUsage && rtUsage.action(exp ? "virement_km" : "virement"); } catch (e) {}
       setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)${exp ? " · km corrigés" : ""}` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length ? "ok" : "error");
       renderAll();
     });
@@ -6714,6 +6716,7 @@ function downloadExportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
+  try { window.rtUsage && rtUsage.action("export_csv"); } catch (e) {}
   a.download = `referee-tracker-export-${state.exportMode === "range" ? (state.exportFrom || "debut") + "_" + (state.exportTo || "fin") : (state.exportSeason === EXPORT_TOUTES ? "toutes-saisons" : state.exportSeason.replace("/", "-"))}.csv`;
   document.body.appendChild(a);
   a.click();
@@ -9525,6 +9528,7 @@ function attachRfApres_(root) {
       if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(dest)) { setStatus("Adresse e-mail invalide", "error"); return; }
       b.disabled = true;
       try {
+        try { window.rtUsage && rtUsage.action("rapport_envoye"); } catch (e) {}
         const res = await jsonp("rapport.send", { id: d.id, email: dest });
         if (!res || res.success === false) throw new Error((res && res.error) || "Erreur");
         try { localStorage.setItem("rt-rf-mail", dest); } catch (x) {}

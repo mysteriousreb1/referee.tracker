@@ -152,7 +152,7 @@ td.actions { white-space: normal; min-width: 250px; }
 .bars .b.gold i { background: linear-gradient(180deg, var(--gold), #e0a800); }
 .bars .b b { font-family: var(--mono); font-size: 11px; font-weight: 700; }
 .bars .b span { font-size: 10px; color: var(--muted); white-space: nowrap; }
-.hbars { display: grid; grid-template-columns: 140px 1fr 56px; gap: 6px 10px; align-items: center; font-size: 12.5px; }
+.hbars { display: grid; grid-template-columns: 140px 1fr minmax(56px, auto); gap: 6px 10px; align-items: center; font-size: 12.5px; }
 .hbars .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .hbars .trk { height: 12px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
 .hbars .trk i { display: block; height: 100%; background: var(--navy-600); border-radius: 6px; }
@@ -412,3 +412,4 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 #coAnn .row { align-items: flex-end; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .ann-t textarea { font-family: inherit; font-size: 14px; }
 #coAnn { margin-top: 16px; } #coAnn .row input { flex: 1; min-width: 160px; max-width: 320px; width: auto; }
+.hbars .val { white-space: nowrap; text-align: right; }

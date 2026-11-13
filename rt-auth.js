@@ -2321,13 +2321,35 @@ const RT_CARTE = {
 
 /* ===================== b71 — TEMPS D'UTILISATION (admin : « utilisateurs actifs », minutes, jours actifs) =====================
    Toutes les minutes, si l'onglet est visible et la session ouverte, on compte 1 min ; toutes les 5 min comptées,
-   un appel à la fonction SQL connexion_ping (sécurisée : auth.uid(), 1 ligne par jour). Aucune donnée de navigation,
-   aucune page consultée : juste un compteur de minutes. Déclaré dans la politique de confidentialité (traitement T8). */
-let _usageTimer = null, _usageMin = 0;
+   un appel à la fonction SQL connexion_ping (sécurisée : auth.uid(), 1 ligne par jour). b90 : + compteurs agrégés
+   par jour (onglet ouvert, heure, quelques actions) via rt_usage — aucun contenu saisi. Déclaré dans la politique de confidentialité (traitement T8). */
+let _usageTimer = null, _usageMin = 0, _usageDet = {};
+function rtUsageAjout_(cle, visites, minutes) {
+  cle = String(cle || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9:_-]/g, "").slice(0, 32);
+  if (!/^[ohe]:[a-z0-9_-]{1,30}$/.test(cle) || (!_usageDet[cle] && Object.keys(_usageDet).length >= 50)) return;
+  const v = _usageDet[cle] || (_usageDet[cle] = [0, 0]); v[0] += visites || 0; v[1] += minutes || 0;
+}
+window.rtUsage = { visite: (onglet) => rtUsageAjout_("o:" + onglet, 1, 0), action: (nom) => rtUsageAjout_("e:" + nom, 1, 0) };
 function usageInstaller_() {
   if (_usageTimer) return;
   const appareil = /iPhone|iPad|Android/i.test(navigator.userAgent) ? (/iPad/i.test(navigator.userAgent) ? "tablette" : "téléphone") : "ordinateur";
-  const envoyer = async () => { const n = _usageMin; if (!n) return; _usageMin = 0; try { await SB.write("POST", "rpc/connexion_ping", { p_minutes: n, p_appareil: appareil }); } catch (e) { _usageMin += n; } };
-  _usageTimer = setInterval(() => { if (document.visibilityState !== "visible" || !SB.actif) return; _usageMin++; if (_usageMin >= 5) envoyer(); }, 60000);
+  const envoyer = async () => {
+    const n = _usageMin; if (!n) return; _usageMin = 0;
+    try { await SB.write("POST", "rpc/connexion_ping", { p_minutes: n, p_appareil: appareil }); } catch (e) { _usageMin += n; }
+    // b90 — détail agrégé (onglets, heure, actions) : compteurs uniquement, aucune donnée saisie
+    const d = _usageDet; _usageDet = {}; if (!Object.keys(d).length) return;
+    try { await SB.write("POST", "rpc/rt_usage", { p: d }); } catch (e) {}
+  };
+  _usageTimer = setInterval(() => {
+    if (document.visibilityState !== "visible" || !SB.actif) return; _usageMin++;
+    const t = (typeof state !== "undefined" && state.activeTab) ? state.activeTab : "accueil";
+    rtUsageAjout_("o:" + t, 0, 1); rtUsageAjout_("h:" + String(new Date().getHours()).padStart(2, "0"), 0, 1);
+    if (_usageMin >= 5) envoyer();
+  }, 60000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && _usageMin >= 1) envoyer(); });
+  // b90 — actions clés (comptage seulement)
+  document.addEventListener("click", (e) => {
+    const t = e.target && e.target.closest ? e.target.closest(".contact-sms,[data-relance],[data-ann-go],.vir-zone summary") : null; if (!t) return;
+    rtUsageAjout_(t.classList.contains("contact-sms") ? "e:sms_collegue" : t.dataset.relance ? "e:relance_" + t.dataset.relance : t.dataset.annGo ? "e:banniere_" + t.dataset.annGo : "e:virement_ouvert", 1, 0);
+  }, true);
 }

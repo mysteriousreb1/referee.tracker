@@ -164,11 +164,11 @@
 
   // ---------- navigation ----------
   const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", userstats: "Statistiques par arbitre" };   // b86 : 2 espaces
   const PAGES = [
-    { id: "app-vue", secs: ["pilotage", "dashboard", "kpiapp"] }, { id: "app-tech", secs: ["tech", "usage"] },
+    { id: "app-vue", secs: ["appstats", "pilotage", "dashboard"] }, { id: "app-tech", secs: ["tech", "usage", "kpiapp"] },
     { id: "app-sante", secs: ["sante", "moteurs"] }, { id: "app-config", secs: ["config"] }, { id: "app-journal", secs: ["journal"] },
-    { id: "arb-vue", secs: ["kpiarb", "stats"] }, { id: "arb-liste", secs: ["arbitres"] }, { id: "arb-insc", secs: ["inscriptions"] },
+    { id: "arb-vue", secs: ["userstats", "kpiarb", "stats"] }, { id: "arb-liste", secs: ["arbitres"] }, { id: "arb-insc", secs: ["inscriptions"] },
     { id: "arb-com", secs: ["communication", "messages", "tickets"] }, { id: "arb-matchs", secs: ["agenda", "paiements", "alertes", "qualite"] }];
   function espace(e) {
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
@@ -666,6 +666,92 @@
   };
 
   // =====================================================================
+  // b90 — UTILISATION DE L'APPLICATION (rt_stats_app) et STATISTIQUES PAR ARBITRE (rt_stats_users)
+  // =====================================================================
+  async function rpcAdmin(nom) {
+    const r = await fetch(SB_URL + "/rest/v1/rpc/" + nom, { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
+    return j;
+  }
+  const ONGLETS_LIB = { accueil: "Accueil", matchs: "Matchs", paiements: "Paiements", stats: "Analyse", estimation: "Estimation", alertes: "Alertes", reglement: "Règlement (chat)", rapports: "Rapports", export: "Export", progression: "Progression", qcm: "QCM", contacts: "Contacts", procedures: "Procédures", elicence: "e-Licence", equipement: "Équipement", hotel: "Hôtels", indispos: "Indisponibilités", monespace: "Mon espace" };
+  const ACTIONS_LIB = { virement: "Virement saisi", virement_km: "Virement + km corrigés", virement_ouvert: "Panneau virement ouvert", export_csv: "Export CSV", rapport_envoye: "Rapport envoyé", sms_collegue: "SMS au collègue", relance_sms: "Relance club (SMS)", relance_mail: "Relance club (mail)", banniere_profil: "Bannière → profil", banniere_guide: "Bannière → guide" };
+  const NIV_LIB = { ecole: "École d'arbitrage", stagiaire_dep: "Stagiaire départemental", departemental: "Départemental", stagiaire_reg: "Stagiaire régional", regional3: "Régional 3", regional2: "Régional 2", jpr: "JPR", regional1: "Régional 1", cf_jeunes: "CF Jeunes", cf: "Championnat de France", haut_niveau: "Haut niveau" };
+  const libN = (k) => NIV_LIB[k] || k;
+  const colN = (t, k) => ({ t, k, cl: "num right", r: (x) => esc(x[k] ?? 0) });
+  const libO = (k) => ONGLETS_LIB[k] || k, libA = (k) => ACTIONS_LIB[k] || k.replace(/_/g, " ");
+  const jj = (d) => { const x = new Date(d); return String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0"); };
+  rendus.appstats = async function (force) {
+    const el = $("sec-appstats");
+    if (force || !cache.appstats) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.appstats = await rpcAdmin("rt_stats_app"); }
+    const S = cache.appstats, K = S.kpi || {}, J = S.jours || [], J30 = J.slice(-30), W = S.semaines || [], A = S.appareils || {}, O = S.onglets || [], H = S.heures || [], AC = S.actions || [];
+    const totApp = (A.telephone || 0) + (A.ordinateur || 0) + (A.tablette || 0), totO = O.reduce((t, o) => t + (o.minutes || 0), 0);
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Saison ' + esc(S.saison) + " · données du " + fmt(S.genere) + '</span><button class="btn pri" id="appXlsx">⬇ Exporter en Excel</button></div>' +
+      '<div class="subtab">Audience</div><div class="tiles">' +
+      tuileB(K.comptes ?? 0, "Comptes", "", (K.jamais_connectes ?? 0) + " jamais connecté(s)") +
+      tuileB(K.actifs_1j ?? 0, "Actifs aujourd'hui", "green", "") +
+      tuileB(K.actifs_7j ?? 0, "Actifs 7 jours", "green", pct(K.actifs_7j, K.comptes) + " des comptes") +
+      tuileB(K.actifs_30j ?? 0, "Actifs 30 jours", "green", "fidélité 7 j / 30 j : " + pct(K.actifs_7j, K.actifs_30j)) +
+      tuileB(K.retention_7j == null ? "—" : K.retention_7j + " %", "Rétention", (K.retention_7j ?? 100) < 50 ? "orange" : "green", "inscrits depuis 14 j+, revenus cette semaine") +
+      tuileB(pct(K.accueil_termine, K.comptes), "Accueil terminé", "", (K.accueil_termine ?? 0) + " / " + (K.comptes ?? 0)) + "</div>" +
+      '<div class="subtab">Engagement</div><div class="tiles">' +
+      tuileB(minutesTxt(K.minutes_30j || 0), "Temps d'utilisation 30 j", "", "tous arbitres") +
+      tuileB((K.minutes_par_jour_actif ?? 0) + " min", "Par jour d'utilisation", "", "durée moyenne d'une journée active") +
+      tuileB(K.jours_actifs_moyens_30j ?? 0, "Jours actifs / arbitre", "", "moyenne sur 30 jours") +
+      tuileB(K.push_abonnes ?? 0, "Notifications activées", "", pct(K.push_abonnes, K.comptes) + " des comptes") + "</div>" +
+      '<div class="subtab">Activité du service</div><div class="tiles">' +
+      tuileB(K.matchs_saison ?? 0, "Matchs de la saison", "", "toutes instances") +
+      tuileB(K.matchs_importes_7j ?? 0, "Matchs importés 7 j", "green", "convocations lues par les moteurs") +
+      tuileB(K.alertes_7j ?? 0, "Mails non reconnus 7 j", (K.alertes_7j ?? 0) ? "orange" : "gray", "") + "</div>" +
+      '<div class="grid-2">' +
+      '<div class="card"><div class="card-head"><h2>Arbitres actifs par jour</h2><span class="sub">30 derniers jours</span></div>' + barres(J30.map((d, i) => ({ l: i % 5 === 4 ? jj(d.jour) : "", v: d.actifs }))) + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Minutes d\'utilisation par semaine</h2><span class="sub">12 semaines</span></div>' + barres(W.map((w) => ({ l: jj(w.semaine), v: w.minutes }))) + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Matchs importés par jour</h2><span class="sub">30 derniers jours</span></div>' + barres(J30.map((d, i) => ({ l: i % 5 === 4 ? jj(d.jour) : "", v: d.matchs })), "gold") + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Heures d\'utilisation</h2><span class="sub">minutes cumulées sur 30 j</span></div>' + (H.some((h) => h.minutes) ? barres(H.map((h) => ({ l: h.heure % 3 === 0 ? h.heure + "h" : "", v: h.minutes }))) : '<p class="vide">Mesure démarrée avec la version b90</p>') + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Appareils</h2><span class="sub">part du temps d\'utilisation (30 j)</span></div>' + hbarres([{ l: "Téléphone", v: A.telephone || 0 }, { l: "Ordinateur", v: A.ordinateur || 0 }, { l: "Tablette", v: A.tablette || 0 }], (v) => minutesTxt(v) + " (" + pct(v, totApp) + ")") + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Matchs de la saison par niveau</h2></div>' + hbarres((S.niveaux || []).map((n) => ({ l: n.niveau || "—", v: n.matchs }))) + "</div>" +
+      "</div>" +
+      '<div class="card"><div class="card-head"><h2>Onglets les plus utilisés</h2><span class="sub">30 jours · ' + (O.length ? "temps passé et ouvertures" : "mesure démarrée avec la version b90") + '</span></div>' + (O.length ? hbarres(O.slice(0, 12).map((o) => ({ l: libO(o.onglet), v: o.minutes })), (v) => minutesTxt(v) + " (" + pct(v, totO) + ")") + '<div id="appO"></div>' : "") + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Actions clés</h2><span class="sub">30 jours</span></div><div id="appA"></div></div>';
+    if (O.length) tableau($("appO"), [{ t: "Onglet", k: (o) => libO(o.onglet), r: (o) => esc(libO(o.onglet)) }, colN("Ouvertures", "visites"), colN("Minutes", "minutes"), colN("Arbitres", "utilisateurs"), { t: "Part du temps", k: "minutes", r: (o) => pct(o.minutes, totO) }], O, {});
+    tableau($("appA"), [{ t: "Action", k: (a) => libA(a.action), r: (a) => esc(libA(a.action)) }, colN("Nombre", "nombre"), colN("Arbitres", "utilisateurs")], AC, {});
+    $("appXlsx").onclick = () => {
+      window.rtXlsx("Referee-Tracker-utilisation-" + new Date().toISOString().slice(0, 10), [
+        { nom: "Indicateurs", lignes: [["Indicateur", "Valeur"]].concat(Object.entries(K).map(([k, v]) => [k.replace(/_/g, " "), v])) },
+        { nom: "Par jour", lignes: [["Jour", "Arbitres actifs", "Minutes", "Nouveaux comptes", "Matchs importés", "Mails non reconnus"]].concat(J.map((d) => [d.jour, d.actifs, d.minutes, d.nouveaux, d.matchs, d.alertes])) },
+        { nom: "Par semaine", lignes: [["Semaine du", "Arbitres actifs", "Minutes"]].concat(W.map((w) => [w.semaine, w.actifs, w.minutes])) },
+        { nom: "Onglets 30 j", lignes: [["Onglet", "Ouvertures", "Minutes", "Arbitres"]].concat(O.map((o) => [libO(o.onglet), o.visites, o.minutes, o.utilisateurs])) },
+        { nom: "Heures 30 j", lignes: [["Heure", "Minutes"]].concat(H.map((h) => [h.heure + "h", h.minutes])) },
+        { nom: "Actions 30 j", lignes: [["Action", "Nombre", "Arbitres"]].concat(AC.map((a) => [libA(a.action), a.nombre, a.utilisateurs])) },
+        { nom: "Appareils 30 j", lignes: [["Appareil", "Minutes"], ["Téléphone", A.telephone || 0], ["Ordinateur", A.ordinateur || 0], ["Tablette", A.tablette || 0]] },
+        { nom: "Niveaux", lignes: [["Niveau", "Matchs"]].concat((S.niveaux || []).map((n) => [n.niveau, n.matchs])) }]);
+      toast("Export Excel téléchargé", "ok");
+    };
+  };
+  const US_COLS = { prenom: "Prénom", nom: "Nom FFBB", statut: "Statut", niveau: "Niveau", comite: "Comité", ligue: "Ligue", cf: "Championnat de France", inscrit_le: "Inscrit le", accueil_termine: "Accueil terminé", derniere_activite: "Dernière activité", jours_actifs_30j: "Jours actifs 30 j", minutes_30j: "Minutes 30 j", appareil_principal: "Appareil principal", onglet_prefere: "Onglet préféré", matchs_saison: "Matchs saison", f5x5: "5x5", f3x3: "3x3", a_venir: "À venir", km_saison: "Km saison", indemnites_saison: "Indemnités saison (€)", recu_saison: "Reçu (€)", reste_a_recevoir: "Reste à recevoir (€)", en_retard: "Paiements en retard", delai_paiement_moyen_j: "Délai de paiement moyen (j)", matchs_historique: "Matchs (historique)", saisons: "Saisons suivies", dernier_match_importe: "Dernier match importé" };
+  rendus.userstats = async function (force) {
+    const el = $("sec-userstats");
+    if (force || !cache.userstats) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.userstats = await rpcAdmin("rt_stats_users"); }
+    const U = cache.userstats.arbitres || [], som = (k) => U.reduce((t, u) => t + (Number(u[k]) || 0), 0);
+    const delais = U.filter((u) => u.delai_paiement_moyen_j != null), eur = (v) => Math.round(v).toLocaleString("fr-FR") + " €";
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Saison ' + esc(cache.userstats.saison) + " · données du " + fmt(cache.userstats.genere) + '</span><button class="btn pri" id="usXlsx">⬇ Exporter en Excel</button></div>' +
+      '<div class="tiles">' + tuileB(U.length, "Arbitres", "", U.filter((u) => u.matchs_saison > 0).length + " avec des matchs cette saison") +
+      tuileB(som("matchs_saison"), "Matchs saison", "", som("f5x5") + " en 5x5 · " + som("f3x3") + " en 3x3") + tuileB(som("a_venir"), "Matchs à venir", "green", "") +
+      tuileB(Math.round(som("km_saison")).toLocaleString("fr-FR") + " km", "Kilomètres saison", "", U.filter((u) => u.matchs_saison).length ? Math.round(som("km_saison") / Math.max(1, som("matchs_saison"))) + " km A/R par match" : "") +
+      tuileB(eur(som("indemnites_saison")), "Indemnités saison", "", "reçu " + eur(som("recu_saison"))) +
+      tuileB(eur(som("reste_a_recevoir")), "Reste à recevoir", som("en_retard") ? "orange" : "gray", som("en_retard") + " paiement(s) en retard") +
+      tuileB(delais.length ? Math.round(delais.reduce((t, u) => t + u.delai_paiement_moyen_j, 0) / delais.length) + " j" : "—", "Délai de paiement moyen", "", "entre le match et l'argent reçu") + "</div>" +
+      '<div class="grid-2"><div class="card"><div class="card-head"><h2>Matchs de la saison</h2></div>' + hbarres(U.filter((u) => u.matchs_saison).sort((a, b) => b.matchs_saison - a.matchs_saison).map((u) => ({ l: u.prenom, v: u.matchs_saison }))) + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Reste à recevoir</h2></div>' + hbarres(U.filter((u) => u.reste_a_recevoir > 0).sort((a, b) => b.reste_a_recevoir - a.reste_a_recevoir).map((u) => ({ l: u.prenom, v: Math.round(u.reste_a_recevoir), cl: u.en_retard ? "orange" : "" })), (v) => v + " €") + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Utilisation sur 30 jours</h2><span class="sub">minutes</span></div>' + hbarres(U.slice().sort((a, b) => b.minutes_30j - a.minutes_30j).map((u) => ({ l: u.prenom, v: u.minutes_30j })), (v) => minutesTxt(v)) + "</div>" +
+      '<div class="card"><div class="card-head"><h2>Profils</h2></div>' + hbarres(Object.entries(U.reduce((m, u) => { const k = (u.comite || "?") + (u.cf ? " · CF" : ""); m[k] = (m[k] || 0) + 1; return m; }, {})).map(([l, v]) => ({ l, v }))) + "</div></div>" +
+      '<div class="card"><div class="card-head"><h2>Détail par arbitre</h2><span class="sub">clique sur une colonne pour trier</span></div><div id="usT"></div></div>';
+    const fv = (v) => (v === true ? "oui" : v === false ? "non" : v == null || v === "" ? '<span class="mut">—</span>' : /^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? fmt(v) : esc(v));
+    tableCourante = tableau($("usT"), Object.keys(US_COLS).map((k) => ({ t: US_COLS[k], k, r: (u) => (k === "onglet_prefere" && u[k] ? esc(libO(u[k])) : k === "niveau" && u[k] ? esc(libN(u[k])) : fv(u[k])) })), U, { recherche: rechercheCourante });
+    $("usXlsx").onclick = () => { window.rtXlsx("Referee-Tracker-arbitres-" + new Date().toISOString().slice(0, 10), [{ nom: "Arbitres " + String(cache.userstats.saison || "").replace("/", "-"), lignes: [Object.values(US_COLS)].concat(U.map((u) => Object.keys(US_COLS).map((k) => (k === "onglet_prefere" && u[k] ? libO(u[k]) : k === "niveau" && u[k] ? libN(u[k]) : u[k])))) }]); toast("Export Excel téléchargé", "ok"); };
+  };
+
+  // =====================================================================
   // b89 — STATISTIQUES TECHNIQUES (RPC rt_stats_tech, admin + double authentification) + export Excel
   // =====================================================================
   const TECH_FEUILLES = [
@@ -678,13 +764,7 @@
     ["journal", "Journal admin 30 j", { action: "Action", nombre_30j: "Nombre", derniere: "Dernière" }]];
   rendus.tech = async function (force) {
     const el = $("sec-tech");
-    if (force || !cache.tech) {
-      el.innerHTML = '<p class="mut">Chargement…</p>';
-      const r = await fetch(SB_URL + "/rest/v1/rpc/rt_stats_tech", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: "{}" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
-      cache.tech = j;
-    }
+    if (force || !cache.tech) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.tech = await rpcAdmin("rt_stats_tech"); }
     const T = cache.tech, M = T.moteurs || [], somme = (l, k) => l.reduce((t, x) => t + (Number(x[k]) || 0), 0);
     const actifs = M.filter((m) => m.moteur_relie), lents = actifs.filter((m) => !(m.minutes_depuis_battement < 90));
     const P = T.paiements || [], Mt = T.matchs || [], C = T.commandes || [];
