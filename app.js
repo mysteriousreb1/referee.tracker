@@ -1835,7 +1835,7 @@ function accEvals_(z) {
       <div class="acc-ev-k"><span class="acc-ev-val">${Number(der.note20).toFixed(1).replace(".", ",")}<small>/20</small></span><span class="acc-ev-lbl">Dernière note${delta !== null && delta !== 0 ? ` <b class="${delta > 0 ? "acc-ev-up" : "acc-ev-down"}">${delta > 0 ? "▲ +" : "▼ "}${delta.toFixed(1).replace(".", ",")}</b>` : ""}</span><span class="acc-ev-sub">${escapeHtml(der.championnat || "")} · ${escapeHtml(formatDateShort(ev[0].d))}</span></div>
       <div class="acc-ev-k"><span class="acc-ev-val">${moy !== null ? moy.toFixed(1).replace(".", ",") + "<small>/20</small>" : "—"}</span><span class="acc-ev-lbl">Moyenne saison</span><span class="acc-ev-sub">${sais.length} fiche(s)</span></div>
     </div>
-    ${axes.length ? `<div class="acc-ev-axes"><span class="acc-ev-lbl">À travailler</span><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul></div>` : ""}
+    ${""/* b88k — « À travailler » retiré de l'accueil (détail dans Progression) */}
     <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
   const b = z.querySelector(".acc-ev-go"); if (b) b.addEventListener("click", () => setActiveTab("progression"));
 }
@@ -2602,7 +2602,7 @@ function buildSmsCollegue(row) {
   ];
 
   if (niveau === "france") {
-    lignes.push("", "Tu souhaites prendre la tenue rouge ou noir ?");
+    lignes.push("", "Tu souhaites prendre la tenue rouge ou noire ?");
   }
   // MODIFICATION 19/09/2026 — clause covoiturage conditionnée : avant, elle
   // sortait dans TOUS les messages France/Région, même pour un trajet à côté.
@@ -2619,9 +2619,9 @@ function buildSmsCollegue(row) {
   } else if (modeT === "transport") {
     lignes.push("", "Je viens en transports en commun, je te tiens au courant si j'ai du retard.");
   } else if ((niveau === "france" || niveau === "region") && trajetAllerMin > 75) {
-    lignes.push("", "Si tu souhaite faire du covoiturage, pas de soucis dis moi juste comment tu veux qu'on s'organise");
+    lignes.push("", "Si tu souhaites faire du covoiturage, pas de souci : dis-moi juste comment tu veux qu'on s'organise.");
   }
-  lignes.push("", "A plus " + ((window.RT_AUTH && RT_AUTH.prenom) || "") + " !");   // b56 : prénom de l'utilisateur connecté
+  lignes.push("", "À plus " + ((window.RT_AUTH && RT_AUTH.prenom) || "") + " !");   // b56 : prénom de l'utilisateur connecté
 
   return lignes.join("\n");
 }
@@ -9127,7 +9127,7 @@ const RAPP_CRITERES_ = ["Autorité et maîtrise du match", "Communication (table
 function matchsPourRapports_(uidGarde) {
   const fin = new Date(); fin.setHours(23, 59, 59, 999);
   const debut = new Date(); debut.setHours(0, 0, 0, 0); debut.setDate(debut.getDate() - 5);
-  return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte" &&
+  return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte" && r._format !== "3x3" &&   // b88k — pas de rapport officiel en 3x3
       ((r._date >= debut && r._date <= fin) || (uidGarde && get(r, "UID") === uidGarde)))
     .sort((a, b) => b._date - a._date);
 }
