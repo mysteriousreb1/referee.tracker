@@ -2329,6 +2329,50 @@ function rtUsageAjout_(cle, visites, minutes) {
   if (!/^[ohe]:[a-z0-9_-]{1,30}$/.test(cle) || (!_usageDet[cle] && Object.keys(_usageDet).length >= 50)) return;
   const v = _usageDet[cle] || (_usageDet[cle] = [0, 0]); v[0] += visites || 0; v[1] += minutes || 0;
 }
+/* b91 — télémétrie technique (cockpit admin) : erreurs JS (message anonymisé), temps de chargement et de réponse,
+   environnement (version, système, navigateur, app installée, notifications). Agrégé, aucun contenu saisi. */
+const _tele = { erreurs: {}, perf: {}, envOk: false };
+function rtTeleErreur_(msg, src) {
+  msg = String(msg || "").replace(/[^\s@]+@[^\s@]+/g, "<email>").replace(/\d{4,}/g, "<n>").slice(0, 300); if (!msg || /ResizeObserver loop|Script error\.?$/i.test(msg)) return;
+  const s = String(src || "").split("?")[0].split("/").pop().slice(0, 60), k = msg + "|" + s;
+  if (!_tele.erreurs[k] && Object.keys(_tele.erreurs).length >= 10) return;
+  (_tele.erreurs[k] = _tele.erreurs[k] || { m: msg, s, n: 0 }).n++;
+}
+function rtTelePerf_(nom, ms, seuil) {
+  if (!(ms >= 0) || ms > 600000) return; const p = _tele.perf[nom] || (_tele.perf[nom] = [0, 0, 0, 0]);
+  p[0]++; p[1] += Math.round(ms); p[2] = Math.max(p[2], Math.round(ms)); if (ms > seuil) p[3]++;
+}
+function rtTeleEnv_() {
+  const ua = navigator.userAgent || "";
+  const sys = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "autre";
+  const nav = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung" : /Firefox|FxiOS/.test(ua) ? "Firefox" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "autre";
+  const v = ((document.querySelector('script[src*="app.js?v="]') || {}).src || "").split("v=")[1] || "";
+  return { version: v.slice(-12), systeme: sys, navigateur: nav, installee: !!((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone),
+    notifications: typeof Notification !== "undefined" ? Notification.permission : "absent", ecran: innerWidth < 700 ? "telephone" : innerWidth < 1100 ? "tablette" : "ordinateur" };
+}
+async function rtTelemetrieEnvoyer_() {
+  if (typeof SB === "undefined" || !SB.actif) return;
+  const v = rtTeleEnv_().version, p = {};
+  if (!_tele.envOk) p.env = rtTeleEnv_();
+  const er = Object.values(_tele.erreurs); if (er.length) p.erreurs = er.map((e) => Object.assign({ v }, e));
+  if (Object.keys(_tele.perf).length) p.perf = _tele.perf;
+  if (!Object.keys(p).length) return;
+  _tele.erreurs = {}; _tele.perf = {};
+  try { await SB.write("POST", "rpc/rt_telemetrie", { p }); _tele.envOk = true; } catch (e) {}
+}
+window.addEventListener("error", (e) => rtTeleErreur_(e.message, e.filename));
+window.addEventListener("unhandledrejection", (e) => { const r = e.reason; rtTeleErreur_("Promesse : " + (r && r.message ? r.message : String(r)), r && r.stack ? (String(r.stack).match(/\/([\w.-]+\.js)/) || [])[1] : ""); });
+window.addEventListener("load", () => setTimeout(() => { try { const n = performance.getEntriesByType("navigation")[0]; if (n) rtTelePerf_("chargement", n.loadEventEnd || n.domContentLoadedEventEnd, 4000); } catch (e) {} }, 0));
+(function () {   // temps de réponse : base Supabase (fetch) et moteurs Apps Script (jsonp)
+  const f0 = window.fetch;
+  if (f0) window.fetch = function (u) { const t = performance.now(), url = String((u && u.url) || u || ""); const pr = f0.apply(this, arguments);
+    if (/supabase\.co\/(rest|functions)\//.test(url) && !/rt_telemetrie|rt_usage|connexion_ping/.test(url)) pr.then(() => rtTelePerf_(/functions\//.test(url) ? "fonctions" : "api", performance.now() - t, 3000), () => rtTelePerf_("api_echec", performance.now() - t, 0));
+    return pr; };
+  const j0 = window.jsonp;
+  if (typeof j0 === "function") window.jsonp = function () { const t = performance.now(); const pr = j0.apply(this, arguments);
+    if (pr && pr.then) pr.then(() => rtTelePerf_("moteur", performance.now() - t, 8000), () => rtTelePerf_("moteur_echec", performance.now() - t, 0));
+    return pr; };
+})();
 window.rtUsage = { visite: (onglet) => rtUsageAjout_("o:" + onglet, 1, 0), action: (nom) => rtUsageAjout_("e:" + nom, 1, 0) };
 function usageInstaller_() {
   if (_usageTimer) return;
@@ -2337,8 +2381,9 @@ function usageInstaller_() {
     const n = _usageMin; if (!n) return; _usageMin = 0;
     try { await SB.write("POST", "rpc/connexion_ping", { p_minutes: n, p_appareil: appareil }); } catch (e) { _usageMin += n; }
     // b90 — détail agrégé (onglets, heure, actions) : compteurs uniquement, aucune donnée saisie
-    const d = _usageDet; _usageDet = {}; if (!Object.keys(d).length) return;
-    try { await SB.write("POST", "rpc/rt_usage", { p: d }); } catch (e) {}
+    const d = _usageDet; _usageDet = {};
+    if (Object.keys(d).length) { try { await SB.write("POST", "rpc/rt_usage", { p: d }); } catch (e) {} }
+    rtTelemetrieEnvoyer_();
   };
   _usageTimer = setInterval(() => {
     if (document.visibilityState !== "visible" || !SB.actif) return; _usageMin++;

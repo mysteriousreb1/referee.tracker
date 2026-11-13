@@ -164,9 +164,9 @@
 
   // ---------- navigation ----------
   const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", userstats: "Statistiques par arbitre" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Statistiques par arbitre" };   // b86 : 2 espaces
   const PAGES = [
-    { id: "app-vue", secs: ["appstats", "pilotage", "dashboard"] }, { id: "app-tech", secs: ["tech", "usage", "kpiapp"] },
+    { id: "app-vue", secs: ["cockpit", "appstats", "pilotage", "dashboard"] }, { id: "app-tech", secs: ["tech", "usage", "kpiapp"] },
     { id: "app-sante", secs: ["sante", "moteurs"] }, { id: "app-config", secs: ["config"] }, { id: "app-journal", secs: ["journal"] },
     { id: "arb-vue", secs: ["userstats", "kpiarb", "stats"] }, { id: "arb-liste", secs: ["arbitres"] }, { id: "arb-insc", secs: ["inscriptions"] },
     { id: "arb-com", secs: ["communication", "messages", "tickets"] }, { id: "arb-matchs", secs: ["agenda", "paiements", "alertes", "qualite"] }];
@@ -178,7 +178,7 @@
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
-    const h = (location.hash || "#pilotage").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "pilotage";
+    const h = (location.hash || "#cockpit").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "cockpit";
     courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
     // b89 — 2 espaces (Application / Arbitres), des pages, et des onglets dans chaque page
     const pg = PAGES.find((x) => x.secs.includes(sec)) || PAGES[0];
@@ -663,6 +663,137 @@
     ], R.par_arbitre || [], { recherche: rechercheCourante, tri: "Matchs saison", sens: -1, clic: (x) => ficheDe(x.user_id) });
     el.querySelector("#krMaj").onclick = () => rendus.kpiarb(true);
     el.querySelector("#krCsv").onclick = () => { const L = R.par_arbitre || []; csv([["Prénom", "Nom", "Niveau", "Matchs saison", "À venir", "Indemnités saison", "Encaissé", "En retard", "Km saison", "Plafond fiscal %", "Minutes 30 j", "Jours actifs 30 j", "Alertes", "Dernière convocation"], ...L.map((x) => [x.prenom, x.nom, x.niveau, x.matchs_saison, x.a_venir, x.montant_saison, x.recu_saison, x.retard, x.km_saison, x.franchise_pct, x.minutes_30j, x.jours_actifs_30j, x.alertes, x.derniere_convocation])], "indicateurs-arbitres-" + new Date().toISOString().slice(0, 10) + ".csv"); };
+  };
+
+  // =====================================================================
+  // b91 — COCKPIT D'EXPLOITATION (inspiré des consoles SAP : tuiles KPI, moniteur d'alertes, vue système)
+  // =====================================================================
+  let cockpitAuto = null;
+  function spark(vals, cl) {   // micro-graphique SVG (30 points)
+    const v = (vals || []).map((x) => Number(x) || 0); if (!v.length) return "";
+    const max = Math.max(1, ...v), w = 150, hh = 30, st = w / Math.max(1, v.length - 1);
+    const pts = v.map((x, i) => (i * st).toFixed(1) + "," + (hh - 2 - (x / max) * (hh - 4)).toFixed(1)).join(" ");
+    return '<svg class="spark ' + (cl || "") + '" viewBox="0 0 ' + w + " " + hh + '" preserveAspectRatio="none"><polyline points="0,' + hh + " " + pts + " " + w + "," + hh + '" class="a"/><polyline points="' + pts + '" class="l"/></svg>';
+  }
+  function tendance(vals, n) {   // n derniers jours vs n précédents
+    const v = (vals || []).map((x) => Number(x) || 0), a = v.slice(-n).reduce((t, x) => t + x, 0), b = v.slice(-2 * n, -n).reduce((t, x) => t + x, 0);
+    if (!a && !b) return ""; if (!b) return '<span class="tdc up">▲ nouveau</span>';
+    const d = Math.round(((a - b) / b) * 100); return '<span class="tdc ' + (d > 0 ? "up" : d < 0 ? "down" : "") + '">' + (d > 0 ? "▲ +" : d < 0 ? "▼ " : "= ") + d + " % vs " + n + " j préc.</span>";
+  }
+  const fTuile = (o) => '<div class="ft ' + (o.etat ? "ft-" + o.etat : "") + (o.lien ? " clic" : "") + '"' + (o.lien ? ' data-lien="' + o.lien + '"' : "") + ' title="' + esc(o.aide || "") + '"><div class="ft-h"><b>' + esc(o.titre) + "</b><span>" + esc(o.sous || "") + '</span></div><div class="ft-k"><em>' + esc(o.val) + "</em>" + (o.unite ? "<small>" + esc(o.unite) + "</small>" : "") + "</div>" + (o.tdc || "") + (o.spark || "") + '<div class="ft-f">' + esc(o.pied || "") + "</div></div>";
+  const fGroupe = (titre, tuiles) => '<section class="fg"><h3>' + esc(titre) + '</h3><div class="fg-t">' + tuiles.join("") + "</div></section>";
+  const SEV = { 1: ["Critique", "red"], 2: ["Élevée", "orange"], 3: ["Moyenne", "gold"], 4: ["Info", "gray"] };
+  rendus.cockpit = async function (force) {
+    const el = $("sec-cockpit");
+    if (force || !cache.cockpit) { if (!cache.cockpit) el.innerHTML = '<p class="mut">Chargement du cockpit…</p>'; cache.cockpit = await rpcAdmin("rt_cockpit"); }
+    const C = cache.cockpit, S = C.series || [], col = (k) => S.map((d) => d[k]), som = (k, n) => col(k).slice(-n).reduce((t, x) => t + (Number(x) || 0), 0);
+    const M = C.moteurs || [], F = C.file || {}, B = C.base || {}, E = C.env || {}, P = {}; (C.perf || []).forEach((p) => (P[p.metrique] = p));
+    const vRef = M.map((m) => m.version).filter(Boolean).sort().pop() || "";
+    const enLigne = M.filter((m) => m.minutes != null && m.minutes <= 90), horsLigne = M.filter((m) => !(m.minutes != null && m.minutes <= 90));
+    const dispo = M.length ? Math.round(M.reduce((t, m) => t + (m.dispo_7j ?? 0), 0) / M.length) : null;
+    const err7 = som("erreurs", 7), fin = C.finances || {}, reste = (fin.du || 0) - (fin.recu || 0), recouv = fin.du ? Math.round((100 * fin.recu) / fin.du) : null;
+    const moy = (k) => { const v = col(k).filter((x) => x != null); return v.length ? Math.round(v.slice(-7).reduce((t, x) => t + Number(x), 0) / Math.min(7, v.length)) : null; };
+    const eur = (v) => Math.round(v || 0).toLocaleString("fr-FR");
+    const nNotifOk = (E.notifications || {}).granted || 0, kpiActifs = S.length ? S[S.length - 1].actifs : 0;
+    // ---- moniteur d'alertes (règles)
+    const AL = [];
+    horsLigne.forEach((m) => AL.push({ s: m.minutes == null || m.minutes > 360 ? 1 : 2, d: "Moteurs", m: "Moteur sans nouvelles depuis " + (m.minutes == null ? "toujours" : hm(m.minutes)), o: m.prenom, l: "#moteurs" }));
+    M.filter((m) => vRef && m.version && m.version !== vRef).forEach((m) => AL.push({ s: 3, d: "Moteurs", m: "Version " + m.version + " (dernière : " + vRef + ")", o: m.prenom, l: "#moteurs" }));
+    if (err7) AL.push({ s: err7 > 50 ? 2 : 3, d: "Application", m: err7 + " erreur(s) JavaScript sur 7 jours", o: (C.erreurs || []).length + " type(s)", l: "#cockpit" });
+    if (F.tickets_bloquants) AL.push({ s: 1, d: "Support", m: F.tickets_bloquants + " ticket(s) bloquant(s) ouvert(s)", o: "Tickets", l: "#tickets" });
+    else if (F.tickets_ouverts) AL.push({ s: 3, d: "Support", m: F.tickets_ouverts + " ticket(s) ouvert(s)", o: "Tickets", l: "#tickets" });
+    if (F.inscriptions_erreur) AL.push({ s: 1, d: "Inscriptions", m: F.inscriptions_erreur + " inscription(s) en erreur", o: "Inscriptions", l: "#inscriptions" });
+    if (F.inscriptions_attente) AL.push({ s: 2, d: "Inscriptions", m: F.inscriptions_attente + " demande(s) à traiter", o: "Inscriptions", l: "#inscriptions" });
+    if (F.commandes_erreur_7j) AL.push({ s: 2, d: "Moteurs", m: F.commandes_erreur_7j + " commande(s) moteur en erreur (7 j)", o: "Commandes", l: "#moteurs" });
+    if (F.commandes_attente > 3) AL.push({ s: 3, d: "Moteurs", m: F.commandes_attente + " commande(s) en attente", o: "Commandes", l: "#moteurs" });
+    if (F.push_echecs) AL.push({ s: 3, d: "Notifications", m: F.push_echecs + " appareil(s) push en échec répété", o: "Push", l: "#sante" });
+    if (F.paiements_retard_30j) AL.push({ s: 2, d: "Paiements", m: F.paiements_retard_30j + " paiement(s) en retard de plus de 30 jours", o: F.paiements_retard + " en retard au total", l: "#paiements" });
+    if (F.a_verifier) AL.push({ s: 3, d: "Paiements", m: F.a_verifier + " paiement(s) à vérifier", o: "", l: "#paiements" });
+    if (F.warnings) AL.push({ s: 4, d: "Qualité", m: F.warnings + " avertissement(s) finance sur la saison", o: "", l: "#qualite" });
+    if (F.sans_km) AL.push({ s: 3, d: "Qualité", m: F.sans_km + " match(s) sans kilométrage", o: "", l: "#qualite" });
+    if (som("alertes", 7)) AL.push({ s: 4, d: "Moteurs", m: som("alertes", 7) + " mail(s) non reconnu(s) sur 7 jours", o: "", l: "#alertes" });
+    if (P.api && P.api.moyenne_ms > 1500) AL.push({ s: 3, d: "Performance", m: "Base lente : " + P.api.moyenne_ms + " ms en moyenne", o: "", l: "#cockpit" });
+    if (P.chargement && P.chargement.moyenne_ms > 4000) AL.push({ s: 3, d: "Performance", m: "Chargement lent : " + (P.chargement.moyenne_ms / 1000).toFixed(1) + " s", o: "", l: "#cockpit" });
+    AL.sort((a, b) => a.s - b.s);
+    const etatG = AL.some((a) => a.s === 1) ? ["Critique", "red"] : AL.some((a) => a.s === 2) ? ["Attention", "orange"] : ["Opérationnel", "green"];
+    // ---- rendu
+    el.innerHTML =
+      '<div class="ck-bar"><span class="sema ' + etatG[1] + '"></span><div><b>État global : ' + etatG[0] + '</b><span class="mut tiny">' + AL.filter((a) => a.s <= 2).length + " alerte(s) critique(s) ou élevée(s) · " + AL.length + " au total · saison " + esc(C.saison) + " · " + fmt(C.genere) + '</span></div><label class="ck-auto"><input type="checkbox" id="ckAuto"' + (cockpitAuto ? " checked" : "") + '> Actualisation auto (1 min)</label><button class="btn" id="ckXlsx">⬇ Excel</button></div>' +
+      fGroupe("Santé du système", [
+        fTuile({ titre: "Moteurs en ligne", sous: "passage < 90 min", val: enLigne.length + " / " + M.length, etat: horsLigne.length ? (horsLigne.some((m) => m.minutes == null || m.minutes > 360) ? "err" : "warn") : "ok", pied: horsLigne.length ? "Hors ligne : " + horsLigne.map((m) => m.prenom).join(", ") : "Tous les moteurs répondent", lien: "#moteurs" }),
+        fTuile({ titre: "Disponibilité", sous: "moteurs, 7 jours", val: dispo == null ? "—" : dispo, unite: "%", etat: dispo == null ? "" : dispo >= 95 ? "ok" : dispo >= 80 ? "warn" : "err", pied: "heures couvertes / heures écoulées", lien: "#moteurs", aide: "Mesure démarrée en b91" }),
+        fTuile({ titre: "Mails traités", sous: "24 h", val: som("mails", 1), tdc: tendance(col("mails"), 7), spark: spark(col("mails")), pied: "7 j : " + som("mails", 7), lien: "#moteurs" }),
+        fTuile({ titre: "Erreurs application", sous: "7 jours", val: err7, etat: err7 > 50 ? "err" : err7 ? "warn" : "ok", tdc: tendance(col("erreurs"), 7), spark: spark(col("erreurs"), "red"), pied: (C.erreurs || []).length + " type(s) distinct(s)" }),
+        fTuile({ titre: "Chargement de l'app", sous: "moyenne 7 j", val: P.chargement ? (P.chargement.moyenne_ms / 1000).toFixed(1) : "—", unite: "s", etat: !P.chargement ? "" : P.chargement.moyenne_ms > 4000 ? "warn" : "ok", spark: spark(col("chargement_ms")), pied: P.chargement ? P.chargement.n + " mesures · max " + (P.chargement.max_ms / 1000).toFixed(1) + " s" : "mesure démarrée en b91" }),
+        fTuile({ titre: "Réponse base", sous: "moyenne 7 j", val: P.api ? P.api.moyenne_ms : "—", unite: "ms", etat: !P.api ? "" : P.api.moyenne_ms > 1500 ? "warn" : "ok", spark: spark(col("api_ms")), pied: P.api ? P.api.n + " requêtes · " + (P.api.lents || 0) + " lentes" : "mesure démarrée en b91" }),
+        fTuile({ titre: "Réponse moteurs", sous: "Apps Script, 7 j", val: P.moteur ? (P.moteur.moyenne_ms / 1000).toFixed(1) : "—", unite: "s", etat: !P.moteur ? "" : P.moteur.moyenne_ms > 8000 ? "warn" : "ok", pied: P.moteur ? P.moteur.n + " appels · " + ((P.moteur_echec || {}).n || 0) + " échec(s)" : "mesure démarrée en b91" }),
+        fTuile({ titre: "Base de données", sous: "Supabase", val: B.taille_mo ?? "—", unite: "Mo", etat: (B.taille_mo || 0) > 400 ? "warn" : "ok", pied: "stockage " + (B.stockage_mo ?? 0) + " Mo · " + (B.fichiers ?? 0) + " fichier(s)", aide: "Plan gratuit : 500 Mo de base, 1 Go de stockage" }),
+      ]) +
+      fGroupe("Audience", [
+        fTuile({ titre: "Actifs aujourd'hui", sous: "arbitres", val: kpiActifs, tdc: tendance(col("actifs"), 7), spark: spark(col("actifs")), pied: "30 jours d'historique", lien: "#appstats" }),
+        fTuile({ titre: "Temps d'utilisation", sous: "7 jours", val: minutesTxt(som("minutes", 7)), tdc: tendance(col("minutes"), 7), spark: spark(col("minutes")), pied: "30 j : " + minutesTxt(som("minutes", 30)), lien: "#appstats" }),
+        fTuile({ titre: "Comptes", sous: "authentification", val: B.comptes_auth ?? 0, pied: (B.connexions_auth_24h ?? 0) + " connexion(s) par code sur 24 h", lien: "#arbitres" }),
+        fTuile({ titre: "App installée", sous: "écran d'accueil", val: (E.installee ?? 0) + " / " + (E.mesures ?? 0), etat: E.mesures && E.installee < E.mesures / 2 ? "warn" : "", pied: "arbitres mesurés sur 30 j", aide: "Mesure démarrée en b91" }),
+        fTuile({ titre: "Notifications", sous: "autorisées", val: nNotifOk + " / " + (E.mesures ?? 0), etat: E.mesures && nNotifOk < E.mesures / 2 ? "warn" : "", pied: "refusées : " + ((E.notifications || {}).denied || 0) }),
+      ]) +
+      fGroupe("Activité", [
+        fTuile({ titre: "Matchs importés", sous: "7 jours", val: som("matchs", 7), tdc: tendance(col("matchs"), 7), spark: spark(col("matchs"), "gold"), pied: "saison : " + (fin.matchs ?? 0) + " matchs", lien: "#userstats" }),
+        fTuile({ titre: "Mails non reconnus", sous: "7 jours", val: som("alertes", 7), etat: som("alertes", 7) > 5 ? "warn" : "", spark: spark(col("alertes"), "orange"), pied: "convocations à rattacher", lien: "#alertes" }),
+        fTuile({ titre: "Inscriptions", sous: "30 jours", val: som("inscriptions", 30), spark: spark(col("inscriptions")), pied: (F.inscriptions_attente || 0) + " à traiter", etat: F.inscriptions_erreur ? "err" : F.inscriptions_attente ? "warn" : "", lien: "#inscriptions" }),
+        fTuile({ titre: "Tickets", sous: "ouverts", val: F.tickets_ouverts ?? 0, etat: F.tickets_bloquants ? "err" : F.tickets_ouverts ? "warn" : "ok", pied: (F.tickets_bloquants || 0) + " bloquant(s) · " + som("tickets", 30) + " sur 30 j", lien: "#tickets" }),
+        fTuile({ titre: "Kilomètres", sous: "saison", val: eur(fin.km), unite: "km", pied: fin.matchs ? Math.round((fin.km || 0) / fin.matchs) + " km A/R par match" : "", lien: "#userstats" }),
+      ]) +
+      fGroupe("Finances des arbitres", [
+        fTuile({ titre: "Indemnités", sous: "saison", val: eur(fin.du), unite: "€", pied: "dues sur les matchs de la saison", lien: "#userstats" }),
+        fTuile({ titre: "Recouvrement", sous: "reçu / dû", val: recouv == null ? "—" : recouv, unite: "%", etat: recouv == null ? "" : recouv >= 70 ? "ok" : recouv >= 40 ? "warn" : "err", pied: eur(fin.recu) + " € reçus", lien: "#paiements" }),
+        fTuile({ titre: "Reste à recevoir", sous: "saison", val: eur(reste), unite: "€", etat: F.paiements_retard_30j ? "warn" : "", pied: (F.paiements_retard || 0) + " en retard · " + (F.paiements_retard_30j || 0) + " de plus de 30 j", lien: "#paiements" }),
+        fTuile({ titre: "À vérifier", sous: "paiements", val: F.a_verifier ?? 0, etat: F.a_verifier ? "warn" : "ok", pied: "écarts à trancher", lien: "#paiements" }),
+      ]) +
+      fGroupe("Qualité des données", [
+        fTuile({ titre: "Avertissements", sous: "finance, saison", val: F.warnings ?? 0, etat: F.warnings ? "warn" : "ok", lien: "#qualite" }),
+        fTuile({ titre: "Sans kilométrage", sous: "matchs saison", val: F.sans_km ?? 0, etat: F.sans_km ? "warn" : "ok", lien: "#qualite" }),
+        fTuile({ titre: "Commandes moteur", sous: "en attente / erreur 7 j", val: (F.commandes_attente ?? 0) + " / " + (F.commandes_erreur_7j ?? 0), etat: F.commandes_erreur_7j ? "err" : "ok", lien: "#moteurs" }),
+        fTuile({ titre: "Push en échec", sous: "appareils", val: F.push_echecs ?? 0, etat: F.push_echecs ? "warn" : "ok", lien: "#sante" }),
+      ]) +
+      '<div class="card ck-card"><div class="card-head"><h2>Moniteur d\'alertes</h2><span class="sub">règles évaluées à chaque actualisation · clique pour agir</span></div><div id="ckAl"></div></div>' +
+      '<div class="card ck-card"><div class="card-head"><h2>Vue système : moteurs</h2><span class="sub">bande = heures de la journée où le moteur a publié son état (heure de Paris)</span></div><div id="ckMo"></div></div>' +
+      '<div class="grid-2"><div class="card ck-card"><div class="card-head"><h2>Erreurs applicatives</h2><span class="sub">7 jours · messages anonymisés</span></div><div id="ckEr"></div></div>' +
+      '<div class="card ck-card"><div class="card-head"><h2>Performances</h2><span class="sub">7 jours</span></div><div id="ckPf"></div></div>' +
+      '<div class="card ck-card"><div class="card-head"><h2>Environnement des arbitres</h2><span class="sub">30 jours</span></div>' +
+        '<div class="subtab">Versions de l\'app (7 j)</div>' + (Object.keys(E.versions || {}).length ? hbarres(Object.entries(E.versions).map(([l, v]) => ({ l, v }))) : '<p class="vide">Mesure démarrée en b91</p>') +
+        '<div class="subtab">Systèmes</div>' + hbarres(Object.entries(E.systemes || {}).map(([l, v]) => ({ l, v }))) + '<div class="subtab">Navigateurs</div>' + hbarres(Object.entries(E.navigateurs || {}).map(([l, v]) => ({ l, v }))) + "</div>" +
+      '<div class="card ck-card"><div class="card-head"><h2>Base de données</h2><span class="sub">' + (B.taille_mo ?? "—") + " Mo sur 500 Mo (plan gratuit)</span></div>" + '<div class="ck-jauge"><i style="width:' + Math.min(100, ((B.taille_mo || 0) / 500) * 100).toFixed(1) + '%"></i></div><div id="ckDb"></div></div></div>';
+    el.querySelectorAll(".ft.clic").forEach((x) => x.addEventListener("click", () => (location.hash = x.dataset.lien)));
+    tableau($("ckAl"), [
+      { t: "Sévérité", k: "s", r: (a) => badge(SEV[a.s][0], SEV[a.s][1]) }, { t: "Domaine", k: "d", r: (a) => esc(a.d) },
+      { t: "Alerte", k: "m", r: (a) => "<strong>" + esc(a.m) + "</strong>" }, { t: "Objet", k: "o", r: (a) => esc(a.o || "") },
+      { t: "", cl: "actions", r: () => '<button class="btn sm" data-act="go">Ouvrir →</button>' }], AL, { action: (act, a) => (location.hash = a.l) });
+    const bande = (m) => { const h = new Date().getHours(), mk = Number(m.heures_masque) || 0; return '<span class="ck-h" title="' + (m.heures_24h || 0) + ' heure(s) couvertes aujourd\'hui">' + Array.from({ length: 24 }, (_, i) => '<i class="' + (i > h ? "f" : (mk >> i) & 1 ? "on" : "") + '" title="' + i + 'h"></i>').join("") + "</span>"; };
+    tableau($("ckMo"), [
+      { t: "", k: "minutes", r: (m) => '<span class="sema ' + (m.minutes != null && m.minutes <= 90 ? "green" : m.minutes != null && m.minutes <= 360 ? "orange" : "red") + '"></span>' },
+      { t: "Arbitre", k: "prenom", r: (m) => "<strong>" + esc(m.prenom) + "</strong>" },
+      { t: "Version", k: "version", r: (m) => esc(m.version || "—") + (vRef && m.version && m.version !== vRef ? " " + badge("ancienne", "orange") : "") },
+      { t: "Dernier passage", k: (m) => m.minutes ?? 1e9, r: (m) => (m.minutes == null ? "—" : "il y a " + hm(m.minutes)) },
+      { t: "Aujourd'hui", k: "heures_24h", r: bande },
+      { t: "Dispo 7 j", k: (m) => m.dispo_7j ?? -1, cl: "num right", r: (m) => (m.dispo_7j == null ? "—" : m.dispo_7j + " %") },
+      { t: "Mails 24 h", k: "mails_24h", cl: "num right", r: (m) => esc(m.mails_24h ?? 0) },
+      { t: "Mails total", k: "mails_total", cl: "num right", r: (m) => esc(m.mails_total ?? "—") },
+      { t: "Matchs", k: "matchs_total", cl: "num right", r: (m) => esc(m.matchs_total ?? "—") },
+      { t: "Tâches planifiées", k: "declencheurs", cl: "num right", r: (m) => esc(m.declencheurs ?? 0) },
+      { t: "IA du mois", k: "ia_mois", cl: "num right", r: (m) => Number(m.ia_mois || 0).toFixed(2) + " $" }], M, {});
+    tableau($("ckEr"), [{ t: "Message", k: "message", r: (e) => '<span class="mono tiny">' + esc(e.message) + "</span>" }, { t: "Fichier", k: "source", r: (e) => esc(e.source || "—") }, { t: "Version", k: "version", r: (e) => esc(e.version || "—") }, colN("Fois", "n"), colN("Arbitres", "utilisateurs"), { t: "Dernière", k: "dernier", r: (e) => fmt(e.dernier) }], C.erreurs || [], {});
+    const LIBP = { chargement: "Chargement de l'app", api: "Requêtes base", fonctions: "Fonctions serveur", api_echec: "Requêtes base en échec", moteur: "Appels moteur", moteur_echec: "Appels moteur en échec" };
+    tableau($("ckPf"), [{ t: "Mesure", k: "metrique", r: (p) => esc(LIBP[p.metrique] || p.metrique) }, colN("Mesures", "n"), { t: "Moyenne", k: "moyenne_ms", cl: "num right", r: (p) => (p.moyenne_ms >= 1000 ? (p.moyenne_ms / 1000).toFixed(1) + " s" : (p.moyenne_ms ?? 0) + " ms") }, { t: "Max", k: "max_ms", cl: "num right", r: (p) => (p.max_ms >= 1000 ? (p.max_ms / 1000).toFixed(1) + " s" : p.max_ms + " ms") }, { t: "Lentes", k: "lents", cl: "num right", r: (p) => esc(p.lents || 0) + " (" + pct(p.lents || 0, p.n) + ")" }], C.perf || [], {});
+    tableau($("ckDb"), [{ t: "Table", k: "table", r: (t) => '<span class="mono">' + esc(t.table) + "</span>" }, colN("Lignes", "lignes"), { t: "Taille", k: "taille_ko", cl: "num right", r: (t) => (t.taille_ko >= 1024 ? (t.taille_ko / 1024).toFixed(1) + " Mo" : t.taille_ko + " Ko") }], B.tables || [], {});
+    $("ckAuto").onchange = (e) => { clearInterval(cockpitAuto); cockpitAuto = e.target.checked ? setInterval(() => { if (courant === "cockpit" && document.visibilityState === "visible") rendus.cockpit(true).catch(() => {}); }, 60000) : null; };
+    $("ckXlsx").onclick = () => {
+      window.rtXlsx("Referee-Tracker-cockpit-" + new Date().toISOString().slice(0, 10), [
+        { nom: "Alertes", lignes: [["Sévérité", "Domaine", "Alerte", "Objet"]].concat(AL.map((a) => [SEV[a.s][0], a.d, a.m, a.o])) },
+        { nom: "Moteurs", lignes: window.rtXlsxLignes(M) }, { nom: "Séries 30 j", lignes: window.rtXlsxLignes(S) },
+        { nom: "Erreurs 7 j", lignes: window.rtXlsxLignes(C.erreurs || []) }, { nom: "Performances 7 j", lignes: window.rtXlsxLignes(C.perf || []) },
+        { nom: "Base", lignes: window.rtXlsxLignes(B.tables || []) }, { nom: "File de travail", lignes: [["Indicateur", "Valeur"]].concat(Object.entries(F)) }]);
+      toast("Export Excel téléchargé", "ok");
+    };
   };
 
   // =====================================================================

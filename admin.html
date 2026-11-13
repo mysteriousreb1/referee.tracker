@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b90" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b91" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -45,7 +45,7 @@
       <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button></div>
       <nav class="nav" id="nav">
         <div data-esp="app">
-          <a href="#appstats" data-page="app-vue"><i>◧</i>Vue d'ensemble</a>
+          <a href="#cockpit" data-page="app-vue"><i>◧</i>Cockpit</a>
           <a href="#tech" data-page="app-tech"><i>◔</i>Statistiques techniques</a>
           <a href="#sante" data-page="app-sante"><i>♥</i>Santé &amp; moteurs<b id="navMoteurs" class="nav-count"></b></a>
           <a href="#config" data-page="app-config"><i>⚙</i>Réglages</a>
@@ -96,6 +96,7 @@
       <section id="sec-paiements" class="sec"></section>
       <section id="sec-alertes" class="sec"></section>
       <section id="sec-tech" class="sec"></section>
+      <section id="sec-cockpit" class="sec"></section>
       <section id="sec-appstats" class="sec"></section>
       <section id="sec-userstats" class="sec"></section>
     </div>
@@ -111,8 +112,8 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
-  <script src="./rt-xlsx.js?v=2026-11-14-b90"></script>
-  <script src="./admin-pilotage.js?v=2026-11-14-b90"></script>
-  <script src="./admin.js?v=2026-11-14-b90"></script>
+  <script src="./rt-xlsx.js?v=2026-11-14-b91"></script>
+  <script src="./admin-pilotage.js?v=2026-11-14-b91"></script>
+  <script src="./admin.js?v=2026-11-14-b91"></script>
 </body>
 </html>
