@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b93" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b97" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -45,18 +45,32 @@
       <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button></div>
       <nav class="nav" id="nav">
         <div data-esp="app">
-          <a href="#cockpit" data-page="app-vue"><i>◧</i>Cockpit</a>
-          <a href="#tech" data-page="app-tech"><i>◔</i>Statistiques techniques</a>
-          <a href="#sante" data-page="app-sante"><i>♥</i>Santé &amp; moteurs<b id="navMoteurs" class="nav-count"></b></a>
-          <a href="#config" data-page="app-config"><i>⚙</i>Réglages</a>
-          <a href="#journal" data-page="app-journal"><i>☰</i>Journal d'audit</a>
+          <p class="nav-g">Vue d'ensemble</p>
+          <a href="#cockpit"><i>◧</i>Cockpit</a>
+          <a href="#appstats"><i>▤</i>Utilisation</a>
+          <a href="#usage"><i>◷</i>Connexions</a>
+          <p class="nav-g">Technique</p>
+          <a href="#tech"><i>◔</i>Performances &amp; erreurs</a>
+          <a href="#sante"><i>♥</i>Santé</a>
+          <a href="#moteurs"><i>⚙</i>Moteurs<b id="navMoteurs" class="nav-count"></b></a>
+          <p class="nav-g">Administration</p>
+          <a href="#config"><i>☷</i>Réglages</a>
+          <a href="#journal"><i>☰</i>Journal d'audit</a>
         </div>
         <div data-esp="arb">
-          <a href="#userstats" data-page="arb-vue"><i>◔</i>Vue d'ensemble</a>
-          <a href="#arbitres" data-page="arb-liste"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
-          <a href="#inscriptions" data-page="arb-insc"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
-          <a href="#communication" data-page="arb-com"><i>✆</i>Communication<b id="navTickets" class="nav-count"></b></a>
-          <a href="#agenda" data-page="arb-matchs"><i>€</i>Matchs &amp; paiements<b id="navAlertes" class="nav-count"></b></a>
+          <p class="nav-g">Vue d'ensemble</p>
+          <a href="#userstats"><i>◔</i>Tableau des arbitres</a>
+          <a href="#arbitres"><i>◉</i>Arbitres<b id="navArbitres" class="nav-count"></b></a>
+          <a href="#inscriptions"><i>✚</i>Inscriptions<b id="navInscriptions" class="nav-count"></b></a>
+          <p class="nav-g">Échanges</p>
+          <a href="#communication"><i>✆</i>Communication</a>
+          <a href="#messages"><i>✉</i>Messages</a>
+          <a href="#tickets"><i>⚑</i>Tickets<b id="navTickets" class="nav-count"></b></a>
+          <p class="nav-g">Matchs &amp; argent</p>
+          <a href="#agenda"><i>▦</i>Matchs à venir</a>
+          <a href="#paiements"><i>€</i>Paiements</a>
+          <a href="#alertes"><i>△</i>Alertes<b id="navAlertes" class="nav-count"></b></a>
+          <a href="#qualite"><i>✓</i>Qualité des données</a>
         </div>
       </nav>
       <div class="side-foot">
@@ -74,7 +88,7 @@
       </header>
       <div id="chargement" class="loader hidden"><span></span></div>
       <p id="msg" class="msg hidden"></p>
-      <div id="sousNav" class="sous-nav"></div>
+      <div id="sousNav" class="sous-nav hidden"></div>
 
       <section id="sec-pilotage" class="sec"></section>
       <section id="sec-dashboard" class="sec"></section>
@@ -112,8 +126,8 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
-  <script src="./rt-xlsx.js?v=2026-11-14-b93"></script>
-  <script src="./admin-pilotage.js?v=2026-11-14-b93"></script>
-  <script src="./admin.js?v=2026-11-14-b93"></script>
+  <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
+  <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
+  <script src="./admin.js?v=2026-11-14-b97"></script>
 </body>
 </html>

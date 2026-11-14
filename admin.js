@@ -164,17 +164,15 @@
 
   // ---------- navigation ----------
   const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Statistiques par arbitre" };   // b86 : 2 espaces
-  const PAGES = [
-    { id: "app-vue", secs: ["cockpit", "appstats", "pilotage", "dashboard"] }, { id: "app-tech", secs: ["tech", "usage", "kpiapp"] },
-    { id: "app-sante", secs: ["sante", "moteurs"] }, { id: "app-config", secs: ["config"] }, { id: "app-journal", secs: ["journal"] },
-    { id: "arb-vue", secs: ["userstats", "kpiarb", "stats"] }, { id: "arb-liste", secs: ["arbitres"] }, { id: "arb-insc", secs: ["inscriptions"] },
-    { id: "arb-com", secs: ["communication", "messages", "tickets"] }, { id: "arb-matchs", secs: ["agenda", "paiements", "alertes", "qualite"] }];
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Tableau des arbitres" };   // b86 : 2 espaces
+  // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
+  const ESPACE_DE = { cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
+  const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
   function espace(e) {
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
     document.querySelectorAll("#nav > div[data-esp]").forEach((d) => d.classList.toggle("hidden", d.dataset.esp !== e));
   }
-  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = "#" + PAGES.find((x) => x.id.startsWith(b.dataset.esp)).secs[0]; }));
+  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.esp === "app" ? "#cockpit" : "#userstats"; }));
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
@@ -182,9 +180,8 @@
     courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
     // b89 — 2 espaces (Application / Arbitres), des pages, et des onglets dans chaque page
     const pg = PAGES.find((x) => x.secs.includes(sec)) || PAGES[0];
-    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === pg.id));
+    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + sec));
     espace(pg.id.slice(0, 3));
-    $("sousNav").innerHTML = pg.secs.length > 1 ? pg.secs.map((x) => '<a href="#' + x + '" class="' + (x === sec ? "active" : "") + '">' + esc(SECTIONS[x]) + "</a>").join("") : "";
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("active", s.id === "sec-" + sec));
     $("topTitre").textContent = SECTIONS[sec];
     $("recherche").value = recherches[sec] || "";
@@ -685,7 +682,7 @@
   const SEV = { 1: ["Critique", "red"], 2: ["Élevée", "orange"], 3: ["Moyenne", "gold"], 4: ["Info", "gray"] };
   rendus.cockpit = async function (force) {
     const el = $("sec-cockpit");
-    if (force || !cache.cockpit) { if (!cache.cockpit) el.innerHTML = '<p class="mut">Chargement du cockpit…</p>'; cache.cockpit = await rpcAdmin("rt_cockpit"); try { cache.cockpit.stock = await rpcAdmin("rt_stock_etat"); } catch (e) { cache.cockpit.stock = null; } }
+    if (force || !cache.cockpit) { if (!cache.cockpit) el.innerHTML = '<p class="mut">Chargement du cockpit…</p>'; cache.cockpit = await rpcAdmin("rt_cockpit"); try { cache.cockpit.stock = await rpcAdmin("rt_stock_etat"); } catch (e) { cache.cockpit.stock = null; } try { const l = await sbRest("config_globale?select=valeur&cle=eq.pub.app"); cache.cockpit.pubApp = (l && l[0] && l[0].valeur) || {}; } catch (e) { cache.cockpit.pubApp = {}; } }
     const C = cache.cockpit, S = C.series || [], col = (k) => S.map((d) => d[k]), som = (k, n) => col(k).slice(-n).reduce((t, x) => t + (Number(x) || 0), 0);
     const M = C.moteurs || [], F = C.file || {}, B = C.base || {}, E = C.env || {}, P = {}; (C.perf || []).forEach((p) => (P[p.metrique] = p));
     const vRef = M.map((m) => m.version).filter(Boolean).sort().pop() || "";
@@ -712,7 +709,7 @@
     if (F.warnings) AL.push({ s: 4, d: "Qualité", m: F.warnings + " avertissement(s) finance sur la saison", o: "", l: "#qualite" });
     if (F.sans_km) AL.push({ s: 3, d: "Qualité", m: F.sans_km + " match(s) sans kilométrage", o: "", l: "#qualite" });
     const ST = C.stock || [], stLibres = ST.filter((x) => x.statut === "libre").length;
-    if (C.stock) { if (stLibres < 2) AL.push({ s: stLibres ? 2 : 1, d: "Inscriptions", m: (stLibres ? "Plus que " + stLibres + " moteur libre" : "Plus aucun moteur libre") + " en réserve : les inscriptions passeront en file d'attente", o: "zsh rt-beta.sh --stock 5", l: "#inscriptions" });
+    if (C.stock) { const seuil = Number((C.pubApp || {}).stock_seuil ?? 2); if (stLibres <= Math.max(0, seuil - 1) || stLibres === 0 || stLibres < seuil) AL.push({ s: stLibres ? 2 : 1, d: "Inscriptions", m: (stLibres ? "Plus que " + stLibres + " moteur libre" : "Plus aucun moteur libre") + " en réserve : les inscriptions passeront en file d'attente", o: "zsh rt-beta.sh --stock 5", l: "#inscriptions" });
       ST.filter((x) => x.statut === "erreur").forEach((x) => AL.push({ s: 1, d: "Inscriptions", m: "Mise en route du moteur " + x.nom + " en échec" + (x.erreur ? " : " + x.erreur.slice(0, 120) : ""), o: x.arbitre || "", l: "#inscriptions" }));
       ST.filter((x) => x.statut === "attribue" && x.attribue_le && Date.now() - Date.parse(x.attribue_le) > 3600000).forEach((x) => AL.push({ s: 2, d: "Inscriptions", m: "Moteur " + x.nom + " attribué depuis plus d'1 h sans être prêt", o: x.arbitre || "", l: "#inscriptions" })); }
     if (som("alertes", 7)) AL.push({ s: 4, d: "Moteurs", m: som("alertes", 7) + " mail(s) non reconnu(s) sur 7 jours", o: "", l: "#alertes" });
@@ -986,7 +983,7 @@
       '<label>Fin d\'affichage<input id="annFin" type="date"></label></div>' +
       '<div id="annChoix" class="ann-choix hidden">' + A.map((a) => '<label><input type="checkbox" value="' + esc(a.id) + '"> ' + esc(nomDe(a.profil, a.email)) + ' <span class="mut tiny">' + (a.matchs || 0) + " match(s)</span></label>").join("") + "</div>" +
       '<label class="ann-t">Message <span class="mut tiny">{prenom} et {adresse} sont remplacés pour chaque arbitre</span><textarea id="annTxt" rows="3" maxlength="400"></textarea></label>' +
-      '<div class="row"><label>Bouton<select id="annAct"><option value="">Aucun</option><option value="profil">Ouvrir le profil</option><option value="guide">Ouvrir le guide</option></select></label><input id="annLib" placeholder="Texte du bouton" maxlength="40"><button class="btn pri" id="annGo">Publier</button></div>' +
+      '<div class="row"><label>Bouton<select id="annAct"><option value="">Aucun</option><option value="profil">Ouvrir le profil</option><option value="guide">Ouvrir le guide</option><option value="import">Importer mes PDF (historique)</option><option value="paiements">Onglet Paiements</option><option value="matchs">Onglet Matchs</option></select></label><input id="annLib" placeholder="Texte du bouton" maxlength="40"><button class="btn pri" id="annGo">Publier</button></div>' +
       '<div class="subtab">Bannières publiées</div><div id="annT"></div>';
     const $b = (id) => box.querySelector("#" + id);
     $b("annCible").onchange = () => $b("annChoix").classList.toggle("hidden", $b("annCible").value !== "choix");
@@ -1150,6 +1147,7 @@
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
     "pub.carburant": { titre: "Carburant", desc: "Prix relevé autour du domicile de chaque arbitre (rayon, fraîcheur, carburant) · prix imposé par mois · appliqué sous 10 min" },
     "pub.mails": { titre: "Textes des e-mails", desc: "Sujet, titre et message des 4 e-mails envoyés aux arbitres (liste d'attente, demande reçue, guides, compte prêt) · immédiat" },
+    "pub.app": { titre: "Application des arbitres", desc: "Fiche obligatoire (revalidation forcée), import d'historique, seuil d'alerte du stock de moteurs, accueil · immédiat" },
     "pub.fonctions_defaut": { titre: "Fonctions par défaut", desc: "Modules visibles pour un arbitre sans réglage perso (fiche → Fonctions) : Progression, e-Licence, classements · immédiat" },
   };
   const CARBS_ADM = [["", "— non précisé (E10) —"], ["e10", "SP95-E10"], ["sp95", "SP95"], ["sp98", "SP98"], ["gazole", "Gazole"], ["e85", "E85"], ["gplc", "GPL"], ["electrique", "Électrique"]];   // b86
@@ -1240,6 +1238,17 @@
         // b74 — même structure que le moteur (Ia.gs) : plafond en $ par moteur et par mois, part de chaque fonction en % (total ≤ 100).
         F.innerHTML = '<div class="form-grid">' + num("iaMax", "Plafond mensuel par arbitre (USD)", v.plafond_usd ?? 30) + "</div>" + kv("iaB", "Part du plafond par fonction (%) — convocations, evaluations, reglement, rapports, autre", v.budget_pct, "Fonction") + '<p class="mut tiny">Les convocations ne sont jamais bloquées, même au-delà de leur part.</p>';
         lireForm = () => ({ plafond_usd: Number(F.querySelector("#iaMax").value) || 0, budget_pct: lireKv("iaB") });
+      } else if (cfgCle === "pub.app") {
+        // b97 — réglages de l'app arbitre, lus à chaque connexion.
+        const d = (x) => esc(x || "");
+        F.innerHTML = '<h3 class="cfg-h">Fiche arbitre</h3><div class="row">' + chk("apFiche", "Fiche à jour obligatoire à la connexion (niveau, comité, ligue, téléphone)", v.fiche_obligatoire !== false) + "</div>" +
+          '<div class="form-grid"><label class="f">Redemander la validation aux fiches validées avant le<input type="date" id="apFicheAvant" value="' + d(v.fiche_revalider_avant) + '"></label></div><p class="mut tiny">Exemple : nouvelle saison ou nouveaux niveaux → mets la date du jour, tout le monde revalide à sa prochaine connexion.</p>' +
+          '<h3 class="cfg-h">Import d\'historique</h3><div class="row">' + chk("apImp", "Les arbitres peuvent déposer leurs anciennes convocations (PDF) depuis l'app", v.import_historique !== false) + "</div>" +
+          '<div class="form-grid">' + num("apImpMax", "Nombre maximal de PDF par envoi", v.import_max ?? 400, "1") + "</div>" +
+          '<h3 class="cfg-h">Moteurs en réserve</h3><div class="form-grid">' + num("apStock", "Alerte quand il reste au plus … moteur(s) libre(s)", v.stock_seuil ?? 2, "1") + "</div>" +
+          '<h3 class="cfg-h">Accueil</h3><div class="row">' + chk("apObs", "Afficher la carte « Mes observations » sur l'accueil", !!v.accueil_observations) + "</div>";
+        lireForm = () => ({ fiche_obligatoire: F.querySelector("#apFiche").checked, fiche_revalider_avant: F.querySelector("#apFicheAvant").value || "", import_historique: F.querySelector("#apImp").checked,
+          import_max: Math.max(1, Number(F.querySelector("#apImpMax").value) || 400), stock_seuil: Math.max(0, Number(F.querySelector("#apStock").value) || 0), accueil_observations: F.querySelector("#apObs").checked });
       } else if (cfgCle === "pub.beta") {
         F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";
         lireForm = () => ({ max: Number(F.querySelector("#btMax").value) || 0, ouvert: F.querySelector("#btOuv").checked });
@@ -1569,5 +1578,119 @@
       erreur(e);
     }
   }
+  // =====================================================================
+  // b97 — KIT VISUEL (SVG, sans librairie) + pages « Utilisation » et « Tableau des arbitres » repensées :
+  // chiffres en grand, couleurs, courbes, anneaux, carte de chaleur ; le détail reste dans un tableau repliable.
+  // =====================================================================
+  const VZ = {
+    pal: ["#2563EB", "#F2B705", "#16A34A", "#E0313C", "#7C3AED", "#0891B2", "#EA580C", "#DB2777"],
+    n: (v) => (Number(v) || 0).toLocaleString("fr-FR"),
+    hero(items) {   // [{v, l, s, c, ic, tr}] → grandes cartes colorées
+      return '<div class="vz-hero">' + items.map((x) => '<div class="vz-h vz-' + (x.c || "blue") + '"><div class="vz-h-top"><span class="vz-ic">' + (x.ic || "●") + '</span><span class="vz-l">' + esc(x.l) + "</span></div>" +
+        '<div class="vz-v">' + x.v + "</div>" + (x.tr != null && x.tr !== "" ? '<span class="vz-tr ' + (String(x.tr).startsWith("-") ? "down" : "up") + '">' + (String(x.tr).startsWith("-") ? "▼ " : "▲ ") + esc(String(x.tr).replace(/^[-+]/, "")) + "</span>" : "") +
+        (x.s ? '<div class="vz-s">' + x.s + "</div>" : "") + "</div>").join("") + "</div>";
+    },
+    aire(series, labels, opts) {   // series [{nom, v:[...], c}] → courbes avec aire dégradée
+      opts = opts || {}; const W = 640, H = opts.h || 200, P = 28, n = labels.length; if (!n) return '<p class="vide">Pas encore de données</p>';
+      const max = Math.max(1, ...series.flatMap((s) => s.v)), x = (i) => P + (n > 1 ? i * (W - 2 * P) / (n - 1) : (W - 2 * P) / 2), y = (v) => H - P - (v / max) * (H - 2 * P);
+      let g = "", d = "";
+      series.forEach((s, k) => { const c = s.c || VZ.pal[k]; const id = "g" + Math.random().toString(36).slice(2, 8);
+        const pts = s.v.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1));
+        d += '<linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c + '" stop-opacity=".35"/><stop offset="1" stop-color="' + c + '" stop-opacity="0"/></linearGradient>';
+        g += '<polygon points="' + x(0).toFixed(1) + "," + (H - P) + " " + pts.join(" ") + " " + x(n - 1).toFixed(1) + "," + (H - P) + '" fill="url(#' + id + ')"/>' +
+          '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+          '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(s.v[n - 1]).toFixed(1) + '" r="4.5" fill="' + c + '"/>'; });
+      const grille = [0, .5, 1].map((f) => '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + (H - P - f * (H - 2 * P)) + '" y2="' + (H - P - f * (H - 2 * P)) + '" class="vz-grid"/><text x="' + (P - 6) + '" y="' + (H - P - f * (H - 2 * P) + 4) + '" class="vz-ax" text-anchor="end">' + VZ.n(Math.round(max * f)) + "</text>").join("");
+      const pas = Math.max(1, Math.ceil(n / 8)), lab = labels.map((l, i) => i % pas === 0 || i === n - 1 ? '<text x="' + x(i) + '" y="' + (H - 8) + '" class="vz-ax" text-anchor="middle">' + esc(l) + "</text>" : "").join("");
+      const leg = series.length > 1 ? '<div class="vz-leg">' + series.map((s, k) => '<span><i style="background:' + (s.c || VZ.pal[k]) + '"></i>' + esc(s.nom) + "</span>").join("") + "</div>" : "";
+      return '<svg class="vz-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img"><defs>' + d + "</defs>" + grille + g + lab + "</svg>" + leg;
+    },
+    anneau(parts, centre, sous) {   // [{l, v, c}] → anneau + légende
+      const tot = parts.reduce((t, p) => t + (p.v || 0), 0), R = 54, C = 2 * Math.PI * R; let off = 0;
+      const arcs = tot ? parts.map((p, k) => { const L = (p.v || 0) / tot * C; const s = '<circle r="' + R + '" cx="70" cy="70" fill="none" stroke="' + (p.c || VZ.pal[k]) + '" stroke-width="18" stroke-dasharray="' + L.toFixed(2) + " " + (C - L).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 70 70)"/>'; off += L; return s; }).join("") : '<circle r="' + R + '" cx="70" cy="70" fill="none" class="vz-vide" stroke-width="18"/>';
+      return '<div class="vz-anneau"><svg viewBox="0 0 140 140" width="150" height="150">' + arcs + '<text x="70" y="68" text-anchor="middle" class="vz-ac">' + esc(centre) + '</text><text x="70" y="86" text-anchor="middle" class="vz-as">' + esc(sous || "") + "</text></svg>" +
+        '<ul class="vz-leg2">' + parts.map((p, k) => '<li><i style="background:' + (p.c || VZ.pal[k]) + '"></i><span>' + esc(p.l) + "</span><b>" + (tot ? Math.round((p.v || 0) * 100 / tot) : 0) + " %</b></li>").join("") + "</ul></div>";
+    },
+    barresH(items, fmtV) {   // [{l, v, c, s}] → barres horizontales colorées, triées
+      if (!items.length) return '<p class="vide">Pas encore de données</p>';
+      const max = Math.max(1, ...items.map((i) => i.v || 0));
+      return '<div class="vz-bh">' + items.map((i, k) => '<div class="vz-bh-r"><span class="vz-bh-l" title="' + esc(i.l) + '">' + esc(i.l) + '</span><span class="vz-bh-t"><i style="width:' + Math.max(2, (i.v || 0) / max * 100) + "%;background:" + (i.c || VZ.pal[k % VZ.pal.length]) + '"></i></span><b>' + (fmtV ? fmtV(i.v) : VZ.n(i.v)) + "</b></div>").join("") + "</div>";
+    },
+    chaleur(valeurs, lib) {   // 24 valeurs → carte de chaleur horaire
+      const max = Math.max(1, ...valeurs);
+      return '<div class="vz-heat">' + valeurs.map((v, h) => '<div title="' + h + "h : " + esc(lib ? lib(v) : v) + '" style="--a:' + (v ? .15 + .85 * v / max : 0).toFixed(2) + '"><span>' + h + "</span></div>").join("") + '</div><div class="vz-heat-leg"><span>moins</span><i></i><span>plus</span></div>';
+    },
+    jauge(v, max, c) { const p = max ? Math.min(100, Math.round(v / max * 100)) : 0; return '<span class="vz-j"><i style="width:' + p + "%;background:" + (c || "#16A34A") + '"></i></span>'; },
+    carte(titre, sous, corps, cl) { return '<div class="card vz-card ' + (cl || "") + '"><div class="card-head"><h2>' + esc(titre) + "</h2>" + (sous ? '<span class="sub">' + esc(sous) + "</span>" : "") + "</div>" + corps + "</div>"; },
+  };
+  const _appstatsAncien = rendus.appstats;
+  rendus.appstats = async function (force) {
+    await _appstatsAncien(force);   // garde l'export Excel et les tableaux détaillés (repliés plus bas)
+    const el = $("sec-appstats"), S = cache.appstats || {}, K = S.kpi || {}, J = S.jours || [], W = S.semaines || [], A = S.appareils || {}, O = S.onglets || [], H = S.heures || [], AC = S.actions || [];
+    const avant = J.slice(-14, -7).reduce((t, d) => t + (d.actifs || 0), 0), apres = J.slice(-7).reduce((t, d) => t + (d.actifs || 0), 0);
+    const tr = avant ? Math.round((apres - avant) * 100 / avant) : null;
+    const frag = document.createDocumentFragment(); while (el.firstChild) frag.appendChild(el.firstChild);   // nœuds déplacés : tris et boutons conservés
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Saison ' + esc(S.saison) + " · données du " + fmt(S.genere) + '</span><button class="btn pri" id="appXlsx2">⬇ Exporter en Excel</button></div>' +
+      VZ.hero([
+        { v: VZ.n(K.comptes), l: "Comptes", s: VZ.n(K.jamais_connectes) + " jamais connecté(s)", c: "navy", ic: "◉" },
+        { v: VZ.n(K.actifs_7j), l: "Actifs 7 jours", s: pct(K.actifs_7j, K.comptes) + " des comptes", c: "green", ic: "▲", tr: tr == null ? "" : (tr >= 0 ? "+" : "") + tr + " % vs sem. préc." },
+        { v: minutesTxt(K.minutes_30j || 0), l: "Temps d'utilisation 30 j", s: (K.minutes_par_jour_actif ?? 0) + " min par jour actif", c: "blue", ic: "◷" },
+        { v: K.retention_7j == null ? "—" : K.retention_7j + " %", l: "Rétention", s: "inscrits depuis 14 j+ revenus cette semaine", c: (K.retention_7j ?? 100) < 50 ? "red" : "gold", ic: "↻" },
+        { v: VZ.n(K.matchs_importes_7j), l: "Matchs importés 7 j", s: VZ.n(K.matchs_saison) + " cette saison", c: "violet", ic: "⚑" },
+        { v: VZ.n(K.push_abonnes), l: "Notifications actives", s: pct(K.push_abonnes, K.comptes) + " des comptes", c: "cyan", ic: "◔" }]) +
+      '<div class="vz-g2">' +
+      VZ.carte("Arbitres actifs et nouveaux comptes", "60 derniers jours", VZ.aire([{ nom: "Actifs", v: J.map((d) => d.actifs || 0) }, { nom: "Nouveaux comptes", v: J.map((d) => d.nouveaux || 0), c: "#F2B705" }], J.map((d) => jj(d.jour)))) +
+      VZ.carte("Appareils", "part du temps (30 j)", VZ.anneau([{ l: "Téléphone", v: A.telephone || 0, c: "#2563EB" }, { l: "Ordinateur", v: A.ordinateur || 0, c: "#F2B705" }, { l: "Tablette", v: A.tablette || 0, c: "#16A34A" }], minutesTxt((A.telephone || 0) + (A.ordinateur || 0) + (A.tablette || 0)), "30 jours")) +
+      "</div><div class=\"vz-g2\">" +
+      VZ.carte("Matchs importés", "par jour, 60 jours", VZ.aire([{ nom: "Matchs", v: J.map((d) => d.matchs || 0), c: "#7C3AED" }, { nom: "Mails non reconnus", v: J.map((d) => d.alertes || 0), c: "#E0313C" }], J.map((d) => jj(d.jour)))) +
+      VZ.carte("Heures d'utilisation", "30 jours", H.some((h) => h.minutes) ? VZ.chaleur(H.map((h) => h.minutes || 0), minutesTxt) : '<p class="vide">Mesure en cours</p>') +
+      "</div><div class=\"vz-g2\">" +
+      VZ.carte("Onglets les plus utilisés", "temps passé, 30 jours", VZ.barresH(O.slice(0, 10).map((o) => ({ l: libO(o.onglet), v: o.minutes || 0 })), minutesTxt)) +
+      VZ.carte("Matchs de la saison par niveau", "", VZ.barresH((S.niveaux || []).slice(0, 10).map((n) => ({ l: n.niveau || "—", v: n.matchs })))) +
+      "</div>" + VZ.carte("Actions clés", "30 jours", VZ.barresH(AC.slice(0, 10).map((a) => ({ l: libA(a.action), v: a.nombre || 0 })))) +
+      '<details class="vz-detail"><summary>Tous les chiffres en détail (tableaux)</summary><div class="vz-detail-c"></div></details>';
+    el.querySelector(".vz-detail-c").appendChild(frag);
+    const bx = el.querySelector("#appXlsx"); if (bx) { const b2 = $("appXlsx2"); b2.onclick = () => bx.click(); bx.closest(".tech-actions").remove(); }
+  };
+  const _userstatsAncien = rendus.userstats;
+  rendus.userstats = async function (force) {
+    await _userstatsAncien(force);
+    const el = $("sec-userstats"), U = (cache.userstats || {}).arbitres || [], som = (k) => U.reduce((t, u) => t + (Number(u[k]) || 0), 0), eur = (v) => Math.round(v || 0).toLocaleString("fr-FR") + " €";
+    const frag = document.createDocumentFragment(); while (el.firstChild) frag.appendChild(el.firstChild);   // nœuds déplacés : tris et boutons conservés
+    const actifs = U.filter((u) => u.jours_actifs_30j > 0).length, retard = som("en_retard");
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Saison ' + esc(cache.userstats.saison) + " · données du " + fmt(cache.userstats.genere) + '</span><button class="btn pri" id="usXlsx2">⬇ Exporter en Excel</button></div>' +
+      VZ.hero([
+        { v: VZ.n(U.length), l: "Arbitres", s: actifs + " actif(s) sur 30 jours", c: "navy", ic: "◉" },
+        { v: VZ.n(som("matchs_saison")), l: "Matchs de la saison", s: VZ.n(som("a_venir")) + " à venir · " + VZ.n(som("f3x3")) + " en 3x3", c: "blue", ic: "⚑" },
+        { v: VZ.n(Math.round(som("km_saison"))) + " km", l: "Kilomètres", s: Math.round(som("km_saison") / Math.max(1, som("matchs_saison"))) + " km A/R par match", c: "violet", ic: "➜" },
+        { v: eur(som("indemnites_saison")), l: "Indemnités", s: "reçu " + eur(som("recu_saison")) + " (" + pct(som("recu_saison"), som("indemnites_saison")) + ")", c: "green", ic: "€" },
+        { v: eur(som("reste_a_recevoir")), l: "Reste à recevoir", s: retard + " paiement(s) en retard", c: retard ? "red" : "gold", ic: "⏳" }]) +
+      '<div class="vz-g2">' +
+      VZ.carte("Matchs par arbitre", "saison", VZ.barresH(U.filter((u) => u.matchs_saison).sort((a, b) => b.matchs_saison - a.matchs_saison).map((u) => ({ l: u.prenom, v: u.matchs_saison })))) +
+      VZ.carte("Argent reçu / dû", "saison", VZ.anneau([{ l: "Reçu", v: som("recu_saison"), c: "#16A34A" }, { l: "Reste à recevoir", v: Math.max(0, som("reste_a_recevoir")), c: "#E0313C" }], pct(som("recu_saison"), som("indemnites_saison")), "encaissé")) +
+      "</div>" +
+      '<h2 class="vz-titre">Les arbitres</h2><div class="vz-arb">' + U.slice().sort((a, b) => (b.matchs_saison || 0) - (a.matchs_saison || 0)).map((u, k) => {
+        const du = Number(u.indemnites_saison) || 0, recu = Number(u.recu_saison) || 0, act = u.jours_actifs_30j || 0;
+        return '<div class="vz-a"><div class="vz-a-h"><span class="vz-av" style="background:' + VZ.pal[k % VZ.pal.length] + '">' + esc((u.prenom || "?").slice(0, 1)) + '</span><div><strong>' + esc(u.prenom || "") + '</strong><span class="mut tiny">' + esc(libN(u.niveau || "") || "niveau ?") + " · " + esc(u.comite || "?") + "</span></div>" +
+          '<span class="vz-pill ' + (act >= 8 ? "ok" : act ? "moy" : "ko") + '">' + (act ? act + " j actifs" : "inactif") + "</span></div>" +
+          '<div class="vz-a-k"><div><b>' + VZ.n(u.matchs_saison) + '</b><span>matchs</span></div><div><b>' + VZ.n(Math.round(u.km_saison || 0)) + '</b><span>km</span></div><div><b>' + eur(du) + "</b><span>dû</span></div></div>" +
+          '<div class="vz-a-p"><span>Reçu ' + eur(recu) + "</span><span>" + pct(recu, du) + "</span></div>" + VZ.jauge(recu, du, u.en_retard ? "#EA580C" : "#16A34A") +
+          (u.en_retard ? '<p class="vz-a-al">⚠ ' + u.en_retard + " paiement(s) en retard</p>" : "") + "</div>"; }).join("") + "</div>" +
+      '<details class="vz-detail"><summary>Tableau détaillé (27 colonnes, triable)</summary><div class="vz-detail-c"></div></details>';
+    el.querySelector(".vz-detail-c").appendChild(frag);
+    const bx = el.querySelector("#usXlsx"); if (bx) { $("usXlsx2").onclick = () => bx.click(); bx.closest(".tech-actions").remove(); }
+  };
+
+  // b97 — demandes d'import d'historique (dépôts de PDF depuis l'app) sous les inscriptions
+  const _inscAncien = rendus.inscriptions;
+  rendus.inscriptions = async function (force, x) {
+    await _inscAncien(force, x);
+    let L = []; try { L = await rpcAdmin("rt_import_demandes_admin"); } catch (e) { return; }
+    const el = $("sec-inscriptions"), box = document.createElement("div");
+    box.innerHTML = VZ.carte("Imports d'historique", "PDF déposés par les arbitres depuis l'app · 60 jours", L.length ? '<div class="tbl"><table><thead><tr><th>Arbitre</th><th>Le</th><th class="num right">PDF envoyés</th><th class="num right">Encore à rapatrier</th></tr></thead><tbody>' +
+      L.map((d) => "<tr><td>" + esc((d.prenom || "") + " " + (d.nom || "")) + "</td><td>" + fmt(d.le) + '</td><td class="num right">' + esc(d.fichiers) + '</td><td class="num right">' + (d.en_attente ? '<span class="badge orange">' + esc(d.en_attente) + "</span>" : '<span class="badge green">0</span>') + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucun dépôt pour l\'instant. Les moteurs rapatrient les PDF seuls toutes les 30 minutes.</p>');
+    el.appendChild(box.firstChild);
+  };
+
   demarrer();
 })();

@@ -306,6 +306,7 @@ async function rtEstAdmin_() {
   } catch (e) { return false; }
 }
 window.rtEstAdmin_ = rtEstAdmin_;
+window.rtSub_ = () => rtSubDuJeton_();   // b97 — identifiant de l'utilisateur connecté (filtre des annonces : un admin lit toutes les lignes)
 const SB_STORE = "rt_sb_session";
 const SB_LECTURES = { matchs: 1, evaluations: 1, niveaux: 1, contacts: 1, procedures: 1, hotels: 1, formations: 1, qcmStats: 1 };
 /* b27 — écritures directes Supabase (tables possédées par Supabase ; le Sheet
@@ -1111,6 +1112,12 @@ function renderProfile() {
       </div>
       <label class="rt-switch"><input type="checkbox" id="pfZcf"${p.zones && p.zones.cf ? " checked" : ""}> Championnat de France (payé par virement national)</label>
       <button type="button" class="rt-btn" id="pfSaveProfil">Enregistrer</button>
+    </section>
+
+    <section class="rt-sect">
+      <h3>Mon historique</h3>
+      <p class="rt-help">Tes anciennes convocations (PDF) reconstruisent tes saisons passées, tes kilomètres et tes comparaisons. Aucun doublon.</p>
+      <button type="button" class="rt-btn-ghost" data-imp-histo="1">Importer mes anciennes convocations</button>
     </section>
 
     <section class="rt-sect">
@@ -2061,6 +2068,103 @@ const ONBOARD = {
 };
 
 /* b69 — visite guidée (obligatoire une fois après la première connexion, relançable depuis Mon profil). */
+
+/* b97 — FICHE ARBITRE À JOUR : fenêtre obligatoire à la connexion tant que la fiche n'a pas été validée
+   (une fois pour tous, pour passer aux niveaux de la filière FFBB) ou dès qu'une information manque.
+   Écriture : rpc/rt_fiche_maj (contrôles côté base), puis copie niveau + zones vers le moteur (settings.profil). */
+/* b97 — réglages « Application des arbitres » (admin → Réglages → pub.app), lus une fois par session. */
+let _pubApp_ = null;
+window.rtPubApp = function () { if (!_pubApp_) _pubApp_ = SB.get("config_globale?select=valeur&cle=eq.pub.app&limit=1").then(l => (l && l[0] && l[0].valeur) || {}).catch(() => ({})); return _pubApp_; };
+const FICHE = {
+  NIV: [["club", "Arbitre club"], ["dep3", "Départemental groupe 3"], ["dep2", "Départemental groupe 2"], ["dep1", "Départemental groupe 1"], ["ear", "EAR"],
+    ["reg_j", "Région jeunes (REG-J)"], ["reg3", "Région 3 (hors Grand Est)"], ["reg2", "Région 2 (REG-2)"], ["reg1", "Région 1 (REG-1)"],
+    ["fed_bleu", "Fédéral Bleu (stagiaire fédéral)"], ["fed_rouge", "Fédéral Rouge"], ["nat_bleu", "National Bleu"], ["nat_rouge", "National Rouge"],
+    ["hn", "Haut niveau (HN)"], ["fiba", "International FIBA"], ["autre", "Autre"]],
+  LIBS: ["Arbitre club", "Départemental groupe 3", "Départemental groupe 2", "Départemental groupe 1", "EAR (année de formation)", "Région jeunes (REG-J)", "Région 3", "Région 2 (REG-2)", "Région 1 (REG-1)", "Fédéral Bleu (stagiaire fédéral)", "Fédéral Rouge", "National Bleu", "National Rouge", "Haut niveau (HN)", "International FIBA", "Autre"],
+  PAR: { dep: [["aucun", "Non"], ["potentiel_dep", "Oui, groupe potentiel départemental"]], reg: [["aucun", "Non"], ["jpr_bleu", "Oui, JPR Bleu"], ["jpr_rouge", "Oui, JPR Rouge"]] },
+  ERR: { niveau: "Choisis ton niveau.", parcours: "Réponds à la question sur ton parcours.", telephone: "Numéro de téléphone invalide (ex. 06 12 34 56 78).", comite: "Choisis ton comité.", ligue: "Choisis ta ligue.", nom_ffbb: "Indique ton nom tel qu'écrit sur tes convocations.", email_ffbb: "Adresse e-mail invalide." },
+  _essais: 0,
+  manque(p) {
+    const z = p.zones || {}, base = String(p.niveau || "").split(" – ")[0];
+    const m = [];
+    if (!p.fiche_maj_le) m.push("validation");
+    if (FICHE.LIBS.indexOf(base) < 0) m.push("niveau");
+    if (!/^(\+33|0)[1-9]\d{8}$|^\+\d{8,15}$/.test(String(p.telephone || "").replace(/[^0-9+]/g, ""))) m.push("téléphone");
+    if (!z.cd) m.push("comité"); if (!z.ligue) m.push("ligue");
+    if (!p.nom_ffbb) m.push("nom"); if (!p.email_ffbb) m.push("e-mail");
+    return m;
+  },
+  verifier() {
+    if (typeof SB === "undefined" || !SB.actif || document.getElementById("rtFiche")) return;
+    if (document.querySelector("#rtOnb, #rtTour, #rtMaintenance, .rt-consent:not(#rtFiche)")) { if (++FICHE._essais < 40) setTimeout(FICHE.verifier, 3000); return; }
+    Promise.all([SB.get("profils?select=niveau,parcours,telephone,zones,nom_ffbb,email_ffbb,fiche_maj_le&limit=1"), window.rtPubApp()]).then(([l, cfg]) => {
+      const p = l && l[0]; if (!p || cfg.fiche_obligatoire === false) return;
+      if (p.fiche_maj_le && cfg.fiche_revalider_avant && Date.parse(p.fiche_maj_le) < Date.parse(cfg.fiche_revalider_avant + "T00:00:00")) p.fiche_maj_le = null;   // revalidation demandée par l'admin
+      const m = FICHE.manque(p); if (m.length) FICHE.ouvrir(p, m);
+    }).catch(() => {});
+  },
+  codeDe(lib) {
+    const b = String(lib || "").split(" – ")[0], i = FICHE.LIBS.indexOf(b);
+    return i >= 0 ? FICHE.NIV[i][0] : "";
+  },
+  ouvrir(p, manques) {
+    const z = p.zones || {}, cn = FICHE.codeDe(p.niveau), premiere = manques.indexOf("validation") >= 0;
+    const d = document.createElement("div"); d.id = "rtFiche"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.setAttribute("aria-labelledby", "rtFicheT");
+    d.innerHTML = `<div class="rt-consent-box rt-fiche">
+      <h2 id="rtFicheT">${premiere ? "Mets ta fiche à jour" : "Il manque des informations"}</h2>
+      <p class="rt-help">${premiere ? "Les niveaux suivent maintenant la filière arbitre FFBB. Vérifie tes informations : elles servent aux barèmes, aux échéances de paiement et à ta progression." : "Complète ta fiche pour continuer : ces informations servent aux calculs de l'app."}</p>
+      <div class="rt-field"><label for="fiNom">Nom (tel qu'écrit sur tes convocations)</label><input id="fiNom" type="text" autocomplete="family-name" value="${esc(p.nom_ffbb || "")}"></div>
+      <div class="rt-field"><label for="fiMail">E-mail qui reçoit tes convocations</label><input id="fiMail" type="email" autocomplete="email" value="${esc(p.email_ffbb || "")}"></div>
+      <div class="rt-field"><label for="fiTel">Téléphone</label><input id="fiTel" type="tel" autocomplete="tel" placeholder="06 12 34 56 78" value="${esc(p.telephone || "")}"></div>
+      <div class="rt-row">
+        <div class="rt-field"><label for="fiCd">Comité</label><select id="fiCd"><option value="">Choisir…</option>${ONBOARD.COMITES.map(([k, l]) => `<option value="${k}"${z.cd === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+        <div class="rt-field"><label for="fiLigue">Ligue</label><select id="fiLigue"><option value="">Choisir…</option>${ONBOARD.LIGUES.map(([k, l]) => `<option value="${k}"${z.ligue === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      </div>
+      <div class="rt-field" id="fiCdAutreF" hidden><label for="fiCdAutre">Nom ou numéro du comité</label><input id="fiCdAutre" type="text" value="${esc(z.cd_autre || "")}"></div>
+      <div class="rt-field"><label for="fiNiv">Niveau d'arbitrage principal</label><select id="fiNiv"><option value="">Choisir…</option>${FICHE.NIV.map(([k, l]) => `<option value="${k}"${cn === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+        <p class="rt-muted" id="fiPlafond" style="margin:6px 0 0;font-size:13px"></p></div>
+      <div class="rt-field" id="fiParF" hidden><label for="fiPar" id="fiParL"></label><select id="fiPar"></select></div>
+      <p class="rt-consent-msg" id="fiMsg" role="alert"></p>
+      <div class="rt-consent-actions"><button type="button" class="rt-btn" id="fiOk">Valider ma fiche</button></div>
+    </div>`;
+    document.body.appendChild(d);
+    const $ = id => document.getElementById(id);
+    const majNiv = () => {
+      const n = $("fiNiv").value, fam = /^dep/.test(n) ? "dep" : /^reg/.test(n) ? "reg" : "";
+      $("fiParF").hidden = !fam;
+      if (fam) {
+        const avant = $("fiPar").dataset.fam === fam ? $("fiPar").value : (p.parcours || "");
+        $("fiParL").textContent = fam === "reg" ? "Es-tu Jeune Potentiel Régional (JPR) ?" : "Fais-tu partie du groupe potentiel départemental ?";
+        $("fiPar").innerHTML = `<option value="">Choisir…</option>` + FICHE.PAR[fam].map(([v, t]) => `<option value="${v}"${avant === v ? " selected" : ""}>${esc(t)}</option>`).join("");
+        if (!avant && p.fiche_maj_le) $("fiPar").value = "aucun";
+        $("fiPar").dataset.fam = fam;
+      }
+      const lib = (FICHE.NIV.find(x => x[0] === n) || [])[1] || "";
+      $("fiPlafond").textContent = lib && typeof rtPlafondNiveau_ === "function" ? rtPlafondNiveau_(lib) : "";
+    };
+    $("fiNiv").addEventListener("change", majNiv); majNiv();
+    const majCd = () => { $("fiCdAutreF").hidden = $("fiCd").value !== "AUTRE"; }; $("fiCd").addEventListener("change", majCd); majCd();
+    $("fiOk").addEventListener("click", async () => {
+      const n = $("fiNiv").value, fam = /^dep|^reg/.test(n);
+      const corps = { niveau: n, parcours: fam ? $("fiPar").value : "", telephone: $("fiTel").value, cd: $("fiCd").value, cd_autre: $("fiCdAutre").value, ligue: $("fiLigue").value, nom_ffbb: $("fiNom").value.trim(), email_ffbb: $("fiMail").value.trim() };
+      const msg = $("fiMsg");
+      if (!n) { msg.textContent = FICHE.ERR.niveau; return; }
+      if (fam && !corps.parcours) { msg.textContent = FICHE.ERR.parcours; return; }
+      $("fiOk").disabled = true; msg.textContent = "Enregistrement…";
+      try {
+        const r = await SB.write("POST", "rpc/rt_fiche_maj", { p: corps });
+        msg.textContent = "";
+        try { await jsonp("settings.profil", { profil: { niveau: r.niveau, nom_ffbb: corps.nom_ffbb, email_ffbb: corps.email_ffbb, zones: { cd: corps.cd, ligue: corps.ligue, cf: !!r.cf } } }); } catch (e) { /* le moteur reprendra la fiche à la prochaine modification */ }
+        d.remove(); toast("Fiche à jour, merci !");
+      } catch (e) {
+        const k = Object.keys(FICHE.ERR).find(x => String(e && e.message || "").indexOf(x) >= 0);
+        msg.textContent = k ? FICHE.ERR[k] : "Enregistrement impossible, réessaie dans un instant.";
+        $("fiOk").disabled = false;
+      }
+    });
+  }
+};
+window.FICHE = FICHE;
 const TOUR = {
   etape: 0,
   obligatoire() { try { return localStorage.getItem("rt_premiere_connexion") === "1"; } catch (e) { return false; } },
@@ -2232,7 +2336,7 @@ async function startApp() {
       if (res.home && res.home.lat) HOME = res.home;
       if (/[?&]demo=premiere-connexion\b/.test(location.search)) setTimeout(() => ONBOARD.ouvrirDemo(), 300);   // b74 — démo
       else if (res.onboarding && res.onboarding.fait === false) setTimeout(() => ONBOARD.ouvrir(), 300);   // b59
-      else { let t = ""; try { t = localStorage.getItem("rt_tour_fait") || ""; } catch (e) {} if (!t && TOUR.obligatoire()) setTimeout(() => TOUR.ouvrir(), 800); }   // b69
+      else { let t = ""; try { t = localStorage.getItem("rt_tour_fait") || ""; } catch (e) {} if (!t && TOUR.obligatoire()) setTimeout(() => TOUR.ouvrir(), 800); setTimeout(() => FICHE.verifier(), 1500); }   // b69 · b97 fiche à jour
       Profil.email = res.email || "";
       if (res.config) {
         Profil.config = res.config;

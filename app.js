@@ -1751,15 +1751,11 @@ function renderAccueil() {
       <h2 class="section-title">Mes matchs du week-end${nb ? ` <span class="count">${nb}</span>` : ""}</h2>
       ${matchsHtml}
     </section>
-    <div id="accAnnonces"></div>
-    <div id="accImport"></div>
-    <div id="accEvals"></div>
-    <div id="accHisto"></div>
   `;
-  try { accAnnonces_(root.querySelector("#accAnnonces")); } catch (e) { /* carte facultative */ }
-  try { accImport_(root.querySelector("#accImport"), actifs); } catch (e) { /* carte facultative */ }
-  try { accEvals_(root.querySelector("#accEvals")); } catch (e) { /* carte facultative */ }
-  try { accHistorique_(root.querySelector("#accHisto")); } catch (e) { /* carte facultative */ }
+  // b97 — l'accueil ne montre plus ni annonces, ni « à faire », ni observations (rubrique Progression) :
+  // les annonces et les choses à faire vont dans le centre de notifications (cloche de l'en-tête).
+  notifRendre_(actifs);
+  if (window.rtPubApp) window.rtPubApp().then(c => { if (c.accueil_observations) { const z = document.createElement("div"); z.id = "accEvals"; root.appendChild(z); try { accEvals_(z); } catch (e) {} } });
 
   root.querySelectorAll(".acc-vers-match").forEach(b => b.addEventListener("click", () => ouvrirMatch(b.dataset.uid)));
 }
@@ -1840,11 +1836,39 @@ function accEvals_(z) {
     <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
   const b = z.querySelector(".acc-ev-go"); if (b) b.addEventListener("click", () => setActiveTab("progression"));
 }
+/* b97 — centre de notifications (cloche) : annonces personnelles, convocations d'inscription manquantes,
+   « Complète ton historique ». Badge = nombre d'éléments à lire. Un clic sur une action ferme le panneau. */
+function notifRendre_(actifs) {
+  const P = document.getElementById("rtNotifPanel"); if (!P) return;
+  const zA = P.querySelector("#accAnnonces"), zI = P.querySelector("#accImport"), zH = P.querySelector("#accHisto");
+  try { accAnnonces_(zA); } catch (e) {}
+  try { accImport_(zI, actifs); } catch (e) {}
+  try { accHistorique_(zH); } catch (e) {}
+  if (!P._obs) { P._obs = new MutationObserver(notifCompter_); P._obs.observe(P, { childList: true, subtree: true }); }
+  notifCompter_();
+}
+function notifCompter_() {
+  const P = document.getElementById("rtNotifPanel"), b = document.getElementById("rtNotifBadge"), v = document.getElementById("rtNotifVide"); if (!P || !b) return;
+  const n = P.querySelectorAll("#accAnnonces [data-ann]").length + (P.querySelector("#accImport").children.length ? 1 : 0) + (P.querySelector("#accHisto").children.length ? 1 : 0);
+  b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n || ""); if (v) v.hidden = n > 0;
+}
+(function notifInit_() {
+  const go = () => {
+    const btn = document.getElementById("rtNotifBtn"), P = document.getElementById("rtNotifPanel"); if (!btn || !P || btn._ok) return; btn._ok = true;
+    const ouvrir = (o) => { P.hidden = !o; btn.setAttribute("aria-expanded", o ? "true" : "false"); };
+    btn.addEventListener("click", (e) => { e.stopPropagation(); ouvrir(P.hidden); });
+    document.getElementById("rtNotifFermer").addEventListener("click", () => ouvrir(false));
+    document.addEventListener("click", (e) => { if (!P.hidden && !P.contains(e.target) && e.target !== btn) ouvrir(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") ouvrir(false); });
+    P.addEventListener("click", (e) => { if (e.target.closest("[data-ann-go],[data-tab-go]")) setTimeout(() => ouvrir(false), 0); });
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
 /* b88f — annonces personnelles (table « annonces », écrites par l'administrateur) : bannière en haut de l'accueil,
    « OK » la masque définitivement (masque_le). Action : un onglet de l'app, ou « profil » (ouvre Mon profil). */
 function accAnnonces_(z) {
   if (!z || typeof SB === "undefined" || !SB.actif) return;
-  SB.get("annonces?select=id,texte,action,lib_action,style,expire_le&masque_le=is.null&order=cree_le.asc").then(l => {
+  SB.get("annonces?select=id,texte,action,lib_action,style,expire_le&masque_le=is.null&order=cree_le.asc" + (window.rtSub_ && window.rtSub_() ? "&user_id=eq." + encodeURIComponent(window.rtSub_()) : "")).then(l => {
     const now = Date.now(), a = (l || []).filter(x => !x.expire_le || Date.parse(x.expire_le) > now);
     if (!a.length) { z.innerHTML = ""; return; }
     z.innerHTML = a.map(x => `<div class="acc-annonce acc-annonce--${escapeHtml(x.style || "info")}" role="status" data-ann="${Number(x.id)}">
@@ -1854,6 +1878,7 @@ function accAnnonces_(z) {
       const go = b.getAttribute("data-ann-go");
       if (go === "profil") { const pb = document.getElementById("rtProfileBtn"); if (pb) pb.click(); }
       else if (go === "guide") window.open("./manuel/pdf/Referee-Tracker-Guide-de-demarrage.pdf", "_blank", "noopener");
+      else if (go === "import") rtImportHistorique_();   // b97
       else if (typeof setActiveTab === "function") setActiveTab(go);
     }));
     z.querySelectorAll("[data-ann-ok]").forEach(b => b.addEventListener("click", async () => {
@@ -1881,6 +1906,53 @@ function accImport_(z, actifs) {
   }).catch(() => {});
 }
 
+/* b97 — « Importer mon historique » : l'arbitre dépose ses anciennes convocations (PDF) depuis l'app.
+   Envoi dans le Storage privé « import/<son id>/ » ; son moteur les rapatrie seul (toutes les 30 min) et les lit.
+   Aucun doublon : un match déjà présent (même saison + même n° de rencontre) est simplement mis à jour. */
+async function rtImportHistorique_() {
+  if (document.getElementById("rtImpH")) return;
+  const cfgApp = window.rtPubApp ? await window.rtPubApp() : {};
+  if (cfgApp.import_historique === false) { toast("L'import d'historique est momentanément fermé. Transfère tes convocations par mail à ton adresse Referee Tracker."); return; }
+  const maxPdf = Math.max(1, Number(cfgApp.import_max) || 400);
+  const d = document.createElement("div"); d.id = "rtImpH"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+  d.innerHTML = `<div class="rt-consent-box">
+    <h2>Importer mon historique</h2>
+    <p class="rt-help">Sélectionne tes anciennes convocations en PDF (plusieurs d'un coup possible). Elles apparaissent dans l'app dans l'heure, avec les km et les indemnités. Un match déjà présent n'est jamais dupliqué.</p>
+    <label class="imp-zone"><input type="file" id="impFichiers" accept="application/pdf,.pdf" multiple><span>Choisir mes PDF</span><small id="impSel">Aucun fichier choisi</small></label>
+    <div class="imp-barre" hidden><i id="impBarre"></i></div>
+    <p class="rt-consent-msg" id="impMsg" role="status"></p>
+    <div class="rt-consent-actions"><button type="button" class="rt-btn-ghost" id="impFermer">Fermer</button><button type="button" class="rt-btn" id="impGo" disabled>Envoyer</button></div></div>`;
+  document.body.appendChild(d);
+  const $ = id => d.querySelector("#" + id), inp = $("impFichiers");
+  const fermer = () => d.remove();
+  $("impFermer").addEventListener("click", fermer);
+  inp.addEventListener("change", () => {
+    const f = [...inp.files].filter(x => /\.pdf$/i.test(x.name) && x.size <= 20 * 1024 * 1024);
+    $("impSel").textContent = f.length ? f.length + " PDF prêt" + (f.length > 1 ? "s" : "") + " à envoyer" + (f.length < inp.files.length ? " (" + (inp.files.length - f.length) + " ignoré(s) : PDF de 20 Mo max)" : "") : "Aucun PDF valide";
+    $("impGo").disabled = !f.length;
+  });
+  $("impGo").addEventListener("click", async () => {
+    const f = [...inp.files].filter(x => /\.pdf$/i.test(x.name) && x.size <= 20 * 1024 * 1024).slice(0, maxPdf);
+    const sub = rtSubDuJeton_(); let t = ""; try { t = await SB.token(); } catch (e) {}
+    if (!sub || !t) { $("impMsg").textContent = "Session expirée : reconnecte-toi puis recommence."; return; }
+    $("impGo").disabled = true; $("impFermer").disabled = true; d.querySelector(".imp-barre").hidden = false;
+    let ok = 0, deja = 0, ko = 0;
+    for (let i = 0; i < f.length; i++) {
+      const nom = Date.now().toString(36) + "_" + f[i].name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_").slice(-140);
+      try {
+        const r = await fetch(SB_URL + "/storage/v1/object/import/" + encodeURIComponent(sub) + "/" + encodeURIComponent(nom), { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/pdf" }, body: f[i] });
+        if (r.ok) ok++; else if (r.status === 409) deja++; else ko++;
+      } catch (e) { ko++; }
+      $("impBarre").style.width = Math.round((i + 1) / f.length * 100) + "%";
+      $("impMsg").textContent = "Envoi " + (i + 1) + " / " + f.length + "…";
+    }
+    try { await SB.write("POST", "rpc/rt_import_demande", { n: ok }); } catch (e) {}
+    try { window.rtUsage && window.rtUsage.action("import_historique"); } catch (e) {}
+    $("impMsg").textContent = ok ? ok + " convocation" + (ok > 1 ? "s envoyées" : " envoyée") + ". Elles apparaîtront dans l'app d'ici une heure." + (ko ? " " + ko + " échec(s) : réessaie pour ceux-là." : "") : "Aucun fichier envoyé" + (ko ? " (" + ko + " échec(s)). Vérifie ta connexion et réessaie." : ".");
+    $("impFermer").disabled = false; $("impFermer").textContent = "Terminé";
+  });
+}
+window.rtImportHistorique_ = rtImportHistorique_;
 /* b77 — « Complète ton historique » : sans historique, pas de progression ni de comparaison.
    4 points, chacun avec son action directe ; la carte disparaît quand tout est fait ou si on la masque. */
 const HISTO_CLE_ = "rt-histo-masque";
@@ -1906,8 +1978,9 @@ function accHistorique_(z) {
     const faits = pts.filter(p => p.ok).length;
     if (faits === pts.length) { z.innerHTML = ""; return; }
     z.innerHTML = `<section class="acc-bloc acc-histo"><div class="acc-histo-h"><h2 class="section-title">Complète ton historique <span class="count">${faits} / ${pts.length}</span></h2><button type="button" class="small-btn secondary" id="accHistoMasquer">Masquer</button></div>
-      <div class="acc-histo-g">${pts.map(p => `<div class="acc-histo-i${p.ok ? " is-ok" : ""}"><span class="acc-histo-c">${p.ok ? "✓" : ""}</span><div><strong>${escapeHtml(p.t)}</strong><span class="card-sub">${escapeHtml(p.d)}</span>${!p.ok && p.go ? `<button type="button" class="small-btn" data-tab-go="${p.go}">${escapeHtml(p.lib)} →</button>` : ""}${!p.ok && p.adr ? `<button type="button" class="small-btn" data-histo-adr="1">Comment les transférer →</button><div class="acc-histo-adr" hidden></div>` : ""}</div></div>`).join("")}</div></section>`;
+      <div class="acc-histo-g">${pts.map(p => `<div class="acc-histo-i${p.ok ? " is-ok" : ""}"><span class="acc-histo-c">${p.ok ? "✓" : ""}</span><div><strong>${escapeHtml(p.t)}</strong><span class="card-sub">${escapeHtml(p.d)}</span>${!p.ok && p.go ? `<button type="button" class="small-btn" data-tab-go="${p.go}">${escapeHtml(p.lib)} →</button>` : ""}${!p.ok && p.adr ? `<button type="button" class="small-btn" data-histo-imp="1">Importer mes PDF →</button> <button type="button" class="small-btn secondary" data-histo-adr="1">Ou les transférer par mail</button><div class="acc-histo-adr" hidden></div>` : ""}</div></div>`).join("")}</div></section>`;
     // b88d — « Tes saisons passées » : bouton qui affiche l'adresse Referee Tracker (copiable) et la marche à suivre.
+    const bi = z.querySelector("[data-histo-imp]"); if (bi) bi.addEventListener("click", () => { const P = document.getElementById("rtNotifPanel"); if (P) P.hidden = true; rtImportHistorique_(); });
     const ba = z.querySelector("[data-histo-adr]");
     if (ba) ba.addEventListener("click", async () => {
       const box = ba.nextElementSibling; if (!box) return;
@@ -4212,6 +4285,41 @@ function evalFamillesMoy_(evals) {
   const tri = evals.slice().sort((a, b) => (evalDate_(a) || 0) - (evalDate_(b) || 0));
   return EVAL_FAM_.map(([k, l]) => { const v = tri.map(ev => ev.familles && ev.familles[k]).filter(x => x !== null && x !== undefined); return { k, l, v: moy(v.slice(-3)), n: v.length }; });
 }
+/* b97 — Progression au téléphone : suivi simplifié des observations (dernière note, moyenne, courbe, point fort /
+   priorité, 5 dernières fiches dépliables avec les axes de travail). Le détail complet reste sur PC. */
+function renderEvalTel_(evals) {
+  const notees = (evals || []).filter(ev => Number(ev.note20) > 0 && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
+  if (!notees.length) return `<div class="table-card evt-vide"><p class="card-sub" style="margin:0">Aucune fiche d'observation pour l'instant. Dépose tes PDF depuis un ordinateur : tes notes apparaîtront ici.</p></div>`;
+  const obs = notees.filter(evalEstMatch_), base = obs.length ? obs : notees;
+  const der = base[base.length - 1], prec = base[base.length - 2];
+  const delta = prec ? Math.round((der.note20 - prec.note20) * 10) / 10 : null;
+  const saison = getCurrentSeason(), saisonDe_ = d => { const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return y + "/" + (y + 1); };
+  const sais = base.filter(ev => saisonDe_(evalDate_(ev)) === saison);
+  const moy = sais.length ? Math.round(sais.reduce((t, ev) => t + Number(ev.note20), 0) / sais.length * 10) / 10 : null;
+  const f1 = v => Number(v).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const coul = v => v >= 15 ? "var(--green, #1F9D61)" : v >= 12 ? "var(--gold, #E8A317)" : "var(--red, #E0313C)";
+  // courbe des 10 dernières notes
+  const pts = base.slice(-10), W = 300, H = 70, mn = Math.min(10, ...pts.map(e => e.note20)), mx = Math.max(18, ...pts.map(e => e.note20));
+  const xy = pts.map((e, i) => [pts.length > 1 ? 8 + i * (W - 16) / (pts.length - 1) : W / 2, H - 8 - (e.note20 - mn) / ((mx - mn) || 1) * (H - 16)]);
+  const courbe = pts.length > 1 ? `<svg class="evt-spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution des ${pts.length} dernières notes"><polyline points="${xy.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(--navy-700, #1E3A6B)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${xy.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i === xy.length - 1 ? 5 : 3.5}" fill="${coul(pts[i].note20)}"/>`).join("")}</svg>` : "";
+  const fam = evalFamillesMoy_(evals).filter(f => f.v !== null);
+  const fort = fam.length >= 2 ? fam.slice().sort((a, b) => b.v - a.v)[0] : null;
+  const prio = fam.length >= 2 ? fam.slice().sort((a, b) => a.v - b.v)[0] : null;
+  const barre = f => `<div class="evt-fam"><span>${escapeHtml(f.l)}</span><div class="evt-bar"><i style="width:${Math.max(4, Math.min(100, f.v / 20 * 100))}%;background:${coul(f.v)}"></i></div><b>${f1(f.v)}</b></div>`;
+  const dern = base.slice(-5).reverse();
+  return `
+    <div class="evt-kpis">
+      <div class="evt-k"><span class="evt-v" style="color:${coul(der.note20)}">${f1(der.note20)}<small>/20</small></span><span class="evt-l">Dernière note${delta ? ` <b class="${delta > 0 ? "evt-up" : "evt-down"}">${delta > 0 ? "▲ +" : "▼ "}${f1(Math.abs(delta)).replace(/^/, delta < 0 ? "" : "")}</b>` : ""}</span><span class="evt-s">${escapeHtml(evalDateCourte_(der))}</span></div>
+      <div class="evt-k"><span class="evt-v">${moy !== null ? f1(moy) + "<small>/20</small>" : "—"}</span><span class="evt-l">Moyenne saison</span><span class="evt-s">${sais.length} fiche${sais.length > 1 ? "s" : ""}</span></div>
+    </div>
+    ${courbe ? `<div class="table-card evt-card"><h3>Évolution</h3>${courbe}<div class="evt-axe"><span>${escapeHtml(evalDateCourte_(pts[0]))}</span><span>${escapeHtml(evalDateCourte_(pts[pts.length - 1]))}</span></div></div>` : ""}
+    ${fort || prio ? `<div class="table-card evt-card"><h3>Mon profil</h3>${fort ? `<p class="evt-tag evt-tag--ok">Point fort</p>${barre(fort)}` : ""}${prio && prio !== fort ? `<p class="evt-tag evt-tag--prio">À travailler en priorité</p>${barre(prio)}` : ""}</div>` : ""}
+    <div class="table-card evt-card"><h3>Mes dernières fiches</h3>
+      ${dern.map(ev => { const axes = [ev.axe1, ev.axe2].filter(Boolean).map(a => String(a).replace(/^\[[^\]]*\]\s*/, ""));
+        return `<div class="evt-row" role="button" tabindex="0"><div class="evt-row-h"><span class="evt-date">${escapeHtml(evalDateCourte_(ev))}</span><span class="evt-champ">${escapeHtml(ev.championnat || ev.type || "Observation")}</span><span class="evt-note" style="background:${coul(ev.note20)}">${f1(ev.note20)}</span></div>
+          <div class="evt-row-d">${ev.observateur ? `<p><b>Observateur</b> ${escapeHtml(ev.observateur)}</p>` : ""}${axes.length ? `<p><b>À travailler</b></p><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : `<p class="card-sub">Pas d'axe de travail noté sur cette fiche.</p>`}</div></div>`; }).join("")}
+    </div>`;
+}
 function renderEvalSynthese_(evals) {
   const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev)).sort((a, b) => evalDate_(a) - evalDate_(b));
   const obs = notees.filter(evalEstMatch_), stages = notees.filter(ev => !evalEstMatch_(ev));
@@ -4555,8 +4663,9 @@ function renderProgression() {
           <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.dateDebut) + (actuel.groupement ? " — " + escapeHtml(actuel.groupement) : "") : "À renseigner sur ordinateur"}</span>
         </div>
       </div>
-      ${renderEvalSynthese_(evaluations)}
-      <p class="card-sub tel-note">Fiches d'évaluation, plan de développement et historique : sur ordinateur ou tablette (Analyse → Progression).</p>`;
+      ${renderEvalTel_(evaluations)}
+      <p class="card-sub tel-note">Fiches complètes, plan de développement et graphiques : sur ordinateur ou tablette.</p>`;
+    root.querySelectorAll(".evt-row").forEach(r => r.addEventListener("click", () => r.classList.toggle("is-open")));
     return;
   }
 
@@ -10220,3 +10329,5 @@ document.addEventListener("click", e => {
   if (!b || typeof setActiveTab !== "function") return;
   setActiveTab(b.getAttribute("data-tab-go")); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (x) {}
 });
+/* b97 — bouton « Importer mes anciennes convocations » (Mon profil) : délégation (la CSP interdit les onclick). */
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
