@@ -4661,6 +4661,7 @@ function renderProgression() {
           <label>Niveau actuel</label>
           <strong>${actuel ? escapeHtml(actuel.niveau) : "Non renseigné"}</strong>
           <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.dateDebut) + (actuel.groupement ? " — " + escapeHtml(actuel.groupement) : "") : "À renseigner sur ordinateur"}</span>
+          <button type="button" class="small-btn secondary fil-ouvrir" data-fil-niveau="${escapeHtml(actuel ? actuel.niveau : "")}">Filière arbitre FFBB →</button>
         </div>
       </div>
       ${renderEvalTel_(evaluations)}
