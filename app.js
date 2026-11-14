@@ -1023,7 +1023,7 @@ function reglDocsModal_() {
         </li>`).join("") : `<li class="card-sub">Aucun document : dépose le règlement, les interprétations et le manuel technique.</li>`}</ul>
       <div class="regl-doc-cache">${d.cache ? `Cache : ${d.cache.docs} document(s), ${d.cache.passages} passages, ${Math.round(d.cache.chars / 1000)} k caractères` : "Cache froid : la première question prendra quelques secondes de plus."}${d.modele ? ` · modèle ${escapeHtml(d.modele)}` : ""}</div>
       <div class="regl-doc-add">
-        <label class="small-btn regl-doc-up"><input type="file" id="reglDocFile" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" hidden /><span>+ Ajouter un document</span></label>
+        <label class="small-btn regl-doc-up"><input type="file" id="reglDocFile" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" multiple hidden /><span>+ Ajouter des documents</span></label>
         <button type="button" class="small-btn secondary" id="reglDocReload">Recharger le corpus</button>
         ${d.dossierUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(d.dossierUrl))}" target="_blank" rel="noopener">Ouvrir le dossier Drive</a>` : ""}
       </div>
@@ -1034,14 +1034,20 @@ function reglDocsModal_() {
     const statut = (txt, err) => { const s = ov.querySelector("#reglDocStatus"); if (s) { s.textContent = txt; s.classList.toggle("is-err", !!err); } };
     const inp = ov.querySelector("#reglDocFile");
     if (inp) inp.addEventListener("change", async () => {
-      const f = inp.files && inp.files[0]; if (!f) return;
-      if (f.size > 20 * 1024 * 1024) { statut("Fichier trop gros (max 20 Mo).", true); return; }
-      statut(`Envoi de ${f.name}… ${/pdf$/i.test(f.name) ? "(conversion du PDF en texte : jusqu'à 1 min)" : ""}`);
+      const liste = Array.from(inp.files || []); if (!liste.length) return;   // b101 — plusieurs fichiers d'un coup
+      const ok = [];
       ov.querySelectorAll("button, input").forEach(b => b.disabled = true);
+      for (const f of liste) {
+      if (f.size > 20 * 1024 * 1024) { statut(f.name + " : fichier trop gros (max 20 Mo).", true); continue; }
+      statut(`Envoi ${ok.length + 1}/${liste.length} : ${f.name}… ${/pdf$/i.test(f.name) ? "(conversion du PDF en texte : jusqu'à 1 min)" : ""}`);
       try {
         const res = await jsonp("reglement.doc.upload", { fNom: f.name, fMime: f.type || "", fData: await fichierEnBase64_(f) });
         if (!res || !res.success || !res.result || !res.result.ok) throw new Error((res && (res.error || (res.result && res.result.error))) || "Erreur");
-        setStatus("Document ajouté : " + (res.result.fichiers || []).map(x => x.nom).join(", "), "ok");
+        ok.push(f.name);
+      } catch (e) { statut(f.name + " : " + e.message, true); }
+      }
+      try {
+        setStatus("Document(s) ajouté(s) : " + ok.join(", "), "ok");
         await reglChargerDocs_(true); dessiner();
       } catch (e) { ov.querySelectorAll("button, input").forEach(b => b.disabled = false); statut("Échec : " + (e.message || e), true); }
     });
