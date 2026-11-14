@@ -4877,3 +4877,15 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
   body.rt-clavier #reglement .regl-form { bottom: 6px; }
   body.rt-clavier .rt-annonce, body.rt-clavier #reglement .regl-chat { overscroll-behavior: contain; }
 }
+/* b93 — filière arbitre (Progression) */
+.fil { display: flex; flex-direction: column; gap: 6px; }
+.fil-h { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.fil-g { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.fil-gl { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-top: 6px; }
+.fil-l { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; border-radius: var(--radius-md); }
+.fil-l b { font-size: 14px; } .fil-l span { font-size: 12.5px; color: var(--muted); }
+.fil-l.moi { background: var(--gold-soft); box-shadow: inset 3px 0 0 var(--gold); }
+.fil-moi { font-size: 10.5px; font-weight: 800; background: var(--gold); color: var(--navy-900); border-radius: 999px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
+.fil-par { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.fil-par > b { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 520px) { .fil-g { grid-template-columns: minmax(0, 1fr); gap: 2px; } .fil-gl { padding-top: 0; } }

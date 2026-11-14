@@ -1089,7 +1089,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfNom">Nom sur les convocations</label>
           <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}" placeholder="NOM Prénom"></div>
         <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
-          <input id="pfNiveau" type="text" value="${esc(p.niveau)}" placeholder="ex. Régional 2 – JPR Rouge"></div>
+          <input id="pfNiveau" type="text" list="pfNiveauxListe" value="${esc(p.niveau)}" placeholder="ex. Région 2 (REG-2) – JPR Rouge" oninput="var e=document.getElementById('pfPlafond');if(e)e.textContent=rtPlafondNiveau_(this.value)"><datalist id="pfNiveauxListe">${(typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX ? ONBOARD.NIVEAUX : []).map(n => `<option value="${esc(n)}">`).join("")}</datalist><p class="rt-muted" id="pfPlafond" style="margin:6px 0 0;font-size:13px">${esc(rtPlafondNiveau_(p.niveau))}</p></div>
       </div>
       <div class="rt-field"><label for="pfMailFfbb">Email connu de ta fédération${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
         <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
@@ -1915,10 +1915,10 @@ const ONBOARD = {
   COMITES: [["CD67", "CD67 – Bas-Rhin"], ["CD68", "CD68 – Haut-Rhin"], ["CD54", "CD54 – Meurthe-et-Moselle"], ["CD55", "CD55 – Meuse"], ["CD57", "CD57 – Moselle"], ["CD88", "CD88 – Vosges"], ["CD08", "CD08 – Ardennes"], ["CD10", "CD10 – Aube"], ["CD51", "CD51 – Marne"], ["CD52", "CD52 – Haute-Marne"], ["AUTRE", "Autre comité"]],
   LIGUES: [["LRGEB", "Grand Est (LRGEB)"], ["ARA", "Auvergne-Rhône-Alpes"], ["BFC", "Bourgogne-Franche-Comté"], ["BRE", "Bretagne"], ["CVL", "Centre-Val de Loire"], ["COR", "Corse"], ["HDF", "Hauts-de-France"], ["IDF", "Île-de-France"], ["NOR", "Normandie"], ["NAQ", "Nouvelle-Aquitaine"], ["OCC", "Occitanie"], ["PDL", "Pays de la Loire"], ["PACA", "Provence-Alpes-Côte d'Azur"], ["AUTRE", "Autre ligue"]],
   // b84 — liste complétée (retour de Clément) ; les anciennes valeurs restent valables pour les profils existants.
-  NIVEAUX: ["École d'arbitrage / arbitre club", "Stagiaire départemental", "Départemental 3", "Départemental 2", "Départemental 1", "Départemental",
-    "Stagiaire régional", "Régional 3", "Régional 2", "Régional 2 – JPR Rouge", "Régional 1", "Jeune Potentiel Régional (JPR)",
-    "Championnat de France – Jeunes", "Championnat de France – NM3 / NF3", "Championnat de France – NM2 / NF2", "Championnat de France",
-    "Haut niveau – HN3 (NM1 / LF2)", "Haut niveau – HN2 / HN1 (Pro B / LFB / Betclic Élite)", "Haut niveau / Fédéral", "International (FIBA)", "Autre"],
+  // b93 — filière arbitre FFBB (schéma Ligue Grand Est 2026-2027) : grade → plafond. Saisie libre conservée (anciens profils).
+  NIVEAUX: ["Arbitre club", "Départemental groupe 3", "Départemental groupe 2", "Départemental groupe 1", "EAR (année de formation)",
+    "Région jeunes (REG-J)", "Région 3", "Région 2 (REG-2)", "Région 2 (REG-2) – JPR Bleu", "Région 2 (REG-2) – JPR Rouge", "Région 1 (REG-1)", "Région 1 (REG-1) – JPR Rouge",
+    "Fédéral Bleu (stagiaire fédéral)", "Fédéral Rouge", "National Bleu", "National Rouge", "Haut niveau (HN)", "International FIBA", "Autre"],
   demo: false,
   /* b74 — mode démo : l'assistant de 1re connexion rejoué à blanc, sans rien lire ni écrire sur le compte. */
   ouvrirDemo() {
@@ -1967,8 +1967,9 @@ const ONBOARD = {
       b.innerHTML = '<h2>Bienvenue ' + esc(D.prenom || "") + ' 👋</h2><p>Quelques réglages pour que l\'app calcule tout à ta place. Tout reste modifiable ensuite dans Mon profil.</p>' + chips +
         this.champ("onbNom", "Ton NOM PRÉNOM exactement comme sur tes convocations", D.nom_ffbb, 'autocapitalize="characters" placeholder="ex. MARTIN JULIE"') +
         this.champ("onbPrenom", "Ton prénom (signature des SMS)", D.prenom, 'autocomplete="given-name"') +
-        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><input id="onbNiveau" list="onbNiveauxListe" value="' + esc(D.niveau) + '" placeholder="ex. Régional 2 – JPR Rouge"><datalist id="onbNiveauxListe">' + this.NIVEAUX.map(n => '<option value="' + esc(n) + '">').join("") + '</datalist></div>';
+        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><input id="onbNiveau" list="onbNiveauxListe" value="' + esc(D.niveau) + '" placeholder="ex. Région 2 (REG-2) – JPR Rouge"><datalist id="onbNiveauxListe">' + this.NIVEAUX.map(n => '<option value="' + esc(n) + '">').join("") + '</datalist><p class="rt-muted" id="onbPlafond" style="margin:6px 0 0;font-size:13px">' + esc(rtPlafondNiveau_(D.niveau)) + '</p></div>';
       b.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { document.getElementById("onbNom").value = c.dataset.nom; }));
+      { const ni = document.getElementById("onbNiveau"), pl = document.getElementById("onbPlafond"); if (ni && pl) ni.addEventListener("input", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
     } else if (e === 1) {
       b.innerHTML = '<h2>Ton point de départ</h2><p>Sert à calculer tes kilomètres et ton carburant. Il n\'est visible que par toi.</p>' +
         this.champ("onbAdr", "Adresse", D.adresse, 'autocomplete="street-address" placeholder="ex. 12 rue des Lilas"') +
@@ -2318,6 +2319,20 @@ const RT_CARTE = {
     el.querySelector(".rt-carte-l-cf").classList.toggle("on", cf);
   }
 };
+
+/* b93 — plafond de désignation selon le grade (schéma de la filière arbitre FFBB, Ligue Grand Est 2026-2027). */
+function rtPlafondNiveau_(niv) {
+  const n = String(niv || "").toLowerCase(), P = [
+    [/fiba|international/, "Compétitions FIBA, coupes d'Europe"], [/haut niveau|\bhn/, "Betclic Élite, Pro B, LFB, NM1 (désignations HNO)"],
+    [/national rouge/, "NM2, LF2, U18"], [/national bleu/, "Espoirs, NF1, U18 (NM2 en réserviste ou le jour d'examen)"],
+    [/f[ée]d[ée]ral rouge/, "NM3, NF2, U18 France (1er arbitre)"], [/f[ée]d[ée]ral bleu|stagiaire f[ée]d/, "NF3, U18, U15 France (NM3 en réserviste ou le jour d'examen)"],
+    [/jpr rouge/, "2e arbitre NF3, U18 et U15 France le dimanche + doublage PN le samedi"], [/jpr bleu/, "2e arbitre U15 France le dimanche + doublage Région le samedi"],
+    [/r[ée]gion 1|reg-1|r[ée]gional 1/, "PNM, PNF"], [/r[ée]gion 2|reg-2|r[ée]gional 2/, "R2 masculin et féminin"], [/r[ée]gion 3|r[ée]gional 3/, "R3 de ta ligue"],
+    [/reg-j|r[ée]gion jeunes/, "Championnats jeunes région"], [/\bear\b|stagiaire r[ée]g/, "Jeunes région + RF2 (RM2 surtout le jour d'examen)"],
+    [/groupe 1/, "PRM + jeunes"], [/groupe 2/, "DM2, DF1 + jeunes"], [/groupe 3|stagiaire d[ée]p/, "DM4, DM3, DF2 + jeunes"], [/club|[ée]cole/, "Matchs de ton club (pas de désignation officielle)"]];
+  const t = P.find(([re]) => re.test(n)); return t ? "Plafond : " + t[1] + ". Toujours désignable en dessous." : "";
+}
+window.rtPlafondNiveau_ = rtPlafondNiveau_;
 
 /* ===================== b71 — TEMPS D'UTILISATION (admin : « utilisateurs actifs », minutes, jours actifs) =====================
    Toutes les minutes, si l'onglet est visible et la session ouverte, on compte 1 min ; toutes les 5 min comptées,

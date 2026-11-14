@@ -4491,6 +4491,30 @@ function libelleSaisiPar_(v) {
   return t;
 }
 
+/* b93 — filière arbitre FFBB (schéma Ligue Grand Est 2026-2027) : chaque grade donne un PLAFOND,
+   on reste toujours désignable en dessous. Le grade de l'arbitre (Progression ou profil) est surligné. */
+const FILIERE_ = [
+  ["Haut niveau", [["International FIBA", "Compétitions FIBA, coupes d'Europe", /fiba|international/], ["HN1 / HN2 / HN3", "Betclic Élite, Pro B, LFB, NM1 (gérés par le HNO)", /haut niveau|\bhn\d?/]]],
+  ["National", [["National Rouge", "NM2, LF2, U18", /national rouge/], ["National Bleu", "Espoirs, NF1, U18 · NM2 en réserviste ou jour d'examen", /national bleu/]]],
+  ["Fédéral", [["Fédéral Rouge", "NM3, NF2, U18 (1er arbitre)", /f[ée]d[ée]ral rouge/], ["Fédéral Bleu (stagiaires)", "NF3, U18, U15 · NM3 en réserviste ou jour d'examen", /f[ée]d[ée]ral bleu|stagiaire f[ée]d/]]],
+  ["Région", [["REG-1", "PNM, PNF", /reg-1|r[ée]gion(al)? 1/], ["REG-2", "R2 masculin et féminin", /reg-2|r[ée]gion(al)? 2/], ["REG-J", "Championnats jeunes région", /reg-j|r[ée]gion jeunes/]]],
+  ["Passerelle", [["EAR (année de formation)", "Jeunes région + RF2 (RM2 surtout le jour d'examen)", /\bear\b|stagiaire r[ée]g/]]],
+  ["Départemental", [["Groupe 1", "PRM + jeunes", /groupe 1/], ["Groupe 2", "DM2, DF1 + jeunes", /groupe 2/], ["Groupe 3", "DM4, DM3, DF2 + jeunes", /groupe 3|stagiaire d[ée]p/]]],
+  ["Club", [["Arbitre club", "Matchs de son club (pas de désignation officielle)", /club|[ée]cole/]]]];
+const PARCOURS_ = [["JPR Rouge", "2e arbitre NF3, U18 M/F, U15 France (dimanche) + doublage PN le samedi", /jpr rouge/], ["JPR Bleu", "2e arbitre U15 France (dimanche) + doublage Région le samedi", /jpr bleu/], ["Groupe potentiel", "Désignations inchangées, formations le week-end ; nominations EAR en fin de saison", /potentiel/]];
+function renderFiliere_(niveauProgression) {
+  let prof = ""; try { prof = (Profil && Profil.config && Profil.config.profil && Profil.config.profil.niveau) || ""; } catch (e) {}
+  const n = String(niveauProgression || prof || "").toLowerCase();
+  let trouve = false;
+  const lignes = FILIERE_.map(([g, L]) => `<div class="fil-g"><span class="fil-gl">${escapeHtml(g)}</span><div>${L.map(([t, p, re]) => { const moi = !trouve && !!n && re.test(n); if (moi) trouve = true;
+    return `<div class="fil-l${moi ? " moi" : ""}"><b>${escapeHtml(t)}${moi ? ' <span class="fil-moi">toi</span>' : ""}</b><span>${escapeHtml(p)}</span></div>`; }).join("")}</div></div>`).join("");
+  const par = PARCOURS_.filter(([, , re]) => re.test(n));
+  return `<div class="table-card fil"><div class="fil-h"><h3 class="card-title" style="margin:0">Filière arbitre</h3><span class="card-sub">Chaque grade donne un plafond : tu restes désignable en dessous. Ligue Grand Est, saison 2026-2027.</span></div>
+    ${lignes}
+    <div class="fil-par"><b>Parcours jeunes potentiels</b>${PARCOURS_.map(([t, p, re]) => `<div class="fil-l${re.test(n) ? " moi" : ""}"><b>${escapeHtml(t)}${re.test(n) ? ' <span class="fil-moi">toi</span>' : ""}</b><span>${escapeHtml(p)}</span></div>`).join("")}</div>
+    <p class="card-sub" style="margin:8px 0 0">${n ? (trouve || par.length ? "Ton grade vient de " + (niveauProgression ? "ta Progression" : "ton profil") + "." : "Ton niveau « " + escapeHtml(niveauProgression || prof) + " » n'est pas reconnu dans la filière : précise-le dans Mon profil (ex. Région 2 (REG-2) – JPR Rouge).") : "Renseigne ton niveau dans Mon profil pour le voir surligné."} Mi-saison CF : environ 20 % de montées Bleu → Rouge et 25 % de descentes. Source : FFBB (groupes Rouge/Bleu, mai 2025), statut de l'arbitre LRGEB.</p></div>`;
+}
+
 function renderProgression() {
   const root = document.getElementById("progression");
   if (!root) return;
@@ -4546,6 +4570,7 @@ function renderProgression() {
       </div>
     </div>
 
+    ${renderFiliere_(actuel ? actuel.niveau : "")}
     ${renderEvalSynthese_(evaluations)}
     ${renderPlanDeveloppement_(evaluations)}
     ${renderLrgebGrille_(evaluations)}
