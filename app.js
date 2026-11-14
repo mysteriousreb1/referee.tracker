@@ -1100,18 +1100,25 @@ function reglReponseHtml_(m) {
   }
   if (!m.decision && !m.explication) return (prec || "") + formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources);
   const a = m.analyse;
+  // b103 — réponse aérée : la décision d'abord (courte), le reste replié et rangé (fini le gros bloc de texte)
+  const arts = m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(x => `<span class="regl-art">${escapeHtml(x)}</span>`).join("")}</div>` : "";
+  const repli = (titre, corps, ouvert) => corps ? `<details class="regl-plus"${ouvert ? " open" : ""}><summary>${titre}</summary><div class="regl-plus-c">${corps}</div></details>` : "";
   if (a && (a.bien.length + a.pas_bien.length + a.a_faire.length + a.ameliorer.length)) {   // b74 — analyse d'une situation vécue
-    const bloc = (cls, t, l) => l && l.length ? `<div class="regl-an ${cls}"><span>${t}</span><ul>${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : "";
+    const liste = l => `<ul>${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`;
+    const pastilles = `<div class="regl-bilan">${a.bien.length ? `<span class="ok">✓ ${a.bien.length} bon${a.bien.length > 1 ? "s" : ""} réflexe${a.bien.length > 1 ? "s" : ""}</span>` : ""}${a.pas_bien.length ? `<span class="ko">✕ ${a.pas_bien.length} point${a.pas_bien.length > 1 ? "s" : ""} à revoir</span>` : ""}</div>`;
     return `${prec || ""}
     ${m.decision ? `<div class="regl-decision"><span>Ce qu'il fallait faire</span>${formatReglementReponse_(m.decision)}</div>` : ""}
-    <div class="regl-an-grille">${bloc("ok", "Ce qui allait", a.bien)}${bloc("ko", "Ce qui n'allait pas", a.pas_bien)}${bloc("proc", "La procédure", a.a_faire)}${bloc("plus", "Pour progresser", a.ameliorer)}</div>
-    ${m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(x => `<span class="regl-art">${escapeHtml(x)}</span>`).join("")}</div>` : ""}
+    ${pastilles}${arts}
+    ${repli("La bonne procédure", a.a_faire.length ? liste(a.a_faire) : "", true)}
+    ${repli("Ce qui allait", a.bien.length ? liste(a.bien) : "")}
+    ${repli("Ce qui n'allait pas", a.pas_bien.length ? liste(a.pas_bien) : "")}
+    ${repli("Pour progresser", a.ameliorer.length ? liste(a.ameliorer) : "")}
     ${reglSourcesHtml_(m.sources)}`;
   }
   return `${prec || ""}
     ${m.decision ? `<div class="regl-decision"><span>Décision</span>${formatReglementReponse_(m.decision)}</div>` : ""}
-    ${m.explication ? `<div class="regl-expl">${formatReglementReponse_(m.explication)}</div>` : ""}
-    ${m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(a => `<span class="regl-art">${escapeHtml(a)}</span>`).join("")}</div>` : ""}
+    ${arts}
+    ${repli("Pourquoi : la règle expliquée", m.explication ? formatReglementReponse_(m.explication) : "")}
     ${reglSourcesHtml_(m.sources)}`;
 }
 function reglSourcesHtml_(src) {
@@ -3573,14 +3580,23 @@ function virSelection_(cands, montant) {
 function virementZone_(root) {
   if (!root || root.querySelector(".vir-zone")) return;
   const z = document.createElement("details"); z.className = "vir-zone table-card";
-  z.innerHTML = `<summary><b>J'ai reçu un virement</b> <span class="card-sub">comité, ligue ou FFBB : l'app retrouve les matchs payés, au centime près</span></summary>
-    <div class="vir-f"><label>Payeur<select id="virP">${Object.entries(VIR_PAYEURS_).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
-    <label>Montant reçu (€)<input id="virM" type="number" step="0.01" min="0" inputmode="decimal" placeholder="201,00"></label>
-    <label>Date du virement<input id="virD" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+  // b103 — parcours en 3 étapes (qui ? combien ? quels matchs ?) ; la logique de rapprochement est inchangée
+  z.innerHTML = `<summary><span class="vir-ic" aria-hidden="true">€</span><span class="vir-st"><b>J'ai reçu un virement</b><span class="card-sub">Indique qui t'a payé et combien : l'app retrouve les matchs réglés.</span></span><span class="vir-ch" aria-hidden="true">›</span></summary>
+    <div class="vir-etape"><span class="vir-n">1</span><b>Qui t'a payé ?</b></div>
+    <div class="vir-chips" role="radiogroup">${Object.entries(VIR_PAYEURS_).map(([k, l], i) => `<button type="button" class="vir-chip${i ? "" : " is-on"}" data-vir-p="${k}" role="radio" aria-checked="${!i}">${escapeHtml(l)}</button>`).join("")}</div>
+    <select id="virP" hidden>${Object.entries(VIR_PAYEURS_).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+    <div class="vir-etape"><span class="vir-n">2</span><b>Combien et quand ?</b></div>
+    <div class="vir-f"><label class="vir-montant"><span>Montant reçu</span><span class="vir-eur"><input id="virM" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0,00"><i>€</i></span></label>
+    <label><span>Date du virement</span><input id="virD" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+    <div class="vir-etape"><span class="vir-n">3</span><b>Les matchs payés</b></div>
     <div id="virL" class="vir-l"></div>`;
   const tete = root.querySelector(":scope > h2, :scope > .section-title, :scope > .page-head, :scope > header");   // b98 — le titre de la page reste en haut
   if (tete) tete.after(z); else root.prepend(z);
   const P = z.querySelector("#virP"), M = z.querySelector("#virM"), D = z.querySelector("#virD"), L = z.querySelector("#virL");
+  z.querySelectorAll("[data-vir-p]").forEach(c => c.addEventListener("click", () => {
+    z.querySelectorAll("[data-vir-p]").forEach(x => { x.classList.toggle("is-on", x === c); x.setAttribute("aria-checked", x === c); });
+    P.value = c.dataset.virP; P.dispatchEvent(new Event("change"));
+  }));
   const maj = () => {
     const cands = virCandidats_(P.value), montant = toNumber(M.value);
     if (!cands.length) { L.innerHTML = '<p class="card-sub">Aucun match en attente pour ce payeur.</p>'; return; }
@@ -6523,7 +6539,7 @@ function renderFranchise_(annee, total) {
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>Franchise des arbitres ${annee}</strong><span>${formatMoney(total)} / ${formatMoney(plafond)}</span></div>
     <div class="franchise-bar"><i style="width:${part}%"></i></div>
     ${(() => { const eq = typeof window.rtEquipementAnnee === "function" ? window.rtEquipementAnnee(annee) : 0; return eq ? `<p class="card-sub" style="margin:6px 0 0">Équipement acheté en ${annee} : <strong>${formatMoney(eq)}</strong> · gain après équipement : <strong>${formatMoney(total - eq)}</strong> (onglet Équipement).</p>` : ""; })()}
-    <p class="card-sub" style="margin:6px 0 0">${depasse ? "Plafond dépassé : l'ensemble des indemnités de l'année devient soumis à cotisations et à l'impôt. Parles-en à ton comité ou à un conseiller." : `Indemnités exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee} (${formatMoney(plafond)}). Il te reste ${formatMoney(Math.max(0, plafond - total))}.`} Information indicative.</p>
+    <p class="card-sub" style="margin:6px 0 0">${depasse ? "Plafond dépassé : la franchise ne s'applique plus et tes indemnités de l'année peuvent devenir soumises à cotisations et à l'impôt. Vérifie ta situation auprès de ton comité, de l'Urssaf ou des impôts." : `Indemnités exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee} (${formatMoney(plafond)}). Il te reste ${formatMoney(Math.max(0, plafond - total))}.`} Information indicative.</p>
   </div>`;
 }
 function exportTotals(rows) {
@@ -9172,7 +9188,7 @@ function renderElicencePanel_() {
         ${e.doc ? `<button type="button" class="elic-doc-view" id="elicDocMini" title="Agrandir"><img src="${escapeHtml(e.doc)}" alt="Licence officielle" /></button>`
           : `<p class="card-sub">Aperçu indisponible pour ce PDF : remplace-le une fois pour générer l'aperçu hors ligne.</p>`}
       </div>`;
-  return `<div class="elic-zone">${doc}<span class="card-sub" id="elicDocMsg"></span></div>${renderEmarque_()}`;
+  return `<div class="elic-grid"><div class="elic-zone">${doc}<span class="card-sub" id="elicDocMsg"></span></div>${renderEmarque_()}</div>`;   // b103 — 2 colonnes sur PC
 }
 
 /* b20 — CARTE NUMÉRIQUE : les champs sont lus sur TA licence par l'IA
@@ -9279,14 +9295,14 @@ function renderEmarque_() {
     : m.defini ? `<code class="emq-cle" id="emqCle">${escapeHtml(m.clair || m.masque)}</code>`
     : `<span class="card-sub">Aucune clé enregistrée.</span>`;
   return `<div class="emq">
-    <div class="emq-head"><div><strong>Clé e-Marque V2</strong><span class="card-sub">Code de signature des feuilles de match</span></div>
+    <div class="emq-head"><div><span class="emq-ic" aria-hidden="true">🔑</span><strong>Ma clé e-Marque V2</strong><span class="card-sub">Ta clé personnelle pour signer les feuilles de match. Elle n'est visible que par toi.</span></div>
       <div class="elic-doc-act">
         ${m && m.defini ? `<button type="button" class="small-btn secondary" id="emqVoir">${m.clair ? "Masquer" : "Afficher"}</button><button type="button" class="small-btn" id="emqCopier">Copier</button>` : ""}
         <button type="button" class="small-btn secondary" id="emqModif">${m && m.defini ? "Modifier" : "Enregistrer ma clé"}</button>
       </div></div>
     <div class="emq-val">${etat}</div>
     <form id="emqForm" class="emq-form" hidden><input id="emqInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ta clé e-Marque" /><button type="submit" class="small-btn">Enregistrer</button>${m && m.defini ? `<button type="button" class="small-btn secondary alerte-danger" id="emqDel">Supprimer</button>` : ""}</form>
-    <p class="card-sub emq-note">Stockée uniquement côté serveur (Apps Script), jamais dans le site, le cache du navigateur ni GitHub.</p>
+    <p class="card-sub emq-note">Stockée uniquement sur ton moteur personnel, jamais dans le site, le navigateur ni chez un autre arbitre.</p>
   </div>`;
 }
 async function chargerEmarque_(reveler) {

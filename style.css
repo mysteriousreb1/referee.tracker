@@ -5033,3 +5033,64 @@ h2.page-title, h2.section-title.sub-title {
   :root:not([data-theme="dark"]) .brand-text h1 span { color: #E2A100; text-shadow: 0 0 1px rgba(120, 80, 0, .55); }
 }
 @media (max-width: 767px) { .regl-seg-l { display: none; } .regl-seg-b { padding: 9px 18px; font-size: 14px; } }
+/* b103 — e-Licence repensée : carte aux couleurs de la charte (navy + or), page en 2 colonnes sur PC, actions hiérarchisées */
+.elic-grid { display: grid; gap: 16px; margin-top: 12px; }
+@media (min-width: 1000px) { .elic-grid { grid-template-columns: minmax(0, 560px) minmax(280px, 1fr); align-items: start; } .elic-grid .emq { margin-top: 0; } }
+.lic-card { color: #fff; background: radial-gradient(120% 140% at 100% 0%, rgba(255,201,51,.28), transparent 50%), linear-gradient(135deg, #0B1F4D 0%, #163B7A 55%, #1D5FD6 100%); box-shadow: 0 18px 40px rgba(11,31,77,.35), inset 0 0 0 1px rgba(255,255,255,.08); }
+.lic-fed { background: #FFC933; color: #0B1F4D; }
+.lic-club small, .lic-f span { color: rgba(255,255,255,.7); opacity: 1; }
+.lic-club strong, .lic-nom, .lic-f strong { color: #fff; }
+.lic-saison b { color: #FFC933; text-shadow: none; }
+.lic-num { display: inline-block; align-self: flex-start; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: .15em .5em; color: #FFC933; }
+.lic-photo { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.lic-fonction { background: #FFC933; color: #0B1F4D; }
+.lic-long { color: rgba(255,255,255,.7); opacity: 1; }
+.lic-act { display: flex; gap: 6px; flex-wrap: wrap; }
+.lic-act .small-btn:not(#licPlein) { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.lic-act #licPlein { order: -1; }
+.emq { padding: 18px; border-radius: 18px; }
+.emq-head > div:first-child { position: relative; padding-left: 44px; }
+.emq-ic { position: absolute; left: 0; top: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,201,51,.18); font-size: 17px; }
+.emq-cle { font-size: 20px; padding: 10px 14px; }
+@media (max-width: 767px) { .lic-act .small-btn { padding: 8px 12px; font-size: 13px; } }
+/* b103 — plus de texte « Plafond : … » sous le niveau d'arbitrage (fiche, profil, accueil) */
+#pfPlafond, #onbPlafond, #fiPlafond { display: none !important; }
+/* b103 — Règlement : réponse aérée (décision d'abord, détails repliés) */
+.regl-plus { margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.regl-plus > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+.regl-plus > summary::-webkit-details-marker { display: none; }
+.regl-plus > summary::after { content: "+"; font-size: 18px; color: var(--muted); } .regl-plus[open] > summary::after { content: "−"; }
+.regl-plus-c { padding: 0 14px 12px; font-size: 14.5px; line-height: 1.55; } .regl-plus-c ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.regl-bilan { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
+.regl-bilan span { font-size: 12.5px; font-weight: 800; padding: 4px 10px; border-radius: 999px; }
+.regl-bilan .ok { background: rgba(22,163,74,.14); color: #15803D; } .regl-bilan .ko { background: rgba(220,38,38,.12); color: #B91C1C; }
+:root[data-theme="dark"] .regl-bilan .ok { color: #4ADE80; } :root[data-theme="dark"] .regl-bilan .ko { color: #FCA5A5; }
+.regl-decision { font-size: 15.5px; }
+/* b103 — « J'ai reçu un virement » : parcours en 3 étapes */
+.vir-zone { padding: 0; overflow: hidden; border-radius: 16px; }
+.vir-zone > summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.vir-zone > summary::-webkit-details-marker { display: none; }
+.vir-ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 19px; background: var(--gold, #FFC933); color: #0B1F4D; }
+.vir-st { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .vir-st b { font-size: 15.5px; } .vir-st .card-sub { margin: 0; }
+.vir-ch { font-size: 22px; color: var(--muted); transition: transform .2s; } .vir-zone[open] .vir-ch { transform: rotate(90deg); }
+.vir-zone[open] > summary { border-bottom: 1px solid var(--line); }
+.vir-zone > :not(summary) { margin-left: 16px; margin-right: 16px; }
+.vir-etape { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; }
+.vir-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--navy-800, #0E2A5C); color: #fff; }
+:root[data-theme="dark"] .vir-n { background: var(--gold, #FFC933); color: #0B1F4D; }
+.vir-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.vir-chip { border: 1px solid var(--line); background: var(--surface-2, transparent); color: var(--text); border-radius: 999px; padding: 8px 13px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.vir-chip.is-on { background: var(--navy-800, #0E2A5C); border-color: transparent; color: #fff; }
+:root[data-theme="dark"] .vir-chip.is-on { background: var(--gold, #FFC933); color: #0B1F4D; }
+.vir-f { margin-top: 8px; } .vir-f label > span:first-child { font-weight: 600; color: var(--muted); }
+.vir-eur { position: relative; display: flex; } .vir-eur input { width: 100%; font-size: 22px !important; font-weight: 800; padding-right: 34px !important; }
+.vir-eur i { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-style: normal; font-weight: 800; color: var(--muted); }
+.vir-l { margin-bottom: 16px; }
+.vir-ul li { padding: 10px 2px; } .vir-ul li label { display: flex; gap: 10px; align-items: center; }
+.vir-tot { padding: 10px 12px; border-radius: 12px; background: var(--surface-2, rgba(127,127,127,.08)); }
+#virGo { width: 100%; padding: 12px; font-size: 15px; margin-top: 4px; }
+.vir-eur input::-webkit-outer-spin-button, .vir-eur input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.vir-eur input { -moz-appearance: textfield; appearance: textfield; }
+.vir-tot:empty { display: none; }
+.vir-ul li label { display: grid !important; grid-template-columns: 22px 1fr; align-items: start; }
+.vir-ul li input[type="checkbox"] { width: 18px; height: 18px; margin: 2px 0 0; }
