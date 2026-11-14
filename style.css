@@ -4980,3 +4980,17 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 @media (max-width: 767px) {
   #reglement .regl-form.regl-flottant { position: fixed !important; left: 8px; right: 8px; bottom: auto !important; margin: 0 !important; z-index: 1000; }
 }
+
+/* b98 — ÉCHELLE DE TITRES UNIQUE (audit interface) : 3 niveaux, partout.
+   T1 = titre de page (1 par onglet), T2 = titre de bloc, T3 = titre de carte. */
+:root { --t1: 24px; --t2: 17px; --t3: 15.5px; }
+@media (max-width: 640px) { :root { --t1: 20px; --t2: 16px; --t3: 15px; } }
+.panel h2.section-title { font-size: var(--t2); font-weight: 800; text-transform: none; letter-spacing: 0; line-height: 1.3; margin-top: 22px; }
+.panel > h2.section-title:first-child, .panel > .tabs-mini + h2.section-title,
+#statsFinancier > h2.section-title:first-of-type, .panel .regl-head h2.section-title,
+h2.page-title, h2.section-title.sub-title {
+  font-size: var(--t1); font-weight: 800; text-transform: uppercase; letter-spacing: .01em; line-height: 1.2; margin-top: 4px;
+}
+.panel .card-title, .panel h3.mp-h, .pa-card-head h3, .acc-day-head h3, .rtm-head h3 { font-size: var(--t3); line-height: 1.3; }
+.panel h2.section-title .count { font-size: .8em; }
+.table-card.evt-vide { padding: 14px 16px; }

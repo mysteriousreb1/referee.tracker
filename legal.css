@@ -1,17 +1,86 @@
-/* Pages légales Referee Tracker — lisibles, sobres, sans script. */
-:root { color-scheme: light dark; --fg:#0C1730; --bg:#fff; --mut:#5B6884; --line:#D9DFEA; --acc:#163B7A; --soft:#F6F8FC; }
-@media (prefers-color-scheme: dark) { :root { --fg:#EEF1F7; --bg:#0A1326; --mut:#A7B3CC; --line:#22355F; --acc:#8FB3FF; --soft:#101E3F; } }
-body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
-main { max-width:780px; margin:0 auto; padding:24px 16px 72px; }
-h1 { font-size:1.7rem; margin:.3em 0 .1em; line-height:1.2; }
-h2 { font-size:1.15rem; margin:1.9em 0 .45em; border-top:1px solid var(--line); padding-top:1em; }
-h3 { font-size:1rem; margin:1.2em 0 .3em; }
-p, li { color:var(--fg); }
+/* Pages légales Referee Tracker — b98 : en-tête de marque, sommaire latéral (PC), tableaux empilés (téléphone). Sans script. */
+@font-face { font-family: "Montserrat"; font-weight: 500; font-display: swap; src: url("fonts/montserrat-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 700; font-display: swap; src: url("fonts/montserrat-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 800; font-display: swap; src: url("fonts/montserrat-latin-800-normal.woff2") format("woff2"); }
+:root { color-scheme: light dark; --fg:#0C1730; --bg:#F4F6FB; --card:#fff; --mut:#5B6884; --line:#DDE3EE; --acc:#1D5FD6; --navy:#0C1F4A; --gold:#FFC933; --soft:#EEF3FC; }
+@media (prefers-color-scheme: dark) { :root { --fg:#EEF1F7; --bg:#081022; --card:#0E1A35; --mut:#A7B3CC; --line:#22355F; --acc:#FFC933; --navy:#050B18; --soft:#132449; } }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.68 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; -webkit-text-size-adjust:100%; }
+a { color:var(--acc); text-underline-offset:2px; }
+h1, h2, h3, .lg-brand, .lg-kicker { font-family:"Montserrat", -apple-system, "Segoe UI", sans-serif; }
+
+/* En-tête */
+.lg-top { background:var(--navy); color:#fff; }
+.lg-top .in { max-width:1120px; margin:0 auto; padding:12px 16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.lg-brand { display:flex; align-items:center; gap:10px; color:#fff; text-decoration:none; font-weight:800; letter-spacing:.01em; }
+.lg-brand img { width:30px; height:30px; border-radius:8px; }
+.lg-nav { margin-left:auto; display:flex; gap:4px; flex-wrap:wrap; }
+.lg-nav a { color:#C9D5EE; text-decoration:none; font-size:.88rem; font-weight:600; padding:6px 10px; border-radius:999px; }
+.lg-nav a:hover { color:#fff; background:rgba(255,255,255,.08); }
+.lg-nav a[aria-current="page"] { color:var(--navy); background:var(--gold); }
+.lg-hero { background:linear-gradient(180deg, var(--navy), #163B7A); color:#fff; }
+@media (prefers-color-scheme: dark) { .lg-hero { background:linear-gradient(180deg, var(--navy), #0E1A35); } }
+.lg-hero .in { max-width:1120px; margin:0 auto; padding:26px 16px 34px; }
+.lg-kicker { margin:0; color:var(--gold); font-size:.78rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.lg-hero h1 { margin:.25em 0 .2em; font-size:clamp(1.6rem, 4.4vw, 2.3rem); line-height:1.15; font-weight:800; }
+.lg-ver { margin:0; color:#C9D5EE; font-size:.92rem; max-width:720px; }
+.lg-ver b { color:#fff; }
+
+/* Corps : sommaire + contenu */
+.lg-wrap { max-width:1120px; margin:-18px auto 0; padding:0 16px 64px; display:grid; grid-template-columns:240px minmax(0,1fr); gap:24px; align-items:start; }
+.lg-toc { position:sticky; top:16px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 8px 10px; font-size:.88rem; }
+.lg-toc p { margin:0 10px 6px; color:var(--mut); font-size:.72rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.lg-toc a { display:block; padding:5px 10px; border-radius:8px; color:var(--fg); text-decoration:none; line-height:1.35; }
+.lg-toc a:hover { background:var(--soft); color:var(--acc); }
+main { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:8px 32px 28px; min-width:0; }
+@media (max-width: 900px) {
+  .lg-wrap { grid-template-columns:minmax(0,1fr); gap:14px; }
+  .lg-toc { position:static; }
+  .lg-toc nav { display:flex; flex-wrap:wrap; gap:4px; }
+  .lg-toc a { background:var(--soft); padding:5px 10px; border-radius:999px; font-size:.82rem; }
+  main { padding:4px 18px 22px; }
+}
+@media (max-width: 640px) {
+  .lg-toc { display:none; }
+  .lg-nav { margin-left:0; width:100%; }
+  .lg-nav a { font-size:.8rem; padding:5px 9px; }
+  .lg-hero .in { padding:18px 16px 28px; }
+  .lg-ver { font-size:.86rem; }
+  body { font-size:15.5px; }
+}
+
+/* Titres de section */
+h2 { font-size:1.12rem; font-weight:800; margin:1.9em 0 .55em; padding-top:1.1em; border-top:1px solid var(--line); display:flex; align-items:baseline; gap:10px; line-height:1.3; }
+main > h2:first-of-type, .lg-sum + h2 { border-top:0; }
+h2 .n { flex:none; display:inline-grid; place-items:center; min-width:28px; height:28px; padding:0 6px; border-radius:8px; background:var(--soft); color:var(--acc); font-size:.85rem; }
+h3 { font-size:1rem; font-weight:700; margin:1.3em 0 .3em; }
 small, .mut { color:var(--mut); }
-table { width:100%; border-collapse:collapse; font-size:.93rem; margin:8px 0 14px; }
-th, td { text-align:left; border-bottom:1px solid var(--line); padding:7px 10px 7px 0; vertical-align:top; }
-th { color:var(--mut); font-weight:700; font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; }
-a { color:var(--acc); }
+ul { padding-left:1.2em; } li { margin:.25em 0; }
+
+/* « En deux mots » + points clés */
+.lg-sum { margin:22px 0 6px; padding:16px 18px; border-radius:14px; background:var(--soft); border-left:4px solid var(--gold); }
+.lg-sum strong:first-child { display:block; font-family:"Montserrat", sans-serif; margin-bottom:4px; }
+.lg-keys { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin:14px 0 4px; padding:0; list-style:none; }
+.lg-keys li { margin:0; padding:12px 14px; border:1px solid var(--line); border-radius:12px; font-size:.9rem; line-height:1.45; }
+.lg-keys b { display:block; font-family:"Montserrat", sans-serif; font-size:.95rem; margin-bottom:2px; }
 .box { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin:12px 0; }
-.toc { columns: 2; font-size:.92rem; } .toc a { text-decoration:none; }
-@media (max-width: 600px) { .toc { columns: 1; } table { font-size:.86rem; } }
+
+/* Tableaux : grille sur PC, cartes empilées sur téléphone */
+table { width:100%; border-collapse:collapse; font-size:.92rem; margin:10px 0 16px; }
+th, td { text-align:left; border-bottom:1px solid var(--line); padding:9px 12px 9px 0; vertical-align:top; }
+th { color:var(--mut); font-weight:800; font-size:.74rem; text-transform:uppercase; letter-spacing:.06em; }
+td:first-child { font-weight:600; width:34%; }
+@media (max-width: 640px) {
+  table, tbody, tr, td { display:block; width:100%; }
+  tr:first-child:has(th) { display:none; }
+  tr { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:0 0 10px; }
+  td { border:0; padding:2px 0; width:auto !important; }
+  td:first-child { font-family:"Montserrat", sans-serif; font-weight:700; margin-bottom:2px; }
+  td:nth-child(3) { color:var(--mut); font-size:.85rem; margin-top:4px; }
+}
+
+/* Pied de page */
+.lg-foot { max-width:1120px; margin:0 auto; padding:0 16px 40px; color:var(--mut); font-size:.85rem; display:flex; gap:14px; flex-wrap:wrap; }
+.lg-foot a { color:var(--mut); }
+@media print { .lg-top, .lg-toc, .lg-foot { display:none; } .lg-hero { background:none; color:#000; } .lg-wrap { display:block; } main { border:0; } }

@@ -3556,7 +3556,8 @@ function virementZone_(root) {
     <label>Montant reçu (€)<input id="virM" type="number" step="0.01" min="0" inputmode="decimal" placeholder="201,00"></label>
     <label>Date du virement<input id="virD" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
     <div id="virL" class="vir-l"></div>`;
-  root.prepend(z);
+  const tete = root.querySelector(":scope > h2, :scope > .section-title, :scope > .page-head, :scope > header");   // b98 — le titre de la page reste en haut
+  if (tete) tete.after(z); else root.prepend(z);
   const P = z.querySelector("#virP"), M = z.querySelector("#virM"), D = z.querySelector("#virD"), L = z.querySelector("#virL");
   const maj = () => {
     const cands = virCandidats_(P.value), montant = toNumber(M.value);
