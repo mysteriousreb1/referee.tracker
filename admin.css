@@ -569,3 +569,8 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .ia-load { position: relative; overflow: hidden; }
 .ia-load::after { content: ""; position: absolute; left: -40%; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(109,40,217,.12), transparent); animation: iaBalaye 1.2s linear infinite; }
 @keyframes iaBalaye { to { left: 100%; } }
+/* b99 — actions proposées par l'assistant */
+.ia-acts { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 8px; }
+.ia-act { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2, #F7F9FC); }
+.ia-act > div:first-child { flex: 1 1 320px; min-width: 0; }
+.ia-act p { margin: 4px 0 0; } .ia-act-t { font-style: italic; }

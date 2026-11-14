@@ -1716,8 +1716,8 @@
     const sur = async (f) => { try { return await f(); } catch (e) { return { erreur: e.message }; } };
     const ck = await sur(() => rpcAdmin("rt_cockpit")), ap = await sur(() => rpcAdmin("rt_stats_app")), us = await sur(() => rpcAdmin("rt_stats_users")), st = await sur(() => rpcAdmin("rt_stock_etat"));
     const allege = (o, n) => JSON.stringify(o, (k, v) => (Array.isArray(v) && v.length > n ? v.slice(-n) : v));
-    iaDonnees.noms = {};   // pseudonymes : l'IA ne voit que ARB-1, ARB-2… ; les prénoms sont remis à l'affichage
-    const arb = ((us && us.arbitres) || []).map((u, i) => { iaDonnees.noms["ARB-" + (i + 1)] = u.prenom || "?"; return { id: "ARB-" + (i + 1), statut: u.statut, niveau: u.niveau, comite: u.comite, inscrit: u.inscrit_le, derniere_activite: u.derniere_activite, jours_actifs_30j: u.jours_actifs_30j, matchs_saison: u.matchs_saison, a_venir: u.a_venir, reste: u.reste_a_recevoir, en_retard: u.en_retard, dernier_import: u.dernier_match_importe }; });
+    iaDonnees.noms = {}; iaDonnees.qui = {};   // pseudonymes : l'IA ne voit que ARB-1, ARB-2… ; les prénoms sont remis à l'affichage
+    const arb = ((us && us.arbitres) || []).map((u, i) => { iaDonnees.noms["ARB-" + (i + 1)] = u.prenom || "?"; iaDonnees.qui["ARB-" + (i + 1)] = { prenom: u.prenom || "", nom: u.nom || "" }; return { id: "ARB-" + (i + 1), statut: u.statut, niveau: u.niveau, comite: u.comite, inscrit: u.inscrit_le, derniere_activite: u.derniere_activite, jours_actifs_30j: u.jours_actifs_30j, matchs_saison: u.matchs_saison, a_venir: u.a_venir, reste: u.reste_a_recevoir, en_retard: u.en_retard, dernier_import: u.dernier_match_importe }; });
     let txt = JSON.stringify({ date: new Date().toISOString().slice(0, 16), cockpit: JSON.parse(allege(ck, 14)), usage: { kpi: ap && ap.kpi, jours_14: ((ap && ap.jours) || []).slice(-14), onglets: ((ap && ap.onglets) || []).slice(0, 8) }, arbitres: arb, stock_moteurs: st });
     Object.entries(iaDonnees.noms).forEach(([id, p]) => { if (p && p.length > 2) txt = txt.split('"' + p + '"').join('"' + id + '"'); });   // prénoms restants (cockpit, stock) → pseudonymes
     txt = txt.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[e-mail]");
@@ -1730,19 +1730,81 @@
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin.ia", token: t, donnees, question: question || "" }), redirect: "follow", credentials: "omit" });
     const j = await r.json().catch(() => ({}));
     if (!j || j.success === false) throw new Error((j && j.error) || "Réponse illisible du moteur");
-    let rep = (j.result || {}).texte || ""; Object.entries(iaDonnees.noms || {}).sort((a, b) => b[0].length - a[0].length || b[0].localeCompare(a[0])).forEach(([id, p]) => { rep = rep.split(id).join(p); }); return rep;
+    let rep = (j.result || {}).texte || "", actions = [];
+    // b99 — bloc ```actions [...]``` proposé par l'IA : extrait AVANT de remettre les prénoms (les ARB-n servent à retrouver l'arbitre)
+    const mb = rep.match(/```actions\s*([\s\S]*?)```/);
+    if (mb) { try { actions = JSON.parse(mb[1]); } catch (e) { actions = []; } rep = rep.replace(mb[0], "").trim(); }
+    const prenoms = (x) => { let t = String(x || ""); Object.entries(iaDonnees.noms || {}).sort((a, b) => b[0].length - a[0].length || b[0].localeCompare(a[0])).forEach(([id, p]) => { t = t.split(id).join(p); }); return t; };
+    iaAppel.actions = (Array.isArray(actions) ? actions : []).slice(0, 4);
+    iaAppel.prenoms = prenoms;
+    return prenoms(rep);
+  }
+  // b99 — ACTIONS PROPOSÉES : rien ne part sans le clic « Valider » puis la confirmation. Liste blanche stricte.
+  const IA_CMD_OK = { synchro: "Relever ses mails + synchroniser", diagnostic: "Diagnostic complet", declencheurs: "Réinstaller les déclencheurs", carburant: "Relever le prix du carburant" };
+  const IA_BOUTONS = { profil: "Ouvrir mon profil", guide: "Ouvrir le guide", import: "Importer mes PDF", paiements: "Voir mes paiements" };
+  async function iaCibles(ref) {
+    if (!cache.arbitres) cache.arbitres = (await admin("arbitres.liste")).data || [];
+    const A = cache.arbitres.filter((a) => ["actif", "inscrit"].includes((a.profil || {}).statut));
+    if (ref === "tous") return A;
+    const q = (iaDonnees.qui || {})[ref]; if (!q) return [];
+    const n = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    return A.filter((a) => n(a.profil.prenom) === n(q.prenom) && (!q.nom || n(a.profil.nom_ffbb) === n(q.nom))).slice(0, 1);
+  }
+  function iaActionValide(a) {
+    if (!a || typeof a !== "object") return false;
+    const qui = a.arbitre === "tous" || /^ARB-\d+$/.test(a.arbitre || "");
+    if (a.type === "annonce") return qui && typeof a.texte === "string" && a.texte.trim().length >= 5 && a.texte.length <= 400;
+    if (a.type === "commande") return qui && !!IA_CMD_OK[a.commande];
+    if (a.type === "ouvrir") return !!SECTIONS[a.page];
+    return false;
+  }
+  function iaRendActions(box, actions) {
+    const ok = (actions || []).filter(iaActionValide); if (!ok.length) return;
+    const P = iaAppel.prenoms || ((t) => t);
+    const lib = (a) => a.type === "annonce" ? "Bannière pour " + (a.arbitre === "tous" ? "tous les arbitres" : P(a.arbitre))
+      : a.type === "commande" ? IA_CMD_OK[a.commande] + " — " + (a.arbitre === "tous" ? "tous les moteurs" : "moteur de " + P(a.arbitre))
+      : "Ouvrir la page « " + SECTIONS[a.page] + " »";
+    box.insertAdjacentHTML("beforeend", '<div class="ia-acts"><p class="mut tiny">Actions proposées · rien n\'est envoyé sans ta validation</p>' + ok.map((a, i) =>
+      '<div class="ia-act" data-i="' + i + '"><div><strong>' + esc(lib(a)) + "</strong>" +
+      (a.type === "annonce" ? '<p class="ia-act-t">« ' + esc(P(a.texte)) + " »" + (IA_BOUTONS[a.bouton] ? ' <span class="mut tiny">· bouton : ' + esc(IA_BOUTONS[a.bouton]) + "</span>" : "") + "</p>" : "") +
+      (a.pourquoi ? '<p class="mut tiny">' + esc(P(a.pourquoi)) + "</p>" : "") +
+      '</div><div class="row"><button class="btn sm pri" data-ok>Valider</button><button class="btn sm" data-non>Ignorer</button></div></div>').join("") + "</div>");
+    box.querySelectorAll(".ia-act").forEach((el) => {
+      const a = ok[Number(el.dataset.i)], fin = (t, cl) => { el.innerHTML = '<p class="' + cl + ' tiny">' + esc(t) + "</p>"; };
+      el.querySelector("[data-non]").onclick = () => fin("Ignorée", "mut");
+      el.querySelector("[data-ok]").onclick = async (ev) => {
+        if (a.type === "ouvrir") { location.hash = "#" + a.page; return; }
+        const btn = ev.currentTarget; btn.disabled = true;
+        try {
+          const cibles = await iaCibles(a.arbitre);
+          if (!cibles.length) throw new Error("Arbitre introuvable : vérifie dans la page Arbitres");
+          if (a.type === "annonce") {
+            const txt = P(a.texte);
+            if (!(await confirmer("Publier la bannière", "Afficher ce message à <strong>" + cibles.length + "</strong> arbitre(s) ?<br><br><em>" + esc(txt) + "</em>", "Publier"))) { btn.disabled = false; return; }
+            await sbRest("annonces", "POST", cibles.map((c) => ({ user_id: c.id, texte: txt.replace(/\{prenom\}/g, c.profil.prenom || ""), action: IA_BOUTONS[a.bouton] ? a.bouton : null, lib_action: IA_BOUTONS[a.bouton] || null, style: "info" })));
+            fin("Bannière publiée pour " + cibles.length + " arbitre(s)", "ok");
+          } else {
+            const m = cibles.filter((c) => (c.profil || {}).api_url);
+            if (!m.length) throw new Error("Aucun moteur rattaché à cet arbitre");
+            if (!(await confirmer(IA_CMD_OK[a.commande], "Envoyer « " + esc(IA_CMD_OK[a.commande]) + " » à " + m.length + " moteur(s) ? Exécution dans les 10 minutes.", "Envoyer"))) { btn.disabled = false; return; }
+            for (const c of m) await admin("commande.creer", { user_id: c.id, action_moteur: a.commande, params: {} });
+            fin("Commande envoyée à " + m.length + " moteur(s)", "ok");
+          }
+        } catch (e) { btn.disabled = false; toast(e.message, "err"); }
+      };
+    });
   }
   rendus.assistant = async function () {
     const el = $("sec-assistant");
     if (!el.dataset.pret) {
       el.dataset.pret = "1";
-      el.innerHTML = '<div class="ia-hero"><div><h2>Assistant d\'exploitation</h2><p>Il lit les indicateurs du jour (cockpit, usage, arbitres, moteurs) et te dit quoi faire en priorité. Il ne modifie rien.</p></div><button class="btn pri" id="iaSynth">✦ Synthèse du jour</button></div>' +
+      el.innerHTML = '<div class="ia-hero"><div><h2>Assistant d\'exploitation</h2><p>Il lit les indicateurs du jour (cockpit, usage, arbitres, moteurs), te dit quoi faire en priorité et peut te proposer des actions : rien ne part sans ta validation.</p></div><button class="btn pri" id="iaSynth">✦ Synthèse du jour</button></div>' +
         '<div class="card ia-q"><textarea id="iaQ" rows="2" placeholder="Pose une question sur l\'application ou les arbitres…"></textarea><div class="row"><button class="btn" id="iaGo">Demander</button>' + IA_EX.map((x) => '<button class="btn sm ia-ex" type="button">' + esc(x) + "</button>").join("") + "</div></div>" +
         '<div id="iaRep"></div>';
       const go = async (q) => {
         const rep = $("iaRep"); rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">' + (q ? "Question : " + esc(q) : "Synthèse du jour") + ' · analyse en cours (20 à 40 s)…</p></div>');
         const box = rep.firstElementChild;
-        try { const t = await iaAppel(q); box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "Synthèse du jour · ") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); }
+        try { const t = await iaAppel(q), acts = iaAppel.actions || []; box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "Synthèse du jour · ") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); iaRendActions(box, acts); }
         catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
       };
       $("iaSynth").onclick = () => go("");
