@@ -921,14 +921,23 @@ function safeRender_(fn, panelId, label) {
    corpus (liste, dépôt .txt/.md/.pdf, retrait, rechargement) depuis l'app. */
 const REGL_LS_KEY = "rt-reglement-hist-v1";
 /* b69 (F) — plus de questions pré-faites : une ligne d'aide discrète sous le titre. */
+/* b102 — une conversation par règlement : 5×5 (historique existant) et 3×3 (séparé). 5×5 par défaut à chaque ouverture. */
+function reglCle_() { return state.reglCat === "3x3" ? "rt-reglement-hist-3x3" : REGL_LS_KEY; }
+function reglChoisir_(c) {
+  if (c !== "3x3") c = "5x5";
+  if (c === (state.reglCat || "5x5")) return;
+  if (state._reglEnCours) { toast("Attends la réponse en cours avant de changer de règlement."); return; }
+  reglHistSave_(); state.reglCat = c; state._reglementHist = null; renderReglement();
+  const t = document.getElementById("reglInput") || document.querySelector("#reglForm textarea"); if (t && !estTel_()) t.focus();
+}
 function reglHistLoad_() {
   if (!state._reglementHist) {
-    try { state._reglementHist = JSON.parse(localStorage.getItem(REGL_LS_KEY) || "[]") || []; } catch (e) { state._reglementHist = []; }
+    try { state._reglementHist = JSON.parse(localStorage.getItem(reglCle_()) || "[]") || []; } catch (e) { state._reglementHist = []; }
   }
   return state._reglementHist;
 }
 function reglHistSave_() {
-  try { localStorage.setItem(REGL_LS_KEY, JSON.stringify((state._reglementHist || []).slice(-60))); } catch (e) { /* stockage indisponible */ }
+  try { localStorage.setItem(reglCle_(), JSON.stringify((state._reglementHist || []).slice(-60))); } catch (e) { /* stockage indisponible */ }
 }
 function reglHeure_(ts) {
   if (!ts) return "";
@@ -952,8 +961,8 @@ function renderReglement() {
       <div class="regl-head">
         <div class="regl-head-t">
           <h2 class="section-title">Règlement <span class="count">IA</span></h2>
-          <div class="regl-cat" role="tablist" aria-label="Règlement interrogé">${["5x5", "3x3"].map(c => `<button type="button" class="rt-chip${(state.reglCat || "5x5") === c ? " is-on" : ""}" data-regl-cat="${c}">${c === "5x5" ? "5×5" : "3×3"}</button>`).join("")}</div>
-          <div class="regl-head-sub">${nbDocs === null ? "Corpus FIBA" : nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
+          <div class="regl-seg" role="tablist" aria-label="Règlement interrogé">${["5x5", "3x3"].map(c => `<button type="button" role="tab" aria-selected="${(state.reglCat || "5x5") === c}" class="regl-seg-b${(state.reglCat || "5x5") === c ? " is-on" : ""}" data-regl-cat="${c}"><span class="regl-seg-l">Règlement </span>${c === "5x5" ? "5×5" : "3×3"}</button>`).join("")}</div>
+          <div class="regl-head-sub">${(state.reglCat || "5x5") === "3x3" ? "Règles officielles FIBA 3×3" : "Règles officielles FIBA 5×5"}${nbDocs === null ? "" : " · " + nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
         </div>
         <div class="regl-head-act">
           <button type="button" class="small-btn secondary" id="reglDocsBtn" title="Documents lus par l'IA">Documents</button>
@@ -10403,12 +10412,8 @@ document.addEventListener("click", e => {
   document.body.appendChild(d);
   d.addEventListener("click", x => { if (x.target === d || x.target.closest("[data-fil-fermer]")) d.remove(); });
 });
-/* b100 — Règlement : choix 5×5 / 3×3 (mémorisé), la conversation repart à zéro quand on change */
-document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-regl-cat]"); if (!b) return;
-  const c = b.dataset.reglCat; if (c === (state.reglCat || "5x5")) return;
-  state.reglCat = c; try { localStorage.setItem("rt-regl-cat", c); } catch (x) {}
-  document.querySelectorAll("[data-regl-cat]").forEach(x => x.classList.toggle("is-on", x.dataset.reglCat === c));
-  toast(c === "3x3" ? "Questions sur le règlement 3×3" : "Questions sur le règlement 5×5"); });
-try { state.reglCat = localStorage.getItem("rt-regl-cat") || "5x5"; } catch (e) {}
+/* b102 — Règlement : choix 5×5 / 3×3 (5×5 par défaut, une conversation par règlement) */
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-regl-cat]"); if (b) { e.preventDefault(); reglChoisir_(b.dataset.reglCat); } });
+state.reglCat = "5x5";
 /* b97 — bouton « Importer mes anciennes convocations » (Mon profil) : délégation (la CSP interdit les onclick). */
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });

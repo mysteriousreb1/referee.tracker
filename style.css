@@ -5018,9 +5018,18 @@ h2.page-title, h2.section-title.sub-title {
   #reglement .regl-wrap.regl-plein .regl-form { position: static !important; margin: 6px 0 0 !important; flex: none; }
   body.rt-clavier { overscroll-behavior: none; }
 }
-.regl-cat { display: flex; gap: 6px; margin: 6px 0 2px; }
-.regl-cat .rt-chip { padding: 4px 12px; font-size: 13px; }
 .ant-p { display: grid; gap: 5px; padding: 8px 0; border-top: 1px solid var(--line); } .ant-p:first-of-type { border-top: 0; }
 .ant-p-h { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; } .ant-p-h b { white-space: nowrap; }
 .ant-p .evt-bar { width: 100%; }
-.regl-cat .rt-chip { min-width: 58px; border-radius: 999px; }
+/* b102 — Règlement : sélecteur 5×5 / 3×3 (segmenté) */
+.regl-seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 12px; background: var(--surface-2, #EEF2F7); border: 1px solid var(--line); margin: 8px 0 4px; }
+.regl-seg-b { appearance: none; border: 0; background: transparent; color: var(--muted, #64748B); font: 700 13px/1 var(--display, inherit); padding: 9px 14px; border-radius: 9px; cursor: pointer; transition: background .15s, color .15s; }
+.regl-seg-b.is-on { background: var(--navy-800, #0E2A5C); color: #fff; box-shadow: 0 2px 8px rgba(12,31,74,.25); }
+:root[data-theme="dark"] .regl-seg-b.is-on { background: var(--gold, #FFC933); color: #0C1F4A; }
+/* b102 — thème clair : les textes jaunes deviennent ambre foncé (lisibles sur fond blanc) ; logo du bandeau PC lisible */
+:root:not([data-theme="dark"]) .we-etat, :root:not([data-theme="dark"]) .tel-kpi--att strong { color: #A86B00; }
+@media (min-width: 768px) {
+  :root:not([data-theme="dark"]) .brand-text h1 { color: #D7262E; }
+  :root:not([data-theme="dark"]) .brand-text h1 span { color: #E2A100; text-shadow: 0 0 1px rgba(120, 80, 0, .55); }
+}
+@media (max-width: 767px) { .regl-seg-l { display: none; } .regl-seg-b { padding: 9px 18px; font-size: 14px; } }

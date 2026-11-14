@@ -164,7 +164,7 @@
 
   // ---------- navigation ----------
   const SECTIONS = { accueil: "Accueil", services: "Services & quotas", pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Stats", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
   // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
   const ESPACE_DE = { accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
   const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
@@ -1723,6 +1723,12 @@
     iaDonnees.noms = {}; iaDonnees.qui = {};   // pseudonymes : l'IA ne voit que ARB-1, ARB-2… ; les prénoms sont remis à l'affichage
     const arb = ((us && us.arbitres) || []).map((u, i) => { iaDonnees.noms["ARB-" + (i + 1)] = u.prenom || "?"; iaDonnees.qui["ARB-" + (i + 1)] = { prenom: u.prenom || "", nom: u.nom || "" }; return { id: "ARB-" + (i + 1), statut: u.statut, niveau: u.niveau, comite: u.comite, inscrit: u.inscrit_le, derniere_activite: u.derniere_activite, jours_actifs_30j: u.jours_actifs_30j, matchs_saison: u.matchs_saison, a_venir: u.a_venir, reste: u.reste_a_recevoir, en_retard: u.en_retard, dernier_import: u.dernier_match_importe }; });
     let txt = JSON.stringify({ date: new Date().toISOString().slice(0, 16), cockpit: JSON.parse(allege(ck, 14)), usage: { kpi: ap && ap.kpi, jours_14: ((ap && ap.jours) || []).slice(-14), onglets: ((ap && ap.onglets) || []).slice(0, 8) }, arbitres: arb, stock_moteurs: st });
+    // b102 — chiffres clés du jour (gardés en historique) et ceux de la veille (comparaison par l'IA)
+    const U = (us && us.arbitres) || [], som = (k) => U.reduce((t, u) => t + (Number(u[k]) || 0), 0), K = (ap && ap.kpi) || {}, M = (ck && ck.moteurs) || [], F = (ck && ck.file) || {};
+    iaDonnees.chiffres = { arbitres_actifs_7j: K.actifs_7j ?? null, comptes: K.comptes ?? U.length, matchs_saison: som("matchs_saison"), a_venir: som("a_venir"), reste_a_recevoir: Math.round(som("reste_a_recevoir")),
+      paiements_en_retard: som("en_retard"), moteurs_en_ligne: M.filter((m) => m.minutes != null && m.minutes <= 90).length, moteurs: M.length, demandes_inscription: F.inscriptions_attente || 0, tickets_ouverts: F.tickets_ouverts || 0, minutes_utilisation_30j: K.minutes_30j ?? null };
+    try { const v = await synthLire(1); iaDonnees.veille = v.find((x) => x.jour < jourIso()) || null; } catch (e) { iaDonnees.veille = null; }
+    if (iaDonnees.veille) txt = txt.replace(/\}$/, ',"VEILLE":' + JSON.stringify({ jour: iaDonnees.veille.jour, chiffres: iaDonnees.veille.chiffres }) + ',"AUJOURDHUI":' + JSON.stringify(iaDonnees.chiffres) + "}");
     Object.entries(iaDonnees.noms).forEach(([id, p]) => { if (p && p.length > 2) txt = txt.split('"' + p + '"').join('"' + id + '"'); });   // prénoms restants (cockpit, stock) → pseudonymes
     txt = txt.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[e-mail]");
     return txt.slice(0, 24000);
@@ -1739,6 +1745,8 @@
     const mb = rep.match(/```actions\s*([\s\S]*?)```/);
     if (mb) { try { actions = JSON.parse(mb[1]); } catch (e) { actions = []; } rep = rep.replace(mb[0], "").trim(); }
     const prenoms = (x) => { let t = String(x || ""); Object.entries(iaDonnees.noms || {}).sort((a, b) => b[0].length - a[0].length || b[0].localeCompare(a[0])).forEach(([id, p]) => { t = t.split(id).join(p); }); return t; };
+    iaAppel.synth = null;
+    if (!question) { try { const o = JSON.parse(rep.slice(rep.indexOf("{"), rep.lastIndexOf("}") + 1)); if (o && o.meteo) { iaAppel.synth = o; actions = Array.isArray(o.actions) ? o.actions : []; rep = ""; } } catch (e) { /* texte libre : affichage Markdown */ } }
     iaAppel.actions = (Array.isArray(actions) ? actions : []).slice(0, 4);
     iaAppel.prenoms = prenoms;
     return prenoms(rep);
@@ -1798,24 +1806,77 @@
       };
     });
   }
+  // b102 — SYNTHÈSE DU JOUR : mise en page (verdict, comparaison avec la veille, actions), historique en base (admin_syntheses).
+  const jourIso = (d) => { const x = d ? new Date(d) : new Date(); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+  async function synthLire(n) { return (await sbRest("admin_syntheses?select=jour,chiffres,synthese,cree_le&order=jour.desc&limit=" + (n || 14))) || []; }
+  async function synthEcrire(chiffres, synthese) {
+    const r = await fetch(SB_URL + "/rest/v1/admin_syntheses?on_conflict=jour", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json", Prefer: "return=minimal,resolution=merge-duplicates" },
+      body: JSON.stringify({ jour: jourIso(), chiffres: chiffres || {}, synthese: synthese || null, cree_le: new Date().toISOString() }) });
+    if (!r.ok) throw new Error("Historique non enregistré (" + r.status + ")");
+  }
+  const SY_LIB = { arbitres_actifs_7j: ["Arbitres actifs 7 j", 1], comptes: ["Comptes", 1], matchs_saison: ["Matchs de la saison", 1], a_venir: ["Matchs à venir", 1], reste_a_recevoir: ["Reste à recevoir (€)", -1],
+    paiements_en_retard: ["Paiements en retard", -1], moteurs_en_ligne: ["Moteurs en ligne", 1], demandes_inscription: ["Demandes d'inscription", 0], tickets_ouverts: ["Tickets ouverts", -1], minutes_utilisation_30j: ["Minutes d'usage 30 j", 1] };
+  function synthDeltas(auj, veille) {   // comparaison calculée (pas l'IA) : sens = mieux / pire / stable
+    return Object.keys(SY_LIB).filter((k) => auj && auj[k] != null).map((k) => {
+      const a = Number(auj[k]) || 0, v = veille && veille[k] != null ? Number(veille[k]) : null, d = v == null ? null : a - v, bon = SY_LIB[k][1];
+      const sens = d == null || d === 0 || bon === 0 ? "stable" : (d > 0) === (bon > 0) ? "mieux" : "pire";
+      return { k, l: SY_LIB[k][0], v: a.toLocaleString("fr-FR"), d, sens };
+    });
+  }
+  function synthHtml(o, chiffres, veille, quand) {
+    const P = iaAppel.prenoms || ((t) => t), NIV = { ok: ["Tout va bien", "#16A34A", "✓"], attention: ["À surveiller", "#EA580C", "!"], critique: ["Critique", "#DC2626", "✕"] }, n = NIV[o.meteo && o.meteo.niveau] || NIV.attention;
+    const D = synthDeltas(chiffres, veille && veille.chiffres);
+    const delta = (x) => x.d == null ? '<span class="sy-d">—</span>' : '<span class="sy-d sy-' + x.sens + '">' + (x.d > 0 ? "▲ +" : x.d < 0 ? "▼ " : "= ") + (x.d ? Math.abs(x.d).toLocaleString("fr-FR") : "") + "</span>";
+    const URG = { 1: ["Urgent", "#DC2626"], 2: ["Aujourd'hui", "#EA580C"], 3: ["Quand tu peux", "#2563EB"] };
+    return '<div class="sy">' +
+      '<div class="sy-meteo" style="--c:' + n[1] + '"><span class="sy-ic">' + n[2] + '</span><div><p class="sy-q">' + esc(quand || "") + " · " + n[0] + "</p><h3>" + esc(P(o.meteo && o.meteo.titre || "")) + "</h3><p>" + esc(P(o.meteo && o.meteo.resume || "")) + "</p></div></div>" +
+      (D.length ? '<div class="sy-sec"><h4>' + (veille ? "Par rapport à hier (" + esc(new Date(veille.jour).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" })) + ")" : "Chiffres du jour <span class=\"mut tiny\">· la comparaison avec la veille commence demain</span>") + '</h4><div class="sy-kpis">' +
+        D.map((x) => '<div class="sy-k"><span>' + esc(x.l) + "</span><b>" + esc(x.v) + "</b>" + (veille ? delta(x) : "") + "</div>").join("") + "</div></div>" : "") +
+      ((o.a_faire || []).length ? '<div class="sy-sec"><h4>À faire aujourd\'hui</h4><div class="sy-todo">' + o.a_faire.map((a) => { const u = URG[a.urgence] || URG[3];
+        return '<a class="sy-t" href="#' + esc(SECTIONS[a.page] ? a.page : "cockpit") + '" style="--c:' + u[1] + '"><span class="sy-u">' + u[0] + "</span><b>" + esc(P(a.titre)) + "</b><span>" + esc(P(a.pourquoi || "")) + "</span><em>" + esc(SECTIONS[a.page] || "") + " ›</em></a>"; }).join("") + "</div></div>" : "") +
+      ((o.arbitres || []).length ? '<div class="sy-sec"><h4>Arbitres à suivre</h4><div class="sy-arb">' + o.arbitres.map((a, k) => '<div class="sy-a"><span class="vz-av" style="background:' + VZ.pal[k % VZ.pal.length] + '">' + esc(P(a.id || "?").slice(0, 1)) + "</span><div><b>" + esc(P(a.id || "")) + "</b><p>" + esc(P(a.situation || "")) + '</p><p class="sy-cons">→ ' + esc(P(a.conseil || "")) + "</p></div></div>").join("") + "</div></div>" : "") +
+      ((o.blocs || []).length ? '<div class="sy-blocs">' + o.blocs.map((b) => '<div class="sy-b"><h4>' + esc(b.titre) + "</h4><ul>" + (b.points || []).map((x) => "<li>" + esc(P(x)) + "</li>").join("") + "</ul></div>").join("") + "</div>" : "") +
+      ((o.idees || []).length || o.bonne_nouvelle ? '<div class="sy-blocs">' + ((o.idees || []).length ? '<div class="sy-b"><h4>Idées d\'amélioration</h4><ul>' + o.idees.map((x) => "<li>" + esc(P(x)) + "</li>").join("") + "</ul></div>" : "") +
+        (o.bonne_nouvelle ? '<div class="sy-b sy-bn"><h4>Bonne nouvelle</h4><p>' + esc(P(o.bonne_nouvelle)) + "</p></div>" : "") + "</div>" : "") + "</div>";
+  }
   rendus.assistant = async function () {
     const el = $("sec-assistant");
     if (!el.dataset.pret) {
       el.dataset.pret = "1";
-      el.innerHTML = '<div class="ia-hero"><div><h2>Assistant d\'exploitation</h2><p>Il lit les indicateurs du jour (cockpit, usage, arbitres, moteurs), te dit quoi faire en priorité et peut te proposer des actions : rien ne part sans ta validation.</p></div><button class="btn pri" id="iaSynth">✦ Synthèse du jour</button></div>' +
-        '<div class="card ia-q"><textarea id="iaQ" rows="2" placeholder="Pose une question sur l\'application ou les arbitres…"></textarea><div class="row"><button class="btn" id="iaGo">Demander</button>' + IA_EX.map((x) => '<button class="btn sm ia-ex" type="button">' + esc(x) + "</button>").join("") + "</div></div>" +
-        '<div id="iaRep"></div>';
+      el.innerHTML = '<div class="ia-hero"><div><h2>Assistant d\'exploitation</h2><p>La synthèse du jour lit tous les indicateurs, les compare avec la veille et te propose des actions. Rien ne part sans ta validation.</p></div><button class="btn pri" id="iaSynth">✦ Synthèse du jour</button></div>' +
+        '<div class="sy-hist" id="iaHist"></div><div id="iaRep"></div>' +
+        '<div class="card ia-q"><textarea id="iaQ" rows="2" placeholder="Pose une question sur l\'application ou les arbitres…"></textarea><div class="row"><button class="btn" id="iaGo">Demander</button>' + IA_EX.map((x) => '<button class="btn sm ia-ex" type="button">' + esc(x) + "</button>").join("") + "</div></div>";
+      const histo = async (choisi) => {
+        let L = []; try { L = await synthLire(14); } catch (e) { $("iaHist").innerHTML = ""; return L; }
+        $("iaHist").innerHTML = L.filter((x) => x.synthese).length ? '<span class="mut tiny">Historique :</span>' + L.filter((x) => x.synthese).map((x) => '<button type="button" class="sy-j' + (x.jour === choisi ? " is-on" : "") + '" data-j="' + esc(x.jour) + '">' + esc(new Date(x.jour).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })) + "</button>").join("") : "";
+        $("iaHist").querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { const x = L.find((y) => y.jour === b.dataset.j), v = L.find((y) => y.jour < x.jour); montrer(x.synthese, x.chiffres, v, "Synthèse du " + new Date(x.jour).toLocaleDateString("fr-FR")); histo(x.jour); }));
+        return L;
+      };
+      const montrer = (o, ch, v, quand, acts) => { const box = $("iaRep"); box.innerHTML = '<div class="card ia-r">' + synthHtml(o, ch, v, quand) + "</div>"; if (acts && acts.length) iaRendActions(box.firstElementChild, acts); };
       const go = async (q) => {
-        const rep = $("iaRep"); rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">' + (q ? "Question : " + esc(q) : "Synthèse du jour") + ' · analyse en cours (30 s à 1 min 30)…</p></div>');
+        const rep = $("iaRep");
+        if (q) rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">Question : ' + esc(q) + " · analyse en cours…</p></div>");
+        else rep.innerHTML = '<div class="card ia-r ia-load"><p class="mut">Synthèse du jour · lecture des indicateurs et comparaison avec la veille (30 s à 1 min 30)…</p></div>';
         const box = rep.firstElementChild;
-        try { const t = await iaAppel(q), acts = iaAppel.actions || []; box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "Synthèse du jour · ") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); iaRendActions(box, acts); }
-        catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
+        try {
+          const t = await iaAppel(q), acts = iaAppel.actions || [];
+          if (!q && iaAppel.synth) {
+            const P = iaAppel.prenoms || ((x) => x), lisible = JSON.parse(P(JSON.stringify(Object.assign({}, iaAppel.synth, { actions: undefined }))));
+            try { await synthEcrire(iaDonnees.chiffres, lisible); } catch (e) { toast(e.message, "err"); }
+            montrer(iaAppel.synth, iaDonnees.chiffres, iaDonnees.veille, "Aujourd'hui " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), acts); histo(jourIso()); return;
+          }
+          box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); iaRendActions(box, acts);
+        } catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
       };
       $("iaSynth").onclick = () => go("");
       $("iaGo").onclick = () => { const q = $("iaQ").value.trim(); if (q) go(q); };
       el.querySelectorAll(".ia-ex").forEach((b) => (b.onclick = () => { $("iaQ").value = b.textContent; go(b.textContent); }));
+      // à l'ouverture : la dernière synthèse enregistrée (celle du jour si elle existe)
+      const L = await histo(jourIso()), d = L.find((x) => x.synthese);
+      if (d) { const v = L.find((y) => y.jour < d.jour); montrer(d.synthese, d.chiffres, v, (d.jour === jourIso() ? "Aujourd'hui " : "Synthèse du " + new Date(d.jour).toLocaleDateString("fr-FR") + " ") + new Date(d.cree_le).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })); }
     }
   };
+
 
   // =====================================================================
   // b100 — ACCUEIL ADMIN : la page d'arrivée, même DA que « Utilisation » (kit VZ).
@@ -1828,6 +1889,7 @@
     if (force || !cache.cockpit || !cache.cockpitAL) await sur(() => rendus.cockpit(force));   // calcule le moniteur d'alertes (section cachée)
     if (force || !cache.acApp) cache.acApp = await sur(() => rpcAdmin("rt_stats_app"));
     if (force || !cache.acUsers) cache.acUsers = await sur(() => rpcAdmin("rt_stats_users"));
+    if (force || !cache.acSynth) cache.acSynth = (await sur(() => synthLire(2))) || [];
     el.dataset.pret = "1";
     const C = cache.cockpit || {}, AL = cache.cockpitAL || [], E = cache.cockpitEtat || ["—", "gray"], S = cache.acApp || {}, K = S.kpi || {}, J = (S.jours || []).slice(-30);
     const U = (cache.acUsers || {}).arbitres || [], som = (k) => U.reduce((t, u) => t + (Number(u[k]) || 0), 0), eur = (v) => Math.round(v || 0).toLocaleString("fr-FR") + " €";
@@ -1852,8 +1914,19 @@
       VZ.carte("Argent de la saison", "tous arbitres", VZ.anneau([{ l: "Reçu", v: som("recu_saison"), c: "#16A34A" }, { l: "Reste à recevoir", v: Math.max(0, som("reste_a_recevoir")), c: "#E0313C" }], pct(som("recu_saison"), som("indemnites_saison")), "encaissé")) +
       VZ.carte("Les plus actifs", "matchs de la saison", VZ.barresH(U.filter((u) => u.matchs_saison).sort((a, b) => b.matchs_saison - a.matchs_saison).slice(0, 8).map((u) => ({ l: u.prenom, v: u.matchs_saison })))) +
       "</div>" +
-      '<h2 class="vz-titre">Raccourcis</h2><div class="ac-raccs">' + [["#cockpit", "◧", "Cockpit", "état technique détaillé"], ["#appstats", "▤", "Utilisation", "usage de l'app"], ["#userstats", "◔", "Arbitres", "tableau par arbitre"], ["#inscriptions", "✚", "Inscriptions", "demandes et moteurs"], ["#paiements", "€", "Paiements", "retards par payeur"], ["#communication", "✆", "Communication", "bannières et messages"], ["#moteurs", "⚙", "Moteurs", "commandes et état"], ["#config", "☷", "Réglages", "fonctions et paramètres"]]
-        .map((r) => '<a class="ac-r" href="' + r[0] + '"><i>' + r[1] + "</i><b>" + r[2] + "</b><span>" + r[3] + "</span></a>").join("") + "</div>";
+      "";
+    // b102 — synthèse IA du jour en tête (ou bouton pour la lancer) + entonnoir d'activation des comptes
+    const SY = (cache.acSynth || []).find((x) => x.jour === jourIso() && x.synthese), SYv = (cache.acSynth || []).find((x) => x.jour < jourIso());
+    const NIV = { ok: ["Tout va bien", "#16A34A"], attention: ["À surveiller", "#EA580C"], critique: ["Critique", "#DC2626"] };
+    const carteSy = SY ? (() => { const o = SY.synthese, n = NIV[o.meteo && o.meteo.niveau] || NIV.attention, D = synthDeltas(SY.chiffres, SYv && SYv.chiffres).filter((x) => x.d);
+        return '<div class="card ac-sy" style="--c:' + n[1] + '"><div class="ac-sy-h"><span class="badge" style="background:' + n[1] + ';color:#fff">' + n[0] + '</span><b>' + esc(o.meteo.titre || "") + '</b><a class="btn sm" href="#assistant">Voir la synthèse ›</a></div><p class="mut">' + esc(o.meteo.resume || "") + "</p>" +
+          ((o.a_faire || []).length ? '<ol class="ac-sy-t">' + o.a_faire.slice(0, 3).map((a) => "<li><b>" + esc(a.titre) + "</b> <span class=\"mut\">" + esc(a.pourquoi || "") + "</span></li>").join("") + "</ol>" : "") +
+          (D.length ? '<div class="ac-sy-d">' + D.slice(0, 6).map((x) => '<span class="sy-' + x.sens + '">' + esc(x.l) + " " + (x.d > 0 ? "+" : "") + x.d.toLocaleString("fr-FR") + "</span>").join("") + "</div>" : "") + "</div>"; })()
+      : '<div class="card ac-sy ac-sy-vide"><div><b>Synthèse IA du jour</b><p class="mut">Pas encore lancée aujourd\'hui : 1 minute pour savoir quoi faire et ce qui a bougé depuis hier.</p></div><a class="btn pri" href="#assistant">✦ Lancer la synthèse</a></div>';
+    const tot = U.length || 0, acc = U.filter((u) => u.accueil_termine).length, avecM = U.filter((u) => u.matchs_saison > 0).length, act30 = U.filter((u) => u.jours_actifs_30j > 0).length;
+    const entonnoir = VZ.carte("Activation des comptes", "du compte créé à l'arbitre actif", VZ.barresH([{ l: "Comptes créés", v: tot, c: "#0B1F4D" }, { l: "Accueil terminé", v: acc, c: "#2563EB" }, { l: "Au moins 1 match importé", v: avecM, c: "#7C3AED" }, { l: "Actifs sur 30 jours", v: act30, c: "#16A34A" }, { l: "Actifs sur 7 jours", v: Math.min(K.actifs_7j || 0, tot), c: "#F2B705" }], (v) => v + " · " + pct(v, tot)));
+    el.querySelector(".ac-hero").insertAdjacentHTML("afterend", carteSy);
+    el.insertAdjacentHTML("beforeend", '<div class="vz-g2">' + entonnoir + VZ.carte("Inscriptions", "30 derniers jours", VZ.aire([{ nom: "Nouveaux comptes", v: J.map((d) => d.nouveaux || 0), c: "#F2B705" }], J.map((d) => jj(d.jour)), { h: 200 })) + "</div>");
     el.querySelectorAll(".ac-todo li").forEach((li) => li.addEventListener("click", () => (location.hash = li.dataset.lien)));
   };
 
