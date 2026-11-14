@@ -147,29 +147,28 @@ function bindUi() {
   });
   analyseInstallerSections_();
 
-  // b86 — relève immédiate des convocations (le moteur passe sinon toutes les 10 min)
-  const mailSync = document.getElementById("mailSyncBtn");
-  if (mailSync && typeof window.rtEstAdmin_ === "function") setTimeout(() => window.rtEstAdmin_().then(ok => { mailSync.hidden = !ok; }), 2500);   // b87 : admin uniquement
-  if (mailSync) mailSync.addEventListener("click", () => {
-    if (mailSync.disabled) return;
-    mailSync.disabled = true; mailSync.classList.add("spin");
-    setStatus("Relève de tes convocations en cours… (jusqu'à 1 minute)", "");
-    jsonp("mails.sync", {}).then(res => {
-      if (!res || res.success === false) throw new Error((res && res.error) || "Relève impossible");
-      const n = Number(res.nouvelles) || 0;
-      setStatus(n ? n + " nouvelle(s) convocation(s) importée(s)" : "Relève faite : aucune nouvelle convocation", "ok");
-      loadData();
-    }).catch(err => setStatus(err.message || "Relève impossible", "error"))
-      .finally(() => { mailSync.disabled = false; mailSync.classList.remove("spin"); });
-  });
-
+  // b97c — l'enveloppe disparaît : « Rafraîchir » (et l'ouverture de l'app) relance aussi la lecture des mails.
+  // Garde-fou : une relève au plus toutes les 2 minutes par appareil (le moteur passe de toute façon toutes les 10 min).
+  const releveMails_ = (bouton) => {
+    let der = 0; try { der = Number(localStorage.getItem("rt-releve-ts")) || 0; } catch (e) {}
+    if (Date.now() - der < 120000) return Promise.resolve(null);
+    try { localStorage.setItem("rt-releve-ts", String(Date.now())); } catch (e) {}
+    return jsonp("mails.sync", {}).then(res => {
+      const n = res && res.success !== false ? Number(res.nouvelles) || 0 : 0;
+      if (n) { setStatus(n + " nouvelle(s) convocation(s) importée(s)", "ok"); loadData(); }
+      else if (bouton) setStatus("À jour : aucune nouvelle convocation", "ok");
+      return n;
+    }).catch(() => null);
+  };
   const refresh = document.getElementById("refreshBtn");
   refresh.addEventListener("click", () => {
     refresh.classList.remove("spin");
     void refresh.offsetWidth;
     refresh.classList.add("spin");
     loadData();
+    releveMails_(true);
   });
+  setTimeout(() => { if (typeof SB !== "undefined" && SB.actif) releveMails_(false); }, 6000);   // à l'ouverture de l'app
 
   /* b69 (A6) — l'ancienne barre Saison / Recherche / Filtre (#toolbarSearch) est masquée partout
      (display:none !important) : ses écouteurs ont été retirés. La recherche et les filtres
@@ -4601,26 +4600,27 @@ function libelleSaisiPar_(v) {
 
 /* b93 — filière arbitre FFBB (schéma Ligue Grand Est 2026-2027) : chaque grade donne un PLAFOND,
    on reste toujours désignable en dessous. Le grade de l'arbitre (Progression ou profil) est surligné. */
+/* b97c — filière arbitre FFBB (Ligue Grand Est 2026-2027), du plus petit grade au plus grand. Texte court : le plafond seulement. */
 const FILIERE_ = [
-  ["Haut niveau", [["International FIBA", "Compétitions FIBA, coupes d'Europe", /fiba|international/], ["HN1 / HN2 / HN3", "Betclic Élite, Pro B, LFB, NM1 (gérés par le HNO)", /haut niveau|\bhn\d?/]]],
-  ["National", [["National Rouge", "NM2, LF2, U18", /national rouge/], ["National Bleu", "Espoirs, NF1, U18 · NM2 en réserviste ou jour d'examen", /national bleu/]]],
-  ["Fédéral", [["Fédéral Rouge", "NM3, NF2, U18 (1er arbitre)", /f[ée]d[ée]ral rouge/], ["Fédéral Bleu (stagiaires)", "NF3, U18, U15 · NM3 en réserviste ou jour d'examen", /f[ée]d[ée]ral bleu|stagiaire f[ée]d/]]],
-  ["Région", [["REG-1", "PNM, PNF", /reg-1|r[ée]gion(al)? 1/], ["REG-2", "R2 masculin et féminin", /reg-2|r[ée]gion(al)? 2/], ["REG-J", "Championnats jeunes région", /reg-j|r[ée]gion jeunes/]]],
-  ["Passerelle", [["EAR (année de formation)", "Jeunes région + RF2 (RM2 surtout le jour d'examen)", /\bear\b|stagiaire r[ée]g/]]],
-  ["Départemental", [["Groupe 1", "PRM + jeunes", /groupe 1/], ["Groupe 2", "DM2, DF1 + jeunes", /groupe 2/], ["Groupe 3", "DM4, DM3, DF2 + jeunes", /groupe 3|stagiaire d[ée]p/]]],
-  ["Club", [["Arbitre club", "Matchs de son club (pas de désignation officielle)", /club|[ée]cole/]]]];
-const PARCOURS_ = [["JPR Rouge", "2e arbitre NF3, U18 M/F, U15 France (dimanche) + doublage PN le samedi", /jpr rouge/], ["JPR Bleu", "2e arbitre U15 France (dimanche) + doublage Région le samedi", /jpr bleu/], ["Groupe potentiel", "Désignations inchangées, formations le week-end ; nominations EAR en fin de saison", /potentiel/]];
+  ["Club", "#64748B", [["Arbitre club", "Matchs de son club", /club|[ée]cole/]]],
+  ["Départemental", "#0891B2", [["Groupe 3", "DM4 · DM3 · DF2", /groupe 3|stagiaire d[ée]p/], ["Groupe 2", "DM2 · DF1", /groupe 2/], ["Groupe 1", "PRM", /groupe 1/]]],
+  ["Passerelle", "#7C3AED", [["EAR", "Année de formation · jeunes région + RF2", /\bear\b|stagiaire r[ée]g/]]],
+  ["Région", "#2563EB", [["REG-J", "Jeunes région", /reg-j|r[ée]gion jeunes/], ["REG-2", "RM2 · RF2", /reg-2|r[ée]gion(al)? 2/], ["REG-1", "PNM · PNF", /reg-1|r[ée]gion(al)? 1/]]],
+  ["Fédéral", "#16A34A", [["Fédéral Bleu", "NF3 · U18 · U15 France", /f[ée]d[ée]ral bleu|stagiaire f[ée]d/], ["Fédéral Rouge", "NM3 · NF2", /f[ée]d[ée]ral rouge/]]],
+  ["National", "#EA580C", [["National Bleu", "NF1 · Espoirs", /national bleu/], ["National Rouge", "NM2 · LF2", /national rouge/]]],
+  ["Haut niveau", "#DC2626", [["HN", "Betclic Élite · Pro B · LFB · NM1", /haut niveau|\bhn\d?/], ["FIBA", "International", /fiba|international/]]]];
+const PARCOURS_ = [["Groupe potentiel", "Formations le week-end", /potentiel/], ["JPR Bleu", "U15 France le dimanche", /jpr bleu/], ["JPR Rouge", "NF3 · U18 · U15 France le dimanche", /jpr rouge/]];
 function renderFiliere_(niveauProgression) {
   let prof = ""; try { prof = (Profil && Profil.config && Profil.config.profil && Profil.config.profil.niveau) || ""; } catch (e) {}
   const n = String(niveauProgression || prof || "").toLowerCase();
-  let trouve = false;
-  const lignes = FILIERE_.map(([g, L]) => `<div class="fil-g"><span class="fil-gl">${escapeHtml(g)}</span><div>${L.map(([t, p, re]) => { const moi = !trouve && !!n && re.test(n); if (moi) trouve = true;
-    return `<div class="fil-l${moi ? " moi" : ""}"><b>${escapeHtml(t)}${moi ? ' <span class="fil-moi">toi</span>' : ""}</b><span>${escapeHtml(p)}</span></div>`; }).join("")}</div></div>`).join("");
-  const par = PARCOURS_.filter(([, , re]) => re.test(n));
-  return `<div class="table-card fil"><div class="fil-h"><h3 class="card-title" style="margin:0">Filière arbitre</h3><span class="card-sub">Chaque grade donne un plafond : tu restes désignable en dessous. Ligue Grand Est, saison 2026-2027.</span></div>
-    ${lignes}
-    <div class="fil-par"><b>Parcours jeunes potentiels</b>${PARCOURS_.map(([t, p, re]) => `<div class="fil-l${re.test(n) ? " moi" : ""}"><b>${escapeHtml(t)}${re.test(n) ? ' <span class="fil-moi">toi</span>' : ""}</b><span>${escapeHtml(p)}</span></div>`).join("")}</div>
-    <p class="card-sub" style="margin:8px 0 0">${n ? (trouve || par.length ? "Ton grade vient de " + (niveauProgression ? "ta Progression" : "ton profil") + "." : "Ton niveau « " + escapeHtml(niveauProgression || prof) + " » n'est pas reconnu dans la filière : précise-le dans Mon profil (ex. Région 2 (REG-2) – JPR Rouge).") : "Renseigne ton niveau dans Mon profil pour le voir surligné."} Mi-saison CF : environ 20 % de montées Bleu → Rouge et 25 % de descentes. Source : FFBB (groupes Rouge/Bleu, mai 2025), statut de l'arbitre LRGEB.</p></div>`;
+  let trouve = false, rang = 0;
+  const marches = FILIERE_.map(([g, c, L]) => `<section class="fl-g" style="--c:${c}"><h4>${escapeHtml(g)}</h4>${L.map(([t, p, re]) => { rang++; const moi = !trouve && !!n && re.test(n); if (moi) trouve = true;
+    return `<div class="fl-m${moi ? " moi" : ""}"><span class="fl-n">${rang}</span><div><b>${escapeHtml(t)}</b><small>${escapeHtml(p)}</small></div>${moi ? '<span class="fl-toi">Toi</span>' : ""}</div>`; }).join("")}</section>`).join("");
+  const par = PARCOURS_.map(([t, p, re]) => `<span class="fl-p${re.test(n) ? " moi" : ""}"><b>${escapeHtml(t)}</b> ${escapeHtml(p)}</span>`).join("");
+  return `<div class="fl"><header class="fl-h"><h3>Filière arbitre FFBB</h3><p>Du premier grade au plus haut. Chaque grade fixe un plafond : tu restes désignable en dessous.</p></header>
+    <div class="fl-l">${marches}</div>
+    <div class="fl-par"><h4>Parcours jeunes potentiels</h4><div>${par}</div></div>
+    ${n && !trouve ? `<p class="fl-info">Ton niveau « ${escapeHtml(niveauProgression || prof)} » n'est pas reconnu : mets-le à jour dans Mon profil.</p>` : ""}</div>`;
 }
 
 function renderProgression() {
@@ -10312,7 +10312,19 @@ function renderClassementMatch_(row) {
       // venir se coller au-dessus du clavier, exactement là où iOS fait défiler le champ en cours de saisie.
       const a = document.activeElement, clavier = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio") || vv.height < window.innerHeight * 0.75;
       document.body.classList.toggle("rt-clavier", !!clavier);   // b88l — Règlement : le composeur ne garde plus la place de la barre
-      if (clavier) { nav.style.transform = "translateY(200%)"; const f = document.querySelector("#reglement.active .regl-form"); if (f && a && f.contains(a)) setTimeout(() => { try { f.scrollIntoView({ block: "end" }); } catch (e) {} }, 60); return; }
+      // b97c — iPhone : le composeur du Règlement est calé sur la zone VISIBLE (au-dessus du clavier), quel que soit le défilement d'iOS.
+      const fR = document.querySelector("#reglement.active .regl-form");
+      if (fR) {
+        if (clavier && a && fR.contains(a)) {
+          const h = fR.offsetHeight || 56;
+          fR.classList.add("regl-flottant"); fR.style.top = Math.max(8, vv.offsetTop + vv.height - h - 8) + "px";
+          const chat = document.querySelector("#reglement .regl-chat"); if (chat) chat.style.paddingBottom = (h + 24) + "px";
+        } else if (fR.classList.contains("regl-flottant")) {
+          fR.classList.remove("regl-flottant"); fR.style.top = "";
+          const chat = document.querySelector("#reglement .regl-chat"); if (chat) chat.style.paddingBottom = "";
+        }
+      }
+      if (clavier) { nav.style.transform = "translateY(200%)"; return; }
       const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
       nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
     };
