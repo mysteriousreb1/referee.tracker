@@ -164,9 +164,9 @@
 
   // ---------- navigation ----------
   const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Tableau des arbitres" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
   // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
-  const ESPACE_DE = { cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
+  const ESPACE_DE = { assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
   const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
   function espace(e) {
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
@@ -1158,11 +1158,15 @@
     if (force || !cache.config) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); }
     const c = cache.config, rows = c.data || [], hist = c.historique || {};
     const ligne = rows.find((r) => r.cle === cfgCle) || { cle: cfgCle, valeur: {} };
-    el.innerHTML = '<div class="cfg-grid"><div class="cfg-list">' + Object.keys(CFG).map((k) => '<button data-k="' + k + '" class="' + (k === cfgCle ? "on" : "") + '">' + esc(CFG[k].titre) + "<small>" + esc(CFG[k].desc) + "</small>" + (rows.find((r) => r.cle === k) ? "" : '<small class="warn">non initialisée (exécuter 22_admin.sql)</small>') + "</button>").join("") + "</div>" +
-      '<div><div class="card"><div class="card-head"><h2>' + esc(CFG[cfgCle].titre) + '</h2><span class="sub mono">' + esc(cfgCle) + "</span><span class=\"sub\">maj " + fmt(ligne.maj_le) + '</span></div><div id="cfgForm"></div>' +
-      '<details class="cfg-avance"><summary class="mut tiny">Mode avancé (JSON brut)</summary><textarea id="cfgJson" rows="10"></textarea></details><p id="cfgErr" class="err tiny"></p><div class="row"><button class="btn" id="cfgFormToJson">Formulaire → JSON</button><button class="btn pri" id="cfgSave">Enregistrer</button><span class="mut tiny">Le formulaire et le JSON décrivent la même valeur ; le JSON fait foi à l\'enregistrement.</span></div></div>' +
+    // b97d — Réglages : tuiles par thème (icône, couleur, phrase courte), éditeur pleine largeur, barre d'enregistrement collante.
+    const CFG_IC = { "pub.baremes": ["€", "#16A34A", "Paiements"], "pub.periodes_paiement": ["▦", "#16A34A", "Paiements"], "pub.ia": ["✦", "#7C3AED", "IA"], "pub.textes": ["⚑", "#EA580C", "Communication"], "pub.beta": ["✚", "#2563EB", "Inscriptions"], "pub.carburant": ["⛽", "#0891B2", "Trajets"], "pub.mails": ["✉", "#EA580C", "Communication"], "pub.app": ["◉", "#0B1F3B", "Application"], "pub.fonctions_defaut": ["☷", "#0B1F3B", "Application"] };
+    const court = (d) => String(d || "").split(" · ")[0];
+    el.innerHTML = '<div class="cfg2"><div class="cfg2-tuiles">' + Object.keys(CFG).map((k) => { const ic = CFG_IC[k] || ["⚙", "#64748B", ""]; const r = rows.find((x) => x.cle === k);
+        return '<button data-k="' + k + '" class="cfg2-t' + (k === cfgCle ? " on" : "") + '" style="--c:' + ic[1] + '"><span class="cfg2-ic">' + ic[0] + '</span><span class="cfg2-tx"><em>' + esc(ic[2]) + "</em><b>" + esc(CFG[k].titre) + "</b><small>" + esc(court(CFG[k].desc)) + "</small>" + (r ? '<small class="cfg2-maj">modifié ' + fmt(r.maj_le) + "</small>" : '<small class="cfg2-maj warn">valeurs par défaut</small>') + "</span></button>"; }).join("") + "</div>" +
+      '<div class="cfg2-ed"><div class="card"><div class="card-head cfg2-head"><span class="cfg2-ic big" style="--c:' + ((CFG_IC[cfgCle] || [])[1] || "#64748B") + '">' + ((CFG_IC[cfgCle] || [])[0] || "⚙") + '</span><div><h2>' + esc(CFG[cfgCle].titre) + '</h2><p class="mut">' + esc(CFG[cfgCle].desc) + '</p></div><span class="sub">' + (ligne.maj_le ? "modifié " + fmt(ligne.maj_le) : "") + '</span></div><div id="cfgForm"></div>' +
+      '<details class="cfg-avance"><summary class="mut tiny">Mode avancé (JSON brut)</summary><textarea id="cfgJson" rows="10"></textarea></details><p id="cfgErr" class="err tiny"></p><div class="row cfg2-save"><button class="btn pri" id="cfgSave">Enregistrer les modifications</button><button class="btn" id="cfgFormToJson">Formulaire → JSON</button><span class="mut tiny">Appliqué dans l\'app immédiatement, dans les moteurs sous 10 minutes. Chaque modification est journalisée.</span></div></div>' +
       '<div class="card"><div class="card-head"><h3>Historique (10 dernières valeurs)</h3></div>' + ((hist[cfgCle] || []).length ? '<div class="tbl"><table><thead><tr><th>Remplacée le</th><th>Valeur précédente</th><th></th></tr></thead><tbody>' + hist[cfgCle].map((h, i) => "<tr><td>" + fmt(h.maj_le) + '</td><td class="mono tiny">' + esc(JSON.stringify(h.valeur).slice(0, 180)) + '</td><td><button class="btn sm" data-h="' + i + '">Restaurer dans l\'éditeur</button></td></tr>').join("") + "</tbody></table></div>" : '<p class="vide">Aucune modification enregistrée</p>') + "</div></div></div>";
-    el.querySelectorAll(".cfg-list button").forEach((b) => b.addEventListener("click", () => { cfgCle = b.dataset.k; rendus.config(false); }));
+    el.querySelectorAll(".cfg2-tuiles button").forEach((b) => b.addEventListener("click", () => { cfgCle = b.dataset.k; rendus.config(false); }));
     const ta = $("cfgJson"); ta.value = JSON.stringify(ligne.valeur, null, 2);
     el.querySelectorAll("button[data-h]").forEach((b) => b.addEventListener("click", () => { ta.value = JSON.stringify(hist[cfgCle][Number(b.dataset.h)].valeur, null, 2); formulaire(JSON.parse(ta.value)); toast("Valeur chargée dans l'éditeur (non enregistrée)", ""); }));
     const lireJson = () => { try { const v = JSON.parse(ta.value); if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("Un objet JSON { … } est attendu"); $("cfgErr").textContent = ""; return v; } catch (e) { $("cfgErr").textContent = "JSON invalide : " + e.message; return null; } };
@@ -1690,6 +1694,61 @@
     box.innerHTML = VZ.carte("Imports d'historique", "PDF déposés par les arbitres depuis l'app · 60 jours", L.length ? '<div class="tbl"><table><thead><tr><th>Arbitre</th><th>Le</th><th class="num right">PDF envoyés</th><th class="num right">Encore à rapatrier</th></tr></thead><tbody>' +
       L.map((d) => "<tr><td>" + esc((d.prenom || "") + " " + (d.nom || "")) + "</td><td>" + fmt(d.le) + '</td><td class="num right">' + esc(d.fichiers) + '</td><td class="num right">' + (d.en_attente ? '<span class="badge orange">' + esc(d.en_attente) + "</span>" : '<span class="badge green">0</span>') + "</td></tr>").join("") + "</tbody></table></div>" : '<p class="vide">Aucun dépôt pour l\'instant. Les moteurs rapatrient les PDF seuls toutes les 30 minutes.</p>');
     el.appendChild(box.firstChild);
+  };
+
+
+  // =====================================================================
+  // b97d — ASSISTANT IA : synthèse du jour + questions libres. La console rassemble des chiffres agrégés
+  // (cockpit, usage, arbitres, stock de moteurs), les envoie au moteur principal (route admin.ia) qui interroge l'IA.
+  // Aucun contenu de convocation n'est transmis. La réponse s'affiche ici, rien n'est appliqué automatiquement.
+  // =====================================================================
+  const IA_EX = ["Quels arbitres risquent de décrocher et pourquoi ?", "Quels paiements en retard dois-je surveiller en premier ?", "Les inscriptions de la semaine se passent-elles bien ?", "Que faut-il corriger en priorité côté technique ?"];
+  function mdVersHtml(t) {
+    const lignes = esc(t).split("\n"); let h = "", liste = false;
+    const inl = (x) => x.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+    lignes.forEach((l) => { const m = l.match(/^\s*[-*•]\s+(.*)/), n = l.match(/^\s*\d+[.)]\s+(.*)/);
+      if (m || n) { if (!liste) { h += "<ul>"; liste = true; } h += "<li>" + inl((m || n)[1]) + "</li>"; return; }
+      if (liste) { h += "</ul>"; liste = false; }
+      if (/^#{1,4}\s/.test(l)) h += "<h3>" + inl(l.replace(/^#+\s*/, "")) + "</h3>"; else if (l.trim()) h += "<p>" + inl(l) + "</p>"; });
+    return h + (liste ? "</ul>" : "");
+  }
+  async function iaDonnees() {
+    const sur = async (f) => { try { return await f(); } catch (e) { return { erreur: e.message }; } };
+    const ck = await sur(() => rpcAdmin("rt_cockpit")), ap = await sur(() => rpcAdmin("rt_stats_app")), us = await sur(() => rpcAdmin("rt_stats_users")), st = await sur(() => rpcAdmin("rt_stock_etat"));
+    const allege = (o, n) => JSON.stringify(o, (k, v) => (Array.isArray(v) && v.length > n ? v.slice(-n) : v));
+    iaDonnees.noms = {};   // pseudonymes : l'IA ne voit que ARB-1, ARB-2… ; les prénoms sont remis à l'affichage
+    const arb = ((us && us.arbitres) || []).map((u, i) => { iaDonnees.noms["ARB-" + (i + 1)] = u.prenom || "?"; return { id: "ARB-" + (i + 1), statut: u.statut, niveau: u.niveau, comite: u.comite, inscrit: u.inscrit_le, derniere_activite: u.derniere_activite, jours_actifs_30j: u.jours_actifs_30j, matchs_saison: u.matchs_saison, a_venir: u.a_venir, reste: u.reste_a_recevoir, en_retard: u.en_retard, dernier_import: u.dernier_match_importe }; });
+    let txt = JSON.stringify({ date: new Date().toISOString().slice(0, 16), cockpit: JSON.parse(allege(ck, 14)), usage: { kpi: ap && ap.kpi, jours_14: ((ap && ap.jours) || []).slice(-14), onglets: ((ap && ap.onglets) || []).slice(0, 8) }, arbitres: arb, stock_moteurs: st });
+    Object.entries(iaDonnees.noms).forEach(([id, p]) => { if (p && p.length > 2) txt = txt.split('"' + p + '"').join('"' + id + '"'); });   // prénoms restants (cockpit, stock) → pseudonymes
+    txt = txt.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[e-mail]");
+    return txt.slice(0, 24000);
+  }
+  async function iaAppel(question) {
+    const l = await sbRest("profils?select=api_url&limit=1"); const url = l && l[0] && l[0].api_url;
+    if (!url) throw new Error("Moteur principal introuvable (api_url absent de ton profil).");
+    const donnees = await iaDonnees(), t = await jeton();
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin.ia", token: t, donnees, question: question || "" }), redirect: "follow", credentials: "omit" });
+    const j = await r.json().catch(() => ({}));
+    if (!j || j.success === false) throw new Error((j && j.error) || "Réponse illisible du moteur");
+    let rep = (j.result || {}).texte || ""; Object.entries(iaDonnees.noms || {}).sort((a, b) => b[0].length - a[0].length || b[0].localeCompare(a[0])).forEach(([id, p]) => { rep = rep.split(id).join(p); }); return rep;
+  }
+  rendus.assistant = async function () {
+    const el = $("sec-assistant");
+    if (!el.dataset.pret) {
+      el.dataset.pret = "1";
+      el.innerHTML = '<div class="ia-hero"><div><h2>Assistant d\'exploitation</h2><p>Il lit les indicateurs du jour (cockpit, usage, arbitres, moteurs) et te dit quoi faire en priorité. Il ne modifie rien.</p></div><button class="btn pri" id="iaSynth">✦ Synthèse du jour</button></div>' +
+        '<div class="card ia-q"><textarea id="iaQ" rows="2" placeholder="Pose une question sur l\'application ou les arbitres…"></textarea><div class="row"><button class="btn" id="iaGo">Demander</button>' + IA_EX.map((x) => '<button class="btn sm ia-ex" type="button">' + esc(x) + "</button>").join("") + "</div></div>" +
+        '<div id="iaRep"></div>';
+      const go = async (q) => {
+        const rep = $("iaRep"); rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">' + (q ? "Question : " + esc(q) : "Synthèse du jour") + ' · analyse en cours (20 à 40 s)…</p></div>');
+        const box = rep.firstElementChild;
+        try { const t = await iaAppel(q); box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "Synthèse du jour · ") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); }
+        catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
+      };
+      $("iaSynth").onclick = () => go("");
+      $("iaGo").onclick = () => { const q = $("iaQ").value.trim(); if (q) go(q); };
+      el.querySelectorAll(".ia-ex").forEach((b) => (b.onclick = () => { $("iaQ").value = b.textContent; go(b.textContent); }));
+    }
   };
 
   demarrer();

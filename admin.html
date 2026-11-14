@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' ; font-src 'self' ; img-src 'self' data:; connect-src https://jlstedchnmdteazuqbly.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' ; font-src 'self' ; img-src 'self' data:; connect-src https://jlstedchnmdteazuqbly.supabase.co https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="color-scheme" content="light dark" />
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b97" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b97d" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -46,6 +46,7 @@
       <nav class="nav" id="nav">
         <div data-esp="app">
           <p class="nav-g">Vue d'ensemble</p>
+          <a href="#assistant"><i>✦</i>Assistant IA</a>
           <a href="#cockpit"><i>◧</i>Cockpit</a>
           <a href="#appstats"><i>▤</i>Utilisation</a>
           <a href="#usage"><i>◷</i>Connexions</a>
@@ -90,6 +91,7 @@
       <p id="msg" class="msg hidden"></p>
       <div id="sousNav" class="sous-nav hidden"></div>
 
+      <section id="sec-assistant" class="sec"></section>
       <section id="sec-pilotage" class="sec"></section>
       <section id="sec-dashboard" class="sec"></section>
       <section id="sec-arbitres" class="sec"></section>
@@ -128,6 +130,6 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./admin.js?v=2026-11-14-b97"></script>
+  <script src="./admin.js?v=2026-11-14-b97d"></script>
 </body>
 </html>

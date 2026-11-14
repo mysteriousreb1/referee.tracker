@@ -529,3 +529,43 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .ft .ft-k em { font-size: 34px; font-weight: 800; }
 .vz-hero { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .cfg-h { margin: 16px 0 6px; font-size: 14px; }
+/* ===== b97d — Réglages repensés ===== */
+.cfg2 { display: flex; flex-direction: column; gap: 16px; }
+.cfg2-tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.cfg2-t { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: start; padding: 14px; border-radius: 16px; background: var(--surface, #fff); border: 1px solid var(--line); transition: transform .12s, box-shadow .12s; }
+.cfg2-t:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(11,31,59,.08); }
+.cfg2-t:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.cfg2-t.on { border-color: var(--c); box-shadow: 0 0 0 2px var(--c) inset, 0 8px 22px rgba(11,31,59,.08); }
+.cfg2-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 19px; color: #fff; background: var(--c); }
+.cfg2-ic.big { width: 52px; height: 52px; font-size: 24px; flex: 0 0 52px; }
+.cfg2-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cfg2-tx em { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--c); }
+.cfg2-tx b { font-size: 14.5px; }
+.cfg2-tx small { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.cfg2-tx .cfg2-maj { font-size: 11px; margin-top: 4px; }
+.cfg2-tx .cfg2-maj.warn { color: #B45309; }
+.cfg2-head { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; }
+.cfg2-head > div { flex: 1; min-width: 0; }
+.cfg2-head h2 { margin: 0; font-size: 19px; }
+.cfg2-head p { margin: 2px 0 0; font-size: 13px; }
+.cfg2-ed .card { padding: 18px 20px; }
+.cfg2-ed #cfgForm label.f { font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--text); display: flex; flex-direction: column; gap: 6px; }
+.cfg2-ed #cfgForm input, .cfg2-ed #cfgForm select, .cfg2-ed #cfgForm textarea { border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.cfg2-ed .form-grid { gap: 14px; }
+.cfg2-ed .chk { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2, #F7F9FC); }
+.cfg2-ed .chk input { width: 18px; height: 18px; margin-top: 1px; }
+.cfg2-ed .cfg-h { margin: 18px 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cfg2-save { position: sticky; bottom: 0; z-index: 5; background: var(--surface, #fff); border-top: 1px solid var(--line); margin: 16px -20px -18px; padding: 12px 20px; border-radius: 0 0 16px 16px; gap: 10px; flex-wrap: wrap; align-items: center; }
+.cfg-avance { margin-top: 14px; }
+/* b97d — Assistant IA */
+.ia-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 22px 24px; border-radius: 18px; color: #fff; background: linear-gradient(135deg, #3B0764, #6D28D9 55%, #2563EB); margin-bottom: 14px; }
+.ia-hero h2 { margin: 0 0 4px; font-size: 22px; } .ia-hero p { margin: 0; opacity: .9; max-width: 640px; }
+.ia-hero .btn.pri { font-size: 15px; padding: 12px 18px; }
+.ia-q textarea { width: 100%; border-radius: 12px; padding: 12px; font: inherit; border: 1px solid var(--line); background: var(--surface-2, #F7F9FC); resize: vertical; }
+.ia-q .row { flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ia-r { margin-top: 12px; line-height: 1.55; }
+.ia-r h3 { margin: 16px 0 6px; font-size: 15px; color: #6D28D9; }
+.ia-r ul { margin: 4px 0 8px 18px; padding: 0; } .ia-r li { margin: 3px 0; }
+.ia-load { position: relative; overflow: hidden; }
+.ia-load::after { content: ""; position: absolute; left: -40%; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(109,40,217,.12), transparent); animation: iaBalaye 1.2s linear infinite; }
+@keyframes iaBalaye { to { left: 100%; } }
