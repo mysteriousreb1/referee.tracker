@@ -3586,7 +3586,7 @@ function virementZone_(root) {
       if (eC && !exp && !confirm("Le montant ne correspond pas aux matchs cochés. Les matchs passeront « Reçu partiel » ou « À vérifier ». Continuer ?")) return;
       const b = L.querySelector("#virGo"); b.disabled = true;
       const du = new Map(ch.map(r => [get(r, "UID"), Math.round(r._reste * 100)]));
-      let ok = 0;
+      let ok = 0, kmEchec = "";
       // 1) km retenus par le payeur : la convocation n'avait pas de km, on corrige l'indemnité au centime.
       if (exp) {
         const dC = Math.round(exp.dEur * 100);
@@ -3594,8 +3594,8 @@ function virementZone_(root) {
           const nouv = Math.round(toNumber(get(r, "Indemnité totale")) * 100) + dC;
           try { const res = await jsonp("km.comite", { uid: get(r, "UID"), indemnite: (nouv / 100).toFixed(2) });
             if (res && res.success !== false) { du.set(get(r, "UID"), du.get(get(r, "UID")) + dC); if (res.row && typeof remplacerLigne_ === "function") remplacerLigne_(get(r, "UID"), res.row); }
-            else { setStatus("Correction des km refusée : " + ((res && res.error) || "erreur"), "error"); b.disabled = false; return; }
-          } catch (e) { setStatus("Correction des km impossible : réessaie", "error"); b.disabled = false; return; }
+            else kmEchec = (res && res.error) || "erreur";
+          } catch (e) { kmEchec = e && e.message ? e.message : "moteur injoignable"; }   // b97b : le virement est enregistré quand même
         }
       }
       // 2) chaque match reçoit exactement son dû ; un reste non expliqué va sur le dernier (reçu partiel / trop-perçu → à vérifier).
@@ -3609,7 +3609,7 @@ function virementZone_(root) {
         } catch (e) { /* compte rendu à la fin */ }
       }
       try { window.rtUsage && rtUsage.action(exp ? "virement_km" : "virement"); } catch (e) {}
-      setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)${exp ? " · km corrigés" : ""}` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length ? "ok" : "error");
+      setStatus(ok === ch.length ? `Virement enregistré sur ${ok} match(s)${exp ? (kmEchec ? " · correction des km en attente (moteur pas encore à jour)" : " · km corrigés") : ""}` : `Virement enregistré sur ${ok}/${ch.length} match(s) : réessaie pour les autres`, ok === ch.length && !kmEchec ? "ok" : "error");
       renderAll();
     });
   };
@@ -4676,10 +4676,10 @@ function renderProgression() {
         <label>Niveau actuel</label>
         <strong>${actuel ? escapeHtml(actuel.niveau) : "Non renseigné"}</strong>
         <span class="sub">${actuel ? "Depuis le " + escapeHtml(actuel.dateDebut) + (actuel.groupement ? " — " + escapeHtml(actuel.groupement) : "") : "Ajoute ta première entrée plus bas"}</span>
+        <button type="button" class="small-btn secondary fil-ouvrir" data-fil-niveau="${escapeHtml(actuel ? actuel.niveau : "")}">Filière arbitre FFBB →</button>
       </div>
     </div>
 
-    ${renderFiliere_(actuel ? actuel.niveau : "")}
     ${renderEvalSynthese_(evaluations)}
     ${renderPlanDeveloppement_(evaluations)}
     ${renderLrgebGrille_(evaluations)}
@@ -10328,6 +10328,14 @@ document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("[data-tab-go]");
   if (!b || typeof setActiveTab !== "function") return;
   setActiveTab(b.getAttribute("data-tab-go")); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (x) {}
+});
+/* b97b — filière arbitre : plus affichée dans Progression, ouverte à la demande depuis « Niveau actuel ». */
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-fil-niveau]"); if (!b) return;
+  const d = document.createElement("div"); d.className = "rt-consent"; d.id = "rtFiliere"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+  d.innerHTML = `<div class="rt-consent-box fil-box">${renderFiliere_(b.getAttribute("data-fil-niveau") || "")}<div class="rt-consent-actions"><button type="button" class="rt-btn" data-fil-fermer>Fermer</button></div></div>`;
+  document.body.appendChild(d);
+  d.addEventListener("click", x => { if (x.target === d || x.target.closest("[data-fil-fermer]")) d.remove(); });
 });
 /* b97 — bouton « Importer mes anciennes convocations » (Mon profil) : délégation (la CSP interdit les onclick). */
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });

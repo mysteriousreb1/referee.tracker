@@ -4953,3 +4953,7 @@ button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:a
 .imp-zone:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
 .imp-barre { height: 8px; border-radius: 999px; background: var(--surface-2, #EEF1F6); overflow: hidden; margin: 6px 0; }
 .imp-barre i { display: block; height: 100%; width: 0; background: var(--gold, #F2B705); transition: width .2s; }
+/* b97b — filière arbitre en fenêtre (bouton dans « Niveau actuel ») */
+.fil-ouvrir { margin-top: 10px; align-self: flex-start; }
+#rtFiliere { z-index: 6000; }
+.fil-box { max-width: 760px; }
