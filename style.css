@@ -4994,3 +4994,33 @@ h2.page-title, h2.section-title.sub-title {
 .panel .card-title, .panel h3.mp-h, .pa-card-head h3, .acc-day-head h3, .rtm-head h3 { font-size: var(--t3); line-height: 1.3; }
 .panel h2.section-title .count { font-size: .8em; }
 .table-card.evt-vide { padding: 14px 16px; }
+/* b100 — réservé au PC */
+@media (max-width: 767px) { .rt-pc-only { display: none !important; } }
+.passes-tous { display: block; width: 100%; margin: 10px 0 4px; }
+/* b100 — Analyse téléphone */
+@media (max-width: 767px) {
+  #statsSubTabs, #statsAnalyse, #statsEstimation, #statsProgression, #statsExport { display: none !important; }
+  #statsFinancier { display: block !important; }
+}
+.ant-mois { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding-top: 18px; }
+.ant-m { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; min-width: 0; }
+.ant-m i { display: block; width: 100%; max-width: 26px; border-radius: 6px 6px 3px 3px; background: linear-gradient(180deg, var(--gold, #FFC933), #E8A317); }
+.ant-m span { font-size: 10.5px; color: var(--muted, #7B88A4); margin-top: 4px; }
+.ant-m b { font-size: 10px; margin-bottom: 3px; font-weight: 700; color: var(--muted, #7B88A4); }
+.ant-n { color: var(--muted, #7B88A4); font-weight: 500; }
+.ant-pc { text-align: center; margin-top: 12px; }
+/* b100 — Règlement iPhone : écran plein au-dessus du clavier, police 16 px (sinon iOS zoome et décale tout) */
+@media (max-width: 767px) {
+  #reglement .regl-form textarea { font-size: 16px !important; }
+  #reglement .regl-wrap.regl-plein { position: fixed !important; left: 0; right: 0; z-index: 1000; display: flex; flex-direction: column; margin: 0; padding: 8px 10px 8px; background: var(--bg, #0B1428); max-width: none; }
+  #reglement .regl-wrap.regl-plein > :not(.regl-chat):not(.regl-form) { display: none !important; }
+  #reglement .regl-wrap.regl-plein .regl-chat { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+  #reglement .regl-wrap.regl-plein .regl-form { position: static !important; margin: 6px 0 0 !important; flex: none; }
+  body.rt-clavier { overscroll-behavior: none; }
+}
+.regl-cat { display: flex; gap: 6px; margin: 6px 0 2px; }
+.regl-cat .rt-chip { padding: 4px 12px; font-size: 13px; }
+.ant-p { display: grid; gap: 5px; padding: 8px 0; border-top: 1px solid var(--line); } .ant-p:first-of-type { border-top: 0; }
+.ant-p-h { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; } .ant-p-h b { white-space: nowrap; }
+.ant-p .evt-bar { width: 100%; }
+.regl-cat .rt-chip { min-width: 58px; border-radius: 999px; }

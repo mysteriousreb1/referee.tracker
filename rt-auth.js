@@ -1114,7 +1114,7 @@ function renderProfile() {
       <button type="button" class="rt-btn" id="pfSaveProfil">Enregistrer</button>
     </section>
 
-    <section class="rt-sect">
+    <section class="rt-sect rt-pc-only">
       <h3>Mon historique</h3>
       <p class="rt-help">Tes anciennes convocations (PDF) reconstruisent tes saisons passées, tes kilomètres et tes comparaisons. Aucun doublon.</p>
       <button type="button" class="rt-btn-ghost" data-imp-histo="1">Importer mes anciennes convocations</button>

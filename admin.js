@@ -163,20 +163,20 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
+  const SECTIONS = { accueil: "Accueil", services: "Services & quotas", pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
     kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Cockpit d'exploitation", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
   // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
-  const ESPACE_DE = { assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
+  const ESPACE_DE = { accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
   const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
   function espace(e) {
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
     document.querySelectorAll("#nav > div[data-esp]").forEach((d) => d.classList.toggle("hidden", d.dataset.esp !== e));
   }
-  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.esp === "app" ? "#cockpit" : "#userstats"; }));
+  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.esp === "app" ? "#accueil" : "#userstats"; }));
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
-    const h = (location.hash || "#cockpit").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "cockpit";
+    const h = (location.hash || "#accueil").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "accueil";
     courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
     // b89 — 2 espaces (Application / Arbitres), des pages, et des onglets dans chaque page
     const pg = PAGES.find((x) => x.secs.includes(sec)) || PAGES[0];
@@ -716,7 +716,8 @@
     if (P.api && P.api.moyenne_ms > 1500) AL.push({ s: 3, d: "Performance", m: "Base lente : " + P.api.moyenne_ms + " ms en moyenne", o: "", l: "#cockpit" });
     if (P.chargement && P.chargement.moyenne_ms > 4000) AL.push({ s: 3, d: "Performance", m: "Chargement lent : " + (P.chargement.moyenne_ms / 1000).toFixed(1) + " s", o: "", l: "#cockpit" });
     AL.sort((a, b) => a.s - b.s);
-    const etatG = AL.some((a) => a.s === 1) ? ["Critique", "red"] : AL.some((a) => a.s === 2) ? ["Attention", "orange"] : ["Opérationnel", "green"];
+    cache.cockpitAL = AL;   // b100 — repris par la page Accueil
+    const etatG = AL.some((a) => a.s === 1) ? ["Critique", "red"] : AL.some((a) => a.s === 2) ? ["Attention", "orange"] : ["Opérationnel", "green"]; cache.cockpitEtat = etatG;
     // ---- rendu
     el.innerHTML =
       '<div class="ck-bar"><span class="sema ' + etatG[1] + '"></span><div><b>État global : ' + etatG[0] + '</b><span class="mut tiny">' + AL.filter((a) => a.s <= 2).length + " alerte(s) critique(s) ou élevée(s) · " + AL.length + " au total · saison " + esc(C.saison) + " · " + fmt(C.genere) + '</span></div><label class="ck-auto"><input type="checkbox" id="ckAuto"' + (cockpitAuto ? " checked" : "") + '> Actualisation auto (1 min)</label><button class="btn" id="ckXlsx">⬇ Excel</button></div>' +
@@ -1250,9 +1251,12 @@
           '<h3 class="cfg-h">Import d\'historique</h3><div class="row">' + chk("apImp", "Les arbitres peuvent déposer leurs anciennes convocations (PDF) depuis l'app", v.import_historique !== false) + "</div>" +
           '<div class="form-grid">' + num("apImpMax", "Nombre maximal de PDF par envoi", v.import_max ?? 400, "1") + "</div>" +
           '<h3 class="cfg-h">Moteurs en réserve</h3><div class="form-grid">' + num("apStock", "Alerte quand il reste au plus … moteur(s) libre(s)", v.stock_seuil ?? 2, "1") + "</div>" +
-          '<h3 class="cfg-h">Accueil</h3><div class="row">' + chk("apObs", "Afficher la carte « Mes observations » sur l'accueil", !!v.accueil_observations) + "</div>";
+          '<h3 class="cfg-h">Accueil</h3><div class="row">' + chk("apObs", "Afficher la carte « Mes observations » sur l'accueil", !!v.accueil_observations) + "</div>" +
+          '<h3 class="cfg-h">Assistance par IA (boîte mail)</h3><div class="form-grid"><label class="f">Quand un arbitre écrit à la boîte mail<select id="apSupport">' +
+          [["brouillon", "L'IA prépare un brouillon de réponse, je valide (conseillé)"], ["auto", "L'IA répond seule quand elle est sûre, sinon brouillon"], ["off", "Rien : je réponds moi-même"]].map((o) => '<option value="' + o[0] + '"' + ((v.support_ia || "brouillon") === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") +
+          '</select></label></div><p class="mut tiny">Réponses tirées de la FAQ. Les messages à rgpd@, les réclamations et les cas particuliers restent toujours pour toi (libellé Referee Tracker/Support).</p>';
         lireForm = () => ({ fiche_obligatoire: F.querySelector("#apFiche").checked, fiche_revalider_avant: F.querySelector("#apFicheAvant").value || "", import_historique: F.querySelector("#apImp").checked,
-          import_max: Math.max(1, Number(F.querySelector("#apImpMax").value) || 400), stock_seuil: Math.max(0, Number(F.querySelector("#apStock").value) || 0), accueil_observations: F.querySelector("#apObs").checked });
+          import_max: Math.max(1, Number(F.querySelector("#apImpMax").value) || 400), stock_seuil: Math.max(0, Number(F.querySelector("#apStock").value) || 0), accueil_observations: F.querySelector("#apObs").checked, support_ia: F.querySelector("#apSupport").value });
       } else if (cfgCle === "pub.beta") {
         F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";
         lireForm = () => ({ max: Number(F.querySelector("#btMax").value) || 0, ouvert: F.querySelector("#btOuv").checked });
@@ -1802,7 +1806,7 @@
         '<div class="card ia-q"><textarea id="iaQ" rows="2" placeholder="Pose une question sur l\'application ou les arbitres…"></textarea><div class="row"><button class="btn" id="iaGo">Demander</button>' + IA_EX.map((x) => '<button class="btn sm ia-ex" type="button">' + esc(x) + "</button>").join("") + "</div></div>" +
         '<div id="iaRep"></div>';
       const go = async (q) => {
-        const rep = $("iaRep"); rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">' + (q ? "Question : " + esc(q) : "Synthèse du jour") + ' · analyse en cours (20 à 40 s)…</p></div>');
+        const rep = $("iaRep"); rep.insertAdjacentHTML("afterbegin", '<div class="card ia-r ia-load"><p class="mut">' + (q ? "Question : " + esc(q) : "Synthèse du jour") + ' · analyse en cours (30 s à 1 min 30)…</p></div>');
         const box = rep.firstElementChild;
         try { const t = await iaAppel(q), acts = iaAppel.actions || []; box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "Synthèse du jour · ") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); iaRendActions(box, acts); }
         catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
@@ -1811,6 +1815,92 @@
       $("iaGo").onclick = () => { const q = $("iaQ").value.trim(); if (q) go(q); };
       el.querySelectorAll(".ia-ex").forEach((b) => (b.onclick = () => { $("iaQ").value = b.textContent; go(b.textContent); }));
     }
+  };
+
+  // =====================================================================
+  // b100 — ACCUEIL ADMIN : la page d'arrivée, même DA que « Utilisation » (kit VZ).
+  // Rassemble l'essentiel : état global, chiffres clés, à faire (moniteur du cockpit), activité, argent, raccourcis.
+  // =====================================================================
+  rendus.accueil = async function (force) {
+    const el = $("sec-accueil");
+    if (!el.dataset.pret || force) el.innerHTML = '<p class="mut">Chargement…</p>';
+    const sur = async (f) => { try { return await f(); } catch (e) { return null; } };
+    if (force || !cache.cockpit || !cache.cockpitAL) await sur(() => rendus.cockpit(force));   // calcule le moniteur d'alertes (section cachée)
+    if (force || !cache.acApp) cache.acApp = await sur(() => rpcAdmin("rt_stats_app"));
+    if (force || !cache.acUsers) cache.acUsers = await sur(() => rpcAdmin("rt_stats_users"));
+    el.dataset.pret = "1";
+    const C = cache.cockpit || {}, AL = cache.cockpitAL || [], E = cache.cockpitEtat || ["—", "gray"], S = cache.acApp || {}, K = S.kpi || {}, J = (S.jours || []).slice(-30);
+    const U = (cache.acUsers || {}).arbitres || [], som = (k) => U.reduce((t, u) => t + (Number(u[k]) || 0), 0), eur = (v) => Math.round(v || 0).toLocaleString("fr-FR") + " €";
+    const M = C.moteurs || [], enLigne = M.filter((m) => m.minutes != null && m.minutes <= 90).length, ST = C.stock || [], libres = ST.filter((x) => x.statut === "libre").length;
+    const F = C.file || {}, h = new Date().getHours(), salut = h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir";
+    const coulEtat = { red: "#E0313C", orange: "#EA580C", green: "#16A34A", gray: "#64748B" }[E[1]] || "#64748B";
+    const SEVC = { 1: "#E0313C", 2: "#EA580C", 3: "#F2B705", 4: "#64748B" };
+    el.innerHTML =
+      '<div class="ac-hero"><div><p class="ac-date">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + '</p><h2>' + salut + ' Clément</h2>' +
+      '<p class="ac-etat"><i style="background:' + coulEtat + '"></i>Application : <b>' + esc(E[0]) + "</b> · " + AL.filter((a) => a.s <= 2).length + " point(s) urgent(s) · " + enLigne + "/" + M.length + " moteurs en marche</p></div>" +
+      '<div class="ac-hero-b"><a class="btn pri" href="#assistant">✦ Synthèse IA du jour</a><a class="btn" href="#services">Services &amp; quotas</a></div></div>' +
+      VZ.hero([
+        { v: VZ.n(K.actifs_7j), l: "Arbitres actifs 7 j", s: VZ.n(K.comptes) + " comptes · " + pct(K.actifs_7j, K.comptes), c: "green", ic: "▲" },
+        { v: VZ.n(som("a_venir")), l: "Matchs à venir", s: VZ.n(som("matchs_saison")) + " cette saison", c: "blue", ic: "⚑" },
+        { v: eur(som("reste_a_recevoir")), l: "Reste à recevoir", s: som("en_retard") + " paiement(s) en retard", c: som("en_retard") ? "red" : "gold", ic: "€" },
+        { v: enLigne + "/" + M.length, l: "Moteurs en marche", s: libres + " moteur(s) en réserve", c: enLigne < M.length ? "gold" : "navy", ic: "⚙" },
+        { v: VZ.n((F.inscriptions_attente || 0) + (F.tickets_ouverts || 0)), l: "Demandes à traiter", s: (F.inscriptions_attente || 0) + " inscription(s) · " + (F.tickets_ouverts || 0) + " ticket(s)", c: "violet", ic: "✉" }]) +
+      '<div class="vz-g2">' +
+      VZ.carte("À faire maintenant", AL.length + " point(s) relevés par le moniteur", AL.length ? '<ul class="ac-todo">' + AL.slice(0, 8).map((a) => '<li data-lien="' + esc(a.l) + '"><i style="background:' + (SEVC[a.s] || "#64748B") + '"></i><div><b>' + esc(a.m) + '</b><span>' + esc(a.d + (a.o ? " · " + a.o : "")) + "</span></div><em>›</em></li>").join("") + "</ul>" : '<p class="ac-ok">✓ Rien d\'urgent. Tout tourne.</p>') +
+      VZ.carte("Activité des arbitres", "30 derniers jours", VZ.aire([{ nom: "Actifs", v: J.map((d) => d.actifs || 0) }, { nom: "Matchs importés", v: J.map((d) => d.matchs || 0), c: "#7C3AED" }], J.map((d) => jj(d.jour)), { h: 220 })) +
+      "</div><div class=\"vz-g2\">" +
+      VZ.carte("Argent de la saison", "tous arbitres", VZ.anneau([{ l: "Reçu", v: som("recu_saison"), c: "#16A34A" }, { l: "Reste à recevoir", v: Math.max(0, som("reste_a_recevoir")), c: "#E0313C" }], pct(som("recu_saison"), som("indemnites_saison")), "encaissé")) +
+      VZ.carte("Les plus actifs", "matchs de la saison", VZ.barresH(U.filter((u) => u.matchs_saison).sort((a, b) => b.matchs_saison - a.matchs_saison).slice(0, 8).map((u) => ({ l: u.prenom, v: u.matchs_saison })))) +
+      "</div>" +
+      '<h2 class="vz-titre">Raccourcis</h2><div class="ac-raccs">' + [["#cockpit", "◧", "Cockpit", "état technique détaillé"], ["#appstats", "▤", "Utilisation", "usage de l'app"], ["#userstats", "◔", "Arbitres", "tableau par arbitre"], ["#inscriptions", "✚", "Inscriptions", "demandes et moteurs"], ["#paiements", "€", "Paiements", "retards par payeur"], ["#communication", "✆", "Communication", "bannières et messages"], ["#moteurs", "⚙", "Moteurs", "commandes et état"], ["#config", "☷", "Réglages", "fonctions et paramètres"]]
+        .map((r) => '<a class="ac-r" href="' + r[0] + '"><i>' + r[1] + "</i><b>" + r[2] + "</b><span>" + r[3] + "</span></a>").join("") + "</div>";
+    el.querySelectorAll(".ac-todo li").forEach((li) => li.addEventListener("click", () => (location.hash = li.dataset.lien)));
+  };
+
+  // =====================================================================
+  // b100 — SERVICES & QUOTAS : ce qu'on consomme sur chaque service gratuit, et quand passer à une offre payante.
+  // Mesuré : Supabase (base, fichiers, comptes), adresses de réception (Cloudflare), moteurs (Google), coût IA (Anthropic).
+  // Limites = offres gratuites documentées par chaque service (à revérifier si un service change ses conditions).
+  // =====================================================================
+  rendus.services = async function (force) {
+    const el = $("sec-services");
+    if (force || !cache.services) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.services = await rpcAdmin("rt_services_etat"); }
+    const D = cache.services || {}, n1 = (v) => (Number(v) || 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+    const jauge = (v, max) => { const p = max ? Math.min(100, (v / max) * 100) : 0; const c = p >= 80 ? "#E0313C" : p >= 50 ? "#EA580C" : "#16A34A"; return { p, c, html: '<div class="sv-j"><i style="width:' + Math.max(1.5, p).toFixed(1) + "%;background:" + c + '"></i></div>' }; };
+    const ligne = (lib, v, max, unite) => { const j = jauge(v, max); return '<div class="sv-l"><div class="sv-lh"><span>' + esc(lib) + "</span><b>" + n1(v) + " / " + n1(max) + " " + esc(unite) + ' <small style="color:' + j.c + '">' + Math.round(j.p) + " %</small></b></div>" + j.html + "</div>"; };
+    const etat = (pcts) => { const m = Math.max(0, ...pcts); return m >= 80 ? ["Passer en pro bientôt", "red"] : m >= 50 ? ["À surveiller", "orange"] : ["Large marge", "green"]; };
+    const carte = (nom, offre, couleur, lignes, pcts, quand, lien) => { const e = etat(pcts); return '<div class="card sv-c"><div class="sv-h"><span class="sv-logo" style="background:' + couleur + '">' + esc(nom.slice(0, 1)) + '</span><div><b>' + esc(nom) + '</b><span class="mut tiny">' + esc(offre) + '</span></div><span class="badge ' + e[1] + '">' + e[0] + "</span></div>" + lignes + '<p class="sv-q"><b>Passer en payant quand :</b> ' + quand + "</p>" + (lien ? '<a class="tiny" href="' + lien + '" target="_blank" rel="noopener">Ouvrir la console ›</a>' : "") + "</div>"; };
+    const sb = [D.db_mo / 500 * 100, D.storage_mo / 1024 * 100, D.mau_30j / 50000 * 100];
+    const cf = [D.adresses_reception / 200 * 100];
+    const ia = Number(D.ia_cout_mois) || 0, iaP = Number(D.ia_cout_mois_prec) || 0, IJ = D.ia_jours || [];
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Mesuré le ' + fmt(D.genere) + ' · limites des offres gratuites en vigueur (à revérifier si un service change ses conditions)</span></div>' +
+      VZ.hero([
+        { v: n1(D.db_mo) + " Mo", l: "Base de données", s: "sur 500 Mo gratuits", c: sb[0] >= 50 ? "gold" : "green", ic: "◫" },
+        { v: n1(D.storage_mo) + " Mo", l: "Fichiers déposés", s: VZ.n(D.storage_fichiers) + " fichier(s) · 1 Go gratuit", c: "blue", ic: "⬒" },
+        { v: VZ.n(D.adresses_reception) + " / 200", l: "Adresses de réception", s: "règles Cloudflare (1 par arbitre)", c: cf[0] >= 50 ? "gold" : "navy", ic: "@" },
+        { v: VZ.n(D.moteurs_actifs), l: "Moteurs actifs", s: "Google Apps Script, compte gratuit", c: "violet", ic: "⚙" },
+        { v: ia.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $", l: "IA ce mois-ci", s: "mois dernier : " + iaP.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $", c: "gold", ic: "✦" }]) +
+      '<div class="sv-g">' +
+      carte("Supabase", "Offre gratuite (Free)", "#3ECF8E",
+        ligne("Base de données", D.db_mo, 500, "Mo") + ligne("Fichiers (Storage)", D.storage_mo, 1024, "Mo") + ligne("Utilisateurs actifs / mois", D.mau_30j, 50000, "") +
+        '<p class="mut tiny">Plus grosses tables : ' + (D.plus_grosses_tables || []).slice(0, 4).map((t) => esc(t.table) + " " + n1(t.mo) + " Mo").join(" · ") + "</p>",
+        sb, "la base dépasse 400 Mo, ou dès que tu veux des sauvegardes quotidiennes gérées par Supabase et aucune mise en pause (Pro : 25 $/mois).", "https://supabase.com/dashboard/project/jlstedchnmdteazuqbly") +
+      carte("Cloudflare", "Email Routing + DNS (gratuit)", "#F38020",
+        ligne("Adresses de réception (règles de routage)", D.adresses_reception, 200, "") +
+        '<p class="mut tiny">Chaque arbitre = 1 règle. Au-delà de 200, il faudra une adresse « attrape-tout » ou un autre service de réception.</p>',
+        cf, "tu approches 150 arbitres (prévoir l'adresse attrape-tout, toujours gratuite).", "https://dash.cloudflare.com") +
+      carte("Google (Apps Script, Gmail, Drive)", "Compte Google gratuit referee.tracker@gmail.com", "#4285F4",
+        ligne("Moteurs actifs (1 par arbitre)", D.moteurs_actifs, 20, "repère") +
+        '<ul class="sv-lim"><li>Exécutions déclenchées : <b>90 min par jour</b> pour TOUT le compte</li><li>Appels web (UrlFetch) : <b>20 000 / jour</b></li><li>Lecture Gmail : <b>20 000 / jour</b> · envoi : <b>100 destinataires / jour</b></li><li>Stockage Drive + Gmail : <b>15 Go</b></li></ul>',
+        [D.moteurs_actifs / 20 * 100], "plus de 15 à 20 arbitres actifs, ou si des moteurs s'arrêtent avec « quota dépassé » : passer à Google Workspace (≈ 7 €/mois, quotas ×3 à ×10) ou répartir les moteurs sur 2 comptes.", "https://script.google.com/home/executions") +
+      carte("GitHub (Pages)", "Hébergement gratuit du site et de l'app", "#24292F",
+        '<ul class="sv-lim"><li>Taille du dépôt : <b>1 Go</b> conseillé (l\'app pèse quelques Mo)</li><li>Trafic : <b>100 Go / mois</b> (limite souple)</li><li>Publications : <b>10 / heure</b></li></ul>',
+        [5], "jamais à ton échelle. Seulement si tu veux un dépôt privé avec Pages pour le site vitrine (Pro : 4 $/mois).", "https://github.com/mysteriousreb1") +
+      carte("Anthropic (IA Claude)", "Paiement à l'usage", "#D97757",
+        (IJ.length ? VZ.aire([{ nom: "Coût IA par jour (centimes de $)", v: IJ.map((d) => Math.round((Number(d.cout) || 0) * 100)), c: "#D97757" }], IJ.map((d) => jj(d.jour)), { h: 150 }) : "") +
+        '<p class="mut tiny">Ce mois-ci : ' + ia.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $ · mois dernier : " + iaP.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $. Plafonds par fonction : Réglages › IA.</p>",
+        [ia / 50 * 100], "rien à « passer en pro » : surveille la courbe et le plafond de dépenses de ta console Anthropic.", "https://console.anthropic.com/settings/billing") +
+      "</div>";
   };
 
   demarrer();

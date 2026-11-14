@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b99" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-14-b100" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -46,6 +46,7 @@
       <nav class="nav" id="nav">
         <div data-esp="app">
           <p class="nav-g">Vue d'ensemble</p>
+          <a href="#accueil"><i>⌂</i>Accueil</a>
           <a href="#assistant"><i>✦</i>Assistant IA</a>
           <a href="#cockpit"><i>◧</i>Cockpit</a>
           <a href="#appstats"><i>▤</i>Utilisation</a>
@@ -54,6 +55,7 @@
           <a href="#tech"><i>◔</i>Performances &amp; erreurs</a>
           <a href="#sante"><i>♥</i>Santé</a>
           <a href="#moteurs"><i>⚙</i>Moteurs<b id="navMoteurs" class="nav-count"></b></a>
+          <a href="#services"><i>◫</i>Services &amp; quotas</a>
           <p class="nav-g">Administration</p>
           <a href="#config"><i>☷</i>Réglages</a>
           <a href="#journal"><i>☰</i>Journal d'audit</a>
@@ -91,6 +93,8 @@
       <p id="msg" class="msg hidden"></p>
       <div id="sousNav" class="sous-nav hidden"></div>
 
+      <section id="sec-accueil" class="sec"></section>
+      <section id="sec-services" class="sec"></section>
       <section id="sec-assistant" class="sec"></section>
       <section id="sec-pilotage" class="sec"></section>
       <section id="sec-dashboard" class="sec"></section>
@@ -130,6 +134,6 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./admin.js?v=2026-11-14-b99"></script>
+  <script src="./admin.js?v=2026-11-14-b100"></script>
 </body>
 </html>

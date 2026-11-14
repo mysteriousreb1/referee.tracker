@@ -288,7 +288,7 @@ function setupMoreMenu_() {
     const ico = nav.querySelector(`.tab[data-tab="${t}"] .tab-icon`);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "tab-more-item" + (t === "export" ? " tab-more-pc" : "");   // b52 : Alertes visible sur téléphone
+    item.className = "tab-more-item" + (["export", "equipement", "alertes"].includes(t) ? " tab-more-pc" : "");   // b100 : Équipement et Alertes = PC (téléphone : la cloche remplace les alertes)   // b52 : Alertes visible sur téléphone
     item.dataset.goto = t;
     item.innerHTML = `${ico ? ico.outerHTML : ""}<span>${escapeHtml(src ? src.textContent : t)}</span><span class="tab-badge tab-more-badge" data-badge-for="${t}" hidden>0</span>`;
     panel.appendChild(item);
@@ -476,6 +476,7 @@ function setActiveTab(tab) {
     if (d === "procedures" || d === "contacts") { state.contactsSubView = d; tab = "contacts"; } else tab = d;
   }
   if (tab === "indispos") tab = "accueil";
+  if (estTel_() && (tab === "equipement" || tab === "alertes" || tab === "export")) tab = "accueil";   // b100 — pages réservées au PC
   // b68 — PC : Export, Progression, Rapports, Estimation, Rapprochement ont leur entrée dans la barre gauche.
   // Estimation et Rapprochement restent des sous-vues de la page Analyse (même panneau), la barre surligne leur entrée.
   const demande = tab;
@@ -951,6 +952,7 @@ function renderReglement() {
       <div class="regl-head">
         <div class="regl-head-t">
           <h2 class="section-title">Règlement <span class="count">IA</span></h2>
+          <div class="regl-cat" role="tablist" aria-label="Règlement interrogé">${["5x5", "3x3"].map(c => `<button type="button" class="rt-chip${(state.reglCat || "5x5") === c ? " is-on" : ""}" data-regl-cat="${c}">${c === "5x5" ? "5×5" : "3×3"}</button>`).join("")}</div>
           <div class="regl-head-sub">${nbDocs === null ? "Corpus FIBA" : nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
         </div>
         <div class="regl-head-act">
@@ -1141,7 +1143,7 @@ async function askReglement_(question, precisions) {
   // Contexte : la dernière réponse, pour les questions de suivi (« et si… »).
   const derniere = h0.slice().reverse().find(m => m.role === "ia" && m.decision);
   try {
-    const res = await jsonp("reglement.ask", { question, precisions: precisions ? JSON.stringify(precisions) : "", contexte: derniere ? (derniere.decision + " " + (derniere.explication || "")).slice(0, 1200) : "" });
+    const res = await jsonp("reglement.ask", { question, precisions: precisions ? JSON.stringify(precisions) : "", contexte: derniere ? (derniere.decision + " " + (derniere.explication || "")).slice(0, 1200) : "", categorie: state.reglCat || "5x5" });
     const r = res && res.result;
     if (!res || !res.success || !r || !r.ok) throw new Error((r && r.error) || (res && res.error) || "Erreur inconnue");
     if (r.type === "questions" && r.questions && r.questions.length) {
@@ -1465,6 +1467,9 @@ function renderMatchsTel_() {
   const past = rows.filter(r => r._isPast).sort(sortByDateDesc);
   const n5 = state.filteredRows.filter(r => r._isActive && r._format === "5x5").length, n3 = state.filteredRows.filter(r => r._isActive && r._format === "3x3").length;
   const ouvert = PASSES_OUVERTS.matchs === true;
+  // b100 — téléphone : les matchs passés depuis plus d'un mois sont masqués ; bouton « Voir tous les matchs »
+  const limite = Date.now() - 31 * 864e5, recents = past.filter(r => tsMission_(r) >= limite), anciens = past.length - recents.length;
+  const tousPasses = state.telTousPasses === true;
   const chip = (v, l) => `<button type="button" class="rt-chip${f === v ? " is-on" : ""}" data-tel-format="${v}">${l}</button>`;
   root.innerHTML = `
     <h2 class="section-title">À venir <span class="count">${upcoming.length}</span></h2>
@@ -1472,7 +1477,8 @@ function renderMatchsTel_() {
     ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty("Aucun match à venir pour cette saison.")}
     ${past.length ? `<details class="past-block" data-panel="matchs"${ouvert ? " open" : ""}>
         <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Passés</span><span class="count">${past.length}</span></span></summary>
-        <div class="past-body">${renderWeekendGroups(past, true)}</div></details>` : ""}`;
+        <div class="past-body">${(tousPasses ? past : recents).length ? renderWeekendGroups(tousPasses ? past : recents, true) : empty("Aucun match ce dernier mois.")}${anciens ? `<button type="button" class="rt-btn-ghost passes-tous" data-passes-tous="1">${tousPasses ? "Masquer les matchs de plus d'un mois" : "Voir tous les matchs (" + anciens + " de plus)"}</button>` : ""}</div></details>` : ""}`;
+  root.querySelectorAll("[data-passes-tous]").forEach(b => b.addEventListener("click", ev => { ev.preventDefault(); state.telTousPasses = !tousPasses; PASSES_OUVERTS.matchs = true; renderMatchsTel_(); }));
   root.querySelectorAll("[data-tel-format]").forEach(b => b.addEventListener("click", () => { state.telFormat = b.dataset.telFormat; renderMatchsTel_(); }));
   attachCardListeners(root); attachPaymentListeners(root); attachContactListeners(root); attachPastToggle(root);
 }
@@ -1909,6 +1915,7 @@ function accImport_(z, actifs) {
    Envoi dans le Storage privé « import/<son id>/ » ; son moteur les rapatrie seul (toutes les 30 min) et les lit.
    Aucun doublon : un match déjà présent (même saison + même n° de rencontre) est simplement mis à jour. */
 async function rtImportHistorique_() {
+  if (estTel_()) { toast("L'import de tes anciennes convocations se fait depuis un ordinateur."); return; }   // b100 — PC seulement
   if (document.getElementById("rtImpH")) return;
   const cfgApp = window.rtPubApp ? await window.rtPubApp() : {};
   if (cfgApp.import_historique === false) { toast("L'import d'historique est momentanément fermé. Transfère tes convocations par mail à ton adresse Referee Tracker."); return; }
@@ -2737,8 +2744,8 @@ function renderActions(row) {
     const fait = Boolean(get(row, "Contact collègue"));
     links.push(`<button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Contact fait" : "Contact fait"}</button>`);
   }
-  if (get(row, "N° rencontre") || get(row, "Warning FBI")) {
-    links.push(`<a class="action-link secondary" href="https://extranet.ffbb.com/fbi/connexion.fbi" target="_blank" rel="noopener">FBI</a>`);
+  if (false) {   // b100 — bouton FBI retiré (demande Clément)
+    links.push("");
   }
   /* b19 — événement annulé à la dernière minute (sur place, 3x3 ou 5x5) :
      disponible 3 jours autour du match tant que rien n'a été payé. */
@@ -3799,7 +3806,42 @@ function renderComparaisonN1_(c) {
     <div class="stat-note">${escapeHtml(c.note || "")}</div>`;
 }
 
+/* b100 — ANALYSE TÉLÉPHONE : même esprit que Progression (chiffres clés, courbe, barres). Le PC garde la page complète. */
+function renderAnalyseTel_() {
+  const root = document.getElementById("statsFinancier"); if (!root) return;
+  const rows = state.filteredRows.filter(r => r._isActive && r._format !== "Alerte");
+  const periode = state.selectedSeason || "Toutes les saisons";
+  if (!rows.length) { root.innerHTML = `<h2 class="section-title">Analyse</h2>${empty("Aucun match sur cette période.")}`; return; }
+  const gross = rows.reduce((t, r) => t + (r._amount || 0), 0), cost = rows.reduce((t, r) => t + realFuelCostClient(r._kmEff, r._date), 0);
+  const km = rows.reduce((t, r) => t + (r._kmEff || 0), 0), recu = rows.reduce((t, r) => t + (r._recu || 0), 0);
+  const retard = rows.filter(r => r._statutPaie === "En retard").reduce((t, r) => t + Math.max(0, (r._amount || 0) - (r._recu || 0)), 0);
+  const fmt0 = v => Math.round(v).toLocaleString("fr-FR") + " €";
+  // gains par mois (mois de la saison, dans l'ordre)
+  const parMois = {}; rows.forEach(r => { if (!r._date) return; const k = r._date.getFullYear() * 100 + r._date.getMonth(); parMois[k] = (parMois[k] || 0) + (r._amount || 0); });
+  const cles = Object.keys(parMois).map(Number).sort((a, b) => a - b).slice(-10), vals = cles.map(k => parMois[k]), mx = Math.max(1, ...vals);
+  const NOM_M = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  const barresMois = cles.length ? `<div class="ant-mois">${cles.map((k, i) => `<div class="ant-m"><b>${Math.round(vals[i])}</b><i style="height:${Math.max(4, vals[i] / mx * 78)}%"></i><span>${NOM_M[k % 100]}</span></div>`).join("")}</div>` : "";
+  // qui paie quoi
+  const payeurs = {}; rows.forEach(r => { const p = (get(r, "Indemnisé par") || "Autre").trim() || "Autre"; const o = payeurs[p] = payeurs[p] || { du: 0, recu: 0, n: 0 }; o.du += r._amount || 0; o.recu += r._recu || 0; o.n++; });
+  const lp = Object.entries(payeurs).sort((a, b) => b[1].du - a[1].du).slice(0, 5);
+  const nomP = p => { const t = p.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+    return /LIGUE/.test(t) ? "Ligue" : /COMITE/.test(t) ? "Comité" : /FEDERATION|FFBB/.test(t) ? "Fédération (FFBB)" : /PARTS EGALES|ASSOCIATIONS|CLUB/.test(t) ? "Clubs (parts égales)" : p.charAt(0) + p.slice(1).toLowerCase(); };
+  const barreP = ([p, o]) => `<div class="ant-p"><div class="ant-p-h"><span>${escapeHtml(nomP(p))} <small class="ant-n">· ${o.n} match${o.n > 1 ? "s" : ""}</small></span><b>${fmt0(o.du)}</b></div><div class="evt-bar"><i style="width:${o.du ? Math.min(100, o.recu / o.du * 100) : 0}%;background:var(--green, #1F9D61)"></i></div><small class="ant-n">${fmt0(o.recu)} reçus · ${o.du ? Math.round(o.recu / o.du * 100) : 0} %</small></div>`;
+  const n5 = rows.filter(r => r._format === "5x5").length, n3 = rows.length - n5;
+  root.innerHTML = `
+    <h2 class="section-title">Analyse <span class="count">${escapeHtml(periode)}</span></h2>
+    <div class="evt-kpis">
+      <div class="evt-k"><span class="evt-v" style="color:var(--green, #1F9D61)">${fmt0(gross - cost)}</span><span class="evt-l">Net (indemnités − carburant)</span><span class="evt-s">${rows.length} matchs · ${n5} en 5×5 · ${n3} en 3×3</span></div>
+      <div class="evt-k"><span class="evt-v">${fmt0(gross)}</span><span class="evt-l">Indemnités</span><span class="evt-s">dont ${fmt0(recu)} reçus</span></div>
+      <div class="evt-k"><span class="evt-v">${Math.round(km).toLocaleString("fr-FR")}<small> km</small></span><span class="evt-l">Kilomètres A/R</span><span class="evt-s">carburant ${fmt0(cost)}</span></div>
+      <div class="evt-k"><span class="evt-v" style="color:${retard > 0 ? "var(--red, #E0313C)" : "inherit"}">${fmt0(retard)}</span><span class="evt-l">En retard</span><span class="evt-s">${km > 0 ? (gross / km).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " € par km" : ""}</span></div>
+    </div>
+    ${barresMois ? `<div class="table-card evt-card"><h3>Indemnités par mois</h3>${barresMois}</div>` : ""}
+    <div class="table-card evt-card"><h3>Qui te paie</h3><p class="card-sub" style="margin:0 0 8px">Barre verte : part déjà reçue.</p>${lp.map(barreP).join("")}</div>
+    <p class="card-sub ant-pc">Analyse détaillée, estimation et export : sur ordinateur.</p>`;
+}
 function renderStats() {
+  if (estTel_()) { renderAnalyseTel_(); return; }   // b100
   FOLD_OFF_ = true;
   try { renderStatsInner_(); } finally { FOLD_OFF_ = false; }
 }
@@ -10315,15 +10357,17 @@ function renderClassementMatch_(row) {
       const a = document.activeElement, clavier = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio") || vv.height < window.innerHeight * 0.75;
       document.body.classList.toggle("rt-clavier", !!clavier);   // b88l — Règlement : le composeur ne garde plus la place de la barre
       // b97c — iPhone : le composeur du Règlement est calé sur la zone VISIBLE (au-dessus du clavier), quel que soit le défilement d'iOS.
-      const fR = document.querySelector("#reglement.active .regl-form");
-      if (fR) {
-        if (clavier && a && fR.contains(a)) {
-          const h = fR.offsetHeight || 56;
-          fR.classList.add("regl-flottant"); fR.style.top = Math.max(8, vv.offsetTop + vv.height - h - 8) + "px";
-          const chat = document.querySelector("#reglement .regl-chat"); if (chat) chat.style.paddingBottom = (h + 24) + "px";
-        } else if (fR.classList.contains("regl-flottant")) {
-          fR.classList.remove("regl-flottant"); fR.style.top = "";
-          const chat = document.querySelector("#reglement .regl-chat"); if (chat) chat.style.paddingBottom = "";
+      // b100 — iPhone, clavier ouvert dans le Règlement : la conversation devient un écran plein calé EXACTEMENT sur la zone
+      // visible (hauteur et décalage du viewport visuel). Le fil défile à l'intérieur, la saisie reste collée au clavier.
+      const wR = document.querySelector("#reglement.active .regl-wrap"), fR = wR && wR.querySelector(".regl-form");
+      if (wR) {
+        if (clavier && a && fR && fR.contains(a)) {
+          const deja = wR.classList.contains("regl-plein");
+          wR.classList.add("regl-plein");
+          wR.style.top = vv.offsetTop + "px"; wR.style.height = vv.height + "px";
+          if (!deja) { const chat = wR.querySelector(".regl-chat"); if (chat) chat.scrollTop = chat.scrollHeight; }
+        } else if (wR.classList.contains("regl-plein")) {
+          wR.classList.remove("regl-plein"); wR.style.top = ""; wR.style.height = "";
         }
       }
       if (clavier) { nav.style.transform = "translateY(200%)"; return; }
@@ -10331,6 +10375,8 @@ function renderClassementMatch_(row) {
       nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
     };
     vv.addEventListener("resize", caler); vv.addEventListener("scroll", caler);
+    document.addEventListener("focusin", () => { caler(); setTimeout(caler, 120); setTimeout(caler, 400); });   // b100 — iOS : l'animation du clavier précède le resize
+    document.addEventListener("focusout", () => setTimeout(caler, 120));
     window.addEventListener("scroll", caler, { passive: true }); window.addEventListener("orientationchange", () => setTimeout(caler, 300));
     document.addEventListener("focusout", () => setTimeout(caler, 350));
     document.addEventListener("focusin", () => setTimeout(caler, 50));   // b67 : réagir dès l'ouverture du clavier
@@ -10351,5 +10397,12 @@ document.addEventListener("click", e => {
   document.body.appendChild(d);
   d.addEventListener("click", x => { if (x.target === d || x.target.closest("[data-fil-fermer]")) d.remove(); });
 });
+/* b100 — Règlement : choix 5×5 / 3×3 (mémorisé), la conversation repart à zéro quand on change */
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-regl-cat]"); if (!b) return;
+  const c = b.dataset.reglCat; if (c === (state.reglCat || "5x5")) return;
+  state.reglCat = c; try { localStorage.setItem("rt-regl-cat", c); } catch (x) {}
+  document.querySelectorAll("[data-regl-cat]").forEach(x => x.classList.toggle("is-on", x.dataset.reglCat === c));
+  toast(c === "3x3" ? "Questions sur le règlement 3×3" : "Questions sur le règlement 5×5"); });
+try { state.reglCat = localStorage.getItem("rt-regl-cat") || "5x5"; } catch (e) {}
 /* b97 — bouton « Importer mes anciennes convocations » (Mon profil) : délégation (la CSP interdit les onclick). */
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
