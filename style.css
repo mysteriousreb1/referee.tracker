@@ -5094,3 +5094,38 @@ h2.page-title, h2.section-title.sub-title {
 .vir-tot:empty { display: none; }
 .vir-ul li label { display: grid !important; grid-template-columns: 22px 1fr; align-items: start; }
 .vir-ul li input[type="checkbox"] { width: 18px; height: 18px; margin: 2px 0 0; }
+
+/* b104 — liste des matchs du virement : date + payeur / équipes, montant aligné à droite (plus de chevauchement) */
+.vir-ul li label.vir-li { display: grid !important; grid-template-columns: auto 1fr auto; flex-direction: row !important; align-items: center; gap: 12px; cursor: pointer; }
+.vir-li input { width: 18px; height: 18px; margin: 0; }
+.vir-li-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vir-li-t > span { font-weight: 600; font-size: 14px; }
+.vir-li-t small { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vir-li-m { font-size: 15px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* b104 — Règlement : verdict + compréhension de la situation */
+.regl-compris { margin: 0 0 8px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.regl-compris span { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(127,127,127,.15); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.regl-verdict { display: inline-block; margin: 2px 0 8px; padding: 6px 12px; border-radius: 10px; font-weight: 800; font-size: 16px; background: var(--navy-800, #0E2A5C); color: #fff; }
+:root[data-theme="dark"] .regl-verdict { background: var(--gold, #FFC933); color: #0B1F4D; }
+
+/* b104 — bandeau de mise à jour + fenêtre Nouveautés */
+.acc-annonce--maj { border-left-color: #F5B400; background: linear-gradient(120deg, #0A1F44 0%, #163A7A 100%); color: #fff; }
+.acc-annonce--maj .small-btn:not(.secondary) { background: #F5B400; color: #0A1F44; border-color: transparent; font-weight: 800; }
+.acc-annonce--maj .small-btn.secondary { background: transparent; color: #fff; border-color: rgba(255,255,255,.35); }
+.rt-nouv { border: 0; border-radius: 20px; padding: 0; max-width: 440px; width: calc(100% - 32px); background: var(--surface, #fff); color: var(--text); box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+.rt-nouv::backdrop { background: rgba(5,12,30,.55); }
+.rt-nouv form { padding: 22px 20px 18px; }
+.rt-nouv-k { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #D99A00; }
+.rt-nouv h2 { margin: 4px 0 12px; font-size: 22px; }
+.rt-nouv ul { list-style: none; margin: 0; padding: 0; }
+.rt-nouv li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rt-nouv li > span { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(245,180,0,.18); font-weight: 800; }
+.rt-nouv li b { font-size: 14.5px; } .rt-nouv li p { margin: 2px 0 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.rt-nouv-ok { margin-top: 14px; width: 100%; padding: 12px; border: 0; border-radius: 12px; background: #F5B400; color: #0A1F44; font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; }
+.rt-majban { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 10px 10px 12px; border-radius: 14px; background: linear-gradient(120deg, #0A1F44 0%, #163A7A 100%); color: #fff; box-shadow: 0 8px 24px rgba(10,31,68,.25); }
+.rt-majban p { flex: 1; margin: 0; font-size: 13.5px; line-height: 1.4; font-weight: 600; }
+.rt-majban-k { flex: none; padding: 3px 8px; border-radius: 999px; background: #F5B400; color: #0A1F44; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.rt-majban-go { flex: none; border: 0; border-radius: 10px; padding: 8px 12px; background: #fff; color: #0A1F44; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.rt-majban-x { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.7); font-size: 16px; padding: 6px; cursor: pointer; }
+@media (max-width: 560px) { .rt-majban { flex-wrap: wrap; } .rt-majban p { flex-basis: calc(100% - 80px); } .rt-majban-go { margin-left: auto; } }

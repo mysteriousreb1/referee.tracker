@@ -1102,11 +1102,13 @@ function reglReponseHtml_(m) {
   const a = m.analyse;
   // b103 — réponse aérée : la décision d'abord (courte), le reste replié et rangé (fini le gros bloc de texte)
   const arts = m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(x => `<span class="regl-art">${escapeHtml(x)}</span>`).join("")}</div>` : "";
+  // b104 — verdict en 2-6 mots en tête + ce que l'IA a compris de la situation décrite
+  const tete = (m.compris ? `<p class="regl-compris"><span>J'ai compris</span>${escapeHtml(m.compris)}</p>` : "") + (m.verdict ? `<div class="regl-verdict">${escapeHtml(m.verdict)}</div>` : "");
   const repli = (titre, corps, ouvert) => corps ? `<details class="regl-plus"${ouvert ? " open" : ""}><summary>${titre}</summary><div class="regl-plus-c">${corps}</div></details>` : "";
   if (a && (a.bien.length + a.pas_bien.length + a.a_faire.length + a.ameliorer.length)) {   // b74 — analyse d'une situation vécue
     const liste = l => `<ul>${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`;
     const pastilles = `<div class="regl-bilan">${a.bien.length ? `<span class="ok">✓ ${a.bien.length} bon${a.bien.length > 1 ? "s" : ""} réflexe${a.bien.length > 1 ? "s" : ""}</span>` : ""}${a.pas_bien.length ? `<span class="ko">✕ ${a.pas_bien.length} point${a.pas_bien.length > 1 ? "s" : ""} à revoir</span>` : ""}</div>`;
-    return `${prec || ""}
+    return `${prec || ""}${tete}
     ${m.decision ? `<div class="regl-decision"><span>Ce qu'il fallait faire</span>${formatReglementReponse_(m.decision)}</div>` : ""}
     ${pastilles}${arts}
     ${repli("La bonne procédure", a.a_faire.length ? liste(a.a_faire) : "", true)}
@@ -1115,8 +1117,8 @@ function reglReponseHtml_(m) {
     ${repli("Pour progresser", a.ameliorer.length ? liste(a.ameliorer) : "")}
     ${reglSourcesHtml_(m.sources)}`;
   }
-  return `${prec || ""}
-    ${m.decision ? `<div class="regl-decision"><span>Décision</span>${formatReglementReponse_(m.decision)}</div>` : ""}
+  return `${prec || ""}${tete}
+    ${m.decision ? `<div class="regl-decision"><span>${m.verdict ? "En clair" : "Décision"}</span>${formatReglementReponse_(m.decision)}</div>` : ""}
     ${arts}
     ${repli("Pourquoi : la règle expliquée", m.explication ? formatReglementReponse_(m.explication) : "")}
     ${reglSourcesHtml_(m.sources)}`;
@@ -1175,7 +1177,7 @@ async function askReglement_(question, precisions) {
       reglQuestions_(question, r);
       return;
     }
-    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", explication: r.explication || "", articles: r.articles || [], analyse: r.analyse || null, precisions: precisions || null,
+    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", verdict: r.verdict || "", compris: r.compris || "", explication: r.explication || "", articles: r.articles || [], analyse: r.analyse || null, precisions: precisions || null,
       sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })),
       ts: Date.now(), cache: !!r.cache, passages: r.passages || 0, ms: { total: Date.now() - t0, ia: r.ms && r.ms.ia } });
   } catch (err) {
@@ -1897,6 +1899,7 @@ function accAnnonces_(z) {
   if (!z || typeof SB === "undefined" || !SB.actif) return;
   SB.get("annonces?select=id,texte,action,lib_action,style,expire_le&masque_le=is.null&order=cree_le.asc" + (window.rtSub_ && window.rtSub_() ? "&user_id=eq." + encodeURIComponent(window.rtSub_()) : "")).then(l => {
     const now = Date.now(), a = (l || []).filter(x => !x.expire_le || Date.parse(x.expire_le) > now);
+    rtBandeauMaj_(a.filter(x => x.style === "maj")[0]);   // b104 — bandeau de mise à jour en haut de l'app
     if (!a.length) { z.innerHTML = ""; return; }
     z.innerHTML = a.map(x => `<div class="acc-annonce acc-annonce--${escapeHtml(x.style || "info")}" role="status" data-ann="${Number(x.id)}">
       <span class="acc-annonce-t">${escapeHtml(x.texte)}</span>
@@ -1906,6 +1909,7 @@ function accAnnonces_(z) {
       if (go === "profil") { const pb = document.getElementById("rtProfileBtn"); if (pb) pb.click(); }
       else if (go === "guide") window.open("./manuel/pdf/Referee-Tracker-Guide-de-demarrage.pdf", "_blank", "noopener");
       else if (go === "import") rtImportHistorique_();   // b97
+      else if (go === "nouveautes") rtNouveautes_();   // b104
       else if (typeof setActiveTab === "function") setActiveTab(go);
     }));
     z.querySelectorAll("[data-ann-ok]").forEach(b => b.addEventListener("click", async () => {
@@ -3602,7 +3606,7 @@ function virementZone_(root) {
     if (!cands.length) { L.innerHTML = '<p class="card-sub">Aucun match en attente pour ce payeur.</p>'; return; }
     const auto = montant > 0 ? virSelection_(cands, montant) : { sel: new Set(), exp: null };
     L.innerHTML = `<p class="card-sub">${montant > 0 ? (auto.sel.size ? "Matchs retrouvés automatiquement : vérifie, puis enregistre." : "Aucune combinaison de matchs ne donne ce montant : coche les matchs à la main.") : "Saisis le montant du virement."}</p>
-      <ul class="vir-ul">${cands.map(r => `<li><label><input type="checkbox" data-vir="${escapeHtml(get(r, "UID"))}"${auto.sel.has(get(r, "UID")) ? " checked" : ""}> ${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(codeCompetition(r) || r._format)} · ${escapeHtml(rbEquipes_(r))} <b>${formatMoney(r._reste)}</b>${virEstime_(r) ? ' <span class="card-sub">(km estimés)</span>' : ""}</label></li>`).join("")}</ul>
+      <ul class="vir-ul">${cands.map(r => `<li><label class="vir-li"><input type="checkbox" data-vir="${escapeHtml(get(r, "UID"))}"${auto.sel.has(get(r, "UID")) ? " checked" : ""}><span class="vir-li-t"><span>${escapeHtml(rbFmtDate_(r._date))} · ${escapeHtml(codeCompetition(r) || r._format)}</span><small>${escapeHtml(rbEquipes_(r))}${virEstime_(r) ? " · km estimés" : ""}</small></span><b class="vir-li-m">${formatMoney(r._reste)}</b></label></li>`).join("")}</ul>
       <div class="vir-tot" id="virT"></div><button type="button" class="small-btn" id="virGo">Enregistrer le virement</button>`;
     let etat = null;
     const tot = () => {
@@ -10433,3 +10437,37 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
 state.reglCat = "5x5";
 /* b97 — bouton « Importer mes anciennes convocations » (Mon profil) : délégation (la CSP interdit les onclick). */
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
+
+/* b104 — fenêtre « Nouveautés » ouverte depuis le bandeau de mise à jour. */
+const RT_NOUVEAUTES = [
+  ["🏀", "Règlement 3×3", "Choisis 5×5 ou 3×3 en haut de l'onglet Règlement. Les réponses commencent par la décision en quelques mots."],
+  ["€", "Virement en 3 étapes", "Qui t'a payé, combien, quels matchs : l'app coche les bons matchs toute seule."],
+  ["▤", "Analyse simplifiée", "Sur téléphone : tes chiffres clés et qui te paie, en un coup d'œil."],
+  ["◷", "Matchs passés rangés", "Ceux de plus d'un mois sont masqués. « Voir tous les matchs » les fait revenir."],
+  ["▣", "e-Licence revue", "Carte plus lisible. Ta clé e-Marque est personnelle : enregistre la tienne dans Mon espace."]
+];
+function rtNouveautes_() {
+  let d = document.getElementById("rtNouv");
+  if (!d) {
+    d = document.createElement("dialog"); d.id = "rtNouv"; d.className = "rt-nouv";
+    d.innerHTML = `<form method="dialog"><p class="rt-nouv-k">Nouvelle version</p><h2>Ce qui change</h2><ul>${RT_NOUVEAUTES.map(x => `<li><span>${x[0]}</span><div><b>${escapeHtml(x[1])}</b><p>${escapeHtml(x[2])}</p></div></li>`).join("")}</ul><button class="rt-nouv-ok">C'est noté</button></form>`;
+    document.body.appendChild(d);
+  }
+  if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+}
+
+/* b104 — bandeau de mise à jour (annonce de style « maj ») : en haut de toutes les pages, 24 h (expire_le),
+   « Voir » ouvre la fenêtre Nouveautés, ✕ le masque définitivement. */
+function rtBandeauMaj_(x) {
+  const old = document.getElementById("rtMajBan");
+  if (!x) { if (old) old.remove(); return; }
+  if (old && old.dataset.id === String(x.id)) return;
+  if (old) old.remove();
+  const main = document.querySelector("main.content"); if (!main) return;
+  const d = document.createElement("div"); d.id = "rtMajBan"; d.className = "rt-majban"; d.dataset.id = String(x.id); d.setAttribute("role", "status");
+  d.innerHTML = `<span class="rt-majban-k">Nouveau</span><p>${escapeHtml(x.texte)}</p><button type="button" class="rt-majban-go">${escapeHtml(x.lib_action || "Voir")}</button><button type="button" class="rt-majban-x" aria-label="Masquer">✕</button>`;
+  main.prepend(d);
+  const fermer = async () => { d.remove(); const z = document.querySelector(`[data-ann="${Number(x.id)}"]`); if (z) z.remove(); try { await SB.write("PATCH", "annonces?id=eq." + Number(x.id), { masque_le: new Date().toISOString() }); } catch (e) {} };
+  d.querySelector(".rt-majban-go").addEventListener("click", () => { if (x.action === "nouveautes") rtNouveautes_(); else if (typeof setActiveTab === "function") setActiveTab(x.action); fermer(); });
+  d.querySelector(".rt-majban-x").addEventListener("click", fermer);
+}

@@ -164,9 +164,9 @@
 
   // ---------- navigation ----------
   const SECTIONS = { accueil: "Accueil", services: "Services & quotas", pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
-    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Stats", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
+    kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Stats", analyses: "Analyses", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
   // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
-  const ESPACE_DE = { accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
+  const ESPACE_DE = { analyses: "app", accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
   const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
   function espace(e) {
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
@@ -1935,6 +1935,91 @@
   // Mesuré : Supabase (base, fichiers, comptes), adresses de réception (Cloudflare), moteurs (Google), coût IA (Anthropic).
   // Limites = offres gratuites documentées par chaque service (à revérifier si un service change ses conditions).
   // =====================================================================
+  // b104 — ANALYSES AVANCÉES (rt_analyses) : retards par payeur, chronologie par arbitre, alerte 21 jours,
+  // coût IA par fonction et par arbitre, santé du transfert, prévision du stock de moteurs. Export CSV de chaque tableau.
+  const AN_CSV = {};
+  function anCsv(nom, entetes, lignes) {
+    AN_CSV[nom] = () => { const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+      const t = "﻿" + [entetes.map(q).join(";")].concat(lignes.map((l) => l.map(q).join(";"))).join("\n");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })); a.download = "referee-tracker-" + nom + "-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click(); };
+    return '<button type="button" class="btn sm an-csv" data-csv="' + nom + '">Exporter CSV</button>';
+  }
+  const anJours = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 864e5) : null;
+  const anFeu = (j, vert, orange) => j == null ? ["Jamais", "red"] : j <= vert ? [j === 0 ? "Aujourd'hui" : "Il y a " + j + " j", "green"] : j <= orange ? ["Il y a " + j + " j", "orange"] : ["Il y a " + j + " j", "red"];
+  const anEur = (v) => (Number(v) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+  rendus.analyses = async function (force) {
+    const el = $("sec-analyses");
+    if (force || !cache.analyses) { el.innerHTML = '<p class="mut">Chargement des analyses…</p>'; try { cache.analyses = await rpcAdmin("rt_analyses"); } catch (e) { el.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; } }
+    if (force || cache.auditBoite === undefined) { try { const r = await sbRest("config_globale?select=valeur&cle=eq.admin.audit_boite"); cache.auditBoite = (r && r[0] && r[0].valeur) || null; } catch (e) { cache.auditBoite = null; } }
+    const AB = cache.auditBoite;
+    const D = cache.analyses || {}, A = (D.arbitres || []).filter((a) => a.statut !== "supprime"), PY = D.payeurs || [];
+    const enSaison = (() => { const m = new Date().getMonth(); return m >= 8 || m <= 5; })();   // septembre → juin
+    // 1. retards par payeur
+    const pyT = PY.filter((p) => p.missions || p.du).sort((a, b) => b.du - a.du);
+    const totDu = pyT.reduce((t, p) => t + (Number(p.du) || 0), 0), totRet = pyT.reduce((t, p) => t + (Number(p.retard_eur) || 0), 0);
+    const delais = pyT.filter((p) => p.delai_saison != null), pire = delais.slice().sort((a, b) => b.delai_saison - a.delai_saison)[0];
+    // 3. alerte 21 jours · 4. santé du transfert
+    const actifs = A.filter((a) => a.statut === "actif");
+    const sans21 = actifs.filter((a) => { const j = anJours(a.dernier_ajout); return j == null || j > 21; });
+    const transfert = actifs.map((a) => ({ a, j: anJours(a.dernier_mail) })).sort((x, y) => (y.j ?? 1e9) - (x.j ?? 1e9));
+    // 5. coût IA
+    const POSTES = { convocations: "Lecture des convocations", reglement: "Règlement (chat)", evaluations: "Évaluations", rapports: "Rapports", autre: "Boîte mail, support, traduction" };
+    const parPoste = {}; A.forEach((a) => { const m = a.ia_mois || {}; Object.keys(POSTES).forEach((k) => (parPoste[k] = (parPoste[k] || 0) + (Number(m[k]) || 0))); });
+    const iaTot = Object.values(parPoste).reduce((t, v) => t + v, 0);
+    const iaArb = A.map((a) => ({ l: a.prenom, v: Object.keys(POSTES).reduce((t, k) => t + (Number((a.ia_mois || {})[k]) || 0), 0), j30: Number(a.ia_30j) || 0 })).filter((x) => x.v || x.j30).sort((a, b) => b.v - a.v);
+    // 6. stock
+    const S = D.stock || {}, libres = Number(S.libre) || 0, IS = D.inscriptions_sem || [];
+    const rythme = IS.length ? IS.slice(-4).reduce((t, w) => t + w.n, 0) / 4 : 0, semaines = rythme ? libres / rythme : null;
+    el.innerHTML = '<div class="row tech-actions"><span class="mut tiny">Calculé le ' + fmt(D.genere) + " · saison depuis le " + fmtD(D.debut_saison) + "</span></div>" +
+      VZ.hero([
+        { v: anEur(totDu), l: "Reste à recevoir (saison)", s: "dont " + anEur(totRet) + " en retard", c: totRet ? "gold" : "green", ic: "€" },
+        { v: pire ? pire.delai_saison + " j" : "—", l: "Payeur le plus lent", s: pire ? esc(pire.payeur) + " · délai moyen cette saison" : "pas encore de paiement reçu", c: "navy", ic: "⏱" },
+        { v: String(sans21.length), l: "Sans convocation 21 j", s: enSaison ? "arbitres actifs, en pleine saison" : "hors saison : normal", c: sans21.length && enSaison ? "red" : "green", ic: "!" },
+        { v: iaTot.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $", l: "IA ce mois (moteurs)", s: Object.keys(parPoste).filter((k) => parPoste[k]).length + " fonction(s) utilisée(s)", c: "violet", ic: "✦" },
+        { v: semaines == null ? libres + " libres" : semaines >= 52 ? "> 1 an" : semaines < 1 ? "< 1 sem." : Math.floor(semaines) + " sem.", l: "Stock de moteurs", s: libres + " libre(s) · " + rythme.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " inscription(s)/sem.", c: semaines != null && semaines < 3 ? "red" : semaines != null && semaines < 6 ? "gold" : "blue", ic: "⚙" }]) +
+      // 1
+      '<div class="card an-c"><div class="an-h"><h3>Retards par payeur</h3>' + anCsv("payeurs", ["Payeur", "Missions saison", "Reste dû", "En retard (nb)", "En retard (€)", "Plus ancien retard", "Délai moyen saison (j)", "Délai moyen historique (j)"], pyT.map((p) => [p.payeur, p.missions, p.du, p.retard_n, p.retard_eur, p.plus_ancien || "", p.delai_saison ?? "", p.delai_moyen ?? ""])) + "</div>" +
+      '<p class="mut tiny">Délai = jours entre le match et l\'encaissement. Les saisons soldées en bloc sont exclues du délai historique.</p>' +
+      '<table class="an-t"><thead><tr><th>Payeur</th><th class="right">Missions</th><th class="right">Reste dû</th><th class="right">En retard</th><th>Plus ancien</th><th>Délai moyen</th></tr></thead><tbody>' +
+      pyT.map((p) => { const d = p.delai_saison ?? p.delai_moyen, c = d == null ? "" : d <= 30 ? "green" : d <= 60 ? "orange" : "red";
+        return "<tr><td><b>" + esc(p.payeur) + '</b></td><td class="right">' + p.missions + '</td><td class="right">' + anEur(p.du) + '</td><td class="right">' + (p.retard_n ? '<span class="badge red">' + p.retard_n + " · " + anEur(p.retard_eur) + "</span>" : '<span class="mut">—</span>') + "</td><td>" + (p.plus_ancien ? fmtD(p.plus_ancien) + ' <span class="mut tiny">(' + anJours(p.plus_ancien) + " j)</span>" : "—") +
+          "</td><td>" + (d == null ? "—" : '<span class="an-bar"><i class="' + c + '" style="width:' + Math.min(100, d / 90 * 100) + '%"></i></span><b>' + d + " j</b>") + "</td></tr>"; }).join("") + "</tbody></table></div>" +
+      '<div class="an-g">' +
+      // 4
+      '<div class="card an-c"><div class="an-h"><h3>Santé du transfert</h3>' + anCsv("transfert", ["Arbitre", "Dernier mail reçu", "Jours", "Mails traités", "Version moteur"], transfert.map((x) => [x.a.prenom, x.a.dernier_mail || "", x.j ?? "", x.a.mails_traites ?? "", x.a.version_moteur || ""])) + "</div>" +
+      '<p class="mut tiny">Dernier mail reçu par le moteur de l\'arbitre. Vert ≤ 7 j · orange ≤ 21 j · rouge au-delà ou jamais.</p><ul class="an-l">' +
+      transfert.map((x) => { const f = anFeu(x.j, 7, 21); return '<li><span class="an-dot ' + f[1] + '"></span><b>' + esc(x.a.prenom) + '</b><span class="mut tiny">' + (x.a.mails_traites ?? 0) + " mail(s) · moteur " + esc(x.a.version_moteur || "?") + '</span><span class="badge ' + f[1] + '">' + f[0] + "</span></li>"; }).join("") + "</ul></div>" +
+      // 3
+      '<div class="card an-c"><div class="an-h"><h3>Aucune convocation depuis 21 jours</h3></div>' +
+      (sans21.length ? '<ul class="an-l">' + sans21.map((a) => { const j = anJours(a.dernier_ajout); return '<li><span class="an-dot ' + (enSaison ? "red" : "orange") + '"></span><b>' + esc(a.prenom) + '</b><span class="mut tiny">' + (j == null ? "aucune convocation transférée depuis l'inscription" : "dernière il y a " + j + " j") + (a.prochain_match ? " · prochain match " + fmtD(a.prochain_match) : "") + '</span><a class="tiny" href="#arbitres">Fiche ›</a></li>'; }).join("") + "</ul>" +
+        '<p class="mut tiny">Cause probable : transfert automatique non configuré, ou arbitre pas désigné. Une relance par mail est prête dans Communication.</p>' : '<p class="ok-l">✓ Tous les arbitres actifs ont reçu une convocation dans les 21 derniers jours.</p>') + "</div>" +
+      // 5
+      '<div class="card an-c"><div class="an-h"><h3>Coût de l\'IA</h3>' + anCsv("ia", ["Arbitre", "Mois en cours ($)", "30 derniers jours ($)"], iaArb.map((x) => [x.l, x.v.toFixed(3), x.j30.toFixed(3)])) + "</div>" +
+      '<h4 class="an-s">Par fonction (mois en cours)</h4>' + VZ.barresH(Object.keys(POSTES).map((k, i) => ({ l: POSTES[k], v: Math.round(parPoste[k] * 100) / 100, c: VZ.pal[i] })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v), (v) => v.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $") +
+      '<h4 class="an-s">Par arbitre</h4>' + VZ.barresH(iaArb.slice(0, 10).map((x) => ({ l: x.l, v: Math.round(x.v * 100) / 100 })), (v) => v.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " $") +
+      '<p class="mut tiny">Le moteur principal porte la boîte mail, le support et les traductions : son coût apparaît sous ton prénom.</p></div>' +
+      // 6
+      '<div class="card an-c"><div class="an-h"><h3>Prévision du stock de moteurs</h3></div>' +
+      '<div class="an-stock">' + Object.keys(S).map((k) => '<div><b>' + S[k] + "</b><span>" + esc({ libre: "libres", attribue: "attribués", pret: "prêts", erreur: "en erreur" }[k] || k) + "</span></div>").join("") + "</div>" +
+      (IS.length ? VZ.aire([{ nom: "Inscriptions par semaine", v: IS.map((w) => w.n), c: "#2563EB" }], IS.map((w) => jj(w.sem)), { h: 130 }) : "") +
+      '<p class="an-prev">' + (semaines == null ? "Pas d'inscription ces 4 dernières semaines : le stock tient." : "Au rythme actuel (" + rythme.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "/sem.), les " + libres + " moteurs libres seront épuisés vers le <b>" + new Date(Date.now() + semaines * 7 * 864e5).toLocaleDateString("fr-FR", { day: "numeric", month: "long" }) + "</b>." + (semaines < 4 ? " <b>Prépare un lot de moteurs maintenant</b> (rt-beta.sh)." : "")) + "</p></div>" +
+      "</div>" +
+      // boîte mail
+      '<div class="card an-c"><div class="an-h"><h3>Boîte mail (audit quotidien)</h3>' + (AB ? '<span class="mut tiny">' + fmt(AB.le) + "</span>" : "") + "</div>" +
+      (AB ? '<div class="an-stock"><div><b>' + AB.inbox_total + '</b><span>en boîte de réception</span></div><div><b>' + AB.inbox_sans_libelle + '</b><span>sans libellé</span></div><div><b>' + (AB.libelles["Referee Tracker/À vérifier"] || 0) + '</b><span>à vérifier</span></div><div><b>' + (AB.libelles["Referee Tracker/Anomalie"] || 0) + '</b><span>anomalies</span></div><div><b>' + AB.verifier_bascules + '</b><span>rangées ce jour</span></div></div>' +
+        (AB.problemes && AB.problemes.length ? '<ul class="an-l">' + AB.problemes.map((x) => '<li><span class="an-dot orange"></span>' + esc(x) + "</li>").join("") + "</ul>" : '<p class="ok-l">✓ Aucun mail mal classé détecté.</p>')
+        : '<p class="mut">Premier audit au prochain passage du moteur principal (une fois par jour).</p>') + "</div>" +
+      // 2
+      '<div class="card an-c"><div class="an-h"><h3>Chronologie par arbitre</h3>' + anCsv("chronologie", ["Arbitre", "Statut", "Inscription", "Compte créé", "Premier match importé", "Dernière convocation reçue", "Dernière connexion", "Minutes 30 j", "Matchs saison", "Virements pointés", "Tickets"], A.map((a) => [a.prenom, a.statut, a.inscription || "", a.cree_le || "", a.premier_ajout || "", a.dernier_ajout || "", a.derniere_connexion || "", a.minutes_30j, a.matchs_saison, a.virements, a.tickets])) + "</div>" +
+      '<input class="an-f" id="anF" placeholder="Filtrer par prénom…"><div class="an-chr">' +
+      A.map((a) => { const ev = [["Inscription", a.inscription], ["Compte créé", a.cree_le], ["Premier match importé", a.premier_ajout], ["Dernière convocation reçue", a.dernier_ajout], ["Dernier mail traité", a.dernier_mail], ["Dernière connexion", a.derniere_connexion], ["Dernier virement pointé", a.dernier_virement], ["Prochain match", a.prochain_match]].filter((e) => e[1]).sort((x, y) => new Date(x[1]) - new Date(y[1]));
+        const f = anFeu(anJours(a.derniere_connexion), 7, 21);
+        return '<details class="an-a" data-n="' + esc(String(a.prenom).toLowerCase()) + '"><summary><b>' + esc(a.prenom) + '</b><span class="badge ' + (a.statut === "actif" ? "green" : "orange") + '">' + esc(a.statut || "?") + '</span><span class="mut tiny">' + a.matchs_saison + " match(s) cette saison · " + a.minutes_30j + ' min d\'usage en 30 j</span><span class="badge ' + f[1] + '">Connexion : ' + f[0] + "</span></summary>" +
+          '<ol class="an-tl">' + ev.map((e) => '<li class="' + (new Date(e[1]) > new Date() ? "futur" : "") + '"><span>' + fmtD(e[1]) + "</span>" + esc(e[0]) + "</li>").join("") + "</ol></details>"; }).join("") + "</div></div>";
+    el.querySelectorAll(".an-csv").forEach((b) => (b.onclick = () => AN_CSV[b.dataset.csv]()));
+    $("anF").oninput = (e) => { const q = e.target.value.toLowerCase().trim(); el.querySelectorAll(".an-a").forEach((d) => (d.style.display = !q || d.dataset.n.includes(q) ? "" : "none")); };
+  };
+
   rendus.services = async function (force) {
     const el = $("sec-services");
     if (force || !cache.services) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.services = await rpcAdmin("rt_services_etat"); }
