@@ -5013,7 +5013,7 @@ h2.page-title, h2.section-title.sub-title {
 @media (max-width: 767px) {
   #reglement .regl-form textarea { font-size: 16px !important; }
   #reglement .regl-wrap.regl-plein { position: fixed !important; left: 0; right: 0; z-index: 1000; display: flex; flex-direction: column; margin: 0; padding: 8px 10px 8px; background: var(--bg, #0B1428); max-width: none; }
-  #reglement .regl-wrap.regl-plein > :not(.regl-chat):not(.regl-form) { display: none !important; }
+  #reglement .regl-wrap.regl-plein > :not(.regl-chat):not(.regl-form):not(.regl-plein-bar) { display: none !important; }
   #reglement .regl-wrap.regl-plein .regl-chat { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
   #reglement .regl-wrap.regl-plein .regl-form { position: static !important; margin: 6px 0 0 !important; flex: none; }
   body.rt-clavier { overscroll-behavior: none; }
@@ -5129,3 +5129,15 @@ h2.page-title, h2.section-title.sub-title {
 .rt-majban-go { flex: none; border: 0; border-radius: 10px; padding: 8px 12px; background: #fff; color: #0A1F44; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .rt-majban-x { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.7); font-size: 16px; padding: 6px; cursor: pointer; }
 @media (max-width: 560px) { .rt-majban { flex-wrap: wrap; } .rt-majban p { flex-basis: calc(100% - 80px); } .rt-majban-go { margin-left: auto; } }
+
+/* b104 — Règlement iPhone, clavier ouvert : l'en-tête de l'app ne recouvre plus la conversation (un parent animé
+   créait un contexte d'empilement), barre « Fermer » en haut, saisie collée au clavier. */
+.regl-plein-bar { display: none; }
+@media (max-width: 767px) {
+  body.rt-regl-plein .app-header, body.rt-regl-plein nav.tabs { visibility: hidden !important; }
+  body.rt-regl-plein main.content, body.rt-regl-plein #reglement, body.rt-regl-plein .tab-panel, body.rt-regl-plein .panel { transform: none !important; animation: none !important; filter: none !important; }
+  #reglement .regl-wrap.regl-plein { z-index: 9990 !important; padding: 0 10px 4px !important; padding-top: env(safe-area-inset-top, 0px) !important; }
+  #reglement .regl-wrap.regl-plein .regl-plein-bar { display: flex; align-items: center; justify-content: space-between; flex: none; padding: 8px 2px; font-size: 13px; font-weight: 700; color: var(--muted, #93A0BE); border-bottom: 1px solid var(--line, #2A3653); margin-bottom: 6px; }
+  #reglement .regl-wrap.regl-plein .regl-plein-bar button { border: 0; background: rgba(127,127,127,.18); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
+  #reglement .regl-wrap.regl-plein .regl-form { margin: 4px 0 0 !important; }
+}

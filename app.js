@@ -10398,11 +10398,18 @@ function renderClassementMatch_(row) {
       if (wR) {
         if (clavier && a && fR && fR.contains(a)) {
           const deja = wR.classList.contains("regl-plein");
-          wR.classList.add("regl-plein");
+          wR.classList.add("regl-plein"); document.body.classList.add("rt-regl-plein");   // b104 — en-tête masqué, aucun parent transformé
+          if (!wR.querySelector(".regl-plein-bar")) {   // b104 — barre de fermeture en haut de l'écran plein
+            const bar = document.createElement("div"); bar.className = "regl-plein-bar";
+            bar.innerHTML = '<span>Règlement · ' + (state.reglCat === "3x3" ? "3×3" : "5×5") + '</span><button type="button" aria-label="Fermer le clavier">Fermer ✕</button>';
+            bar.querySelector("button").addEventListener("mousedown", e => e.preventDefault());
+            bar.querySelector("button").addEventListener("click", () => { const t = document.activeElement; if (t && t.blur) t.blur(); });
+            wR.prepend(bar);
+          }
           wR.style.top = vv.offsetTop + "px"; wR.style.height = vv.height + "px";
           if (!deja) { const chat = wR.querySelector(".regl-chat"); if (chat) chat.scrollTop = chat.scrollHeight; }
         } else if (wR.classList.contains("regl-plein")) {
-          wR.classList.remove("regl-plein"); wR.style.top = ""; wR.style.height = "";
+          wR.classList.remove("regl-plein"); document.body.classList.remove("rt-regl-plein"); wR.style.top = ""; wR.style.height = "";
         }
       }
       if (clavier) { nav.style.transform = "translateY(200%)"; return; }

@@ -1008,6 +1008,41 @@
     ], ann, { action: async (act, x) => { if (act !== "suppr") return; if (!(await confirmer("Retirer la bannière", "Retirer la bannière de " + esc(nom(x.user_id)) + " ?", "Retirer"))) return; try { await sbRest("annonces?id=eq." + x.id, "DELETE"); toast("Bannière retirée", "ok"); bannieres(box); } catch (e) { erreur(e); } } });
   }
 
+  // b104 — CAMPAGNE E-MAIL « configuration du compte » : simulation (rien ne part), puis envoi par groupe après confirmation.
+  async function rpcP(nom, corps) {
+    const r = await fetch(SB_URL + "/rest/v1/rpc/" + nom, { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify(corps || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
+    return j;
+  }
+  const CA_SEG = { A: ["Compte jamais ouvert", "« Ton espace t'attend »"], B: ["Pas de transfert automatique", "« Passe tes convocations en automatique »"], C: ["Configuration à terminer", "« Encore 2 minutes pour des calculs justes »"], D: ["Derniers réglages", "« Encore N réglages »"] };
+  function campagneCarte(box) {
+    box.innerHTML = '<div class="card ca"><div class="card-head"><h3>Campagne « configuration du compte »</h3><span class="sub">e-mail personnalisé selon où bloque chaque arbitre</span></div>' +
+      '<div class="ca-seg">' + Object.keys(CA_SEG).map((k) => '<label class="ca-s"><input type="checkbox" value="' + k + '" checked><b>' + k + "</b><span>" + esc(CA_SEG[k][0]) + '<br><em>' + esc(CA_SEG[k][1]) + "</em></span></label>").join("") + "</div>" +
+      '<div class="row"><button class="btn" id="caSim">1. Simuler (rien ne part)</button><button class="btn pri" id="caEnv" disabled>2. Envoyer les groupes cochés</button></div>' +
+      '<div id="caRes" class="ca-res"><p class="mut tiny">Commence par une simulation : elle liste qui recevrait quel e-mail. Exécution par ton moteur principal, en 10 minutes au plus. Un arbitre qui a tout fait ne reçoit rien. Limite Google : 100 destinataires par jour.</p></div></div>';
+    const segs = () => [...box.querySelectorAll(".ca-s input:checked")].map((i) => i.value);
+    const suivre = async (id, quoi) => {
+      const res = box.querySelector("#caRes"), t0 = Date.now();
+      res.innerHTML = '<p class="mut">' + quoi + " déposée (n° " + id + ") · en attente du moteur principal… <span class=\"tiny\">(10 min max, tu peux quitter la page)</span></p>";
+      const tour = async () => {
+        let e = null; try { e = await rpcP("rt_campagne_etat", { cid: id }); } catch (x) {}
+        if (e && (e.statut === "ok" || e.statut === "erreur")) {
+          const lignes = String(e.resultat || "").replace(/^[^:]*:\s*/, "").split(" · ").filter(Boolean);
+          res.innerHTML = '<p><b>' + esc(String(e.resultat || "").split(" — ")[0]) + "</b> · " + lignes.length + ' e-mail(s)</p><ul class="ca-l">' + lignes.map((l) => "<li>" + esc(l) + "</li>").join("") + "</ul>";
+          if (e.statut === "ok" && !(e.params && e.params.envoyer)) box.querySelector("#caEnv").disabled = false;
+          return;
+        }
+        if (Date.now() - t0 < 20 * 60000) setTimeout(tour, 20000); else res.innerHTML += '<p class="err">Pas de réponse du moteur principal après 20 min.</p>';
+      };
+      tour();
+    };
+    box.querySelector("#caSim").onclick = async () => { const s = segs(); if (!s.length) return toast("Coche au moins un groupe", "err");
+      try { const id = await rpcP("rt_campagne", { segments: s, envoyer: false }); box.querySelector("#caEnv").disabled = true; suivre(id, "Simulation"); } catch (e) { toast(e.message, "err"); } };
+    box.querySelector("#caEnv").onclick = async () => { const s = segs(); if (!s.length) return toast("Coche au moins un groupe", "err");
+      if (!(await confirmer("Envoyer la campagne", "Envoyer l'e-mail aux arbitres des groupes " + s.join(", ") + " (liste de la simulation) ? Cette action est définitive.", "Envoyer"))) return;
+      try { const id = await rpcP("rt_campagne", { segments: s, envoyer: true }); box.querySelector("#caEnv").disabled = true; suivre(id, "Envoi"); } catch (e) { toast(e.message, "err"); } };
+  }
   rendus.communication = async function (force) {
     const el = $("sec-communication");
     if (force || !cache.config || !cache.journalMsg) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); cache.journalMsg = await admin("journal.liste", { filtre_action: "message" }); }
@@ -1023,6 +1058,7 @@
       '<div class="card" id="coAnn"><p class="mut">Chargement des bannières…</p></div>' +
       '<div class="card"><div class="card-head"><h3>Historique des envois</h3><span class="sub">messages, diffusions, notifications (journal d\'audit)</span></div><div id="coT"></div></div>';
     el.querySelector("#coCfgM").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; };
+    el.insertAdjacentHTML("afterbegin", "<div id=\"caBox\"></div>"); campagneCarte($("caBox"));   // b104
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
     const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };

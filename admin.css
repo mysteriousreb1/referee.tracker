@@ -676,3 +676,10 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .an-tl li { position: relative; padding: 5px 0; font-size: 13.5px; } .an-tl li::before { content: ""; position: absolute; left: -22px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: #2563EB; }
 .an-tl li.futur::before { background: transparent; border: 2px solid #F2B705; } .an-tl li span { display: inline-block; width: 74px; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) { .an-t { font-size: 12.5px; } .an-bar { width: 50px; } }
+/* b104 — campagne e-mail */
+.ca { margin-bottom: 14px; }
+.ca-seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin: 6px 0 12px; }
+.ca-s { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.ca-s input { margin-top: 3px; width: 18px !important; height: 18px !important; min-height: 0 !important; flex: none; padding: 0 !important; } .ca-s b { font-size: 18px; color: var(--gold, #F2B705); } .ca-s span { font-size: 13px; line-height: 1.4; } .ca-s em { color: var(--muted); font-size: 12px; }
+.ca-res { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(127,127,127,.07); }
+.ca-l { margin: 6px 0 0; padding-left: 18px; font-size: 13px; } .ca-l li { padding: 2px 0; }
