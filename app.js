@@ -418,7 +418,7 @@ const RECH = {
     const nbSel = 1 + (avecPaiement ? 1 : 0) + (avecFormat ? 1 : 0);
     el.innerHTML = `<div class="rt-search-backdrop"></div>
       <section class="rt-search" role="dialog" aria-modal="true" aria-label="Recherche">
-        <header class="rt-search-head"><div><span class="rt-search-kicker">Recherche · ${escapeHtml(this.TITRES[page] || "")} <em>· filtres propres à cette page</em></span><h3>Que cherches-tu ?</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <header class="rt-search-head"><div><span class="rt-search-kicker">${escapeHtml(this.TITRES[page] || "Recherche")}</span><h3>Rechercher et filtrer</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
         <div class="rt-search-field"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" list="rtSearchSugg" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(f.search || "")}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rt-search-clear" id="rtSearchClear" aria-label="Effacer"${f.search ? "" : " hidden"}>✕</button></div>
         <datalist id="rtSearchSugg">${sugg.map(v => `<option value="${escapeHtml(v)}"></option>`).join("")}</datalist>
         ${hist.length ? `<div class="rt-search-sec rt-search-hist"><div class="rt-search-sec-h"><label>Recherches récentes</label><button type="button" class="rt-search-link" id="rtSearchHistClear">Effacer</button></div><div class="rt-chips rt-chips--hist">${hist.map(h => `<button type="button" class="rt-chip rt-chip--hist" data-hist="${escapeHtml(h)}">${escapeHtml(h)}</button>`).join("")}</div></div>` : ""}
@@ -1100,32 +1100,29 @@ function reglReponseHtml_(m) {
   }
   if (!m.decision && !m.explication) return (prec || "") + formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources);
   const a = m.analyse;
-  // b103 — réponse aérée : la décision d'abord (courte), le reste replié et rangé (fini le gros bloc de texte)
-  const arts = m.articles && m.articles.length ? `<div class="regl-arts">${m.articles.map(x => `<span class="regl-art">${escapeHtml(x)}</span>`).join("")}</div>` : "";
-  // b104 — verdict en 2-6 mots en tête + ce que l'IA a compris de la situation décrite
-  const tete = (m.compris ? `<p class="regl-compris"><span>J'ai compris</span>${escapeHtml(m.compris)}</p>` : "") + (m.verdict ? `<div class="regl-verdict">${escapeHtml(m.verdict)}</div>` : "");
-  const repli = (titre, corps, ouvert) => corps ? `<details class="regl-plus"${ouvert ? " open" : ""}><summary>${titre}</summary><div class="regl-plus-c">${corps}</div></details>` : "";
+  /* b105 — réponse refondue : une seule bulle sobre, lisible d'un coup d'œil.
+     1. la réponse en gras (verdict) puis 2-3 phrases ; 2. l'essentiel visible (procédure, points) ;
+     3. références en texte discret ; 4. « Pourquoi » et « Sources » repliés en liens. Plus de pavés jaunes ni d'étiquettes. */
+  const liste = (l, cls) => l && l.length ? `<ul class="rr-list${cls ? " " + cls : ""}">${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : "";
+  const compris = m.compris ? `<p class="rr-sit">${escapeHtml(m.compris)}</p>` : "";
+  const verdict = m.verdict ? `<p class="rr-verdict">${escapeHtml(m.verdict)}</p>` : "";
+  const corps = m.decision ? `<div class="rr-corps">${formatReglementReponse_(m.decision)}</div>` : "";
+  const refs = m.articles && m.articles.length ? `<p class="rr-refs">${m.articles.map(x => escapeHtml(x)).join(" · ")}</p>` : "";
+  const plus = (titre, html) => html ? `<details class="rr-plus"><summary>${titre}</summary><div class="rr-plus-c">${html}</div></details>` : "";
+  let milieu = "", replis = "";
   if (a && (a.bien.length + a.pas_bien.length + a.a_faire.length + a.ameliorer.length)) {   // b74 — analyse d'une situation vécue
-    const liste = l => `<ul>${l.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`;
-    const pastilles = `<div class="regl-bilan">${a.bien.length ? `<span class="ok">✓ ${a.bien.length} bon${a.bien.length > 1 ? "s" : ""} réflexe${a.bien.length > 1 ? "s" : ""}</span>` : ""}${a.pas_bien.length ? `<span class="ko">✕ ${a.pas_bien.length} point${a.pas_bien.length > 1 ? "s" : ""} à revoir</span>` : ""}</div>`;
-    return `${prec || ""}${tete}
-    ${m.decision ? `<div class="regl-decision"><span>Ce qu'il fallait faire</span>${formatReglementReponse_(m.decision)}</div>` : ""}
-    ${pastilles}${arts}
-    ${repli("La bonne procédure", a.a_faire.length ? liste(a.a_faire) : "", true)}
-    ${repli("Ce qui allait", a.bien.length ? liste(a.bien) : "")}
-    ${repli("Ce qui n'allait pas", a.pas_bien.length ? liste(a.pas_bien) : "")}
-    ${repli("Pour progresser", a.ameliorer.length ? liste(a.ameliorer) : "")}
-    ${reglSourcesHtml_(m.sources)}`;
+    milieu = (a.a_faire.length ? `<p class="rr-h">La bonne procédure</p>${liste(a.a_faire, "rr-ol")}` : "")
+      + (a.bien.length || a.pas_bien.length ? `<div class="rr-bilan">${liste(a.bien, "rr-ok")}${liste(a.pas_bien, "rr-ko")}</div>` : "");
+    replis = plus("Pour progresser", liste(a.ameliorer));
+  } else {
+    replis = plus("Pourquoi ?", m.explication ? formatReglementReponse_(m.explication) : "");
   }
-  return `${prec || ""}${tete}
-    ${m.decision ? `<div class="regl-decision"><span>${m.verdict ? "En clair" : "Décision"}</span>${formatReglementReponse_(m.decision)}</div>` : ""}
-    ${arts}
-    ${repli("Pourquoi : la règle expliquée", m.explication ? formatReglementReponse_(m.explication) : "")}
-    ${reglSourcesHtml_(m.sources)}`;
+  const src = reglSourcesHtml_(m.sources);
+  return `<div class="rr">${prec || ""}${compris}${verdict}${corps}${milieu}${refs}${replis || src ? `<div class="rr-pied">${replis}${src}</div>` : ""}</div>`;
 }
 function reglSourcesHtml_(src) {
   if (!src || !src.length) return "";
-  return `<details class="regl-sources"><summary class="regl-sources-t">Voir les sources (${src.length})</summary>${src.map((x, i) => `
+  return `<details class="regl-sources rr-plus"><summary class="regl-sources-t">Sources (${src.length})</summary>${src.map((x, i) => `
     <div class="regl-src-item"><div class="regl-src-doc"><span class="regl-src-n">${i + 1}</span>${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener">${escapeHtml(x.doc)}</a>` : escapeHtml(x.doc)}</div>
     <div class="regl-src-txt">${escapeHtml(x.extrait)}</div></div>`).join("")}</details>`;
 }
@@ -1241,6 +1238,7 @@ function attachReglementListeners_(root) {
     const q = ta ? ta.value.trim() : "";
     if (!q) return;
     ta.value = ""; ta.style.height = "";
+    if (estTel_() && ta.blur) ta.blur();   // b105 — téléphone : le clavier se ferme pour lire la réponse, en-tête et onglets reviennent
     askReglement_(q);
   });
   // Entrée = envoi ; Maj+Entrée = nouvelle ligne ; hauteur auto (max 6 lignes)
@@ -1666,6 +1664,7 @@ function renderAccueil() {
       <div class="acc-hero-top">
         <span class="acc-hero-tag">${enCours ? "En cours" : "Prochain match"}</span>
         <span class="acc-hero-when"><strong>${escapeHtml(jourCourt)}</strong>${heure ? ` · ${escapeHtml(heure)}` : ""}</span>
+        <span class="acc-hero-indem" title="Indemnité prévue">${formatMoney(r._amount)}</span>
       </div>
       <div class="acc-hero-teams">
         <div class="acc-hero-team">${escapeHtml(rec || vis || "Mission")}${cltPos_(r, "rec")}</div>
@@ -1685,7 +1684,6 @@ function renderAccueil() {
           ${telBrut ? `<a class="acc-btn" href="tel:${telBrut}">${ico.tel}<span>${escapeHtml((col || "Collègue").split(" ")[0])}</span></a>` : ""}
           <button type="button" class="acc-btn acc-vers-match" data-uid="${uid}">${ico.more}<span>Détail</span></button>
         </div>
-        <div class="acc-hero-indem">${formatMoney(r._amount)}</div>
       </div>
     </div>`;
   })();
@@ -1880,11 +1878,13 @@ function notifCompter_() {
   const P = document.getElementById("rtNotifPanel"), b = document.getElementById("rtNotifBadge"), v = document.getElementById("rtNotifVide"); if (!P || !b) return;
   const n = P.querySelectorAll("#accAnnonces [data-ann]").length + (P.querySelector("#accImport").children.length ? 1 : 0) + (P.querySelector("#accHisto").children.length ? 1 : 0);
   b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n || ""); if (v) v.hidden = n > 0;
+  // b105 — pas de cloche dans l'en-tête quand il n'y a rien à lire (elle revient dès qu'une notification arrive)
+  const btn = document.getElementById("rtNotifBtn"); if (btn) btn.hidden = !n && P.hidden;
 }
 (function notifInit_() {
   const go = () => {
     const btn = document.getElementById("rtNotifBtn"), P = document.getElementById("rtNotifPanel"); if (!btn || !P || btn._ok) return; btn._ok = true;
-    const ouvrir = (o) => { P.hidden = !o; btn.setAttribute("aria-expanded", o ? "true" : "false"); };
+    const ouvrir = (o) => { P.hidden = !o; btn.setAttribute("aria-expanded", o ? "true" : "false"); if (!o) notifCompter_(); };
     btn.addEventListener("click", (e) => { e.stopPropagation(); ouvrir(P.hidden); });
     document.getElementById("rtNotifFermer").addEventListener("click", () => ouvrir(false));
     document.addEventListener("click", (e) => { if (!P.hidden && !P.contains(e.target) && e.target !== btn) ouvrir(false); });
@@ -2334,7 +2334,7 @@ function renderTransport_(row, uid) {
     transport: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M9 21l-2-3M15 21l2-3"/><circle cx="9" cy="14" r=".9"/><circle cx="15" cy="14" r=".9"/></svg>'
   };
   const o = [["voiture", "Je conduis", "carburant compté"], ["passager", "Covoiturage", "je suis passager"], ["transport", "Train · bus", "transport en commun"]];
-  const aide = m === "voiture" ? "Carburant et usure comptés dans ton net." : "Pas de carburant ni d'usure à ta charge. L'indemnité km FFBB reste due.";
+  const aide = m === "voiture" ? "Carburant, péages et frais saisis déduits du net. L'usure est comptée à part (Stats › Coût réel complet)." : m === "transport" ? "Pas de carburant compté. Ajoute le prix du billet aller-retour (« + Prix du billet ») : il est déduit du net. L'indemnité km FFBB reste due." : "Pas de carburant ni d'usure à ta charge. L'indemnité km FFBB reste due.";
   // b88l — covoiturage : partage des frais. Usage courant entre arbitres : le passager rembourse au conducteur la moitié
   // du carburant et des péages du trajet aller-retour (l'indemnité km reste versée à chacun par le payeur).
   let partage = "";
@@ -2343,10 +2343,12 @@ function renderTransport_(row, uid) {
     if (km > 0 && m !== "transport") {
       const carb = typeof realFuelCostClient === "function" ? realFuelCostClient(km, row._date) : 0;
       const peage = typeof window.rtFraisMatch === "function" ? window.rtFraisMatch(uid) : 0;
-      const part = Math.round(((carb || 0) + (peage || 0)) / 2);
+      // b105 — le conducteur use SA voiture : la part du passager couvre la moitié du carburant, des péages ET de l'usure
+      const usure = typeof entretienKmClient_ === "function" ? round2(km * entretienKmClient_(row._date)) : 0;
+      const part = Math.round(((carb || 0) + (peage || 0) + usure) / 2);
       if (part > 0) partage = m === "passager"
-        ? `<div class="trajet-seg-partage"><b>À donner au conducteur : ~${part} €</b> <small>moitié du carburant${peage ? " et des péages" : ""} (${Math.round(km)} km A/R). C'est l'usage courant : ajustez entre vous.</small></div>`
-        : `<div class="trajet-seg-partage"><small>Si tu emmènes un collègue : il te rembourse ~${part} € (moitié du carburant${peage ? " et des péages" : ""}).</small></div>`;
+        ? `<div class="trajet-seg-partage"><b>À donner au conducteur : ~${part} €</b> <small>moitié du carburant, de l'usure${peage ? " et des péages" : ""} (${Math.round(km)} km A/R). C'est l'usage courant : ajustez entre vous.</small></div>`
+        : `<div class="trajet-seg-partage"><small>Si tu emmènes un collègue : il te rembourse ~${part} € (moitié du carburant, de l'usure${peage ? " et des péages" : ""}). Tes frais réels sont divisés par deux et chacun garde son indemnité km.</small></div>`;
     }
   } catch (e) { partage = ""; }
   return `<div class="trajet-seg" role="radiogroup" aria-label="Comment tu te rends au match">
@@ -2752,7 +2754,7 @@ function buildSmsCollegue(row) {
 function renderActions(row) {
   const address = get(row, "Adresse");
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
-  const links = [];
+  const links = [], sub = [];
   if (address) links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
   if (phone && smsDisponible(row)) {
     const corps = encodeURIComponent(buildSmsCollegue(row));
@@ -2768,7 +2770,11 @@ function renderActions(row) {
   if (get(row, "Collègue nom") && smsDisponible(row)) {
     const uid = escapeHtml(get(row, "UID"));
     const fait = Boolean(get(row, "Contact collègue"));
-    links.push(`<button type="button" class="action-link secondary contact-toggle${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}">${fait ? "✓ Contact fait" : "Contact fait"}</button>`);
+    // b105 — plus un gros bouton : le SMS envoyé depuis l'app coche déjà le contact. Ici, une simple ligne discrète
+    // pour le cas où le collègue a appelé ou écrit en premier.
+    sub.push(fait
+      ? `<span class="act-note is-ok">✓ Collègue contacté <button type="button" class="act-txt contact-toggle" data-uid="${uid}" data-fait="1">annuler</button></span>`
+      : `<span class="act-note">Déjà en contact ? <button type="button" class="act-txt contact-toggle" data-uid="${uid}" data-fait="0">Marquer comme fait</button></span>`);
   }
   if (false) {   // b100 — bouton FBI retiré (demande Clément)
     links.push("");
@@ -2779,13 +2785,14 @@ function renderActions(row) {
   const t = row._date ? row._date.getTime() : 0;
   // b88i — 5x5 comme 3x3 : bouton disponible pour TOUT match (à venir ou passé), tant que rien n'est payé.
   if (t && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
-    links.push(`<button type="button" class="action-link secondary alerte-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé (dernière minute)</button>`);
+    sub.push(`<button type="button" class="act-txt act-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé à la dernière minute</button>`);
   }
   // b20 — 3x3 : supprimer une mission créée par erreur (passe en « Annulé », agenda nettoyé).
   if (row._format === "3x3" && paie !== "Reçu" && paie !== "Reçu partiel") {
-    links.push(`<button type="button" class="action-link secondary alerte-danger" data-supprimer-mission="${escapeHtml(get(row, "UID"))}">Supprimer</button>`);
+    sub.push(`<button type="button" class="act-txt act-danger" data-supprimer-mission="${escapeHtml(get(row, "UID"))}">Supprimer</button>`);
   }
-  return links.length ? `<div class="actions">${links.join("")}</div>` : "";
+  // b105 — 2 actions principales côte à côte, actions rares en texte discret dessous
+  return (links.length ? `<div class="actions actions--main n${links.length}">${links.join("")}</div>` : "") + (sub.length ? `<div class="actions-sub">${sub.join("")}</div>` : "");
 }
 
 function paiementRegime_(row) {
@@ -8021,7 +8028,8 @@ function enrichirPourAnalyse_(r) {
   const km = (r._kmEff != null ? r._kmEff : (r._km || 0));
   const brut = r._amount || 0;
   const carburant = realFuelCostClient(km, r._date);
-  const net = round2(brut - carburant);
+  const fraisTrajet = typeof window.rtFraisMatch === "function" ? window.rtFraisMatch(get(r, "UID")) : 0;   // b105 : péage, parking, billet, amende
+  const net = round2(brut - carburant - fraisTrajet);
 
   const heuresRoute = km ? km / AN.VITESSE_MOY_KMH : 0;
   const heuresSurPlace = r._format === "3x3" ? AN.DUREE_3X3_H : AN.DUREE_5X5_H;
@@ -9234,7 +9242,7 @@ function licCarteBloc_(e) {
       <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
       <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
     </div>
-    <p class="card-sub">Lue sur ta licence ${escapeHtml(e.docSaison || "")}${e.carte.lu_le ? " le " + escapeHtml(e.carte.lu_le) : ""}. Vérifie les champs ; « Corriger » si besoin.</p>
+    <p class="elic-src">Licence ${escapeHtml(e.docSaison || "")}${e.carte.lu_le ? " · lue le " + escapeHtml(e.carte.lu_le) : ""}</p>
   </div>`;
 }
 /* Découpe la photo d'identité dans l'image officielle (cadre donné par l'IA). */
@@ -9306,7 +9314,7 @@ function renderEmarque_() {
       </div></div>
     <div class="emq-val">${etat}</div>
     <form id="emqForm" class="emq-form" hidden><input id="emqInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ta clé e-Marque" /><button type="submit" class="small-btn">Enregistrer</button>${m && m.defini ? `<button type="button" class="small-btn secondary alerte-danger" id="emqDel">Supprimer</button>` : ""}</form>
-    <p class="card-sub emq-note">Stockée uniquement sur ton moteur personnel, jamais dans le site, le navigateur ni chez un autre arbitre.</p>
+
   </div>`;
 }
 async function chargerEmarque_(reveler) {
@@ -10389,7 +10397,10 @@ function renderClassementMatch_(row) {
       if (!estTel_()) { nav.style.transform = ""; return; }
       // b67 — clavier ouvert (champ actif ou viewport visuel réduit de 25 %) : la barre sort de l'écran au lieu de
       // venir se coller au-dessus du clavier, exactement là où iOS fait défiler le champ en cours de saisie.
-      const a = document.activeElement, clavier = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio") || vv.height < window.innerHeight * 0.75;
+      // b105 — clavier = champ actif ET zone visible réduite. Avant, un champ resté actif après fermeture du clavier (iOS)
+      // laissait la conversation du Règlement en plein écran, sans en-tête ni barre d'onglets : impossible d'en sortir.
+      const a = document.activeElement, champ = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox" && a.type !== "radio";
+      const clavier = (champ && vv.height < window.innerHeight * 0.85) || vv.height < window.innerHeight * 0.7;
       document.body.classList.toggle("rt-clavier", !!clavier);   // b88l — Règlement : le composeur ne garde plus la place de la barre
       // b97c — iPhone : le composeur du Règlement est calé sur la zone VISIBLE (au-dessus du clavier), quel que soit le défilement d'iOS.
       // b100 — iPhone, clavier ouvert dans le Règlement : la conversation devient un écran plein calé EXACTEMENT sur la zone
@@ -10412,6 +10423,8 @@ function renderClassementMatch_(row) {
           wR.classList.remove("regl-plein"); document.body.classList.remove("rt-regl-plein"); wR.style.top = ""; wR.style.height = "";
         }
       }
+      // b105 — filet : plus d'écran plein dès qu'on quitte le Règlement ou que le clavier est fermé
+      if (!wR || !clavier) { document.body.classList.remove("rt-regl-plein"); document.querySelectorAll(".regl-plein").forEach(w => { w.classList.remove("regl-plein"); w.style.top = ""; w.style.height = ""; }); }
       if (clavier) { nav.style.transform = "translateY(200%)"; return; }
       const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
       nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
@@ -10447,11 +10460,11 @@ document.addEventListener("click", e => { const b = e.target.closest && e.target
 
 /* b104 — fenêtre « Nouveautés » ouverte depuis le bandeau de mise à jour. */
 const RT_NOUVEAUTES = [
-  ["🏀", "Règlement 3×3", "Choisis 5×5 ou 3×3 en haut de l'onglet Règlement. Les réponses commencent par la décision en quelques mots."],
-  ["€", "Virement en 3 étapes", "Qui t'a payé, combien, quels matchs : l'app coche les bons matchs toute seule."],
-  ["▤", "Analyse simplifiée", "Sur téléphone : tes chiffres clés et qui te paie, en un coup d'œil."],
-  ["◷", "Matchs passés rangés", "Ceux de plus d'un mois sont masqués. « Voir tous les matchs » les fait revenir."],
-  ["▣", "e-Licence revue", "Carte plus lisible. Ta clé e-Marque est personnelle : enregistre la tienne dans Mon espace."]
+  ["€", "Télépéage au relevé", "Saisis le total du relevé du mois : il est réparti sur tes matchs en voiture, au prorata des km."],
+  ["▤", "Billet, amende", "Train ou bus : ajoute le prix du billet. Une amende se déduit du net du match, hors frais réels."],
+  ["◎", "Covoiturage plus juste", "La part du passager couvre aussi l'usure de la voiture du conducteur."],
+  ["🏀", "Réponses du Règlement", "La réponse en gras, l'essentiel visible, « Pourquoi » et sources en un tap."],
+  ["✓", "Moins de boutons", "Le SMS au collègue coche le contact tout seul. La cloche n'apparaît que s'il y a du nouveau."]
 ];
 function rtNouveautes_() {
   let d = document.getElementById("rtNouv");

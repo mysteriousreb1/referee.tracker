@@ -5141,3 +5141,103 @@ h2.page-title, h2.section-title.sub-title {
   #reglement .regl-wrap.regl-plein .regl-plein-bar button { border: 0; background: rgba(127,127,127,.18); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
   #reglement .regl-wrap.regl-plein .regl-form { margin: 4px 0 0 !important; }
 }
+
+/* ===================== b105 — retours iPhone ===================== */
+/* En-tête : plus aucune icône coupée à droite */
+.app-header .header-inner { padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+.app-header .brand { min-width: 0; flex: 1 1 auto; }
+.app-header .header-actions { flex: 0 0 auto; }
+@media (max-width: 430px) {
+  .app-header .header-actions { gap: 6px; }
+  .app-header .refresh-btn { width: 38px; height: 38px; border-radius: 11px; }
+  .app-header .brand-text h1 { font-size: 19px; }
+}
+@media (max-width: 370px) {
+  .app-header .refresh-btn { width: 34px; height: 34px; }
+  .app-header .brand-logo { width: 36px; height: auto; }
+}
+.app-header .refresh-btn[hidden] { display: none !important; }
+/* Pastille de notification : chiffre centré */
+.notif-badge { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 18px; height: 18px; padding: 0 4px; line-height: 1; font-size: 10.5px; font-variant-numeric: tabular-nums; top: -5px; right: -5px; }
+.notif-badge[hidden] { display: none; }
+
+/* Prochain match : montant dans la ligne du haut, boutons de même largeur */
+.acc-hero--v2 .acc-hero-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: center; }
+.acc-hero--v2 .acc-hero-top .acc-hero-tag { grid-column: 1; grid-row: 1; justify-self: start; }
+.acc-hero--v2 .acc-hero-top .acc-hero-when { grid-column: 1; grid-row: 2; overflow: hidden; text-overflow: ellipsis; }
+.acc-hero--v2 .acc-hero-top .acc-hero-indem { grid-column: 2; grid-row: 1 / span 2; position: static; margin: 0; padding: 8px 12px; border-radius: 12px; font-size: 19px; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.14); }
+.acc-hero--v2 .acc-hero-foot { display: block; }
+.acc-hero--v2 .acc-hero-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; flex-wrap: nowrap; }
+.acc-hero--v2 .acc-btn { justify-content: center; min-width: 0; padding: 0 8px; }
+.acc-hero--v2 .acc-btn span { overflow: hidden; text-overflow: ellipsis; }
+
+/* Fiche du match : 2 actions principales + actions rares en texte */
+.actions--main { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.actions--main .action-link { justify-content: center; text-align: center; }
+.actions--main.n1 { grid-auto-columns: minmax(0, 1fr); }
+.actions-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.act-note { display: inline-flex; align-items: center; gap: 6px; }
+.act-note.is-ok { color: var(--green); font-weight: 700; }
+.act-txt { border: 0; background: none; padding: 6px 0; font: inherit; font-size: 13px; font-weight: 700; color: var(--navy-600, #2D5BB9); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 32px; }
+.act-note.is-ok .act-txt { color: var(--muted); font-weight: 600; }
+.act-txt.act-danger { color: var(--red); margin-left: auto; }
+.act-txt:disabled { opacity: .5; }
+
+/* Frais du match */
+.frais-chip.is-amende { background: rgba(228,0,43,.08); }
+.frais-form .frais-aide { flex: 1 1 100%; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.frais-form { flex-wrap: wrap; }
+
+/* e-Licence : source en texte discret, sans surligné */
+.elic-src { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+/* Rapports : respiration entre les onglets et « ← Formulaires » */
+.rapp-seg { margin-bottom: 18px; }
+.rapp-seg + * .rf-tete, .rf-tete { margin-bottom: 14px; }
+
+/* Profil › Frais : libellé et valeur sur une ligne */
+.rt-profile-body .rt-details > summary > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-profile-body .rt-details > summary > b { flex: 0 0 auto; white-space: nowrap; }
+
+/* Recherche / filtres : panneau aéré, boutons au-dessus de la zone sûre */
+.rt-search-kicker em { display: none; }
+#rtSearchSaisons { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+#rtSearchSaisons::-webkit-scrollbar { display: none; }
+#rtSearchSaisons .rt-chip { flex: 0 0 auto; }
+@media (max-width: 767px) {
+  .rt-search { padding: 14px 16px calc(20px + var(--safe-b, 0px)); gap: 16px; overflow-y: auto; }
+  .rt-search-foot { position: sticky; bottom: calc(-20px - var(--safe-b, 0px)); margin: auto -16px calc(-20px - var(--safe-b, 0px)); padding: 12px 16px calc(14px + var(--safe-b, 0px)); background: var(--surface); flex-direction: column; align-items: stretch; gap: 10px; }
+  .rt-search-count { text-align: center; font-size: 13px; color: var(--muted); }
+  .rt-search-foot > div { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; width: 100%; }
+  .rt-search-foot .rt-btn { height: 48px; width: 100%; }
+}
+
+/* Règlement : réponse sobre en une bulle */
+.rr { display: grid; gap: 8px; font-size: 15px; line-height: 1.5; }
+.rr p { margin: 0; }
+.rr-sit { font-size: 13px; color: var(--muted); font-style: italic; }
+.rr-verdict { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.3; }
+.rr-corps p + p { margin-top: 6px; }
+.rr-corps ul, .rr-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.rr-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 4px !important; }
+.rr-ol { list-style: decimal; }
+.rr-bilan { display: grid; gap: 4px; }
+.rr-ok, .rr-ko { list-style: none; padding-left: 0; }
+.rr-ok li::before { content: "✓ "; color: var(--green); font-weight: 800; }
+.rr-ko li::before { content: "✕ "; color: var(--red); font-weight: 800; }
+.rr-refs { font-size: 12.5px; color: var(--muted); }
+.rr-pied { display: flex; flex-wrap: wrap; gap: 4px 18px; padding-top: 6px; border-top: 1px solid var(--line); }
+.rr-plus { flex: 0 1 auto; }
+.rr-plus[open] { flex: 1 1 100%; }
+.rr-plus > summary { list-style: none; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--navy-600, #2D5BB9); padding: 6px 0; }
+.rr-plus > summary::-webkit-details-marker { display: none; }
+.rr-plus > summary::after { content: " ›"; }
+.rr-plus[open] > summary::after { content: " ‹"; }
+.rr-plus-c { font-size: 14px; color: var(--text); padding-bottom: 4px; }
+.rr .regl-sources { margin: 0; border: 0; background: none; padding: 0; }
+.rr .regl-src-item { font-size: 13px; }
+[data-theme="dark"] .rr-plus > summary, [data-theme="dark"] .act-txt { color: #8FB3FF; }
+.rr .regl-sources-t, .rr .rr-plus > summary { font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--navy-600, #2D5BB9); }
+.rr .rr-sit { font-weight: 400; }
+.rr .rr-verdict { font-size: 18px; }
+#reglement .regl-bulle .rr-sit { font-weight: 400; }

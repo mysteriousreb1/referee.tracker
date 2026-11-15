@@ -1282,7 +1282,7 @@
       } else if (cfgCle === "pub.app") {
         // b97 — réglages de l'app arbitre, lus à chaque connexion.
         const d = (x) => esc(x || "");
-        F.innerHTML = '<h3 class="cfg-h">Fiche arbitre</h3><div class="row">' + chk("apFiche", "Fiche à jour obligatoire à la connexion (niveau, comité, ligue, téléphone)", v.fiche_obligatoire !== false) + "</div>" +
+        F.innerHTML = '<h3 class="cfg-h">Fiche arbitre</h3><div class="row">' + chk("apFiche", "Fiche à jour obligatoire à la connexion (niveau, comité, ligue, téléphone)", v.fiche_obligatoire !== false) + chk("apSaison", "Redemander automatiquement la fiche à chaque nouvelle saison (1er août)", v.revalider_saison !== false) + "</div>" +
           '<div class="form-grid"><label class="f">Redemander la validation aux fiches validées avant le<input type="date" id="apFicheAvant" value="' + d(v.fiche_revalider_avant) + '"></label></div><p class="mut tiny">Exemple : nouvelle saison ou nouveaux niveaux → mets la date du jour, tout le monde revalide à sa prochaine connexion.</p>' +
           '<h3 class="cfg-h">Import d\'historique</h3><div class="row">' + chk("apImp", "Les arbitres peuvent déposer leurs anciennes convocations (PDF) depuis l'app", v.import_historique !== false) + "</div>" +
           '<div class="form-grid">' + num("apImpMax", "Nombre maximal de PDF par envoi", v.import_max ?? 400, "1") + "</div>" +
@@ -1291,7 +1291,7 @@
           '<h3 class="cfg-h">Assistance par IA (boîte mail)</h3><div class="form-grid"><label class="f">Quand un arbitre écrit à la boîte mail<select id="apSupport">' +
           [["brouillon", "L'IA prépare un brouillon de réponse, je valide (conseillé)"], ["auto", "L'IA répond seule quand elle est sûre, sinon brouillon"], ["off", "Rien : je réponds moi-même"]].map((o) => '<option value="' + o[0] + '"' + ((v.support_ia || "brouillon") === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") +
           '</select></label></div><p class="mut tiny">Réponses tirées de la FAQ. Les messages à rgpd@, les réclamations et les cas particuliers restent toujours pour toi (libellé Referee Tracker/Support).</p>';
-        lireForm = () => ({ fiche_obligatoire: F.querySelector("#apFiche").checked, fiche_revalider_avant: F.querySelector("#apFicheAvant").value || "", import_historique: F.querySelector("#apImp").checked,
+        lireForm = () => ({ fiche_obligatoire: F.querySelector("#apFiche").checked, revalider_saison: F.querySelector("#apSaison").checked, fiche_revalider_avant: F.querySelector("#apFicheAvant").value || "", import_historique: F.querySelector("#apImp").checked,
           import_max: Math.max(1, Number(F.querySelector("#apImpMax").value) || 400), stock_seuil: Math.max(0, Number(F.querySelector("#apStock").value) || 0), accueil_observations: F.querySelector("#apObs").checked, support_ia: F.querySelector("#apSupport").value });
       } else if (cfgCle === "pub.beta") {
         F.innerHTML = '<div class="form-grid">' + num("btMax", "Nombre maximal de testeurs", v.max ?? 10, "1") + '</div><div class="row">' + chk("btOuv", "Inscriptions ouvertes", v.ouvert) + "</div>";

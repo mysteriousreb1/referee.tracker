@@ -1439,7 +1439,7 @@ function prixAutoTexte_() {
 }
 function coutsResume_(type) {
   const l = (Couts && Couts[type]) || [];
-  if (!l.length && type === "prix") { const m = window.RT_PRIX_META; return m && m.prix > 0 ? "auto · " + _n(m.prix, 3) + " €/L" : "automatique"; }
+  if (!l.length && type === "prix") { const m = window.RT_PRIX_META; return m && m.prix > 0 ? _n(m.prix, 3) + " €/L" : "automatique"; }
   if (!l.length) return "barème par défaut";
   const d = l[l.length - 1];
   return type === "prix" ? _n(d.prix, 3) + " €/L" : _n(d.eur_km, 3) + " €/km";
@@ -2100,19 +2100,25 @@ const FICHE = {
     Promise.all([SB.get("profils?select=niveau,parcours,telephone,zones,nom_ffbb,email_ffbb,fiche_maj_le&limit=1"), window.rtPubApp()]).then(([l, cfg]) => {
       const p = l && l[0]; if (!p || cfg.fiche_obligatoire === false) return;
       if (p.fiche_maj_le && cfg.fiche_revalider_avant && Date.parse(p.fiche_maj_le) < Date.parse(cfg.fiche_revalider_avant + "T00:00:00")) p.fiche_maj_le = null;   // revalidation demandée par l'admin
-      const m = FICHE.manque(p); if (m.length) FICHE.ouvrir(p, m);
+      // b105 — nouvelle saison : chaque 1er août, la fiche validée pendant la saison précédente est redemandée (niveau, comité, téléphone)
+      let saison = false;
+      if (p.fiche_maj_le && cfg.revalider_saison !== false) {
+        const now = new Date(), deb = new Date(now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1, 7, 1);
+        if (Date.parse(p.fiche_maj_le) < deb.getTime()) { p.fiche_maj_le = null; saison = deb.getFullYear() + "-" + (deb.getFullYear() + 1); }
+      }
+      const m = FICHE.manque(p); if (m.length) FICHE.ouvrir(p, m, saison);
     }).catch(() => {});
   },
   codeDe(lib) {
     const b = String(lib || "").split(" – ")[0], i = FICHE.LIBS.indexOf(b);
     return i >= 0 ? FICHE.NIV[i][0] : "";
   },
-  ouvrir(p, manques) {
+  ouvrir(p, manques, saison) {
     const z = p.zones || {}, cn = FICHE.codeDe(p.niveau), premiere = manques.indexOf("validation") >= 0;
     const d = document.createElement("div"); d.id = "rtFiche"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.setAttribute("aria-labelledby", "rtFicheT");
     d.innerHTML = `<div class="rt-consent-box rt-fiche">
-      <h2 id="rtFicheT">${premiere ? "Mets ta fiche à jour" : "Il manque des informations"}</h2>
-      <p class="rt-help">${premiere ? "Les niveaux suivent maintenant la filière arbitre FFBB. Vérifie tes informations : elles servent aux barèmes, aux échéances de paiement et à ta progression." : "Complète ta fiche pour continuer : ces informations servent aux calculs de l'app."}</p>
+      <h2 id="rtFicheT">${saison ? "Nouvelle saison " + saison : premiere ? "Mets ta fiche à jour" : "Il manque des informations"}</h2>
+      <p class="rt-help">${saison ? "Ton niveau a peut-être changé cet été. Confirme ton niveau, ton comité et ton téléphone : ils fixent tes barèmes et tes échéances de paiement pour la saison." : premiere ? "Les niveaux suivent maintenant la filière arbitre FFBB. Vérifie tes informations : elles servent aux barèmes, aux échéances de paiement et à ta progression." : "Complète ta fiche pour continuer : ces informations servent aux calculs de l'app."}</p>
       <div class="rt-field"><label for="fiNom">Nom (tel qu'écrit sur tes convocations)</label><input id="fiNom" type="text" autocomplete="family-name" value="${esc(p.nom_ffbb || "")}"></div>
       <div class="rt-field"><label for="fiMail">E-mail qui reçoit tes convocations</label><input id="fiMail" type="email" autocomplete="email" value="${esc(p.email_ffbb || "")}"></div>
       <div class="rt-field"><label for="fiTel">Téléphone</label><input id="fiTel" type="tel" autocomplete="tel" placeholder="06 12 34 56 78" value="${esc(p.telephone || "")}"></div>

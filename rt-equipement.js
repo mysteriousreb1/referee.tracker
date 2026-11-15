@@ -6,8 +6,8 @@
    rien n'est envoyé à un service tiers. */
 (function () {
   "use strict";
-  const CATS = [["tenue", "Tenue"], ["chaussures", "Chaussures"], ["materiel", "Matériel"], ["licence", "Licence / cotisation"], ["formation", "Formation"], ["peage", "Péage"], ["parking", "Parking"], ["deplacement", "Autre frais de trajet"], ["autre", "Autre"]];
-  const FRAIS_MATCH = ["peage", "parking", "deplacement"];
+  const CATS = [["tenue", "Tenue"], ["chaussures", "Chaussures"], ["materiel", "Matériel"], ["licence", "Licence / cotisation"], ["formation", "Formation"], ["peage", "Péage"], ["parking", "Parking"], ["deplacement", "Autre frais de trajet"], ["billet", "Billet train / bus"], ["telepeage", "Télépéage (relevé)"], ["amende", "Amende"], ["autre", "Autre"]];
+  const FRAIS_MATCH = ["peage", "parking", "deplacement", "billet", "telepeage", "amende"];   // b105 : billet, télépéage réparti, amende
   const libCat = k => (CATS.find(c => c[0] === k) || [k, k])[1];
   const num = v => { const n = Number(String(v == null ? "" : v).replace(/\s/g, "").replace(",", ".")); return isFinite(n) ? n : 0; };
   const r2 = n => Math.round(n * 100) / 100;
@@ -220,15 +220,53 @@
   window.rtFraisMatch = uid => fraisDe(uid).reduce((t, x) => t + num(x.montant_ttc), 0);
   window.rtFraisMatchHtml = function (row) {
     const uid = get(row, "UID"); if (!uid || get(row, "Format") === "Alerte") return "";
-    const l = fraisDe(uid);
+    const l = fraisDe(uid), mode = get(row, "Mode transport") || "voiture", tc = mode === "transport";
+    // b105 — options selon le trajet : billet en tête pour le train/bus ; péage et télépéage seulement si je conduis
+    const opts = (tc ? [["billet", "Billet train / bus"], ["parking", "Parking"], ["amende", "Amende"], ["deplacement", "Autre"]]
+      : mode === "passager" ? [["parking", "Parking"], ["amende", "Amende"], ["deplacement", "Autre"]]
+      : [["peage", "Péage (montant connu)"], ["telepeage", "Télépéage : total du relevé du mois"], ["parking", "Parking"], ["amende", "Amende"], ["deplacement", "Autre"]]);
     return `<div class="frais-match" data-fm="${esc(uid)}" data-fm-date="${row._date ? row._date.toISOString().slice(0, 10) : ""}">
-      <span class="frais-match-t">Péage, parking</span>
-      ${l.map(x => `<span class="frais-chip">${esc(libCat(x.categorie))} <b>${eur(num(x.montant_ttc))}</b><button type="button" aria-label="Supprimer" data-fm-del="${x.id}">×</button></span>`).join("")}
-      <button type="button" class="frais-add" data-fm-add>+ Ajouter</button>
-      <form class="frais-form" hidden><select aria-label="Type"><option value="peage">Péage</option><option value="parking">Parking</option><option value="deplacement">Autre (train, ticket…)</option></select>
-        <input type="text" inputmode="decimal" placeholder="Montant €" aria-label="Montant" required maxlength="8"><button type="submit" class="small-btn">OK</button></form>
+      <span class="frais-match-t">${tc ? "Billet, parking" : mode === "passager" ? "Parking, frais" : "Péage, parking"}</span>
+      ${l.map(x => `<span class="frais-chip${x.categorie === "amende" ? " is-amende" : ""}" title="${esc(x.libelle || "")}">${esc(libCat(x.categorie))} <b>${eur(num(x.montant_ttc))}</b><button type="button" aria-label="Supprimer" data-fm-del="${x.id}">×</button></span>`).join("")}
+      <button type="button" class="frais-add" data-fm-add>${tc && !l.length ? "+ Prix du billet" : "+ Ajouter"}</button>
+      <form class="frais-form" hidden><select aria-label="Type">${opts.map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select>
+        <input type="text" inputmode="decimal" placeholder="Montant €" aria-label="Montant" required maxlength="8"><button type="submit" class="small-btn">OK</button>
+        <small class="frais-aide" hidden></small></form>
     </div>`;
   };
+  const AIDE_FRAIS = {
+    telepeage: "Mets le total du relevé du mois de ce match : il est réparti sur tes matchs déjà joués ce mois-là en voiture, au prorata des km. Une nouvelle saisie remplace l'ancienne.",
+    amende: "Déduite du net de ce match. Une amende n'est pas un frais professionnel : elle n'entre pas dans les frais réels de ta déclaration.",
+    billet: "Prix aller-retour : il est déduit du net de ce match."
+  };
+  document.addEventListener("change", ev => {
+    const sel = ev.target; if (!sel || !sel.closest || !sel.closest(".frais-form") || sel.tagName !== "SELECT") return;
+    const a = sel.closest(".frais-form").querySelector(".frais-aide"), t = AIDE_FRAIS[sel.value] || "";
+    a.textContent = t; a.hidden = !t;
+    sel.closest(".frais-form").querySelector("input").placeholder = sel.value === "telepeage" ? "Total du relevé €" : "Montant €";
+  });
+  /* b105 — télépéage : le montant n'est connu qu'au relevé. Le total du mois est réparti sur les matchs du même mois
+     faits en voiture, au prorata des km A/R. Les anciennes lignes télépéage du mois sont remplacées. */
+  async function repartirTelepeage(dateIso, total) {
+    const mois = String(dateIso).slice(0, 7);
+    const fin = new Date(); fin.setHours(23, 59, 59, 999);   // un relevé ne couvre que des passages déjà faits
+    const rows = (typeof state !== "undefined" && state.allRows || []).filter(r => r._date && r._date <= fin && r._isActive !== false && get(r, "Format") !== "Alerte"
+      && get(r, "Statut paiement") !== "Annulé" && !get(r, "Mode transport") && (r._kmEff != null ? r._kmEff : r._km) > 0
+      && (r._date.getFullYear() + "-" + String(r._date.getMonth() + 1).padStart(2, "0")) === mois);
+    if (!rows.length) throw new Error("Aucun match passé en voiture ce mois-ci");
+    const km = rows.map(r => r._kmEff != null ? r._kmEff : r._km), tk = km.reduce((a, b) => a + b, 0);
+    const anciens = (ST.liste || []).filter(x => x.categorie === "telepeage" && String(x.date_achat).slice(0, 7) === mois);
+    for (const x of anciens) await SB.write("DELETE", "depenses?id=eq." + Number(x.id));
+    let reste = r2(total);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i], part = i === rows.length - 1 ? reste : r2(total * km[i] / tk); reste = r2(reste - part);
+      if (!(part > 0)) continue;
+      const d = r._date;
+      await SB.write("POST", "depenses", { date_achat: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"), categorie: "telepeage",
+        libelle: "Télépéage relevé " + mois.slice(5) + "/" + mois.slice(0, 4) + " (" + Math.round(km[i]) + " km sur " + Math.round(tk) + ")", montant_ttc: part, match_uid: get(r, "UID") });
+    }
+    return rows.length;
+  }
   document.addEventListener("click", async ev => {
     const t = ev.target; if (!t || !t.closest) return;
     const box = t.closest(".frais-match"); if (!box) return;
@@ -243,6 +281,11 @@
     const box = f.closest(".frais-match"), cat = f.querySelector("select").value, mt = r2(num(f.querySelector("input").value));
     if (!(mt > 0 && mt < 1000)) { if (typeof setStatus === "function") setStatus("Montant invalide", "error"); return; }
     f.querySelector("button").disabled = true;
+    if (cat === "telepeage") {
+      try { const n = await repartirTelepeage(box.dataset.fmDate || new Date().toISOString().slice(0, 10), mt); if (typeof setStatus === "function") setStatus("Télépéage " + eur(mt) + " réparti sur " + n + " match" + (n > 1 ? "s" : ""), "ok"); await charger(true); }
+      catch (e) { f.querySelector("button").disabled = false; if (typeof setStatus === "function") setStatus(e.message, "error"); }
+      return;
+    }
     try {
       await SB.write("POST", "depenses", { date_achat: box.dataset.fmDate || new Date().toISOString().slice(0, 10), categorie: cat, libelle: libCat(cat), montant_ttc: mt, match_uid: box.dataset.fm });
       if (typeof setStatus === "function") setStatus(libCat(cat) + " ajouté : déduit du net du match", "ok");
