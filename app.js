@@ -951,6 +951,7 @@ function reglMetaIa_(m) {
   return parts.length ? `<div class="regl-meta">${escapeHtml(parts.join(" · "))}</div>` : "";
 }
 function renderReglement() {
+  document.body.classList.remove("rt-regl-plein");   // b105c — le bloc est recréé : jamais d'en-tête masqué en héritage
   const root = document.getElementById("reglement");
   if (!root) return;
   const hist = reglHistLoad_();
@@ -1099,6 +1100,17 @@ function reglReponseHtml_(m) {
     var prec = `<div class="regl-prec">${m.precisions.map(x => `<span>${escapeHtml(x.q)} → <b>${escapeHtml(x.r)}</b></span>`).join("")}</div>`;
   }
   if (!m.decision && !m.explication) return (prec || "") + formatReglementReponse_(m.text) + reglSourcesHtml_(m.sources);
+  /* b105c — réponse ancrée dans le règlement : la réponse courte, puis LE TEXTE du règlement (passages cités, visibles),
+     puis l'application à la situation. Mise en page aérée : pas de pavé, chaque passage dans son encadré fin. */
+  if (Array.isArray(m.regles) && m.regles.length) {
+    const quote = x => `<figure class="rr-regle"><figcaption>${escapeHtml([x.ref, x.doc].filter(Boolean).join(" · "))}</figcaption><blockquote>${formatReglementReponse_(x.texte)}</blockquote></figure>`;
+    const appl = m.application && m.application.length ? `<p class="rr-h">Dans ta situation</p><ul class="rr-list">${m.application.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : "";
+    const src = reglSourcesHtml_(m.sources);
+    return `<div class="rr">${prec || ""}${m.verdict ? `<p class="rr-verdict">${escapeHtml(m.verdict)}</p>` : ""}
+      ${m.decision ? `<div class="rr-corps">${formatReglementReponse_(m.decision)}</div>` : ""}
+      <p class="rr-h">${m.proche ? "Règle la plus proche" : "Ce que dit le règlement"}</p>${m.regles.map(quote).join("")}
+      ${appl}${src ? `<div class="rr-pied">${src}</div>` : ""}</div>`;
+  }
   const a = m.analyse;
   /* b105 — réponse refondue : une seule bulle sobre, lisible d'un coup d'œil.
      1. la réponse en gras (verdict) puis 2-3 phrases ; 2. l'essentiel visible (procédure, points) ;
@@ -1174,7 +1186,7 @@ async function askReglement_(question, precisions) {
       reglQuestions_(question, r);
       return;
     }
-    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", verdict: r.verdict || "", compris: r.compris || "", explication: r.explication || "", articles: r.articles || [], analyse: r.analyse || null, precisions: precisions || null,
+    state._reglementHist.push({ role: "ia", text: r.reponse || "", decision: r.decision || "", verdict: r.verdict || "", compris: r.compris || "", explication: r.explication || "", articles: r.articles || [], analyse: r.analyse || null, regles: r.regles || null, application: r.application || null, proche: !!r.proche, precisions: precisions || null,
       sources: (r.sources || []).map(x => ({ doc: x.doc, url: x.url, extrait: String(x.extrait || "").slice(0, 900) })),
       ts: Date.now(), cache: !!r.cache, passages: r.passages || 0, ms: { total: Date.now() - t0, ia: r.ms && r.ms.ia } });
   } catch (err) {
@@ -2347,14 +2359,14 @@ function renderTransport_(row, uid) {
       const usure = typeof entretienKmClient_ === "function" ? round2(km * entretienKmClient_(row._date)) : 0;
       const part = Math.round(((carb || 0) + (peage || 0) + usure) / 2);
       if (part > 0) partage = m === "passager"
-        ? `<div class="trajet-seg-partage"><b>À donner au conducteur : ~${part} €</b> <small>moitié du carburant, de l'usure${peage ? " et des péages" : ""} (${Math.round(km)} km A/R). C'est l'usage courant : ajustez entre vous.</small></div>`
-        : `<div class="trajet-seg-partage"><small>Si tu emmènes un collègue : il te rembourse ~${part} € (moitié du carburant, de l'usure${peage ? " et des péages" : ""}). Tes frais réels sont divisés par deux et chacun garde son indemnité km.</small></div>`;
+        ? `<div class="trajet-seg-partage"><b>À donner au conducteur : ~${part} €</b></div>`
+        : "";
     }
   } catch (e) { partage = ""; }
   return `<div class="trajet-seg" role="radiogroup" aria-label="Comment tu te rends au match">
     <div class="trajet-seg-t">Mon trajet</div>
     <div class="trajet-seg-row">${o.map(([k, l, sub]) => `<button type="button" role="radio" class="trajet-opt${k === m ? " is-on" : ""}" aria-checked="${k === m}" data-transport="${uid}" data-mode="${k}">${ic[k]}<span><b>${l}</b><small>${sub}</small></span></button>`).join("")}</div>
-    <div class="trajet-seg-aide">${aide}</div>${partage}
+${partage}
   </div>`;
 }
 document.addEventListener("click", e => {
@@ -2762,7 +2774,7 @@ function renderActions(row) {
     const uid = escapeHtml(get(row, "UID"));
     const fait = Boolean(get(row, "Contact collègue"));
     const sms = phone ? `sms:${phone}?&body=${encodeURIComponent(buildSmsCollegue(row))}` : "";
-    links.push(`<button type="button" class="action-link secondary contact-menu${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}" data-sms="${escapeHtml(sms)}" data-nom="${escapeHtml(get(row, "Collègue nom"))}" aria-haspopup="dialog">${fait ? "✓ Collègue contacté" : phone ? "SMS collègue" : "Collègue"}</button>`);
+    links.push(`<button type="button" class="action-link secondary contact-menu${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}" data-sms="${escapeHtml(sms)}" data-nom="${escapeHtml(get(row, "Collègue nom"))}" aria-haspopup="dialog">${fait ? "✓ Collègue contacté" : "Contact collègue"}</button>`);
   }
   if (false) {   // b100 — bouton FBI retiré (demande Clément)
     links.push("");
@@ -2773,14 +2785,14 @@ function renderActions(row) {
   const t = row._date ? row._date.getTime() : 0;
   // b88i — 5x5 comme 3x3 : bouton disponible pour TOUT match (à venir ou passé), tant que rien n'est payé.
   if (t && paie !== "Reçu" && paie !== "Reçu partiel" && cleanText(get(row, "Statut")) !== "Annulé") {
-    sub.push(`<button type="button" class="act-txt act-danger" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé à la dernière minute</button>`);
+    sub.push(`<button type="button" class="action-link secondary act-danger-btn" data-annuler-mission="${escapeHtml(get(row, "UID"))}">Annulé à la dernière minute</button>`);
   }
   // b20 — 3x3 : supprimer une mission créée par erreur (passe en « Annulé », agenda nettoyé).
   if (row._format === "3x3" && paie !== "Reçu" && paie !== "Reçu partiel") {
-    sub.push(`<button type="button" class="act-txt act-danger" data-supprimer-mission="${escapeHtml(get(row, "UID"))}">Supprimer</button>`);
+    sub.push(`<button type="button" class="action-link secondary act-danger-btn" data-supprimer-mission="${escapeHtml(get(row, "UID"))}">Supprimer</button>`);
   }
   // b105 — 2 actions principales côte à côte, actions rares en texte discret dessous
-  return (links.length ? `<div class="actions actions--main n${links.length}">${links.join("")}</div>` : "") + (sub.length ? `<div class="actions-sub">${sub.join("")}</div>` : "");
+  return (links.length ? `<div class="actions actions--main n${links.length}">${links.join("")}</div>` : "") + (sub.length ? `<div class="actions actions--full">${sub.join("")}</div>` : "");
 }
 
 function paiementRegime_(row) {
@@ -3409,7 +3421,8 @@ function attachContactListeners(root) { /* b105b — remplacé par le menu « SM
     const m = document.createElement("div"); m.id = "rtContactMenu"; m.className = "rt-cmenu";
     m.innerHTML = `<div class="rt-cmenu-fond"></div><div class="rt-cmenu-box" role="dialog" aria-modal="true" aria-label="Contact collègue">
       <p class="rt-cmenu-t">${escapeHtml(b.dataset.nom || "Collègue")}</p>
-      ${sms ? `<a class="rt-cmenu-btn is-main" href="${escapeHtml(sms)}" data-cm="sms">Écrire à ${escapeHtml(prenom)}<small>SMS prérempli · le contact est coché tout seul</small></a>` : ""}
+      ${sms ? `<a class="rt-cmenu-btn is-main" href="${escapeHtml(sms)}" data-cm="sms">Envoyer le SMS d'avant-match<small>Message prérempli · le contact est coché tout seul</small></a>
+        <a class="rt-cmenu-btn" href="${escapeHtml(sms.split("?")[0])}" data-cm="sms">Écrire à ${escapeHtml(prenom)}<small>Ouvre la discussion dans Messages, sans texte</small></a>` : ""}
       ${fait ? `<button type="button" class="rt-cmenu-btn" data-cm="retirer">Retirer « contact fait »<small>Les relances reprennent pour ce match</small></button>`
              : `<button type="button" class="rt-cmenu-btn" data-cm="fait">Contact déjà fait<small>Appel, message reçu… : plus de relance</small></button>`}
       <button type="button" class="rt-cmenu-annuler" data-cm="fermer">Annuler</button></div>`;
@@ -9190,9 +9203,9 @@ function renderElicencePanel_() {
           <div class="elic-doc-act">
             ${e.doc ? `<button type="button" class="small-btn" id="elicDocVoir">Plein écran</button>` : ""}
             ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF original</a>` : ""}
-            <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+            <label class="small-btn secondary pc-seul" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
             ${e.doc ? `<button type="button" class="small-btn secondary" id="licRelire">Créer la carte numérique</button>` : ""}
-            <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
+            <button type="button" class="small-btn secondary alerte-danger pc-seul" id="elicDocDel">Retirer</button>
           </div>
         </div>
         ${e.doc ? `<button type="button" class="elic-doc-view" id="elicDocMini" title="Agrandir"><img src="${escapeHtml(e.doc)}" alt="Licence officielle" /></button>`
@@ -9236,9 +9249,9 @@ function licCarteBloc_(e) {
       <button type="button" class="small-btn" id="licPlein">Présenter (plein écran)</button>
       ${e.doc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'original</button>` : ""}
       ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF</a>` : ""}
-      <button type="button" class="small-btn secondary" id="licCorriger">Corriger</button>
-      <label class="small-btn secondary" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
-      <button type="button" class="small-btn secondary alerte-danger" id="elicDocDel">Retirer</button>
+      <button type="button" class="small-btn secondary pc-seul" id="licCorriger">Corriger</button>
+      <label class="small-btn secondary pc-seul" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+      <button type="button" class="small-btn secondary alerte-danger pc-seul" id="elicDocDel">Retirer</button>
     </div>
     <p class="elic-src">Licence ${escapeHtml(e.docSaison || "")}${e.carte.lu_le ? " · lue le " + escapeHtml(e.carte.lu_le) : ""}</p>
   </div>`;
@@ -10425,9 +10438,20 @@ function renderClassementMatch_(row) {
       if (!wR || !clavier) { document.body.classList.remove("rt-regl-plein"); document.querySelectorAll(".regl-plein").forEach(w => { w.classList.remove("regl-plein"); w.style.top = ""; w.style.height = ""; }); }
       if (clavier) { nav.style.transform = "translateY(200%)"; return; }
       const ecart = window.innerHeight - (vv.height + vv.offsetTop);   // > 0 : la barre est sous le bas visible ; < 0 : au-dessus
-      nav.style.transform = Math.abs(ecart) > 2 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
+      // b105c — on ne remonte la barre que si elle est sous le bas visible (ecart > 0) ; jamais vers le bas, hors écran
+      nav.style.transform = ecart > 2 && ecart < window.innerHeight * 0.5 && vv.scale <= 1.01 ? `translateY(${-ecart}px)` : "";
     };
     vv.addEventListener("resize", caler); vv.addEventListener("scroll", caler);
+    // b105c — garde-fou : le Règlement se redessine après chaque question (nouveau bloc, sans la classe « plein »),
+    // ce qui laissait l'en-tête et les onglets masqués. Toutes les secondes : si aucun écran plein n'existe vraiment
+    // ou qu'aucun champ n'est actif, en-tête et barre d'onglets sont rétablis.
+    setInterval(() => {
+      const a = document.activeElement, champ = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+      if (document.body.classList.contains("rt-regl-plein") && (!document.querySelector(".regl-plein") || !champ)) caler();
+      if (document.body.classList.contains("rt-regl-plein") && !document.querySelector(".regl-plein")) document.body.classList.remove("rt-regl-plein", "rt-clavier");
+      const nav = document.querySelector("nav.tabs");
+      if (nav && nav.style.transform && !champ && vv.height > window.innerHeight * 0.85) nav.style.transform = "";
+    }, 1000);
     document.addEventListener("focusin", () => { caler(); setTimeout(caler, 120); setTimeout(caler, 400); });   // b100 — iOS : l'animation du clavier précède le resize
     document.addEventListener("focusout", () => setTimeout(caler, 120));
     window.addEventListener("scroll", caler, { passive: true }); window.addEventListener("orientationchange", () => setTimeout(caler, 300));
