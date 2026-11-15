@@ -2776,9 +2776,6 @@ function renderActions(row) {
     const sms = phone ? `sms:${phone}?&body=${encodeURIComponent(buildSmsCollegue(row))}` : "";
     links.push(`<button type="button" class="action-link secondary contact-menu${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}" data-sms="${escapeHtml(sms)}" data-nom="${escapeHtml(get(row, "Collègue nom"))}" aria-haspopup="dialog">${fait ? "✓ Collègue contacté" : "Contact collègue"}</button>`);
   }
-  if (false) {   // b100 — bouton FBI retiré (demande Clément)
-    links.push("");
-  }
   /* b19 — événement annulé à la dernière minute (sur place, 3x3 ou 5x5) :
      disponible 3 jours autour du match tant que rien n'a été payé. */
   const paie = cleanText(get(row, "Statut paiement"));
