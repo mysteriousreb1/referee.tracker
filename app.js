@@ -2756,25 +2756,13 @@ function renderActions(row) {
   const phone = normalizePhoneFr(get(row, "Collègue téléphone"));
   const links = [], sub = [];
   if (address) links.push(`<a class="action-link gold" href="https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes" target="_blank" rel="noopener">Waze</a>`);
-  if (phone && smsDisponible(row)) {
-    const corps = encodeURIComponent(buildSmsCollegue(row));
-    const uid = escapeHtml(get(row, "UID"));
-    // MODIFICATION 11 — envoyer le SMS marque la mission comme contactée :
-    // dans le cas normal tu n'as rien de plus à faire, les relances s'arrêtent.
-    links.push(`<a class="action-link secondary contact-sms" data-uid="${uid}" href="sms:${phone}?&body=${corps}">SMS collègue</a>`);
-  }
-
-  /* MODIFICATION 11 — cas où c'est le collègue qui a écrit en premier, ou
-     un simple appel : un tap et les relances s'arrêtent. Aucun système ne
-     peut le deviner à ta place. */
+  /* b105b — un seul bouton « SMS collègue » : il ouvre un petit menu au premier plan avec 2 choix,
+     écrire au collègue (le contact est alors coché tout seul) ou indiquer que le contact est déjà fait. */
   if (get(row, "Collègue nom") && smsDisponible(row)) {
     const uid = escapeHtml(get(row, "UID"));
     const fait = Boolean(get(row, "Contact collègue"));
-    // b105 — plus un gros bouton : le SMS envoyé depuis l'app coche déjà le contact. Ici, une simple ligne discrète
-    // pour le cas où le collègue a appelé ou écrit en premier.
-    sub.push(fait
-      ? `<span class="act-note is-ok">✓ Collègue contacté <button type="button" class="act-txt contact-toggle" data-uid="${uid}" data-fait="1">annuler</button></span>`
-      : `<span class="act-note">Déjà en contact ? <button type="button" class="act-txt contact-toggle" data-uid="${uid}" data-fait="0">Marquer comme fait</button></span>`);
+    const sms = phone ? `sms:${phone}?&body=${encodeURIComponent(buildSmsCollegue(row))}` : "";
+    links.push(`<button type="button" class="action-link secondary contact-menu${fait ? " is-done" : ""}" data-uid="${uid}" data-fait="${fait ? "1" : "0"}" data-sms="${escapeHtml(sms)}" data-nom="${escapeHtml(get(row, "Collègue nom"))}" aria-haspopup="dialog">${fait ? "✓ Collègue contacté" : phone ? "SMS collègue" : "Collègue"}</button>`);
   }
   if (false) {   // b100 — bouton FBI retiré (demande Clément)
     links.push("");
@@ -3402,33 +3390,43 @@ async function marquerContact(uid, valeur) {
   return res;
 }
 
-function attachContactListeners(root) {
-  // Le lien SMS s'ouvre normalement ; le marquage part en parallèle.
-  root.querySelectorAll(".contact-sms").forEach(lien => {
-    lien.addEventListener("click", () => {
-      const uid = lien.dataset.uid;
-      const row = rowByUid_(uid);
-      if (row && get(row, "Contact collègue")) return;   // déjà marqué
-      marquerContact(uid, true).catch(() => { /* silencieux : le SMS prime */ });
+function attachContactListeners(root) { /* b105b — remplacé par le menu « SMS collègue » (délégation globale ci-dessous) */ }
+(function contactMenu_() {
+  const fermer = () => { const m = document.getElementById("rtContactMenu"); if (m) m.remove(); };
+  const choisir = async (uid, valeur, silencieux) => {
+    fermer();
+    try {
+      await marquerContact(uid, valeur);
+      if (!silencieux) setStatus(valeur ? "Contact enregistré : plus de relance pour ce match" : "Contact retiré", "ok");
+      renderAll();
+    } catch (err) { if (!silencieux) setStatus("Erreur contact : " + err.message, "error"); }
+  };
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest(".contact-menu");
+    if (!b) return;
+    e.preventDefault(); e.stopPropagation(); fermer();
+    const uid = b.dataset.uid, fait = b.dataset.fait === "1", sms = b.dataset.sms, prenom = (b.dataset.nom || "ton collègue").split(" ").slice(-1)[0];
+    const m = document.createElement("div"); m.id = "rtContactMenu"; m.className = "rt-cmenu";
+    m.innerHTML = `<div class="rt-cmenu-fond"></div><div class="rt-cmenu-box" role="dialog" aria-modal="true" aria-label="Contact collègue">
+      <p class="rt-cmenu-t">${escapeHtml(b.dataset.nom || "Collègue")}</p>
+      ${sms ? `<a class="rt-cmenu-btn is-main" href="${escapeHtml(sms)}" data-cm="sms">Écrire à ${escapeHtml(prenom)}<small>SMS prérempli · le contact est coché tout seul</small></a>` : ""}
+      ${fait ? `<button type="button" class="rt-cmenu-btn" data-cm="retirer">Retirer « contact fait »<small>Les relances reprennent pour ce match</small></button>`
+             : `<button type="button" class="rt-cmenu-btn" data-cm="fait">Contact déjà fait<small>Appel, message reçu… : plus de relance</small></button>`}
+      <button type="button" class="rt-cmenu-annuler" data-cm="fermer">Annuler</button></div>`;
+    document.body.appendChild(m);
+    m.addEventListener("click", ev => {
+      const c = ev.target.closest("[data-cm]");
+      if (!c) { if (ev.target.classList.contains("rt-cmenu-fond")) fermer(); return; }
+      const a = c.dataset.cm;
+      if (a === "sms") { setTimeout(fermer, 50); if (!fait) choisir(uid, true, true); return; }   // le lien sms: s'ouvre normalement
+      if (a === "fait") return choisir(uid, true);
+      if (a === "retirer") return choisir(uid, false);
+      fermer();
     });
+    const premier = m.querySelector(".rt-cmenu-btn"); if (premier) premier.focus();
   });
-
-  root.querySelectorAll(".contact-toggle").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const uid = btn.dataset.uid;
-      const etaitFait = btn.dataset.fait === "1";
-      btn.disabled = true;
-      try {
-        await marquerContact(uid, !etaitFait);
-        setStatus(etaitFait ? "Contact effacé" : "Contact enregistré", "ok");
-        renderAll();
-      } catch (err) {
-        setStatus("Erreur contact : " + err.message, "error");
-        btn.disabled = false;
-      }
-    });
-  });
-}
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fermer(); });
+})();
 
 function attachPaymentListeners(root) {
   attachRelanceListeners_(root);   // b54
