@@ -1090,7 +1090,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfNom">Nom sur les convocations</label>
           <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}" placeholder="NOM Prénom"></div>
         <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
-          <input id="pfNiveau" type="text" list="pfNiveauxListe" value="${esc(p.niveau)}" placeholder="ex. Région 2 (REG-2) – JPR Rouge" oninput="var e=document.getElementById('pfPlafond');if(e)e.textContent=rtPlafondNiveau_(this.value)"><datalist id="pfNiveauxListe">${(typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX ? ONBOARD.NIVEAUX : []).map(n => `<option value="${esc(n)}">`).join("")}</datalist><p class="rt-muted" id="pfPlafond" style="margin:6px 0 0;font-size:13px">${esc(rtPlafondNiveau_(p.niveau))}</p></div>
+          <input id="pfNiveau" type="text" list="pfNiveauxListe" value="${esc(p.niveau)}" placeholder="ex. Région 2 (REG-2) – JPR Rouge"><datalist id="pfNiveauxListe">${(typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX ? ONBOARD.NIVEAUX : []).map(n => `<option value="${esc(n)}">`).join("")}</datalist><p class="rt-muted" id="pfPlafond" style="margin:6px 0 0;font-size:13px">${esc(rtPlafondNiveau_(p.niveau))}</p></div>
       </div>
       <div class="rt-field"><label for="pfMailFfbb">Email connu de ta fédération${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
         <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
@@ -1274,6 +1274,7 @@ function renderProfile() {
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
+  { const ni = document.getElementById("pfNiveau"), pl = document.getElementById("pfPlafond"); if (ni && pl) ni.addEventListener("input", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
   // b71 — export / suppression de compte (Edge « compte », jeton de session de l'arbitre).
   const compteApi = async (corps) => {
     const t = await SB.token();

@@ -56,3 +56,9 @@ npm-debug.log*
 # index.html, app.js, rt-auth.js, style.css, manifest.json, README.md,
 # img/, docs/rapports/ (formulaires FFBB vierges), data/questions.json,
 # vendor/, .github/, .gitleaks.toml
+
+# --- Claude Code (copies de travail locales) ---------------------------
+.claude/
+
+# --- Graphify (carte du code, locale) ---
+graphify-out/
