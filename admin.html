@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-15-b105d" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-16-b106" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -42,7 +42,7 @@
   <div id="vAdmin" class="app hidden">
     <aside class="side">
       <div class="brand"><img src="./apple-touch-icon.png" alt="" /><div><strong>Referee Tracker</strong><span>Super admin</span></div></div>
-      <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button></div>
+      <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button><button type="button" data-esp="rcl">REF CLIPS</button></div>
       <nav class="nav" id="nav">
         <div data-esp="app">
           <p class="nav-g">Vue d'ensemble</p>
@@ -75,6 +75,15 @@
           <a href="#paiements"><i>€</i>Paiements</a>
           <a href="#alertes"><i>△</i>Alertes<b id="navAlertes" class="nav-count"></b></a>
           <a href="#qualite"><i>✓</i>Qualité des données</a>
+        </div>
+        <div data-esp="rcl">
+          <p class="nav-g">App REF CLIPS</p>
+          <a href="#rcaccueil"><i>⌂</i>Vue d'ensemble</a>
+          <a href="#rcusage"><i>◷</i>Utilisation</a>
+          <a href="#rcarbitres"><i>◉</i>Arbitres</a>
+          <a href="#rccodes"><i>✂</i>Codes &amp; thèmes</a>
+          <a href="#rcvideos"><i>▶</i>Vidéos &amp; exports</a>
+          <a href="#rctech"><i>◔</i>Technique</a>
         </div>
       </nav>
       <div class="side-foot">
@@ -121,6 +130,12 @@
       <section id="sec-cockpit" class="sec"></section>
       <section id="sec-appstats" class="sec"></section>
       <section id="sec-userstats" class="sec"></section>
+      <section id="sec-rcaccueil" class="sec"></section>
+      <section id="sec-rcusage" class="sec"></section>
+      <section id="sec-rcarbitres" class="sec"></section>
+      <section id="sec-rccodes" class="sec"></section>
+      <section id="sec-rcvideos" class="sec"></section>
+      <section id="sec-rctech" class="sec"></section>
     </div>
 
     <!-- Panneau latéral (fiche arbitre…) -->
@@ -136,6 +151,6 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./admin.js?v=2026-11-15-b105d"></script>
+  <script src="./admin.js?v=2026-11-16-b106"></script>
 </body>
 </html>
