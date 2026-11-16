@@ -1615,6 +1615,7 @@
         courant === "inscriptions" ? null : admin("inscriptions.liste").then((j) => { cache.inscriptions = j.data || []; $("navInscriptions").textContent = cache.inscriptions.filter((i) => i.statut === "recue" || i.statut === "erreur").length || ""; }),
         courant === "tickets" ? null : admin("tickets.liste").then((j) => { cache.tickets = j.data || []; $("navTickets").textContent = cache.tickets.filter((t) => t.statut !== "Fermé").length || ""; }),
         courant === "alertes" ? null : admin("alertes.global").then((j) => { cache.alertesG = j; const P = j.par_arbitre || []; $("navAlertes").textContent = P.reduce((t, x) => t + x.regler + x.avant, 0) || ""; }),
+        courant === "rcsignal" ? null : rcCompteur(),
         courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = j.data || []; $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
       ].filter(Boolean));
     } catch (e) {
@@ -2307,8 +2308,39 @@
     else $("rcErr").innerHTML = '<p class="vide">Aucune erreur sur la période</p>';
   };
 
-  Object.assign(SECTIONS, { rcaccueil: "REF CLIPS · Vue d'ensemble", rcusage: "REF CLIPS · Utilisation", rcarbitres: "REF CLIPS · Arbitres", rccodes: "REF CLIPS · Codes et thèmes", rcvideos: "REF CLIPS · Vidéos et exports", rctech: "REF CLIPS · Technique" });
-  ["rcaccueil", "rcusage", "rcarbitres", "rccodes", "rcvideos", "rctech"].forEach((k) => { ESPACE_DE[k] = "rcl"; PAGES.push({ id: "rcl-" + k, secs: [k] }); });
+  // 7. Signalements envoyés depuis REF CLIPS (bouton « Signaler un problème ») : lire, répondre par e-mail, marquer vu / réglé.
+  const RC_TYPE = { probleme: ["Problème", "red"], idee: ["Idée", "blue"], question: ["Question", "gold"] };
+  const RC_STATUT = { nouveau: ["Nouveau", "red"], vu: ["Vu", "orange"], regle: ["Réglé", "green"] };
+  let rcTous = false;
+  rendus.rcsignal = async function (force) {
+    const el = $("sec-rcsignal");
+    if (force || !cache.rcsignal) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.rcsignal = await rpcP("refclips_signalements_admin", {}); }
+    const L = cache.rcsignal || [], ouverts = L.filter((s) => s.statut !== "regle");
+    $("navRcSignal").textContent = L.filter((s) => s.statut === "nouveau").length || "";
+    el.innerHTML = '<div class="row tech-actions rc-ent"><div class="rc-per"><button class="btn sm' + (rcTous ? "" : " pri") + '" data-rcs="0">À traiter (' + ouverts.length + ')</button><button class="btn sm' + (rcTous ? " pri" : "") + '" data-rcs="1">Tous (' + L.length + ")</button></div>" +
+      '<span class="mut tiny">Messages envoyés depuis REF CLIPS › Signaler un problème · 12 derniers mois</span></div><div class="card"><div id="rcSigT"></div></div>';
+    el.querySelectorAll("[data-rcs]").forEach((b) => b.onclick = () => { rcTous = b.dataset.rcs === "1"; rendus.rcsignal(false); });
+    const ctx = (c) => Object.entries(c || {}).map(([k, v]) => esc(k.replace(/_/g, " ")) + " : " + esc(v)).join(" · ");
+    tableCourante = tableau($("rcSigT"), [
+      { t: "Reçu", k: "cree_le", r: (s) => fmt(s.cree_le) },
+      { t: "Arbitre", k: "nom", r: (s) => "<b>" + esc(s.nom || "—") + "</b>" + (s.email ? '<br><a class="tiny" href="mailto:' + esc(s.email) + "?subject=" + encodeURIComponent("REF CLIPS — ton message") + '">' + esc(s.email) + "</a>" : "") },
+      { t: "Type", k: "type", r: (s) => badge(...(RC_TYPE[s.type] || [s.type])) },
+      { t: "Message", k: "message", r: (s) => '<div style="white-space:pre-wrap;max-width:520px">' + esc(s.message) + '</div><details><summary class="mut tiny">Infos techniques</summary><p class="mut tiny">' + (ctx(s.contexte) || "aucune") + "</p></details>" },
+      { t: "Statut", k: "statut", r: (s) => badge(...(RC_STATUT[s.statut] || [s.statut])) },
+      { t: "", k: "id", r: (s) => (s.statut === "nouveau" ? '<button class="btn sm" data-act="vu">Vu</button>' : "") + (s.statut !== "regle" ? '<button class="btn sm" data-act="regle">Réglé</button>' : '<button class="btn sm" data-act="nouveau">Rouvrir</button>') }],
+      rcTous ? L : ouverts, { recherche: rechercheCourante, action: async (act, s, b) => {
+        b.disabled = true;
+        try { await rpcP("refclips_signalement_statut", { p_id: s.id, p_statut: act }); s.statut = act; toast("Signalement : " + RC_STATUT[act][0].toLowerCase(), "ok"); }
+        catch (e) { erreur(e); }
+        rendus.rcsignal(false);
+      } });
+  };
+  function rcCompteur() {   // compteur « nouveaux » dans le menu, chargé après la connexion sans bloquer
+    return rpcP("refclips_signalements_admin", {}).then((L) => { cache.rcsignal = L; $("navRcSignal").textContent = L.filter((s) => s.statut === "nouveau").length || ""; });
+  }
+
+  Object.assign(SECTIONS, { rcsignal: "REF CLIPS · Signalements", rcaccueil: "REF CLIPS · Vue d'ensemble", rcusage: "REF CLIPS · Utilisation", rcarbitres: "REF CLIPS · Arbitres", rccodes: "REF CLIPS · Codes et thèmes", rcvideos: "REF CLIPS · Vidéos et exports", rctech: "REF CLIPS · Technique" });
+  ["rcaccueil", "rcusage", "rcarbitres", "rccodes", "rcvideos", "rctech", "rcsignal"].forEach((k) => { ESPACE_DE[k] = "rcl"; PAGES.push({ id: "rcl-" + k, secs: [k] }); });
 
   demarrer();
 })();
