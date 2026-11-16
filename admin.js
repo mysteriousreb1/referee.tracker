@@ -172,7 +172,7 @@
     document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
     document.querySelectorAll("#nav > div[data-esp]").forEach((d) => d.classList.toggle("hidden", d.dataset.esp !== e));
   }
-  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.esp === "app" ? "#accueil" : "#userstats"; }));
+  document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = { app: "#accueil", arb: "#userstats", rcl: "#rcaccueil" }[b.dataset.esp] || "#accueil"; }));   // REF CLIPS : 3e espace
   const cache = {}; let courant = null;
   const rendus = {};
   async function naviguer(force) {
@@ -2096,6 +2096,219 @@
         [ia / 50 * 100], "rien à « passer en pro » : surveille la courbe et le plafond de dépenses de ta console Anthropic.", "https://console.anthropic.com/settings/billing") +
       "</div>";
   };
+
+  // =====================================================================
+  // REF CLIPS — statistiques de l'app d'analyse vidéo (espace « REF CLIPS »).
+  // Données : fonction refclips_stats_admin (compte admin + double authentification), lecture seule.
+  // =====================================================================
+  const RC_CODES = {"V-MAR":"Marcher","V-DRI":"Reprise de dribble","V-PAL":"Porté de balle / Palming","FUM":"Fumble","V-3s":"3 secondes","V-5s":"5 s (LF, remise en jeu)","V-JEM5s":"Joueur étroitement marqué (5 s)","V-8s":"8 secondes","V-14s":"14 secondes","V-24s":"24 secondes","V-OUT":"Sortie de balle","V-REZ":"Retour en zone","V-PIED":"Pied","V-GOAL":"Goaltending / Intervention illégale","V-E2":"Entre-deux","V-LF":"Lancer-franc","V-REJ":"Remise en jeu","F-DEF-POU":"Pousser","F-DEF-HOLD":"Tenir","F-DEF-UIM":"Usage illégal des mains","F-DEF-HDC":"Antenne (handchecking)","F-DEF-OBS":"Obstruction","F-DEF-TIR":"Sur tireur","F-DEF-AOS":"Action de tir (AOS)","F-DEF-REB":"Sur rebond","F-DEF-INT":"Joueur intérieur","F-OFF-CHA":"Charge (passage en force)","F-OFF-ECR":"Écran illégal","F-OFF-DEM":"Démarquage","F-OFF-INT":"Joueur intérieur","F-OFF-TIR":"Du tireur","F-DEMI":"Demi-cercle de non-charge","F-HB":"Hors-ballon","F-BUZ":"Au buzzer","F-PP":"Post play","F-VER":"Verticalité","DF":"Double faute","FAS-C1":"Antisportive C1","FAS-C2":"Antisportive C2","FAS-C3":"Antisportive C3","FAS-C4":"Antisportive C4","FAS-C5":"Antisportive C5","FT-JOU":"Technique joueur (comportement)","FT-SIMU":"Technique joueur (simulation)","FT-ENT":"Technique entraîneur","FT-BAN":"Technique banc","FD-JOU":"Disqualifiante joueur","FD-ENT":"Disqualifiante entraîneur","FD-BAN":"Disqualifiante banc","BAG":"Bagarre","M-AT-BON":"AT bonne position","M-AT-BAD":"AT mauvaise position","M-AT-CRO":"AT croisé","M-AT-AID":"AT aide","M-AT-HZ":"AT hors zone","M-AK-BON":"AK bonne position","M-AK-BAD":"AK mauvaise position","M-AK-AID":"AK aide","M-AK-HZ":"AK hors zone","M-AC-BON":"AC bonne position","M-AC-BAD":"AC mauvaise position","M-AC-AID":"AC aide","M-AC-HZ":"AC hors zone","M-DOU":"Double coup de sifflet","M-TRI":"Triple coup de sifflet","GEST":"Gestuelle","G-JOU":"Gestion joueur","G-ENT":"Gestion entraîneur","G-BAN":"Gestion banc","G-SS":"Situations spéciales","TIR-BUZ":"Tir au buzzer","G-BAG":"Gestion bagarre","G-INC":"Gestion incident","CC":"Commotion cérébrale","G-ARB":"Entre arbitres (info, discussion)","G-ERR":"Erreur","G-ERR-RECT":"Erreur rectifiable","G-VID":"Vidéo","G-TM":"Temps-mort","G-REM":"Remplacement","G-14s24s":"OTM 14 s / 24 s","G-TPS":"OTM temps / chronométreur","G-MQR":"OTM marqueur (faute, score)"};
+  const RC_CAT = { VIOLATIONS: ["Violations", "#3B82F6"], FAUTES: ["Fautes", "#E0313C"], MECANIQUE: ["Mécanique", "#16A34A"], GESTION: ["Gestion", "#7C3AED"] };
+  const RC_LIB = {
+    methode: { tuile: "Clic sur un code (tuiles)", recherche: "Recherche au clavier", favori: "Favori (clic)", favori_clavier: "Favori (touches 1 à 9)", panneau: "Panneau 2 écrans (clic)", panneau_recherche: "Panneau 2 écrans (recherche)" },
+    modif: { duree: "Durée ±1 s", code: "Changement de code", prefixe: "Changement de préfixe", qt: "Changement de QT", concerne: "Arbitre concerné", note: "Note ajoutée", suppression: "Suppression", prolongation: "Prolongation (touche ])", debut_ici: "Début placé ici (touche [)" },
+    action: { annuler: "Annuler (⌘Z)", relire_clip: "Clip revu en grand", qt_repere: "Repère de QT posé", image_par_image: "Image par image", plein_ecran: "Plein écran" },
+    prefixe: { aucun: "Sans préfixe", OUB: "OUB · Oubli", INV: "INV · Invention", INVS: "INVS · Inversion", NOC: "NOC · No call", SIMU: "SIMU · Simulation" },
+    match: { referee_tracker: "Liste Referee Tracker", libre: "Hors Referee Tracker" },
+    niveau: { SENIOR: "Senior", JEUNE: "Jeune" },
+    qualite: { origine: "Qualité d'origine", leger: "Léger pour l'envoi" },
+    conversion: { rapide: "Rapide (sans réencodage)", complete: "Complète", echec: "Échec" },
+    export: { annule: "Annulé", echec: "Échec" },
+    deux_ecrans: { un: "1 écran (fenêtre)", deux: "2 écrans" },
+    rt: { connexion: "Connexions", double_auth: "Double authentification", liste_hors_ligne: "Liste hors ligne", match_hors_liste: "Match hors liste" },
+    reglage: { refs: "Nombre d'arbitres (2 ou 3)", crewOn: "Arbitre concerné", quality: "Qualité d'export", before: "Secondes avant", after: "Secondes après", favs: "Favoris" },
+    temps: { video: "Minutes à regarder la vidéo", "2ecrans": "Minutes en mode 2 écrans" },
+  };
+  const RC_PERF = { demarrage: "Démarrage de l'app", chargement_video: "Chargement d'une vidéo", conversion: "Conversion d'une vidéo", export: "Export complet", export_par_clip: "Export, par clip" };
+  const RC_ENV = { version: "Version de REF CLIPS", os: "Système", os_version: "Version du système", arch: "Processeur", ecrans: "Nombre d'écrans", ecran: "Résolution d'écran", ram_go: "Mémoire (Go)", coeurs: "Cœurs", langue: "Langue", electron: "Moteur Electron" };
+  let rcJours = 30;
+  const rcFam = (S, f) => Object.entries(S.compteurs || {}).filter(([k]) => k.startsWith(f + ":")).map(([k, v]) => ({ k: k.slice(f.length + 1), v: Number(v) || 0 })).sort((a, b) => b.v - a.v);
+  const rcLib = (f, k) => (RC_LIB[f] && RC_LIB[f][k]) || k.replace(/_/g, " ");
+  const rcMs = (ms) => (ms == null ? "—" : ms < 1000 ? ms + " ms" : ms < 60000 ? (ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " s" : Math.round(ms / 60000) + " min");
+  const rcOs = (o) => ({ mac: "Mac", windows: "PC Windows", linux: "Linux" }[o] || o || "—");
+  async function rcDonnees(force) {
+    cache.rc = cache.rc || {};
+    if (force || !cache.rc[rcJours]) {
+      const d = new Date(Date.now() - rcJours * 864e5).toISOString().slice(0, 10);
+      cache.rc[rcJours] = Object.assign(await rpcP("refclips_stats_admin", { p_depuis: d }), { genere: new Date().toISOString() });
+    }
+    return cache.rc[rcJours];
+  }
+  function rcEntete(id) {   // période + export Excel, identiques sur les 6 pages
+    return '<div class="row tech-actions rc-ent"><div class="rc-per">' + [[7, "7 jours"], [30, "30 jours"], [90, "90 jours"], [365, "12 mois"]].map(([n, l]) =>
+      '<button class="btn sm' + (n === rcJours ? " pri" : "") + '" data-rcj="' + n + '">' + l + "</button>").join("") + '</div><span class="mut tiny">REF CLIPS · données du ' + fmt(new Date()) + '</span><button class="btn pri" data-rcx="' + id + '">⬇ Exporter en Excel</button></div>';
+  }
+  function rcBrancher(el, sec, S) {
+    el.querySelectorAll("[data-rcj]").forEach((b) => b.onclick = async () => { rcJours = Number(b.dataset.rcj); await rendus[sec](false); });
+    el.querySelectorAll("[data-rcx]").forEach((b) => b.onclick = () => { rcExcel(S); toast("Export Excel téléchargé", "ok"); });
+  }
+  function rcExcel(S) {
+    const T = S.totaux || {};
+    window.rtXlsx("REF-CLIPS-statistiques-" + rcJours + "j-" + new Date().toISOString().slice(0, 10), [
+      { nom: "Indicateurs", lignes: [["Indicateur", "Valeur"]].concat(Object.entries(T).map(([k, v]) => [k.replace(/_/g, " "), v])) },
+      { nom: "Par jour", lignes: [["Jour", "Arbitres", "Minutes", "Matchs", "Clips", "Exports"]].concat((S.jours || []).map((d) => [d.jour, d.arbitres, d.minutes, d.matchs, d.clips, d.exports])) },
+      { nom: "Arbitres", lignes: [["Arbitre", "Niveau", "1re utilisation", "Dernière", "Jours actifs", "Minutes", "Ouvertures", "Matchs", "Clips", "BEST", "Exports", "Échecs export", "Version", "Système"]]
+        .concat((S.arbitres || []).map((a) => [a.nom, a.niveau, a.premier, a.dernier, a.jours, a.minutes, a.ouvertures, a.matchs, a.clips, a.best, a.exports, a.echecs_export, a.version, rcOs(a.os)])) },
+      { nom: "Détail", lignes: [["Famille", "Valeur", "Nombre"]].concat(Object.entries(S.compteurs || {}).sort().map(([k, v]) => { const i = k.indexOf(":"); return [k.slice(0, i), rcLib(k.slice(0, i), k.slice(i + 1)), v]; })) },
+      { nom: "Performances", lignes: [["Mesure", "Nombre", "Moyenne (ms)", "Max (ms)"]].concat(Object.entries(S.perf || {}).map(([k, p]) => [RC_PERF[k] || k, p.n, p.moyenne_ms, p.max_ms])) },
+      { nom: "Environnements", lignes: [["Élément", "Valeur", "Arbitres"]].concat(Object.entries(S.environnements || {}).flatMap(([k, o]) => Object.entries(o).map(([v, n]) => [RC_ENV[k] || k, v, n]))) },
+      { nom: "Erreurs", lignes: [["Message", "Où", "Fois", "Arbitres", "Dernière", "Version", "Système"]].concat((S.erreurs || []).map((e) => [e.message, e.lieu, e.n, e.arbitres, e.dernier, e.version, rcOs(e.os)])) }]);
+  }
+  const rcVide = '<p class="vide">Pas encore de données sur cette période</p>';
+  const rcSerie = (S, k) => (S.jours || []).map((d) => Number(d[k]) || 0);
+  const rcLabels = (S) => (S.jours || []).map((d) => jj(d.jour));
+  const rcBarres = (S, f, n, fmtV) => { const L = rcFam(S, f).slice(0, n || 12); return L.length ? VZ.barresH(L.map((x) => ({ l: rcLib(f, x.k), v: x.v })), fmtV) : rcVide; };
+  async function rcPage(sec, corps) {
+    const el = $("sec-" + sec);
+    if (!cache.rc || !cache.rc[rcJours]) el.innerHTML = '<p class="mut">Chargement…</p>';
+    const S = await rcDonnees(false);
+    el.innerHTML = rcEntete(sec) + corps(S, S.totaux || {});
+    rcBrancher(el, sec, S);
+    return { el, S };
+  }
+
+  // 1. Vue d'ensemble
+  rendus.rcaccueil = async function (force) {
+    if (force) cache.rc = {};
+    await rcPage("rcaccueil", (S, T) => {
+      const cats = Object.keys(RC_CAT).map((k) => ({ l: RC_CAT[k][0], v: Number((S.compteurs || {})["cat:" + k]) || 0, c: RC_CAT[k][1] }));
+      const mth = rcFam(S, "methode"), tot = mth.reduce((t, x) => t + x.v, 0);
+      return VZ.hero([
+        { v: VZ.n(T.arbitres), l: "Arbitres actifs", s: VZ.n(T.nouveaux) + " nouveau(x) · " + VZ.n(T.arbitres_total) + " au total", c: "navy", ic: "◉" },
+        { v: minutesTxt(T.minutes || 0), l: "Temps d'utilisation", s: T.arbitres ? minutesTxt(Math.round(T.minutes / T.arbitres)) + " par arbitre" : "", c: "blue", ic: "◷" },
+        { v: VZ.n(T.matchs), l: "Matchs analysés", s: VZ.n((S.compteurs || {})["match:referee_tracker"] || 0) + " depuis la liste Referee Tracker", c: "violet", ic: "⚑" },
+        { v: VZ.n(T.clips), l: "Clips marqués", s: T.matchs ? Math.round(T.clips / T.matchs) + " par match · " + VZ.n(T.best) + " BEST" : VZ.n(T.best) + " BEST", c: "gold", ic: "✂" },
+        { v: VZ.n(T.exports), l: "Exports", s: VZ.n(T.clips_exportes) + " clips exportés" + (T.echecs_export ? " · " + T.echecs_export + " échec(s)" : ""), c: T.echecs_export ? "red" : "green", ic: "⬇" },
+        { v: VZ.n((S.erreurs || []).reduce((t, e) => t + (e.n || 0), 0)), l: "Erreurs techniques", s: (S.erreurs || []).length + " type(s) différent(s)", c: (S.erreurs || []).length ? "red" : "green", ic: "⚠" }]) +
+        '<div class="vz-g2">' +
+        VZ.carte("Arbitres actifs et clips", "par jour", (S.jours || []).length ? VZ.aire([{ nom: "Arbitres actifs", v: rcSerie(S, "arbitres") }, { nom: "Clips (÷10)", v: rcSerie(S, "clips").map((v) => Math.round(v / 10)), c: "#F2B705" }], rcLabels(S)) : rcVide) +
+        VZ.carte("Clips par thème", "", cats.some((c) => c.v) ? VZ.anneau(cats, VZ.n(T.clips), "clips") : rcVide) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Comment les arbitres marquent", "part des clips", tot ? VZ.barresH(mth.map((x) => ({ l: rcLib("methode", x.k), v: x.v })), (v) => VZ.n(v) + " (" + pct(v, tot) + ")") : rcVide) +
+        VZ.carte("Heures d'utilisation", "minutes cumulées", VZ.chaleur(Array.from({ length: 24 }, (_, h) => Number((S.compteurs || {})["heure:" + h]) || 0), minutesTxt)) +
+        "</div>";
+    });
+  };
+
+  // 2. Utilisation
+  rendus.rcusage = async function (force) {
+    if (force) cache.rc = {};
+    await rcPage("rcusage", (S, T) => {
+      const c = S.compteurs || {}, video = Number(c["temps:video"]) || 0, deux = Number(c["temps:2ecrans"]) || 0;
+      return VZ.hero([
+        { v: minutesTxt(T.minutes || 0), l: "Temps d'utilisation", s: VZ.n(T.jours_actifs) + " journée(s) d'utilisation", c: "blue", ic: "◷" },
+        { v: pct(video, T.minutes), l: "À regarder la vidéo", s: minutesTxt(video), c: "violet", ic: "▶" },
+        { v: VZ.n(T.ouvertures), l: "Ouvertures de l'app", s: T.jours_actifs ? (T.ouvertures / T.jours_actifs).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " par jour actif" : "", c: "navy", ic: "↻" },
+        { v: minutesTxt(deux), l: "Mode 2 écrans", s: VZ.n(rcFam(S, "deux_ecrans").reduce((t, x) => t + x.v, 0)) + " ouverture(s)", c: "gold", ic: "⧉" }]) +
+        '<div class="vz-g2">' +
+        VZ.carte("Temps d'utilisation", "minutes par jour", (S.jours || []).length ? VZ.aire([{ nom: "Minutes", v: rcSerie(S, "minutes") }], rcLabels(S)) : rcVide) +
+        VZ.carte("Heures d'utilisation", "minutes cumulées", VZ.chaleur(Array.from({ length: 24 }, (_, h) => Number(c["heure:" + h]) || 0), minutesTxt)) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Façons de marquer un clip", "", rcBarres(S, "methode")) +
+        VZ.carte("Actions", "", rcBarres(S, "action")) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Corrections des clips", "", rcBarres(S, "modif")) +
+        VZ.carte("Mode 2 écrans", "", rcBarres(S, "deux_ecrans")) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Connexion Referee Tracker", "", rcBarres(S, "rt")) +
+        VZ.carte("Réglages choisis", "changements faits par les arbitres", rcBarres(S, "reglage", 15)) +
+        "</div>";
+    });
+  };
+
+  // 3. Arbitres
+  rendus.rcarbitres = async function (force) {
+    if (force) cache.rc = {};
+    const { el, S } = await rcPage("rcarbitres", (S) => {
+      const A = S.arbitres || [];
+      return '<div class="vz-g2">' +
+        VZ.carte("Clips par arbitre", "", A.length ? VZ.barresH(A.filter((a) => a.clips).map((a) => ({ l: a.nom || "—", v: a.clips }))) : rcVide) +
+        VZ.carte("Temps d'utilisation par arbitre", "", A.length ? VZ.barresH(A.slice().sort((a, b) => b.minutes - a.minutes).map((a) => ({ l: a.nom || "—", v: a.minutes })), minutesTxt) : rcVide) +
+        '</div><div class="card"><div class="card-head"><h2>Tous les arbitres</h2><span class="sub">' + A.length + ' sur la période · clique sur une colonne pour trier</span></div><div id="rcTab"></div></div>';
+    });
+    tableCourante = tableau($("rcTab"), [
+      { t: "Arbitre", k: "nom", r: (a) => "<b>" + esc(a.nom || "—") + "</b>" },
+      { t: "Niveau", k: "niveau", r: (a) => esc(libN(a.niveau || "") || "—") },
+      { t: "1re fois", k: "premier", r: (a) => fmtD(a.premier) },
+      { t: "Dernière", k: "dernier", r: (a) => fmtD(a.dernier) },
+      colN("Jours", "jours"), { t: "Temps", k: "minutes", cl: "num right", r: (a) => minutesTxt(a.minutes) },
+      colN("Matchs", "matchs"), colN("Clips", "clips"), colN("BEST", "best"), colN("Exports", "exports"),
+      { t: "Clips / match", k: (a) => (a.matchs ? a.clips / a.matchs : 0), cl: "num right", r: (a) => (a.matchs ? Math.round(a.clips / a.matchs) : "—") },
+      { t: "Version", k: "version", r: (a) => esc(a.version || "—") }, { t: "Système", k: "os", r: (a) => esc(rcOs(a.os)) + (a.env && a.env.os_version ? ' <span class="mut tiny">' + esc(a.env.os_version) + "</span>" : "") }],
+      S.arbitres || [], { recherche: rechercheCourante });
+    void el;
+  };
+
+  // 4. Codes et thèmes
+  rendus.rccodes = async function (force) {
+    if (force) cache.rc = {};
+    await rcPage("rccodes", (S, T) => {
+      const c = S.compteurs || {}, codes = rcFam(S, "code");
+      const cats = Object.keys(RC_CAT).map((k) => ({ l: RC_CAT[k][0], v: Number(c["cat:" + k]) || 0, c: RC_CAT[k][1] }));
+      const qts = ["QT1", "QT2", "QT3", "QT4", "PROL"].map((q) => ({ l: q, v: Number(c["qt:" + q]) || 0 }));
+      const catDe = (code) => (/^V-|^FUM/.test(code) ? "VIOLATIONS" : /^M-|^GEST/.test(code) ? "MECANIQUE" : /^G-|^TIR-BUZ|^CC$/.test(code) ? "GESTION" : "FAUTES");
+      return VZ.hero([
+        { v: VZ.n(T.clips), l: "Clips", s: VZ.n(codes.length) + " codes différents utilisés", c: "navy", ic: "✂" },
+        { v: VZ.n(T.best), l: "BEST", s: pct(T.best, T.clips) + " des clips", c: "gold", ic: "★" },
+        { v: VZ.n(rcFam(S, "prefixe").filter((x) => x.k !== "aucun").reduce((t, x) => t + x.v, 0)), l: "Avec préfixe", s: "OUB, INV, INVS, NOC, SIMU", c: "red", ic: "⚑" },
+        { v: VZ.n(Number(c["concerne:collegue"]) || 0), l: "Concernant un collègue", s: "option « arbitre concerné »", c: "violet", ic: "👥" }]) +
+        '<div class="vz-g2">' +
+        VZ.carte("Clips par thème", "", cats.some((x) => x.v) ? VZ.anneau(cats, VZ.n(T.clips), "clips") : rcVide) +
+        VZ.carte("Clips par quart-temps", "", qts.some((x) => x.v) ? VZ.barresH(qts) : rcVide) +
+        "</div>" +
+        VZ.carte("Codes les plus utilisés", "top 20", codes.length ? VZ.barresH(codes.slice(0, 20).map((x) => ({ l: x.k + (RC_CODES[x.k] ? " · " + RC_CODES[x.k] : ""), v: x.v, c: (RC_CAT[catDe(x.k)] || [])[1] }))) : rcVide) +
+        '<div class="vz-g2">' +
+        VZ.carte("Préfixes", "", rcBarres(S, "prefixe")) +
+        VZ.carte("Matchs créés", "", rcBarres(S, "match")) +
+        "</div>" + VZ.carte("Codes jamais utilisés", "sur la période", '<p class="rc-jamais">' + (Object.keys(RC_CODES).filter((k) => !c["code:" + k]).map((k) => '<span title="' + esc(RC_CODES[k]) + '">' + esc(k) + "</span>").join("") || "Tous les codes ont servi") + "</p>");
+    });
+  };
+
+  // 5. Vidéos et exports
+  rendus.rcvideos = async function (force) {
+    if (force) cache.rc = {};
+    await rcPage("rcvideos", (S, T) => {
+      const c = S.compteurs || {}, P = S.perf || {}, vids = Number(c["video:ajout"]) || 0;
+      return VZ.hero([
+        { v: VZ.n(vids), l: "Vidéos ouvertes", s: minutesTxt(Number(c["video:minutes"]) || 0) + " de match au total", c: "navy", ic: "▶" },
+        { v: VZ.n(rcFam(S, "conversion").reduce((t, x) => t + x.v, 0)), l: "Conversions", s: "vidéos illisibles rendues lisibles", c: "violet", ic: "⇄" },
+        { v: VZ.n(T.exports), l: "Exports réussis", s: VZ.n(T.clips_exportes) + " clips", c: "green", ic: "⬇" },
+        { v: VZ.n(T.echecs_export), l: "Exports annulés ou ratés", s: pct(T.echecs_export, (T.exports || 0) + (T.echecs_export || 0)) + " des exports", c: T.echecs_export ? "red" : "gold", ic: "⚠" },
+        { v: rcMs(P.export_par_clip && P.export_par_clip.moyenne_ms), l: "Export, par clip", s: "en moyenne", c: "blue", ic: "⏱" }]) +
+        '<div class="vz-g2">' +
+        VZ.carte("Résolution des vidéos", "", rcBarres(S, "resolution")) +
+        VZ.carte("Formats des vidéos", "", rcBarres(S, "format")) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Qualité d'export choisie", "", rcBarres(S, "qualite")) +
+        VZ.carte("Conversions et exports ratés", "", rcFam(S, "conversion").concat(rcFam(S, "export")).length ? VZ.barresH(rcFam(S, "conversion").map((x) => ({ l: "Conversion · " + rcLib("conversion", x.k), v: x.v })).concat(rcFam(S, "export").map((x) => ({ l: "Export · " + rcLib("export", x.k), v: x.v, c: "#E0313C" })))) : rcVide) +
+        "</div>" + VZ.carte("Exports par jour", "", (S.jours || []).length ? VZ.aire([{ nom: "Exports", v: rcSerie(S, "exports"), c: "#16A34A" }], rcLabels(S)) : rcVide);
+    });
+  };
+
+  // 6. Technique
+  rendus.rctech = async function (force) {
+    if (force) cache.rc = {};
+    const { S } = await rcPage("rctech", (S) => {
+      const E = S.environnements || {}, P = S.perf || {};
+      const env = (k) => Object.entries(E[k] || {}).sort((a, b) => b[1] - a[1]).map(([v, n]) => ({ l: k === "os" ? rcOs(v) : v, v: n }));
+      return '<div class="vz-g2">' +
+        VZ.carte("Versions de REF CLIPS", "arbitres", env("version").length ? VZ.barresH(env("version")) : rcVide) +
+        VZ.carte("Systèmes", "arbitres", env("os").length ? VZ.anneau(env("os").map((x, k) => ({ l: x.l, v: x.v, c: VZ.pal[k] })), VZ.n((S.totaux || {}).arbitres), "arbitres") : rcVide) +
+        "</div><div class=\"vz-g2\">" +
+        VZ.carte("Versions du système", "", env("os_version").length ? VZ.barresH(env("os_version")) : rcVide) +
+        VZ.carte("Machines", "processeur · mémoire · écrans", ["arch", "ram_go", "ecrans"].some((k) => env(k).length) ?
+          VZ.barresH(env("arch").map((x) => ({ l: "Processeur " + x.l, v: x.v })).concat(env("ram_go").map((x) => ({ l: x.l + " Go de mémoire", v: x.v, c: "#F2B705" })), env("ecrans").map((x) => ({ l: x.l + " écran(s)", v: x.v, c: "#16A34A" })))) : rcVide) +
+        "</div>" +
+        VZ.carte("Vitesse de l'app", "moyenne et maximum", Object.keys(P).length ? '<table class="t rc-perf"><tr><th>Mesure</th><th class="right">Nombre</th><th class="right">Moyenne</th><th class="right">Max</th></tr>' +
+          Object.entries(P).map(([k, p]) => "<tr><td>" + esc(RC_PERF[k] || k) + '</td><td class="right">' + VZ.n(p.n) + '</td><td class="right">' + rcMs(p.moyenne_ms) + '</td><td class="right">' + rcMs(p.max_ms) + "</td></tr>").join("") + "</table>" : rcVide) +
+        '<div class="card"><div class="card-head"><h2>Erreurs techniques</h2><span class="sub">messages nettoyés : ni nom de fichier, ni e-mail</span></div><div id="rcErr"></div></div>';
+    });
+    if ((S.erreurs || []).length) tableau($("rcErr"), [{ t: "Message", k: "message", r: (e) => esc(e.message) }, { t: "Où", k: "lieu", r: (e) => '<span class="mut tiny">' + esc(e.lieu || "") + "</span>" },
+      colN("Fois", "n"), colN("Arbitres", "arbitres"), { t: "Dernière", k: "dernier", r: (e) => fmt(e.dernier) }, { t: "Version", k: "version", r: (e) => esc(e.version || "") }, { t: "Système", k: "os", r: (e) => esc(rcOs(e.os)) }], S.erreurs, {});
+    else $("rcErr").innerHTML = '<p class="vide">Aucune erreur sur la période</p>';
+  };
+
+  Object.assign(SECTIONS, { rcaccueil: "REF CLIPS · Vue d'ensemble", rcusage: "REF CLIPS · Utilisation", rcarbitres: "REF CLIPS · Arbitres", rccodes: "REF CLIPS · Codes et thèmes", rcvideos: "REF CLIPS · Vidéos et exports", rctech: "REF CLIPS · Technique" });
+  ["rcaccueil", "rcusage", "rcarbitres", "rccodes", "rcvideos", "rctech"].forEach((k) => { ESPACE_DE[k] = "rcl"; PAGES.push({ id: "rcl-" + k, secs: [k] }); });
 
   demarrer();
 })();

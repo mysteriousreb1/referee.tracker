@@ -393,7 +393,7 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .badge, .nav-count { white-space: nowrap; }
 @media (max-width: 1100px) { .grid-2, .grid-3 { grid-template-columns: 1fr !important; } }
 /* b89 — 2 espaces + onglets de page */
-.espaces { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: rgba(255,255,255,.08); border-radius: var(--r-md); padding: 4px; }
+.espaces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: rgba(255,255,255,.08); border-radius: var(--r-md); padding: 4px; }
 .espaces button { border: 0; background: transparent; color: rgba(255,255,255,.75); font: 700 12px/1 inherit; font-family: inherit; padding: 9px 4px; border-radius: calc(var(--r-md) - 2px); cursor: pointer; }
 .espaces button.active { background: var(--gold); color: var(--navy-900); }
 .nav > div[data-esp] { display: flex; flex-direction: column; gap: 3px; }
@@ -683,3 +683,10 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .ca-s input { margin-top: 3px; width: 18px !important; height: 18px !important; min-height: 0 !important; flex: none; padding: 0 !important; } .ca-s b { font-size: 18px; color: var(--gold, #F2B705); } .ca-s span { font-size: 13px; line-height: 1.4; } .ca-s em { color: var(--muted); font-size: 12px; }
 .ca-res { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(127,127,127,.07); }
 .ca-l { margin: 6px 0 0; padding-left: 18px; font-size: 13px; } .ca-l li { padding: 2px 0; }
+
+/* b106 — espace REF CLIPS (stats de l'app d'analyse vidéo) */
+#espaces button { font-size: 11px; padding: 9px 2px; line-height: 1.15; }
+.rc-ent { flex-wrap: wrap; gap: 8px; }
+.rc-per { display: flex; gap: 4px; margin-right: auto; }
+.rc-jamais { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.rc-jamais span { font: 600 11px/1 "JetBrains Mono", ui-monospace, monospace; padding: 5px 7px; border-radius: 6px; background: rgba(100,116,139,.12); color: var(--muted, #64748B); }
