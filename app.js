@@ -502,7 +502,8 @@ function setActiveTab(tab) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   state.filteredRows = filterRows(state.allRows);
   renderTab_(tab);
-  if (ongletAvant !== tab) animerEntree_(document.getElementById(tab));
+  if (ongletAvant !== tab) animerEntree_(document.getElementById(tab), sensNavigation_(ongletAvant, tab));
+  placerIndicateurOnglet_();
   RECH.majBouton();
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
   if (progressionVisible_() && !state.qcmStats) loadQcmStats();
@@ -511,13 +512,33 @@ function setActiveTab(tab) {
    barres qui se remplissent. Seulement au changement d'onglet (jamais aux rafraîchissements),
    et rien si l'appareil demande moins d'animations. */
 const MOINS_ANIM_ = (() => { try { return window.matchMedia("(prefers-reduced-motion: reduce)"); } catch (e) { return { matches: false }; } })();
-function animerEntree_(panel) {
+// b118 — la page arrive du côté où se trouve l'onglet choisi (à droite dans la barre → glisse depuis la droite).
+function sensNavigation_(avant, apres) {
+  const ordre = [...document.querySelectorAll("nav.tabs .tab[data-tab]")].map(b => b.dataset.tab);
+  const ia = ordre.indexOf(avant), ib = ordre.indexOf(apres);
+  return ia < 0 || ib < 0 ? "" : ib > ia ? "droite" : "gauche";
+}
+function animerEntree_(panel, sens) {
   if (!panel || MOINS_ANIM_.matches) return;
-  panel.classList.remove("rt-entre"); void panel.offsetWidth;   // relance l'animation CSS
-  panel.classList.add("rt-entre");
-  clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre"), 900);
+  panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"); void panel.offsetWidth;   // relance l'animation CSS
+  panel.classList.add("rt-entre"); if (sens) panel.classList.add("rt-de-" + sens);
+  clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"), 900);
   defilerChiffres_(panel);
 }
+/* b118 — téléphone : une seule pastille sous les icônes de la barre du bas, qui glisse vers l'onglet choisi. */
+function placerIndicateurOnglet_() {
+  const nav = document.querySelector("nav.tabs"); if (!nav) return;
+  let ind = nav.querySelector(".tab-indic");
+  const actif = [...nav.querySelectorAll(".tab.active .tab-icon, #tabMoreBtn.is-current .tab-icon")].find(e => e.offsetParent);   // l'onglet visible (Hôtel… → « Plus »)
+  if (!estTel_() || !actif) { if (ind) ind.hidden = true; nav.classList.remove("has-indic"); return; }
+  if (!ind) { ind = document.createElement("span"); ind.className = "tab-indic"; ind.setAttribute("aria-hidden", "true"); nav.prepend(ind); }
+  const rn = nav.getBoundingClientRect(), ri = actif.getBoundingClientRect();
+  ind.hidden = false;
+  ind.style.width = ri.width + "px"; ind.style.height = ri.height + "px";
+  ind.style.transform = `translate(${ri.left - rn.left - nav.clientLeft}px, ${ri.top - rn.top - nav.clientTop}px)`;
+  nav.classList.add("has-indic");
+}
+window.addEventListener("resize", () => { clearTimeout(placerIndicateurOnglet_._t); placerIndicateurOnglet_._t = setTimeout(placerIndicateurOnglet_, 120); });
 const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v, .acc-big";
 function defilerChiffres_(panel) { panel.querySelectorAll(CHIFFRES_ANIMES_).forEach(defilerChiffre_); }
 // « 1 159,06 € » → défile de 0 à 1159,06 en gardant le format (espaces, virgule, unité).
@@ -540,7 +561,7 @@ function defilerChiffre_(el) {
 /* b116 — Accueil : carte de saison (anneau reçu / en attente, gros chiffres, courbe du net par mois). */
 function accSaisonCarte_(saison, aVenir, recuS, attS) {
   const total = recuS + attS, part = total > 0 ? recuS / total : 0;
-  const R = 42, C = 2 * Math.PI * R, arc = (C * part).toFixed(1);
+  const euros = v => Math.round(v).toLocaleString("fr-FR") + " €";   // b117 : sans centimes, pour tenir dans l'anneau
   // Net (indemnités − carburant) des matchs joués, mois par mois, dans l'ordre de la saison
   const parMois = {};
   saison.filter(r => r._isPast && r._date).forEach(r => {
@@ -565,13 +586,12 @@ function accSaisonCarte_(saison, aVenir, recuS, attS) {
     </div>`;
   }
   return `<section class="acc-saison" aria-label="Ma saison ${escapeHtml(state.selectedSeason || "")}">
-    <div class="acc-anneau">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="acc-anneau-fond" cx="50" cy="50" r="${R}"/><circle class="acc-anneau-arc" cx="50" cy="50" r="${R}" stroke-dasharray="${arc} ${C.toFixed(1)}" style="--arc:${arc}"/></svg>
-      <div class="acc-anneau-c"><strong class="acc-big">${formatMoneyC(total)}</strong><span>saison ${escapeHtml((state.selectedSeason || "").replace(/^20(\d\d)\/20(\d\d)$/, "$1/$2"))}</span></div>
+    <div class="acc-anneau" style="--p:${Math.round(part * 100)}" role="img" aria-label="${Math.round(part * 100)} % déjà reçu">
+      <div class="acc-anneau-c"><strong class="acc-big">${euros(total)}</strong><span>saison ${escapeHtml((state.selectedSeason || "").replace(/^20(\d\d)\/20(\d\d)$/, "$1/$2"))}</span></div>
     </div>
     <div class="acc-saison-d">
-      <div class="acc-sl acc-sl--ok"><i></i><span>Reçu</span><strong class="acc-big">${formatMoneyC(recuS)}</strong></div>
-      <div class="acc-sl acc-sl--att"><i></i><span>En attente</span><strong class="acc-big">${formatMoneyC(attS)}</strong></div>
+      <div class="acc-sl acc-sl--ok"><i></i><span>Reçu</span><strong class="acc-big">${euros(recuS)}</strong></div>
+      <div class="acc-sl acc-sl--att"><i></i><span>En attente</span><strong class="acc-big">${euros(attS)}</strong></div>
       <div class="acc-sl acc-sl--n"><span>${saison.length} match${saison.length > 1 ? "s" : ""}</span><strong>${aVenir.length} à venir</strong></div>
       ${courbe}
     </div>
@@ -3128,6 +3148,7 @@ function attachCardListeners(root) {
       const uid = card.dataset.uid;
       const open = card.classList.toggle("open");
       head.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open && !MOINS_ANIM_.matches) { card.classList.add("rt-ouvre"); setTimeout(() => card.classList.remove("rt-ouvre"), 600); }   // b118 : dépliage animé, au clic seulement
       if (open) {
         // b87 — accordéon : ouvrir une carte referme les autres (une seule fiche dépliée à la fois)
         document.querySelectorAll(".match-card.open").forEach(c => {
