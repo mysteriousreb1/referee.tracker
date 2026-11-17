@@ -3198,7 +3198,7 @@ img.brand-logo {
 /* Rapports */
 .rapp-seg { margin-top: 6px; }
 .rapp-form { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); display: grid; gap: 12px; }
-.rapp-form-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.rapp-form-grid { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; }
 .rapp-f-notes { grid-column: 1 / -1; }
 .rapp-src { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
 .rapp-photo { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); cursor: pointer; }
