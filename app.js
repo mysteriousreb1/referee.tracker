@@ -540,7 +540,7 @@ function defilerChiffre_(el) {
 /* b116 — Accueil : carte de saison (anneau reçu / en attente, gros chiffres, courbe du net par mois). */
 function accSaisonCarte_(saison, aVenir, recuS, attS) {
   const total = recuS + attS, part = total > 0 ? recuS / total : 0;
-  const R = 42, C = 2 * Math.PI * R, arc = (C * part).toFixed(1);
+  const euros = v => Math.round(v).toLocaleString("fr-FR") + " €";   // b117 : sans centimes, pour tenir dans l'anneau
   // Net (indemnités − carburant) des matchs joués, mois par mois, dans l'ordre de la saison
   const parMois = {};
   saison.filter(r => r._isPast && r._date).forEach(r => {
@@ -565,13 +565,12 @@ function accSaisonCarte_(saison, aVenir, recuS, attS) {
     </div>`;
   }
   return `<section class="acc-saison" aria-label="Ma saison ${escapeHtml(state.selectedSeason || "")}">
-    <div class="acc-anneau">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="acc-anneau-fond" cx="50" cy="50" r="${R}"/><circle class="acc-anneau-arc" cx="50" cy="50" r="${R}" stroke-dasharray="${arc} ${C.toFixed(1)}" style="--arc:${arc}"/></svg>
-      <div class="acc-anneau-c"><strong class="acc-big">${formatMoneyC(total)}</strong><span>saison ${escapeHtml((state.selectedSeason || "").replace(/^20(\d\d)\/20(\d\d)$/, "$1/$2"))}</span></div>
+    <div class="acc-anneau" style="--p:${Math.round(part * 100)}" role="img" aria-label="${Math.round(part * 100)} % déjà reçu">
+      <div class="acc-anneau-c"><strong class="acc-big">${euros(total)}</strong><span>saison ${escapeHtml((state.selectedSeason || "").replace(/^20(\d\d)\/20(\d\d)$/, "$1/$2"))}</span></div>
     </div>
     <div class="acc-saison-d">
-      <div class="acc-sl acc-sl--ok"><i></i><span>Reçu</span><strong class="acc-big">${formatMoneyC(recuS)}</strong></div>
-      <div class="acc-sl acc-sl--att"><i></i><span>En attente</span><strong class="acc-big">${formatMoneyC(attS)}</strong></div>
+      <div class="acc-sl acc-sl--ok"><i></i><span>Reçu</span><strong class="acc-big">${euros(recuS)}</strong></div>
+      <div class="acc-sl acc-sl--att"><i></i><span>En attente</span><strong class="acc-big">${euros(attS)}</strong></div>
       <div class="acc-sl acc-sl--n"><span>${saison.length} match${saison.length > 1 ? "s" : ""}</span><strong>${aVenir.length} à venir</strong></div>
       ${courbe}
     </div>

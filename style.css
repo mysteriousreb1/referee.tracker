@@ -5347,12 +5347,15 @@ details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte
 .acc-saison { display: grid; grid-template-columns: 150px 1fr; gap: 22px; align-items: center; margin: 12px 0 18px; padding: 18px 20px; border-radius: 20px;
   background: radial-gradient(120% 140% at 0% 0%, rgba(34,197,94,.12), transparent 55%), var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-soft); }
 .acc-anneau { position: relative; width: 150px; height: 150px; }
-.acc-anneau svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.acc-anneau circle { fill: none; stroke-width: 10; }
-.acc-anneau-fond { stroke: color-mix(in srgb, #f59e0b 70%, transparent); }
-.acc-anneau-arc { stroke: #22c55e; stroke-linecap: round; }
+/* b117 — anneau en dégradé conique (plus de SVG : l'iPhone y ajoutait un halo rouge) */
+@property --pa { syntax: "<number>"; inherits: false; initial-value: 0; }
+.acc-anneau::before { content: ""; position: absolute; inset: 0; border-radius: 50%; --pa: var(--p);
+  background: conic-gradient(#22c55e 0 calc(var(--pa) * 1%), #c27c0e calc(var(--pa) * 1%) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 11px), #000 calc(100% - 10px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 11px), #000 calc(100% - 10px)); }
 .acc-anneau-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.acc-anneau-c strong { font-family: var(--mono); font-size: 22px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.acc-anneau-c { padding: 0 16px; }
+.acc-anneau-c strong { font-family: var(--mono); font-size: 21px; font-weight: 800; color: var(--text); line-height: 1.1; white-space: nowrap; max-width: 100%; }
 .acc-anneau-c span { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 .acc-saison-d { display: grid; gap: 10px; min-width: 0; }
 .acc-sl { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
@@ -5369,18 +5372,20 @@ details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte
 .acc-courbe circle { fill: #22c55e; }
 .acc-courbe-x { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); font-style: normal; }
 .acc-courbe-x i { font-style: normal; }
-@media (max-width: 520px) {
+@media (max-width: 600px) {
   .acc-saison { grid-template-columns: 116px 1fr; gap: 16px; padding: 16px; }
   .acc-anneau { width: 116px; height: 116px; }
-  .acc-anneau-c strong { font-size: 17px; }
-  .acc-sl strong { font-size: 17px; }
+  .acc-anneau-c { padding: 0 12px; }
+  .acc-anneau-c strong { font-size: 15px; }
+  .acc-sl strong { font-size: 16px; }
+  .acc-sl { font-size: 12.5px; gap: 8px; }
 }
 /* Animation d'arrivée : l'anneau se dessine, la courbe se trace */
-@keyframes rtAnneau { from { stroke-dasharray: 0 999; } }
+@keyframes rtAnneau { from { --pa: 0; } }
 @keyframes rtTrace { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
-.panel.rt-entre .acc-anneau-arc { animation: rtAnneau 1s cubic-bezier(.2,.75,.25,1) .1s both; }
+.panel.rt-entre .acc-anneau::before { animation: rtAnneau 1s cubic-bezier(.2,.75,.25,1) .1s both; }
 .panel.rt-entre .acc-courbe-l { stroke-dasharray: 100; animation: rtTrace 1.1s ease .25s both; }
-@media (prefers-reduced-motion: reduce) { .panel.rt-entre .acc-anneau-arc, .panel.rt-entre .acc-courbe-l { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .panel.rt-entre .acc-anneau::before, .panel.rt-entre .acc-courbe-l { animation: none !important; } }
 
 /* ===== b116 — cartes de match : date en petit calendrier + ligne d'infos à icônes ===== */
 .mrow-card .card-head.mrow { grid-template-columns: 64px 46px minmax(0, 1fr) auto 18px; }
@@ -5426,3 +5431,6 @@ details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte
 .status-bar.show { animation: rtMonte .3s cubic-bezier(.2,.75,.25,1) both; }
 @media (prefers-reduced-motion: reduce) { .status-bar.ok::before, .status-bar.show { animation: none; } }
 .acc-anneau-c span { font-size: 9px; letter-spacing: .03em; }
+.acc-sl { flex-wrap: wrap; row-gap: 2px; }
+.acc-sl span { white-space: nowrap; }
+.acc-sl strong { white-space: nowrap; }
