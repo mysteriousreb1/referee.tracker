@@ -3265,7 +3265,7 @@ function paMoisCles_(rows) {
   if (saison) {
     const y = Number(saison.slice(0, 4));
     cles = [];
-    for (let i = 0; i < 12; i++) cles.push(monthKeyOf(new Date(y, 8 + i, 1)));   // septembre → août
+    for (let i = 0; i < 12; i++) cles.push(monthKeyOf(new Date(y, 7 + i, 1)));   // b111 : août → juillet, comme la saison des matchs (bascule au 30 juillet)
   } else {
     const n = new Date(); cles = [];
     for (let i = 11; i >= -2; i--) cles.push(monthKeyOf(new Date(n.getFullYear(), n.getMonth() - i, 1)));
@@ -7541,7 +7541,7 @@ function renderAnalyse() {
   destroyCharts();
 
   // Toutes les lignes actives, sans filtre de saison : le filtrage se fait
-  // ensuite via le sélecteur propre à cet onglet.
+  // ensuite sur la saison choisie avec la loupe.
   const toutes = analyseRowsToutesSaisons();
 
   if (!toutes.length) {
@@ -7550,7 +7550,7 @@ function renderAnalyse() {
   }
 
   // Saison retenue pour l'ensemble de l'onglet Analyse
-  AN.saison = resoudreSaison_(state.selectedSeason || AN.saison, toutes);   // b35 : suit la saison globale (menu recherche à venir)
+  AN.saison = resoudreSaison_(state.selectedSeason || AN.saison, toutes);   // saison choisie avec la loupe (b36)
   // b70 — « ce que l'arbitrage rapporte vraiment » = missions déjà jouées. Les désignations à venir sont dans Estimation,
   // jamais comptées ici (avant : 33 missions « faites » dont 9 à venir, chiffres incohérents avec Estimation/Paiements).
   const aujA = new Date(); aujA.setHours(0, 0, 0, 0);
@@ -7560,7 +7560,6 @@ function renderAnalyse() {
     root.innerHTML = `
       ${empty("Aucune mission pour cette saison.")}
     `;
-    brancherSelecteurAnalyse_();
     return;
   }
 
@@ -7680,7 +7679,6 @@ function renderAnalyse() {
   buildChartTranches(rows);
   buildChartPaiements(rows);
 
-  brancherSelecteurAnalyse_();
   chargerStatsAvancees(AN.saison);
 }
 
@@ -8155,22 +8153,6 @@ function resoudreSaison_(courante, rows) {
   if (courante && dispo.includes(courante)) return courante;
   if (state.selectedSeason && dispo.includes(state.selectedSeason)) return state.selectedSeason;
   return dispo[0] || "Toutes les saisons";
-}
-
-function optionsSaison_(rows, selected) {
-  const choix = ["Toutes les saisons", ...saisonsDisponibles(rows)];
-  return choix.map(s =>
-    `<option value="${escapeHtml(s)}" ${s === selected ? "selected" : ""}>${escapeHtml(s)}</option>`
-  ).join("");
-}
-
-function brancherSelecteurAnalyse_() {
-  const sel = document.getElementById("saisonAnalyse");
-  if (!sel) return;
-  sel.addEventListener("change", e => {
-    AN.saison = e.target.value;
-    renderAnalyse();
-  });
 }
 
 function renderAnalyseHero(brut, carburant, net, partGardee, nb, kmTotal, heuresTotal) {

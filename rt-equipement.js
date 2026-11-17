@@ -107,7 +107,7 @@
         <div class="kpi hero"><label>Dépensé cette saison (${esc(sc)})</label><strong>${eur(totS)}</strong><span class="sub">${indemS ? Math.round(totS / indemS * 100) + " % de tes indemnités de la saison" : "aucune indemnité cette saison"}</span></div>
         <div class="kpi"><label>Total depuis le début</label><strong>${eur(total)}</strong></div>
         <div class="kpi"><label>Achats</label><strong>${L.length}</strong></div>
-        <div class="kpi"><label>Gain de la saison après équipement</label><strong>${eur(indemS - totS)}</strong><span class="sub">indemnités − équipement (hors carburant)</span></div>
+        <div class="kpi"><label>Gain de la saison après équipement</label><strong>${eur(indemS - totS)}</strong><span class="sub">indemnités − équipement et frais de match (hors carburant)</span></div>
       </div>
       ${Object.keys(parCat).length ? `<div class="eq-cats">${Object.keys(parCat).sort((a, c) => parCat[c] - parCat[a]).map(k => `<span class="eq-cat eq-cat--${esc(k)}">${esc(libCat(k))} <b>${eur(parCat[k])}</b></span>`).join("")}</div>` : ""}
 
