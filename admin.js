@@ -169,7 +169,7 @@
   const ESPACE_DE = { analyses: "app", accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
   const PAGES = Object.keys(SECTIONS).map((k) => ({ id: (ESPACE_DE[k] || "arb") + "-" + k, secs: [k] }));
   function espace(e) {
-    document.querySelectorAll("#espaces button").forEach((b) => b.classList.toggle("active", b.dataset.esp === e));
+    document.querySelectorAll("#espaces button").forEach((b, i) => { const on = b.dataset.esp === e; b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false"); if (on) $("espaces").style.setProperty("--i", i); });
     document.querySelectorAll("#nav > div[data-esp]").forEach((d) => d.classList.toggle("hidden", d.dataset.esp !== e));
   }
   document.querySelectorAll("#espaces button").forEach((b) => b.addEventListener("click", () => { location.hash = { app: "#accueil", arb: "#userstats", rcl: "#rcaccueil" }[b.dataset.esp] || "#accueil"; }));   // REF CLIPS : 3e espace
@@ -177,7 +177,7 @@
   const rendus = {};
   async function naviguer(force) {
     const h = (location.hash || "#accueil").slice(1).split("/"); const sec = SECTIONS[h[0]] ? h[0] : "accueil";
-    courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
+    const avant = courant; courant = sec; effacerMsg(); if (!$("drawer").classList.contains("hidden")) fermerDrawer();   // b86 : changer de section ferme la fiche
     // b89 — 2 espaces (Application / Arbitres), des pages, et des onglets dans chaque page
     const pg = PAGES.find((x) => x.secs.includes(sec)) || PAGES[0];
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + sec));
@@ -186,6 +186,25 @@
     $("topTitre").textContent = SECTIONS[sec];
     $("recherche").value = recherches[sec] || "";
     try { await rendus[sec](force, h.slice(1)); } catch (e) { erreur(e); }
+    if (avant !== sec && courant === sec) animerSection($("sec-" + sec));
+  }
+  /* b120 — motion design de l'admin : à l'arrivée sur une page, les blocs montent en cascade,
+     les grands chiffres défilent, les barres se remplissent. Jamais aux actualisations ; rien si « réduire les animations ». */
+  const MOINS_ANIM = matchMedia("(prefers-reduced-motion: reduce)");
+  function animerSection(el) {
+    if (!el || MOINS_ANIM.matches) return;
+    el.classList.remove("entre"); void el.offsetWidth; el.classList.add("entre");
+    clearTimeout(el._entre); el._entre = setTimeout(() => el.classList.remove("entre"), 1000);
+    el.querySelectorAll(".vz-v, .tile .v, .tuile .v").forEach((n) => {
+      const t = n.firstChild; if (!t || t.nodeType !== 3) return;
+      const brut = t.nodeValue, m = brut.match(/^(\D*?)(-?\d(?:[\d\s\u202f\u00a0]*\d)?(?:,\d+)?)(.*)$/); if (!m) return;
+      const cible = Number(m[2].replace(/[\s\u202f\u00a0]/g, "").replace(",", ".")); if (!isFinite(cible) || Math.abs(cible) < 2) return;
+      const dec = (m[2].split(",")[1] || "").length, t0 = performance.now();
+      const pas = (now) => { if (!t.isConnected) return; const k = Math.min(1, (now - t0) / 650), e = 1 - Math.pow(1 - k, 3);
+        t.nodeValue = m[1] + (cible * e).toLocaleString("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + m[3];
+        if (k < 1) requestAnimationFrame(pas); else t.nodeValue = brut; };
+      requestAnimationFrame(pas);
+    });
   }
   window.addEventListener("hashchange", () => naviguer(false));
   $("btnRefresh").addEventListener("click", () => naviguer(true));
@@ -1096,21 +1115,62 @@
   };
 
   // ---- Journal d'audit
-  let jrPage = 0, jrFiltre = "";
+  let jrPage = 0, jrFiltre = "", jrConsult = false;
+  /* b120 — journal lisible : chaque action en phrase, par jour ; les simples consultations sont masquées par défaut. */
+  const JR = {
+    "arbitres.liste": ["voir", "A consulté la liste des arbitres"], "inscriptions.liste": ["voir", "A consulté les inscriptions"],
+    "arbitre.fiche": ["voir", "A ouvert la fiche"], "kpi.complet": ["voir", "A consulté les indicateurs"], "pilotage": ["voir", "A consulté le pilotage"],
+    "stats": ["voir", "A consulté le tableau de bord"], "stats.detail": ["voir", "A consulté les statistiques détaillées"], "paiements.global": ["voir", "A consulté les paiements"],
+    "alertes.liste": ["voir", "A consulté les alertes"], "alertes.global": ["voir", "A consulté les alertes"], "user.matchs": ["voir", "A consulté les matchs"],
+    "tickets.liste": ["voir", "A consulté les tickets"], "moteurs.liste": ["voir", "A consulté les moteurs"], "journal.liste": ["voir", "A consulté le journal"], "matchs.avenir": ["voir", "A consulté les matchs à venir"],
+    "sante.ping": ["tech", "A testé un moteur"], "commande.creer": ["tech", "A envoyé une commande au moteur"],
+    "message.envoyer": ["envoi", "A envoyé un message"], "ticket.repondre": ["envoi", "A répondu à un ticket"], "code.regenerer": ["envoi", "A renvoyé un code de connexion"],
+    "config.set": ["modif", "A modifié un réglage"], "profil.set": ["modif", "A modifié un profil"], "paiements.solder": ["modif", "A soldé des paiements"]
+  };
+  const JR_TYPE = { voir: ["Consultation", "#64748B"], tech: ["Technique", "#2563EB"], envoi: ["Envoi", "#7C3AED"], modif: ["Modification", "#EA580C"], autre: ["Action", "#0B1F3B"] };
+  const JR_CANAL = { les2: "mail + notification", mail: "mail", push: "notification" };
+  function jrPhrase(x) {
+    const d = x.details || {}, lib = JR[x.action] || ["autre", (x.action || "Action").replace(/[._]/g, " ")];
+    let plus = "";
+    if (x.action === "commande.creer" && d.commande) plus = " « " + d.commande + " »";
+    else if (x.action === "message.envoyer") plus = (d.sujet ? " « " + d.sujet + " »" : "") + (d.destinataires ? " à " + d.destinataires + " arbitre(s)" : "") + (JR_CANAL[d.canal] ? " (" + JR_CANAL[d.canal] + ")" : "");
+    else if (x.action === "ticket.repondre" && d.ticket) plus = " n° " + d.ticket + (d.statut ? " · " + d.statut.toLowerCase() : "");
+    else if (x.action === "config.set" && d.cle) plus = " : " + d.cle;
+    else if (x.action === "paiements.solder" && d.paiements_soldes) plus = " : " + d.paiements_soldes + " match(s)" + (d.motif ? " · " + d.motif : "");
+    else if (x.action === "code.regenerer") plus = d.envoye ? " (envoyé)" : d.erreur ? " (échec)" : "";
+    else if (x.action === "sante.ping" && d.http) plus = d.http === 200 ? " : répond (" + (d.latence_ms ? Math.round(d.latence_ms / 100) / 10 + " s" : "ok") + ")" : " : ne répond pas";
+    return { type: lib[0], texte: lib[1] + plus };
+  }
   rendus.journal = async function (force) {
     const el = $("sec-journal");
     if (force || !cache.journal || cache.journal.p !== jrPage || cache.journal.f !== jrFiltre) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.journal = { p: jrPage, f: jrFiltre, d: await admin("journal.liste", { page: jrPage, filtre_action: jrFiltre || undefined }) }; }
-    const d = cache.journal.d, l = d.data || [];
-    const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) + "…" : "—"); };
-    el.innerHTML = '<p class="mut tiny">Toutes les actions de l\'administration sont tracées (RGPD) : consultation d\'une fiche, envoi, modification, commande au moteur…</p><div class="toolbar"><input id="jrF" placeholder="Filtrer par action (ex. profil, message, commande)" value="' + esc(jrFiltre) + '"><button class="btn sm" id="jrGo">Filtrer</button><span class="sp"></span><span class="mut tiny">' + d.total + " entrée(s) · page " + (jrPage + 1) + '</span><button class="btn sm" id="jrP"' + (jrPage ? "" : " disabled") + '>← Plus récentes</button><button class="btn sm" id="jrN"' + ((jrPage + 1) * (d.taille || 100) < d.total ? "" : " disabled") + ">Plus anciennes →</button></div><div id=\"jrT\"></div>";
+    const d = cache.journal.d, tout = d.data || [];
+    const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : ""; };
+    const l = tout.map((x) => Object.assign({}, x, jrPhrase(x))).filter((x) => jrConsult || x.type !== "voir");
+    const caches = tout.length - l.length;
+    const jour = (dt) => { const j = new Date(dt), a = new Date(); a.setHours(0, 0, 0, 0); const diff = Math.round((a - new Date(j).setHours(0, 0, 0, 0)) / 864e5);
+      return diff === 0 ? "Aujourd'hui" : diff === 1 ? "Hier" : j.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); };
+    let jourCourant = "", html = "";
+    l.forEach((x) => {
+      const j = jour(x.at); if (j !== jourCourant) { if (jourCourant) html += "</ul>"; html += '<h3 class="jr-jour">' + esc(j) + '</h3><ul class="jr-liste">'; jourCourant = j; }
+      const t = JR_TYPE[x.type] || JR_TYPE.autre, qui = nomU(x.cible_user), det = JSON.stringify(x.details || {}, null, 1);
+      html += '<li class="jr-l"><span class="jr-h">' + esc(new Date(x.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })) + '</span><i class="jr-p" style="background:' + t[1] + '" title="' + t[0] + '"></i>' +
+        '<div class="jr-c"><b>' + esc(x.texte) + "</b>" + (qui ? ' <span class="jr-qui">· ' + esc(qui) + "</span>" : "") +
+        (det.length > 2 ? '<details class="jr-det"><summary>détail</summary><pre>' + esc(det.slice(0, 1200)) + "</pre></details>" : "") + "</div></li>";
+    });
+    if (jourCourant) html += "</ul>";
+    el.innerHTML = '<p class="mut tiny">Tout ce qui est fait dans l\'administration est noté ici (obligation RGPD). Les simples consultations sont masquées pour ne garder que l\'essentiel.</p>' +
+      '<div class="toolbar"><input id="jrF" placeholder="Chercher (ex. message, profil, commande)" value="' + esc(jrFiltre) + '"><button class="btn sm" id="jrGo">Chercher</button>' +
+      '<label class="jr-bascule"><input type="checkbox" id="jrV"' + (jrConsult ? " checked" : "") + '> Afficher aussi les consultations' + (caches ? " (" + caches + ")" : "") + "</label>" +
+      '<span class="sp"></span><span class="mut tiny">page ' + (jrPage + 1) + '</span><button class="btn sm" id="jrP"' + (jrPage ? "" : " disabled") + '>← Plus récentes</button><button class="btn sm" id="jrN"' + ((jrPage + 1) * (d.taille || 100) < d.total ? "" : " disabled") + ">Plus anciennes →</button></div>" +
+      '<div class="jr-leg">' + Object.values(JR_TYPE).slice(0, 4).map((t) => '<span><i style="background:' + t[1] + '"></i>' + t[0] + "</span>").join("") + "</div>" +
+      (html ? '<div class="card jr">' + html + "</div>" : '<p class="vide">Aucune action sur cette page' + (caches ? " (seulement des consultations : coche « Afficher aussi les consultations »)" : "") + "</p>");
     el.querySelector("#jrGo").onclick = () => { jrFiltre = el.querySelector("#jrF").value.trim(); jrPage = 0; rendus.journal(true); };
+    el.querySelector("#jrF").onkeydown = (e) => { if (e.key === "Enter") el.querySelector("#jrGo").click(); };
+    el.querySelector("#jrV").onchange = (e) => { jrConsult = e.target.checked; rendus.journal(false); };
     el.querySelector("#jrP").onclick = () => { jrPage = Math.max(0, jrPage - 1); rendus.journal(true); };
     el.querySelector("#jrN").onclick = () => { jrPage++; rendus.journal(true); };
-    tableCourante = tableau(el.querySelector("#jrT"), [
-      { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Action", k: "action", r: (x) => '<span class="mono tiny">' + esc(x.action || "") + "</span>" },
-      { t: "Arbitre concerné", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
-      { t: "Détail", k: (x) => JSON.stringify(x.details || {}), r: (x) => '<span class="tiny">' + esc(JSON.stringify(x.details || {}).slice(0, 200)) + "</span>" },
-    ], l, { recherche: rechercheCourante });
+    tableCourante = null;
   };
 
   // ---- Matchs à venir (tous les arbitres)
@@ -2158,22 +2218,36 @@
   const rcSerie = (S, k) => (S.jours || []).map((d) => Number(d[k]) || 0);
   const rcLabels = (S) => (S.jours || []).map((d) => jj(d.jour));
   const rcBarres = (S, f, n, fmtV) => { const L = rcFam(S, f).slice(0, n || 12); return L.length ? VZ.barresH(L.map((x) => ({ l: rcLib(f, x.k), v: x.v })), fmtV) : rcVide; };
-  async function rcPage(sec, corps) {
+  async function rcPage(sec, corps, sansEntete) {
     const el = $("sec-" + sec);
     if (!cache.rc || !cache.rc[rcJours]) el.innerHTML = '<p class="mut">Chargement…</p>';
     const S = await rcDonnees(false);
-    el.innerHTML = rcEntete(sec) + corps(S, S.totaux || {});
+    el.innerHTML = (sansEntete ? "" : rcEntete(sec)) + corps(S, S.totaux || {});
     rcBrancher(el, sec, S);
     return { el, S };
   }
 
-  // 1. Vue d'ensemble
+  // 1. Vue d'ensemble — b120 : même logique que l'accueil « Application » (en-tête d'état, « À faire », puis chiffres et courbes)
   rendus.rcaccueil = async function (force) {
     if (force) cache.rc = {};
+    if (force || !cache.rcsignal) { try { cache.rcsignal = await rpcP("refclips_signalements_admin", {}); } catch (e) { cache.rcsignal = cache.rcsignal || []; } }
     await rcPage("rcaccueil", (S, T) => {
       const cats = Object.keys(RC_CAT).map((k) => ({ l: RC_CAT[k][0], v: Number((S.compteurs || {})["cat:" + k]) || 0, c: RC_CAT[k][1] }));
       const mth = rcFam(S, "methode"), tot = mth.reduce((t, x) => t + x.v, 0);
-      return VZ.hero([
+      const sigNew = (cache.rcsignal || []).filter((x) => x.statut === "nouveau").length, err = S.erreurs || [], nbErr = err.reduce((t, e) => t + (e.n || 0), 0);
+      const vers = Object.entries((S.environnements || {}).version || {}).sort((a, b) => b[1] - a[1]), totV = vers.reduce((t, x) => t + x[1], 0);
+      const etat = sigNew || T.echecs_export > 2 ? ["À regarder", "#EA580C"] : err.length ? ["Quelques erreurs", "#F2B705"] : ["Tout va bien", "#16A34A"];
+      const todo = [];
+      if (sigNew) todo.push({ s: 1, t: sigNew + " signalement(s) à lire", d: "envoyés depuis REF CLIPS › Signaler un problème", l: "#rcsignal" });
+      if (T.echecs_export) todo.push({ s: 2, t: T.echecs_export + " export(s) en échec", d: "sur " + VZ.n(T.exports + T.echecs_export) + " tentatives", l: "#rcvideos" });
+      err.slice(0, 3).forEach((e) => todo.push({ s: 3, t: "Erreur : " + String(e.message || "inconnue").slice(0, 70), d: (e.n || 0) + " fois · " + (e.arbitres || 0) + " arbitre(s) · v" + (e.version || "?"), l: "#rctech" }));
+      if (vers.length > 1) todo.push({ s: 4, t: (totV - vers[0][1]) + " arbitre(s) pas sur la version " + vers[0][0], d: "versions en circulation : " + vers.map((v) => v[0] + " (" + v[1] + ")").join(", "), l: "#rctech" });
+      const SEVC = { 1: "#E0313C", 2: "#EA580C", 3: "#F2B705", 4: "#64748B" };
+      const per = '<div class="rc-per-seg">' + [[7, "7 j"], [30, "30 j"], [90, "90 j"], [365, "12 mois"]].map(([n, l]) => '<button class="btn sm' + (n === rcJours ? " pri" : "") + '" data-rcj="' + n + '">' + l + "</button>").join("") + "</div>";
+      return '<div class="ac-hero rc-hero"><div><p class="ac-date">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + ' <span class="ac-per">· ' + (rcJours === 365 ? "12 derniers mois" : rcJours + " derniers jours") + '</span></p><h2>REF CLIPS</h2>' +
+        '<p class="ac-etat"><i style="background:' + etat[1] + '"></i><b>' + etat[0] + "</b> · " + VZ.n(T.arbitres) + " arbitre(s) actif(s) · " + VZ.n(T.clips) + " clips" + (vers.length ? " · version la plus utilisée : " + esc(vers[0][0]) : "") + "</p></div>" +
+        '<div class="ac-hero-b">' + per + '<a class="btn" href="#rcsignal">✉ Signalements' + (sigNew ? " (" + sigNew + ")" : "") + '</a><button class="btn pri" data-rcx="1">Exporter Excel</button></div></div>' +
+        VZ.hero([
         { v: VZ.n(T.arbitres), l: "Arbitres actifs", s: VZ.n(T.nouveaux) + " nouveau(x) · " + VZ.n(T.arbitres_total) + " au total", c: "navy", ic: "◉" },
         { v: minutesTxt(T.minutes || 0), l: "Temps d'utilisation", s: T.arbitres ? minutesTxt(Math.round(T.minutes / T.arbitres)) + " par arbitre" : "", c: "blue", ic: "◷" },
         { v: VZ.n(T.matchs), l: "Matchs analysés", s: VZ.n((S.compteurs || {})["match:referee_tracker"] || 0) + " depuis la liste Referee Tracker", c: "violet", ic: "⚑" },
@@ -2181,13 +2255,15 @@
         { v: VZ.n(T.exports), l: "Exports", s: VZ.n(T.clips_exportes) + " clips exportés" + (T.echecs_export ? " · " + T.echecs_export + " échec(s)" : ""), c: T.echecs_export ? "red" : "green", ic: "⬇" },
         { v: VZ.n((S.erreurs || []).reduce((t, e) => t + (e.n || 0), 0)), l: "Erreurs techniques", s: (S.erreurs || []).length + " type(s) différent(s)", c: (S.erreurs || []).length ? "red" : "green", ic: "⚠" }]) +
         '<div class="vz-g2">' +
+        VZ.carte("À faire maintenant", todo.length ? todo.length + " point(s)" : "rien d'urgent", todo.length ? '<ul class="ac-todo">' + todo.map((a) => '<li data-lien="' + esc(a.l) + '"><i style="background:' + SEVC[a.s] + '"></i><div><b>' + esc(a.t) + '</b><span class="mut tiny">' + esc(a.d) + "</span></div><span>›</span></li>").join("") + "</ul>" : '<p class="vide">Aucun signalement, aucun échec d\'export, aucune erreur : tout roule.</p>') +
         VZ.carte("Arbitres actifs et clips", "par jour", (S.jours || []).length ? VZ.aire([{ nom: "Arbitres actifs", v: rcSerie(S, "arbitres") }, { nom: "Clips (÷10)", v: rcSerie(S, "clips").map((v) => Math.round(v / 10)), c: "#F2B705" }], rcLabels(S)) : rcVide) +
-        VZ.carte("Clips par thème", "", cats.some((c) => c.v) ? VZ.anneau(cats, VZ.n(T.clips), "clips") : rcVide) +
         "</div><div class=\"vz-g2\">" +
+        VZ.carte("Clips par thème", "", cats.some((c) => c.v) ? VZ.anneau(cats, VZ.n(T.clips), "clips") : rcVide) +
         VZ.carte("Comment les arbitres marquent", "part des clips", tot ? VZ.barresH(mth.map((x) => ({ l: rcLib("methode", x.k), v: x.v })), (v) => VZ.n(v) + " (" + pct(v, tot) + ")") : rcVide) +
-        VZ.carte("Heures d'utilisation", "minutes cumulées", VZ.chaleur(Array.from({ length: 24 }, (_, h) => Number((S.compteurs || {})["heure:" + h]) || 0), minutesTxt)) +
-        "</div>";
-    });
+        "</div>" +
+        VZ.carte("Heures d'utilisation", "minutes cumulées", VZ.chaleur(Array.from({ length: 24 }, (_, h) => Number((S.compteurs || {})["heure:" + h]) || 0), minutesTxt));
+    }, true);
+    $("sec-rcaccueil").querySelectorAll(".ac-todo li").forEach((li) => li.addEventListener("click", () => (location.hash = li.dataset.lien)));
   };
 
   // 2. Utilisation
