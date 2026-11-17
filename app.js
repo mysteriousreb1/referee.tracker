@@ -3203,10 +3203,10 @@ function renderPaiements() {
     </div>
     <div id="moisZone">${renderMoisPaiements_()}</div>
     <div class="rb-pc-only pay-vers-analyse"><button type="button" class="small-btn secondary" data-goto-analyse="export">Export annuel → page Export</button></div>
+    <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
     <h2 class="section-title">Missions par statut</h2>
     ${retards.length ? bloc("En retard (échéance dépassée)", retards, false) : ""}
     ${order.filter(k => grouped[k]).map(status => bloc(status, grouped[status], false)).join("")}
-    <div id="paieAnaZone">${renderAnalysePaiements_(rows)}</div>
   `;
   attachCardListeners(root);
   attachPaymentListeners(root);
@@ -4655,7 +4655,7 @@ function renderEvalListe_(evaluations) {
   const total = evaluations.length;
   return `
     <details class="past-block eval-exams" data-panel="progression-exams"${PASSES_OUVERTS["progression-exams"] ? " open" : ""}>
-      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Mes exams</span><span class="count">${liste.length}${liste.length !== total ? " / " + total : ""}</span><span class="pay-bloc-tot">${saison ? escapeHtml(saison) : "toutes saisons"} · loupe pour changer</span></span></summary>
+      <summary class="past-summary"><span class="past-summary-inner"><span class="past-chevron" aria-hidden="true"></span><span class="past-title">Mes exams</span><span class="count">${liste.length}${liste.length !== total ? " / " + total : ""}</span>${saison ? `<span class="pay-bloc-tot">${escapeHtml(saison)}</span>` : ""}</span></summary>
       <div class="past-body">${liste.length ? `<div class="eval-list">${liste.map(renderEvalCard_).join("")}</div>` : empty("Aucune évaluation sur cette saison.")}</div>
     </details>`;
 }
@@ -7886,6 +7886,17 @@ function estInfoHtml_(e) {
     <p>Hôtels : nuits saisies + nuits conseillées à venir, au budget maximum réglé.</p>`;
 }
 
+/* b109 — aide de la rubrique Hôtel (reprend les seuils de HOTEL_CFG). */
+function hotelInfoHtml_() {
+  const C = HOTEL_CFG;
+  return `<p><strong>Nuits conseillées</strong> : l'app regarde tes désignations à venir et te conseille une nuit sur place dans deux cas :</p>
+    <p>· <strong>trajet long + match le lendemain</strong> : match à ${C.seuilKm} km ou plus (ou plus de ${C.seuilMin} min de route) et un autre match le lendemain, quand dormir sur place t'évite au moins ${C.ecoMinKm} km de route ;</p>
+    <p>· <strong>retour tardif</strong> : en partant à la fin du match, tu rentrerais après ${hhmmMin_(C.retourMaxMin)}.</p>
+    <p><strong>Net estimé</strong> : carburant économisé moins un hôtel à ${C.budget} € maximum. Le bouton Booking ouvre une recherche près de la salle ; « Enregistrer » prépare la nuit dans le formulaire.</p>
+    <p><strong>Ajouter une nuit</strong> : date, match lié, prix payé, repas et facture (rangée dans ton Drive).</p>
+    <p><strong>Historique</strong> : pour chaque nuit, les indemnités et le carburant des matchs du week-end (jour de la nuit + lendemain), moins l'hôtel et les repas, donnent le net du week-end.</p>`;
+}
+
 /* b84 — un écart négatif = payé AVANT la date prévue : on l'écrit en clair au lieu de « -8 j ». */
 function ecartJours_(j) { j = Number(j); if (!isFinite(j)) return "—"; if (j === 0) return "à la date prévue"; return j < 0 ? Math.abs(j) + " j d'avance" : j + " j de retard"; }
 function renderStatsAvancees(stats) {
@@ -9027,7 +9038,7 @@ function renderHotel() {
 
   const pre = state.hotelPrefill || {};
   root.innerHTML = `
-    <h2 class="section-title">Hôtel &amp; repas <span class="count">${hs.length}</span></h2>
+    <h2 class="section-title">Hôtel &amp; repas <span class="count">${hs.length}</span> <button type="button" class="info-btn" id="hotelInfoBtn" aria-label="Comment ça marche" title="Comment ça marche">${ICONE_INFO_}</button></h2>
     <div class="kpi-grid">
       <div class="kpi"><label>Nuits d'hôtel</label><strong>${hs.length}</strong></div>
       <div class="kpi"><label>Hôtels payés</label><strong>${formatMoney(totHotel)}</strong></div>
@@ -9086,6 +9097,8 @@ function renderHotel() {
     : empty("Aucune nuit d'hôtel enregistrée.")}
   `;
   state.hotelPrefill = null;
+  const bi = root.querySelector("#hotelInfoBtn");
+  if (bi) bi.addEventListener("click", () => ouvrirModaleInfo_("Comment ça marche", hotelInfoHtml_()));
 
   const form = root.querySelector("#hotelForm");
   const dEl = root.querySelector("#hotelDate");
@@ -9250,7 +9263,6 @@ function licCarteBloc_(e) {
       <label class="small-btn secondary pc-seul" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
       <button type="button" class="small-btn secondary alerte-danger pc-seul" id="elicDocDel">Retirer</button>
     </div>
-    <p class="elic-src">Licence ${escapeHtml(e.docSaison || "")}${e.carte.lu_le ? " · lue le " + escapeHtml(e.carte.lu_le) : ""}</p>
   </div>`;
 }
 /* Découpe la photo d'identité dans l'image officielle (cadre donné par l'IA). */
