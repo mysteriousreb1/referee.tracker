@@ -94,7 +94,7 @@
   function rendre() {
     const root = document.getElementById("equipement");
     if (!root || !root.classList.contains("active")) return;
-    if (ST.liste === null) { root.innerHTML = '<h2 class="section-title">Équipement</h2><p class="card-sub">Chargement…</p>'; charger(); return; }
+    if (ST.liste === null) { root.innerHTML = '<h2 class="section-title">Équipement</h2>' + (typeof squelette_ === "function" ? squelette_() : '<p class="card-sub">Chargement…</p>'); charger(); return; }
     const L = ST.liste, sc = saisonCourante();
     const deSaison = L.filter(x => saisonDe(x.date_achat) === sc), total = L.reduce((t, x) => t + num(x.montant_ttc), 0), totS = deSaison.reduce((t, x) => t + num(x.montant_ttc), 0);
     const indemS = (state.allRows || []).filter(r => r._season === sc && r._isActive && r._format !== "Alerte").reduce((t, r) => t + (r._amount || 0), 0);
