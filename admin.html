@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b119" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b120" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -42,7 +42,7 @@
   <div id="vAdmin" class="app hidden">
     <aside class="side">
       <div class="brand"><img src="./apple-touch-icon.png" alt="" /><div><strong>Referee Tracker</strong><span>Super admin</span></div></div>
-      <div class="espaces" id="espaces"><button type="button" data-esp="app">Application</button><button type="button" data-esp="arb">Arbitres</button><button type="button" data-esp="rcl">REF CLIPS</button></div>
+      <div class="espaces" id="espaces" role="tablist" aria-label="Espace d'administration"><span class="esp-pastille" aria-hidden="true"></span><button type="button" role="tab" data-esp="app"><i aria-hidden="true">⌂</i><span>Application<small>technique, moteurs</small></span></button><button type="button" role="tab" data-esp="arb"><i aria-hidden="true">◉</i><span>Arbitres<small>comptes, matchs, argent</small></span></button><button type="button" role="tab" data-esp="rcl"><i aria-hidden="true">▶</i><span>REF CLIPS<small>analyse vidéo</small></span></button></div>
       <nav class="nav" id="nav">
         <div data-esp="app">
           <p class="nav-g">Vue d'ensemble</p>
@@ -153,6 +153,6 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./admin.js?v=2026-11-18-b119"></script>
+  <script src="./admin.js?v=2026-11-18-b120"></script>
 </body>
 </html>
