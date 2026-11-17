@@ -4058,10 +4058,11 @@ function renderKmParMois_() {
   });
   const cles = Object.keys(mois).sort().reverse();
   const tot = cles.reduce((t, k) => ({ n: t.n + mois[k].n, km: t.km + mois[k].km, carb: t.carb + mois[k].carb, ent: t.ent + mois[k].ent }), { n: 0, km: 0, carb: 0, ent: 0 });
+  const maxKm = Math.max(0, ...cles.map(k => mois[k].km));
   return `<h2 class="section-title">Km par mois</h2>
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Mois</th><th class="num">Matchs</th><th class="num">Km A/R</th><th class="num">Carburant</th><th class="num">Entretien</th></tr></thead>
-      <tbody>${cles.map(k => `<tr><td>${k.slice(5)}/${k.slice(0, 4)}</td><td class="num">${mois[k].n}</td><td class="num">${formatNumber(Math.round(mois[k].km), " km")}</td><td class="num">${formatMoney(mois[k].carb)}</td><td class="num">${formatMoney(mois[k].ent)}</td></tr>`).join("")}
+      <tbody>${cles.map(k => `<tr><td class="dl-cell">${barreLigne_(k.slice(5) + "/" + k.slice(0, 4), mois[k].km, maxKm, "dl-navy")}</td><td class="num">${mois[k].n}</td><td class="num">${formatNumber(Math.round(mois[k].km), " km")}</td><td class="num">${formatMoney(mois[k].carb)}</td><td class="num">${formatMoney(mois[k].ent)}</td></tr>`).join("")}
       <tr><td><strong>Total</strong></td><td class="num"><strong>${tot.n}</strong></td><td class="num"><strong>${formatNumber(Math.round(tot.km), " km")}</strong></td><td class="num"><strong>${formatMoney(tot.carb)}</strong></td><td class="num"><strong>${formatMoney(tot.ent)}</strong></td></tr></tbody>
     </table></div></div>
     <p class="card-sub">Km réellement parcourus (un doublé ne compte qu'un seul aller-retour). Entretien selon ton enveloppe annuelle de Mon profil.</p>`;
@@ -5556,15 +5557,21 @@ function renderRecords(rec) {
     `<div class="kpi"><label>${escapeHtml(l)}</label><strong style="font-size:15px">${escapeHtml(v)}</strong></div>`).join("")}</div>`);
 }
 
+/* b113 — barre de lecture rapide sous le libellé d'une ligne (longueur = valeur / maximum du tableau). */
+function barreLigne_(label, v, max, cls) {
+  const p = max > 0 && v > 0 ? Math.max(3, Math.round(v / max * 100)) : 0;
+  return `<span class="dl-lbl">${escapeHtml(label)}</span><span class="dl-bar${cls ? " " + cls : ""}" aria-hidden="true"><i style="width:${p}%"></i></span>`;
+}
 function renderAggTable(title, rows, keyLabel) {
   if (!rows || !rows.length) return "";
+  const maxNet = Math.max(0, ...rows.map(r => Number(r.net_reel) || 0));
   const body = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>${escapeHtml(keyLabel || "Clé")}</th><th class="num">Missions</th><th class="num">Indemnités</th><th class="num">Carburant</th><th class="num">Net réel</th><th class="num">KM</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
-        <td>${escapeHtml(r.label)}</td>
+        <td class="dl-cell">${barreLigne_(r.label, Number(r.net_reel) || 0, maxNet)}</td>
         <td class="num">${r.count}</td>
         <td class="num">${formatMoney(r.indemnite)}</td>
-        <td class="num">${formatMoney(r.cout_reel)}</td>
+        <td class="num neg-doux">${formatMoney(r.cout_reel)}</td>
         <td class="num pos">${formatMoney(r.net_reel)}</td>
         <td class="num">${formatNumber(r.km, "")}</td>
       </tr>`).join("")}</tbody>
@@ -5577,10 +5584,10 @@ function renderAggTable(title, rows, keyLabel) {
    tronque toujours côté client. */
 function renderTop(title, rows) {
   if (!rows || !rows.length) return "";
-  const top3 = rows.slice(0, 3);
+  const top3 = rows.slice(0, 3), maxN = Math.max(0, ...top3.map(r => Number(r.count) || 0));
   const body = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Nom</th><th class="num">Nombre</th><th class="num">Indemnités</th><th class="num">Net réel</th></tr></thead>
-      <tbody>${top3.map(r => `<tr><td>${escapeHtml(r.label)}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
+      <tbody>${top3.map(r => `<tr><td class="dl-cell">${barreLigne_(r.label, Number(r.count) || 0, maxN, "dl-gold")}</td><td class="num">${r.count}</td><td class="num">${formatMoney(r.indemnite)}</td><td class="num pos">${formatMoney(r.net_reel)}</td></tr>`).join("")}</tbody>
     </table></div></div>`;
   return foldable_(title, body);
 }
