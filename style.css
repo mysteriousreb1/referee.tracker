@@ -5272,3 +5272,12 @@ h2.page-title, h2.section-title.sub-title {
 .rr-regle blockquote p + p { margin-top: 4px; }
 :root[data-theme="dark"] .rr-regle figcaption { color: #8FB3FF; }
 .rr .rr-h { font-size: 11.5px; margin-top: 2px !important; }
+
+/* b113 — barres de lecture rapide dans les tableaux de stats (barreLigne_). */
+td.dl-cell { min-width: 120px; }
+.dl-lbl { display: block; }
+.dl-bar { display: block; height: 6px; margin-top: 5px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.dl-bar i { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.dl-bar.dl-gold i { background: var(--gold); }
+.dl-bar.dl-navy i { background: #3b82f6; }
+td.neg-doux { color: var(--danger); }
