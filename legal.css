@@ -84,3 +84,49 @@ td:first-child { font-weight:600; width:34%; }
 .lg-foot { max-width:1120px; margin:0 auto; padding:0 16px 40px; color:var(--mut); font-size:.85rem; display:flex; gap:14px; flex-wrap:wrap; }
 .lg-foot a { color:var(--mut); }
 @media print { .lg-top, .lg-toc, .lg-foot { display:none; } .lg-hero { background:none; color:#000; } .lg-wrap { display:block; } main { border:0; } }
+
+/* ---------- b114 — restyle « comme l'app » : police Montserrat partout, sections aérées,
+   tableaux en cartes arrondies, liens et encadrés plus lisibles. Contenu inchangé. ---------- */
+@font-face { font-family: "Montserrat"; font-weight: 400; font-display: swap; src: url("fonts/montserrat-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 600; font-display: swap; src: url("fonts/montserrat-latin-600-normal.woff2") format("woff2"); }
+body { font-family: "Montserrat", -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 15px; line-height: 1.7; }
+main { border-radius: 20px; box-shadow: 0 14px 40px rgba(10, 31, 68, .08); padding: 12px 40px 36px; }
+main p, main li { max-width: 72ch; }
+a { font-weight: 600; text-decoration-thickness: 1px; }
+
+.lg-hero { position: relative; overflow: hidden; }
+.lg-hero::after { content: ""; position: absolute; right: -80px; top: -80px; width: 280px; height: 280px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 201, 51, .22), transparent 70%); pointer-events: none; }
+.lg-hero .in { padding-bottom: 44px; }
+
+h2 { font-size: 1.2rem; margin-top: 2.2em; padding-top: 1.3em; letter-spacing: -.005em; }
+h2 .n { background: var(--gold); color: var(--navy); border-radius: 10px; min-width: 32px; height: 32px; font-weight: 800; }
+h3 { color: var(--acc); }
+
+.lg-sum { border-left: 0; border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--line)); background: color-mix(in srgb, var(--gold) 9%, var(--card)); border-radius: 16px; padding: 18px 20px; }
+.lg-keys li { background: var(--soft); border-color: transparent; border-radius: 14px; }
+.lg-keys b { color: var(--acc); }
+.box { border-radius: 14px; border-color: transparent; }
+
+/* Tableaux : carte arrondie, en-tête teinté, lignes alternées, 1re colonne moins lourde */
+table { border: 1px solid var(--line); border-radius: 14px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+th { background: var(--soft); padding: 10px 14px; border-bottom: 1px solid var(--line); }
+td { padding: 11px 14px; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:nth-child(even) td, table tr:nth-child(even) td { background: color-mix(in srgb, var(--soft) 55%, transparent); }
+td:first-child { font-weight: 600; color: var(--fg); }
+
+.lg-toc { border-radius: 16px; box-shadow: 0 8px 24px rgba(10, 31, 68, .06); }
+.lg-toc a { font-weight: 500; }
+
+@media (max-width: 900px) { main { padding: 8px 20px 26px; } }
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  main { padding: 6px 16px 22px; border-radius: 16px; }
+  h2 { font-size: 1.08rem; }
+  table { border: 0; border-radius: 0; overflow: visible; }
+  tr { background: var(--soft); border-color: transparent; border-radius: 14px; }
+  tbody tr:nth-child(even) td, table tr:nth-child(even) td { background: transparent; }
+  td { padding: 2px 0; }
+}
+@media print { main { box-shadow: none; } .lg-hero::after { display: none; } }
+@media (prefers-color-scheme: dark) { .lg-sum { background: var(--soft); border-color: color-mix(in srgb, var(--gold) 45%, transparent); } }
