@@ -2485,14 +2485,23 @@ function renderDetails(row) {
 /* ---------------- Carte OSM ---------------- */
 
 function renderMapContainer(row, uid) {
-  const addr = get(row, "Adresse") || get(row, "Ville");
+  const addr = adresseAvecVille_(get(row, "Adresse"), get(row, "Ville"));
   if (!addr || estTel_()) return "";   // b55 : téléphone → bouton Waze en haut de la fiche, pas de carte (lourde, peu lisible)
   return `<div class="card-map" id="map-${uid}" data-addr="${escapeHtml(addr)}"></div>`;
 }
 
 /* Carte (03/10/2026) : cache de géocodage persistant (localStorage), timeouts,
    retry, messages lisibles, et carte recréée si le DOM a été redessiné. */
-const GEO_LS_KEY = "rt-geo-v1";
+const GEO_LS_KEY = "rt-geo-v2";   // b110 : v1 gardait des points faux (sans filtre France, repli « ville » mémorisé) → purgé
+try { localStorage.removeItem("rt-geo-v1"); } catch (e) { /* stockage indisponible */ }
+// b110 — France + outre-mer + Monaco : évite qu'un « Gymnase Jean Moulin » parte à l'étranger.
+const GEO_PAYS_ = "fr,re,gp,mq,gf,yt,pm,nc,pf,wf,bl,mf,mc";
+// b110 — ajoute la ville du match si l'adresse ne la contient pas déjà (sinon Nominatim prend la 1re homonyme).
+function adresseAvecVille_(adresse, ville) {
+  const a = cleanText(adresse || ""), v = cleanText(ville || "");
+  if (!a) return v;
+  return v && !normaliserRecherche(a).includes(normaliserRecherche(v)) ? a + ", " + v : a;
+}
 function mapMsg_(el, txt) {
   if (!el) return;
   let m = el.querySelector(".card-map-msg");
@@ -2583,11 +2592,18 @@ function geocode(address) {
   const parts = String(address).split(",").map(x => x.trim()).filter(Boolean);
   const cands = [address];
   if (parts.length > 2) cands.push(parts.slice(-2).join(", "));
-  const essai = (q, retry) => fetchJsonTimeout_("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), 8000)
+  else if (parts.length === 2) cands.push(parts[1]);   // « Salle, Ville » introuvable → au moins la ville
+  const essai = (q, retry) => fetchJsonTimeout_("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=" + GEO_PAYS_ + "&q=" + encodeURIComponent(q), 8000)
     .then(d => (d && d.length) ? { lat: Number(d[0].lat), lon: Number(d[0].lon) } : null)
     .catch(() => retry ? new Promise(r => setTimeout(r, 1200)).then(() => essai(q, false)) : null);
-  return cands.reduce((p, q) => p.then(res => res || essai(q, true)), Promise.resolve(null))
-    .then(res => { if (res) geoCacheSet_(address, res); return res; });
+  let approx = false;
+  return cands.reduce((p, q, i) => p.then(res => res || essai(q, true).then(r => { if (r && i > 0) approx = true; return r; })), Promise.resolve(null))
+    .then(res => {
+      // Point « au centre de la ville » : gardé pour la séance seulement, pour retenter l'adresse exacte plus tard.
+      if (res && approx) { state.geocodeCache = state.geocodeCache || {}; state.geocodeCache[address] = res; }
+      else if (res) geoCacheSet_(address, res);
+      return res;
+    });
 }
 
 function route(from, to) {
@@ -6625,23 +6641,24 @@ function renderExport() {
       <div class="field"><label for="exportYearSelect">Année</label>
         <select id="exportYearSelect">${exportAnnees_().map(y => `<option value="${y}"${y === Number(state.exportYear) ? " selected" : ""}>${y}</option>`).join("")}</select></div>
       <p class="card-sub" style="margin:auto 0">Missions jouées du 1er janvier au 31 décembre (les désignations à venir ne comptent pas) : total par payeur et par mois, puis le détail de chaque mission. C'est le document à garder pour la déclaration de revenus (indemnités d'arbitrage, franchise URSSAF).</p>
-    </section>${(typeof window.rtEquipementCharger === "function" && window.rtEquipementCharger(), renderFranchise_(Number(state.exportYear), t.gross))}` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+    </section>${(typeof window.rtEquipementCharger === "function" && window.rtEquipementCharger(), renderFranchise_(Number(state.exportYear), t.gross))}` : rng ? `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
+      <div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
+      <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>
+    </section>` : `<section class="toolbar" style="grid-template-columns: 1fr 1fr;">
       <div class="field">
         <label for="exportSeasonSelect">Saison</label>
-        <select id="exportSeasonSelect"${rng ? " disabled" : ""}>
+        <select id="exportSeasonSelect">
           <option value="${EXPORT_TOUTES}"${toutes ? " selected" : ""}>${EXPORT_TOUTES}</option>
           ${seasons.map(s => `<option value="${s}"${s === state.exportSeason ? " selected" : ""}>${s}</option>`).join("")}
         </select>
       </div>
       <div class="field">
         <label for="exportMonthSelect">Mois</label>
-        <select id="exportMonthSelect"${toutes || rng ? " disabled" : ""}>
+        <select id="exportMonthSelect"${toutes ? " disabled" : ""}>
           <option value="">${toutes ? "Toutes les saisons" : "Toute la saison"}</option>
           ${months.map(m => `<option value="${m.value}"${m.value === state.exportMonth ? " selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
         </select>
       </div>
-      ${rng ? `<div class="field"><label for="exportFromInput">Du</label><input type="date" id="exportFromInput" value="${state.exportFrom || ""}" /></div>
-      <div class="field"><label for="exportToInput">Au</label><input type="date" id="exportToInput" value="${state.exportTo || ""}" /></div>` : ""}
     </section>`}
 
     <div class="kpi-grid" style="margin-top:14px">
@@ -6765,7 +6782,7 @@ async function genererCarteSalles_(rows) {
   rows.forEach(r => {
     const salle = cleanText(get(r, "Salle")) || cleanText(get(r, "Ville"));
     if (!salle) return;
-    const adresse = cleanText(get(r, "Adresse")) || salle;
+    const adresse = adresseAvecVille_(cleanText(get(r, "Adresse")) || salle, get(r, "Ville"));
     const cle = adresse;
     if (!parSalle[cle]) parSalle[cle] = { salle, adresse, count: 0 };
     parSalle[cle].count++;
@@ -7105,7 +7122,7 @@ function ajouterCarteSallesPdf_(doc, rows, couleurs) {
   rows.forEach(r => {
     const salle = cleanText(get(r, "Salle")) || cleanText(get(r, "Ville"));
     if (!salle) return;
-    const adresse = cleanText(get(r, "Adresse")) || salle;
+    const adresse = adresseAvecVille_(cleanText(get(r, "Adresse")) || salle, get(r, "Ville"));
     if (!parSalle[adresse]) parSalle[adresse] = { salle, adresse, count: 0 };
     parSalle[adresse].count++;
   });
@@ -9493,11 +9510,13 @@ const RAPP_48H_ = ["Table de marque", "Responsable de salle"];
 const RAPP_CRITERES_ = ["Autorité et maîtrise du match", "Communication (table, coachs, capitaines)", "Cohérence des décisions", "Gestion des comportements", "Placement et condition physique"];
 /* b77 — menu « Match concerné » : seulement les matchs joués depuis 5 jours au plus (un rapport s'envoie
    dans les jours qui suivent la rencontre), plus le match déjà choisi s'il est plus ancien. */
-function matchsPourRapports_(uidGarde) {
+// b110 — jour (AAAA-MM-JJ) facultatif : les matchs de ce jour-là au lieu des 5 derniers jours (rapport d'un vieux match).
+function matchsPourRapports_(uidGarde, jour) {
   const fin = new Date(); fin.setHours(23, 59, 59, 999);
   const debut = new Date(); debut.setHours(0, 0, 0, 0); debut.setDate(debut.getDate() - 5);
+  const dansPeriode = r => jour ? isoLocal_(r._date) === jour : (r._date >= debut && r._date <= fin);
   return (state.allRows || []).filter(r => r._isActive && r._date && r._format !== "Alerte" && r._format !== "3x3" &&   // b88k — pas de rapport officiel en 3x3
-      ((r._date >= debut && r._date <= fin) || (uidGarde && get(r, "UID") === uidGarde)))
+      (dansPeriode(r) || (uidGarde && get(r, "UID") === uidGarde)))
     .sort((a, b) => b._date - a._date);
 }
 /* --- Partie 1 : modèles vierges (générés ici, en PDF) --- */
@@ -9550,6 +9569,10 @@ function modelePdf_(m) {
 function modeleBase64_(d) { return d.output("datauristring").split(",")[1]; }
 
 /* --- Partie 2 : mes rapports de match (stockage) --- */
+function rappMatchOptions_(ms) {
+  return ms.length ? ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")
+    : `<option value="">Aucun match ce jour-là</option>`;
+}
 function renderRapportsPanel_() {
   if (state._rappErr) return erreurPerso_(state._rappErr, "retryRapp");
   if (state.rapports === undefined) { loadRapports(); return chargementPerso_(); }
@@ -9571,7 +9594,8 @@ function renderRapportsPanel_() {
     </div>
     <form id="rappForm" class="rapp-form">
       <div class="rapp-form-grid">
-        <div class="field rapp-f-match"><label for="rappMatch">Match</label><select id="rappMatch">${ms.map(r => `<option value="${escapeHtml(get(r, "UID"))}">${escapeHtml(hotelMatchLabel_(r))}</option>`).join("")}</select></div>
+        <div class="field"><label for="rappJour">Date du match</label><input id="rappJour" type="date" max="${isoLocal_(new Date())}" title="Vide : les 5 derniers jours" /></div>
+        <div class="field rapp-f-match"><label for="rappMatch">Match</label><select id="rappMatch">${rappMatchOptions_(ms)}</select></div>
         <div class="field"><label for="rappRole">Type</label><select id="rappRole">${RAPP_TYPES_SAISIE_.map(x => `<option>${escapeHtml(x)}</option>`).join("")}</select></div>
         <div class="field rapp-f-notes"><label for="rappNotes">Notes (optionnel)</label><input id="rappNotes" type="text" /></div>
       </div>
@@ -10132,6 +10156,9 @@ function attachPersoListeners_(root) {
       if (rr) rr.addEventListener("click", () => { choisi = null; ap.hidden = true; ap.innerHTML = ""; });
     };
     const fi = root.querySelector("#rappFichier"), ph = root.querySelector("#rappPhoto");
+    // b110 — changer la date ne redessine que la liste des matchs (le fichier déjà déposé reste).
+    const jr = root.querySelector("#rappJour");
+    if (jr) jr.addEventListener("change", () => { const sel = root.querySelector("#rappMatch"); if (sel) sel.innerHTML = rappMatchOptions_(matchsPourRapports_(null, jr.value)); });
     if (fi) fi.addEventListener("change", () => { const f = fichierDe_(fi); if (f) montrer(f, false); });
     if (ph) ph.addEventListener("change", () => { const f = fichierDe_(ph); if (f) montrer(f, true); });
     rf.addEventListener("submit", async e => {
