@@ -1868,8 +1868,8 @@ function accEvals_(z) {
   const axes = [der.axe1, der.axe2].filter(Boolean).map(a => String(a).replace(/^\[[^\]]*\]\s*/, "")).slice(0, 2);
   z.innerHTML = `<section class="acc-bloc acc-evals"><h2 class="section-title">Mes observations <span class="count">${ev.length}</span></h2>
     <div class="acc-ev-grid">
-      <div class="acc-ev-k"><span class="acc-ev-val">${Number(der.note20).toFixed(1).replace(".", ",")}<small>/20</small></span><span class="acc-ev-lbl">Dernière note${delta !== null && delta !== 0 ? ` <b class="${delta > 0 ? "acc-ev-up" : "acc-ev-down"}">${delta > 0 ? "▲ +" : "▼ "}${delta.toFixed(1).replace(".", ",")}</b>` : ""}</span><span class="acc-ev-sub">${escapeHtml(der.championnat || "")} · ${escapeHtml(formatDateShort(ev[0].d))}</span></div>
-      <div class="acc-ev-k"><span class="acc-ev-val">${moy !== null ? moy.toFixed(1).replace(".", ",") + "<small>/20</small>" : "—"}</span><span class="acc-ev-lbl">Moyenne saison</span><span class="acc-ev-sub">${sais.length} fiche(s)</span></div>
+      <div class="acc-ev-k"><span class="acc-ev-val">${n100_(der.note20)}<small>/100</small></span><span class="acc-ev-lbl">Dernière note${delta !== null && delta !== 0 ? ` <b class="${delta > 0 ? "acc-ev-up" : "acc-ev-down"}">${delta > 0 ? "▲ +" : "▼ "}${Math.abs(n100_(delta))}</b>` : ""}</span><span class="acc-ev-sub">${escapeHtml(der.championnat || "")} · ${escapeHtml(formatDateShort(ev[0].d))}</span></div>
+      <div class="acc-ev-k"><span class="acc-ev-val">${moy !== null ? n100_(moy) + "<small>/100</small>" : "—"}</span><span class="acc-ev-lbl">Moyenne saison</span><span class="acc-ev-sub">${sais.length} fiche(s)</span></div>
     </div>
     ${""/* b88k — « À travailler » retiré de l'accueil (détail dans Progression) */}
     <button type="button" class="small-btn acc-ev-go">Voir ma progression</button></section>`;
@@ -4358,6 +4358,9 @@ async function evalQueueAvance_() {
 }
 function uploaderEvaluation_(file) { uploaderEvaluations_([file]); }
 
+/* b112 — les notes restent stockées sur 20 (moteur, base) ; l'affichage est sur 100 partout. */
+function n100_(v) { return Math.round(Number(v) * 5); }
+
 /* b22 — Progression : courbe des notes /20 (observations de match vs stages),
    radar des 5 familles LRGEB, axes de travail récurrents. */
 const EVAL_FAM_ = [["calls", "Calls"], ["controle", "Contrôle"], ["mecanique", "Mécanique"], ["communication", "Communication"], ["physique", "Physique"]];
@@ -4383,8 +4386,8 @@ function evalNoteHtml_(ev, grand) {
   if (ev.note20 === null || ev.note20 === undefined) return `<span class="ev-n is-vide">—</span>`;
   const brute = String(ev.noteBrute || "").replace(/\s+/g, "");
   const m = brute.match(/^([\d.,]+)\/(\d+)$/);
-  if (m && m[2] !== "20") return `<span class="ev-n">${escapeHtml(m[1])}<small>/${escapeHtml(m[2])}</small></span><span class="ev-n20">${ev.note20.toLocaleString("fr-FR")} / 20</span>`;
-  return `<span class="ev-n">${ev.note20.toLocaleString("fr-FR")}<small>/20</small></span>${ev.noteEstimee ? `<span class="ev-n20">estimée</span>` : ""}`;
+  if (m && m[2] !== "100" && m[2] !== "20") return `<span class="ev-n">${n100_(ev.note20)}<small>/100</small></span><span class="ev-n20">fiche : ${escapeHtml(m[1])} / ${escapeHtml(m[2])}</span>`;
+  return `<span class="ev-n">${n100_(ev.note20)}<small>/100</small></span>${ev.noteEstimee ? `<span class="ev-n20">estimée</span>` : ""}`;
 }
 function evalEstMatch_(ev) { return ev.type === "Observation de match" || !ev.type; }
 function evalDateCourte_(ev) { const d = evalDate_(ev); return d ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }) : ""; }
@@ -4413,18 +4416,18 @@ function renderEvalTel_(evals) {
   const fam = evalFamillesMoy_(evals).filter(f => f.v !== null);
   const fort = fam.length >= 2 ? fam.slice().sort((a, b) => b.v - a.v)[0] : null;
   const prio = fam.length >= 2 ? fam.slice().sort((a, b) => a.v - b.v)[0] : null;
-  const barre = f => `<div class="evt-fam"><span>${escapeHtml(f.l)}</span><div class="evt-bar"><i style="width:${Math.max(4, Math.min(100, f.v / 20 * 100))}%;background:${coul(f.v)}"></i></div><b>${f1(f.v)}</b></div>`;
+  const barre = f => `<div class="evt-fam"><span>${escapeHtml(f.l)}</span><div class="evt-bar"><i style="width:${Math.max(4, Math.min(100, f.v / 20 * 100))}%;background:${coul(f.v)}"></i></div><b>${n100_(f.v)}</b></div>`;
   const dern = base.slice(-5).reverse();
   return `
     <div class="evt-kpis">
-      <div class="evt-k"><span class="evt-v" style="color:${coul(der.note20)}">${f1(der.note20)}<small>/20</small></span><span class="evt-l">Dernière note${delta ? ` <b class="${delta > 0 ? "evt-up" : "evt-down"}">${delta > 0 ? "▲ +" : "▼ "}${f1(Math.abs(delta)).replace(/^/, delta < 0 ? "" : "")}</b>` : ""}</span><span class="evt-s">${escapeHtml(evalDateCourte_(der))}</span></div>
-      <div class="evt-k"><span class="evt-v">${moy !== null ? f1(moy) + "<small>/20</small>" : "—"}</span><span class="evt-l">Moyenne saison</span><span class="evt-s">${sais.length} fiche${sais.length > 1 ? "s" : ""}</span></div>
+      <div class="evt-k"><span class="evt-v" style="color:${coul(der.note20)}">${n100_(der.note20)}<small>/100</small></span><span class="evt-l">Dernière note${delta ? ` <b class="${delta > 0 ? "evt-up" : "evt-down"}">${delta > 0 ? "▲ +" : "▼ "}${Math.abs(n100_(delta))}</b>` : ""}</span><span class="evt-s">${escapeHtml(evalDateCourte_(der))}</span></div>
+      <div class="evt-k"><span class="evt-v">${moy !== null ? n100_(moy) + "<small>/100</small>" : "—"}</span><span class="evt-l">Moyenne saison</span><span class="evt-s">${sais.length} fiche${sais.length > 1 ? "s" : ""}</span></div>
     </div>
     ${courbe ? `<div class="table-card evt-card"><h3>Évolution</h3>${courbe}<div class="evt-axe"><span>${escapeHtml(evalDateCourte_(pts[0]))}</span><span>${escapeHtml(evalDateCourte_(pts[pts.length - 1]))}</span></div></div>` : ""}
     ${fort || prio ? `<div class="table-card evt-card"><h3>Mon profil</h3>${fort ? `<p class="evt-tag evt-tag--ok">Point fort</p>${barre(fort)}` : ""}${prio && prio !== fort ? `<p class="evt-tag evt-tag--prio">À travailler en priorité</p>${barre(prio)}` : ""}</div>` : ""}
     <div class="table-card evt-card"><h3>Mes dernières fiches</h3>
       ${dern.map(ev => { const axes = [ev.axe1, ev.axe2].filter(Boolean).map(a => String(a).replace(/^\[[^\]]*\]\s*/, ""));
-        return `<div class="evt-row" role="button" tabindex="0"><div class="evt-row-h"><span class="evt-date">${escapeHtml(evalDateCourte_(ev))}</span><span class="evt-champ">${escapeHtml(ev.championnat || ev.type || "Observation")}</span><span class="evt-note" style="background:${coul(ev.note20)}">${f1(ev.note20)}</span></div>
+        return `<div class="evt-row" role="button" tabindex="0"><div class="evt-row-h"><span class="evt-date">${escapeHtml(evalDateCourte_(ev))}</span><span class="evt-champ">${escapeHtml(ev.championnat || ev.type || "Observation")}</span><span class="evt-note" style="background:${coul(ev.note20)}">${n100_(ev.note20)}</span></div>
           <div class="evt-row-d">${ev.observateur ? `<p><b>Observateur</b> ${escapeHtml(ev.observateur)}</p>` : ""}${axes.length ? `<p><b>À travailler</b></p><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : `<p class="card-sub">Pas d'axe de travail noté sur cette fiche.</p>`}</div></div>`; }).join("")}
     </div>`;
 }
@@ -4442,10 +4445,10 @@ function renderEvalSynthese_(evals) {
   const sousTitre = ev => ev ? escapeHtml([ev.championnat || ev.rencontre || "", evalDateCourte_(ev), ev.observateur].filter(Boolean).join(" · ")) : "";
   return `
     <div class="kpi-grid ev-kpis">
-      <div class="kpi ev-kpi-note ev-kpi-main"><label>Dernière observation</label><strong>${dObs ? evalNoteHtml_(dObs) : "—"}</strong><span class="sub">${dObs ? sousTitre(dObs) : "aucune observation notée"}${tendance !== null ? ` · <b class="${tendance >= 0 ? "ev-up" : "ev-down"}">${tendance >= 0 ? "+" : ""}${tendance.toLocaleString("fr-FR")}</b> vs précédente` : ""}</span></div>
+      <div class="kpi ev-kpi-note ev-kpi-main"><label>Dernière observation</label><strong>${dObs ? evalNoteHtml_(dObs) : "—"}</strong><span class="sub">${dObs ? sousTitre(dObs) : "aucune observation notée"}${tendance !== null ? ` · <b class="${tendance >= 0 ? "ev-up" : "ev-down"}">${tendance >= 0 ? "+" : ""}${n100_(tendance)}</b> vs précédente` : ""}</span></div>
       <div class="kpi ev-kpi-note"><label>Dernier stage / TIC</label><strong>${dStage ? evalNoteHtml_(dStage) : "—"}</strong><span class="sub">${dStage ? escapeHtml(dStage.type) + " · " + sousTitre(dStage) : "aucun stage noté"}</span></div>
-      <div class="kpi"><label>Moyenne observations</label><strong>${moyObs !== null ? moyObs.toLocaleString("fr-FR") + " / 20" : "—"}</strong><span class="sub">${obs.length} observation${obs.length > 1 ? "s" : ""} notée${obs.length > 1 ? "s" : ""}</span></div>
-      <div class="kpi${pire && pire.v < 12 ? " kpi-alert" : ""}"><label>Famille à travailler</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? pire.v.toLocaleString("fr-FR") + " / 20 · 3 dernières évaluations" : (avecFam < 2 ? "il faut 2 évaluations détaillées" : "profil équilibré")}</span></div>
+      <div class="kpi"><label>Moyenne observations</label><strong>${moyObs !== null ? n100_(moyObs) + " / 100" : "—"}</strong><span class="sub">${obs.length} observation${obs.length > 1 ? "s" : ""} notée${obs.length > 1 ? "s" : ""}</span></div>
+      <div class="kpi${pire && pire.v < 12 ? " kpi-alert" : ""}"><label>Famille à travailler</label><strong>${pire ? escapeHtml(pire.l) : "—"}</strong><span class="sub">${pire ? n100_(pire.v) + " / 100 · 3 dernières évaluations" : (avecFam < 2 ? "il faut 2 évaluations détaillées" : "profil équilibré")}</span></div>
     </div>`;
 }
 /* b77 — Plan de développement v2 : un vrai plan d'action, pas un simple résumé.
@@ -4491,32 +4494,32 @@ function renderPlanDeveloppement_(evals) {
   const LIEN_GRILLE_ = { calls: [9, 10, 11, 12, 13, 15, 16], controle: [4, 5, 6, 14], mecanique: [22, 23, 24, 27], communication: [7, 21, 26, 28], physique: [1, 20, 22] };
   const criteres = k => g0 ? (LIEN_GRILLE_[k] || []).filter(n => g0[n] && g0[n].mention && g0[n].mention.n <= 15).slice(0, 3).map(n => `${n}. ${g0[n].critere}`) : [];
   const delta = f => f.v !== null && f.avant !== null ? Math.round((f.v - f.avant) * 10) / 10 : null;
-  const deltaHtml = d => d === null ? "" : `<span class="pd2-d ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${d.toLocaleString("fr-FR")}</span>`;
+  const deltaHtml = d => d === null ? "" : `<span class="pd2-d ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${n100_(d)}</span>`;
   const coches = pdCoches_(); const items = [];
   prio.forEach(f => { const p = parFam[f.k] || { act: [] }; (p.act.length ? p.act.slice(0, 2) : [PD_CONSEILS_[f.k] ? PD_CONSEILS_[f.k].quoi : ""]).filter(Boolean).forEach(t => items.push({ id: f.k + ":" + normaliserRecherche(t).slice(0, 40), t, f: nomFam(f.k) })); });
   const fait = items.filter(x => coches[x.id]).length;
   return `
     <h2 class="section-title">Plan de développement</h2>
     <div class="pd2-cap">
-      <div class="pd2-kpi"><label>Point fort</label><strong>${fort ? escapeHtml(fort.l) : "—"}</strong><span>${fort ? fort.v.toLocaleString("fr-FR") + " / 20 · à garder" : "il faut 2 évaluations détaillées"}</span></div>
-      <div class="pd2-kpi is-prio"><label>Priorité n°1</label><strong>${prio[0] ? escapeHtml(prio[0].l) : "—"}</strong><span>${prio[0] ? (prio[0].v !== null ? prio[0].v.toLocaleString("fr-FR") + " / 20" : "citée dans tes rapports") + ((parFam[prio[0].k] || {}).n ? " · citée " + parFam[prio[0].k].n + " fois" : "") : ""}</span></div>
-      <div class="pd2-kpi"><label>Tendance des observations</label><strong>${tendance === null ? (tRec !== null ? tRec.toLocaleString("fr-FR") + " / 20" : "—") : (tendance > 0 ? "▲ +" : tendance < 0 ? "▼ " : "= ") + tendance.toLocaleString("fr-FR")}</strong><span>${tendance === null ? "moyenne des 3 dernières" : "3 dernières vs 3 précédentes"}</span></div>
+      <div class="pd2-kpi"><label>Point fort</label><strong>${fort ? escapeHtml(fort.l) : "—"}</strong><span>${fort ? n100_(fort.v) + " / 100 · à garder" : "il faut 2 évaluations détaillées"}</span></div>
+      <div class="pd2-kpi is-prio"><label>Priorité n°1</label><strong>${prio[0] ? escapeHtml(prio[0].l) : "—"}</strong><span>${prio[0] ? (prio[0].v !== null ? n100_(prio[0].v) + " / 100" : "citée dans tes rapports") + ((parFam[prio[0].k] || {}).n ? " · citée " + parFam[prio[0].k].n + " fois" : "") : ""}</span></div>
+      <div class="pd2-kpi"><label>Tendance des observations</label><strong>${tendance === null ? (tRec !== null ? n100_(tRec) + " / 100" : "—") : (tendance > 0 ? "▲ +" : tendance < 0 ? "▼ " : "= ") + Math.abs(n100_(tendance))}</strong><span>${tendance === null ? "moyenne des 3 dernières" : "3 dernières vs 3 précédentes"}</span></div>
       <div class="pd2-kpi"><label>Prochaine observation</label><strong>${fait} / ${items.length}</strong><span>actions préparées</span></div>
     </div>
     <div class="pd2-axes">${prio.map((f, i) => { const p = parFam[f.k] || { ex: [], act: [], n: 0 }; const c = PD_CONSEILS_[f.k] || {}; const cr = criteres(f.k);
       return `<article class="pd2-axe${i === 0 ? " is-top" : ""}">
-        <header><span class="pd2-rang">${i + 1}</span><div><h3>${escapeHtml(f.l)}</h3><span class="card-sub">${f.v !== null ? `<b>${f.v.toLocaleString("fr-FR")}</b> / 20 ` : ""}${deltaHtml(delta(f))}${p.n ? ` · citée dans ${p.n} évaluation${p.n > 1 ? "s" : ""}` : ""}</span></div></header>
+        <header><span class="pd2-rang">${i + 1}</span><div><h3>${escapeHtml(f.l)}</h3><span class="card-sub">${f.v !== null ? `<b>${n100_(f.v)}</b> / 100 ` : ""}${deltaHtml(delta(f))}${p.n ? ` · citée dans ${p.n} évaluation${p.n > 1 ? "s" : ""}` : ""}</span></div></header>
         ${f.v !== null ? `<div class="pd-bar-t"><i class="${f.v < 10 ? "is-bad" : f.v < 14 ? "is-mid" : "is-good"}" style="width:${f.v / 20 * 100}%"></i></div>` : ""}
         ${p.ex.length ? `<p class="pd2-l"><b>Ce que disent les observateurs</b>« ${escapeHtml(p.ex[0])} »</p>` : ""}
         <div class="pd2-l"><b>Actions</b><ul>${(p.act.length ? p.act : [c.quoi || "Demande un retour précis à ton observateur sur ce point."]).map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul></div>
-        <p class="pd2-l"><b>Comment le mesurer</b>${cr.length ? "Sur ta prochaine fiche, vise « Très bien » sur : " + cr.map(escapeHtml).join(" · ") : "Note obtenue dans cette famille à ta prochaine observation" + (f.v !== null ? " : objectif " + Math.min(20, Math.ceil(f.v + 2)) + " / 20" : "") + "."}</p>
+        <p class="pd2-l"><b>Comment le mesurer</b>${cr.length ? "Sur ta prochaine fiche, vise « Très bien » sur : " + cr.map(escapeHtml).join(" · ") : "Note obtenue dans cette famille à ta prochaine observation" + (f.v !== null ? " : objectif " + n100_(Math.min(20, Math.ceil(f.v + 2))) + " / 100" : "") + "."}</p>
         ${c.ou ? `<button type="button" class="small-btn secondary pd2-go" data-tab-go="${c.ou}">${escapeHtml(c.ouLib)} →</button>` : ""}
       </article>`; }).join("")}</div>
     ${items.length ? `<div class="table-card pd-check"><div class="pd-check-h"><h3>Avant ta prochaine observation</h3><span class="pd-check-n">${fait} / ${items.length}</span></div>
       ${items.map(x => `<label class="pd-check-i"><input type="checkbox" data-pd-coche="${escapeHtml(x.id)}"${coches[x.id] ? " checked" : ""}><span>${escapeHtml(x.t)}<small>${escapeHtml(x.f)}</small></span></label>`).join("")}
       <p class="card-sub">Coché sur cet appareil seulement. Les actions viennent des plans de travail de tes 3 dernières évaluations.</p></div>` : ""}
-    ${notes.length ? `<div class="table-card pd-fam pd2-fam"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations détaillées · sur 20 · écart avec les 3 précédentes</p>
-      ${fam.map(f => `<div class="pd-bar${prio[0] && f.k === prio[0].k ? " is-focus" : ""}"><span class="pd-bar-l">${escapeHtml(f.l)}</span><span class="pd-bar-t"><i class="${f.v === null ? "" : f.v < 10 ? "is-bad" : f.v < 14 ? "is-mid" : "is-good"}" style="width:${f.v === null ? 0 : f.v / 20 * 100}%"></i></span><b>${f.v === null ? "—" : f.v.toLocaleString("fr-FR")} ${deltaHtml(delta(f))}</b></div>`).join("")}</div>` : ""}`;
+    ${notes.length ? `<div class="table-card pd-fam pd2-fam"><h3>Profil par famille</h3><p class="hint">Moyenne des 3 dernières évaluations détaillées · sur 100 · écart avec les 3 précédentes</p>
+      ${fam.map(f => `<div class="pd-bar${prio[0] && f.k === prio[0].k ? " is-focus" : ""}"><span class="pd-bar-l">${escapeHtml(f.l)}</span><span class="pd-bar-t"><i class="${f.v === null ? "" : f.v < 10 ? "is-bad" : f.v < 14 ? "is-mid" : "is-good"}" style="width:${f.v === null ? 0 : f.v / 20 * 100}%"></i></span><b>${f.v === null ? "—" : n100_(f.v)} ${deltaHtml(delta(f))}</b></div>`).join("")}</div>` : ""}`;
 }
 function renderEvalCharts_(evals) {
   const notees = evals.filter(ev => ev.note20 !== null && ev.note20 !== undefined && evalDate_(ev));
@@ -4525,7 +4528,7 @@ function renderEvalCharts_(evals) {
   if (notees.length < 2 && famOk < 3) return "";
   const avecStages = state._evalStages || nObs < 2;
   return `<div class="charts-2 eval-charts">
-      ${notees.length >= 2 ? `<div class="chart-card"><div class="pd-chart-head"><h3>Notes dans le temps</h3><label class="pd-toggle"><input type="checkbox" id="evalStagesToggle"${avecStages ? " checked" : ""}${nObs < 2 ? " disabled" : ""}> stages / TIC</label></div><p class="hint">Sur 20. Les stages sont notés sur d'autres échelles : ils sont ramenés sur 20 mais restent à part.</p><div class="chart-box small"><canvas id="chartEvalNotes"></canvas></div></div>` : ""}
+      ${notees.length >= 2 ? `<div class="chart-card"><div class="pd-chart-head"><h3>Notes dans le temps</h3><label class="pd-toggle"><input type="checkbox" id="evalStagesToggle"${avecStages ? " checked" : ""}${nObs < 2 ? " disabled" : ""}> stages / TIC</label></div><p class="hint">Sur 100. Les stages sont notés sur d'autres échelles : ils sont ramenés sur 100 mais restent à part.</p><div class="chart-box small"><canvas id="chartEvalNotes"></canvas></div></div>` : ""}
       ${famOk >= 3 ? `<div class="chart-card"><h3>Radar des 5 familles</h3><p class="hint">Dernière évaluation détaillée (trait plein) vs moyenne des 3 dernières (pointillé).</p><div class="chart-box small"><canvas id="chartEvalRadar"></canvas></div></div>` : ""}
     </div>`;
 }
@@ -4537,14 +4540,14 @@ function buildEvalCharts_(evals) {
   const notees = avecStages ? tout : tout.filter(evalEstMatch_);
   const c1 = ctx("chartEvalNotes");
   if (c1 && notees.length >= 2) {
-    const moyMobile = notees.map((ev, i) => { const w = notees.slice(Math.max(0, i - 2), i + 1).filter(evalEstMatch_); return w.length ? Math.round(w.reduce((t, x) => t + x.note20, 0) / w.length * 10) / 10 : null; });
+    const moyMobile = notees.map((ev, i) => { const w = notees.slice(Math.max(0, i - 2), i + 1).filter(evalEstMatch_); return w.length ? n100_(w.reduce((t, x) => t + x.note20, 0) / w.length) : null; });
     AN.charts.evalNotes = new Chart(c1, { type: "line", data: {
       labels: notees.map(evalDateCourte_),
       datasets: [
-        { label: "Observations", data: notees.map(ev => evalEstMatch_(ev) ? ev.note20 : null), borderColor: "#f5b400", backgroundColor: "#f5b400", spanGaps: true, tension: .3, pointRadius: 6, pointHoverRadius: 8, borderWidth: 3 },
+        { label: "Observations", data: notees.map(ev => evalEstMatch_(ev) ? n100_(ev.note20) : null), borderColor: "#f5b400", backgroundColor: "#f5b400", spanGaps: true, tension: .3, pointRadius: 6, pointHoverRadius: 8, borderWidth: 3 },
         { label: "Tendance (3 obs.)", data: moyMobile, borderColor: "rgba(10,31,68,.55)", borderDash: [5, 4], borderWidth: 2, pointRadius: 0, spanGaps: true, tension: .4 },
-        ...(avecStages ? [{ label: "Stages / TIC", data: notees.map(ev => evalEstMatch_(ev) ? null : ev.note20), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", showLine: false, pointRadius: 7, pointStyle: "rectRot" }] : [])
-      ] }, options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 20 } },
+        ...(avecStages ? [{ label: "Stages / TIC", data: notees.map(ev => evalEstMatch_(ev) ? null : n100_(ev.note20)), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", showLine: false, pointRadius: 7, pointStyle: "rectRot" }] : [])
+      ] }, options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 100 } },
       plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.noteBrute ? "Note : " + ev.noteBrute + " · " : "") + (ev.championnat || ev.rencontre || "") + (ev.observateur ? " · " + ev.observateur : ""); } } } } } });
   }
   const c2 = ctx("chartEvalRadar");
@@ -4553,10 +4556,10 @@ function buildEvalCharts_(evals) {
     const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
     const derniere = tri.find(ev => ev.familles && EVAL_FAM_.filter(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined).length >= 3);
     AN.charts.evalRadar = new Chart(c2, { type: "radar", data: { labels: EVAL_FAM_.map(x => x[1]), datasets: [
-        ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k]), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5 }] : []),
-        { label: "Moyenne 3 dernières", data: moy, borderColor: "#0A1F44", backgroundColor: "rgba(10,31,68,.06)", borderDash: [5, 4], pointBackgroundColor: "#0A1F44", borderWidth: 1.5 }
+        ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k] === null || derniere.familles[k] === undefined ? null : n100_(derniere.familles[k])), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5 }] : []),
+        { label: "Moyenne 3 dernières", data: moy.map(v => v === null ? null : n100_(v)), borderColor: "#0A1F44", backgroundColor: "rgba(10,31,68,.06)", borderDash: [5, 4], pointBackgroundColor: "#0A1F44", borderWidth: 1.5 }
       ] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 20, ticks: { stepSize: 5, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
 }
 /* ===================== b71 — GRILLE RÉGIONALE D'OBSERVATION (modèle 2026/2027) =====================
@@ -4610,7 +4613,7 @@ function renderLrgebGrille_(evals) {
       <p class="card-sub">${Object.keys(der.g).length} critères · ${obs.length} observation${obs.length > 1 ? "s" : ""}${obs.length > 4 ? " (4 dernières)" : ""} · ${dern.map(o => escapeHtml(evalDateCourte_(o.ev) + (o.ev.championnat ? " " + o.ev.championnat : ""))).join(" → ")}</p></div>
       <div class="og-leg"><span><i class="og-dot og-tb"></i>Très bien</span><span><i class="og-dot og-b"></i>Bien</span><span><i class="og-dot og-ame"></i>À améliorer</span><span><i class="og-dot og-ins"></i>Insuffisant</span></div></div>
     <div class="og-fams">${LRGEB_FAM_.map(([nom, nums]) => { const v = famScore(der, nums), pv = prec ? famScore(prec, nums) : null; const d = v !== null && pv !== null ? Math.round((v - pv) * 10) / 10 : null;
-      return `<div class="og-fam">${anneau(v)}<div><span class="og-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : v.toFixed(1)}<small>/20</small></strong>${d !== null && d !== 0 ? `<span class="og-d ${d > 0 ? "og-up" : "og-down"}">${d > 0 ? "+" : ""}${d.toFixed(1)}</span>` : ""}</div></div>`; }).join("")}</div>
+      return `<div class="og-fam">${anneau(v)}<div><span class="og-fam-n">${escapeHtml(nom)}</span><strong>${v === null ? "—" : n100_(v)}<small>/100</small></strong>${d !== null && n100_(d) !== 0 ? `<span class="og-d ${d > 0 ? "og-up" : "og-down"}">${d > 0 ? "+" : ""}${n100_(d)}</span>` : ""}</div></div>`; }).join("")}</div>
     ${puces(aTravailler, "og-sum-warn", "À travailler") + puces(progres, "og-sum-ok", "En progrès") + puces(recul, "og-sum-down", "En recul")}
     <div class="og-crit">${LRGEB_FAM_.map(([nom, nums], fi) => { const nAme = nums.filter(k => der.g[k] && der.g[k].mention && der.g[k].mention.n <= 10).length;
       return `<details class="og-fam-d"${fi === 0 || nAme ? " open" : ""}><summary><span>${escapeHtml(nom)}</span><span class="card-sub">${nums.length} critères${nAme ? ` · <b class="og-warn-n">${nAme} à travailler</b>` : ""}</span></summary>
@@ -4620,7 +4623,7 @@ function renderLrgebGrille_(evals) {
         <li>L'app lit la fiche d'observation importée et repère les critères numérotés (jusqu'à 29 ; il en faut au moins 15 pour reconnaître la grille).</li>
         <li>Chaque mention est convertie en points : Insuffisant = 5, À améliorer = 10, Bien (ou Standard, Oui) = 15, Très bien (ou Supérieur) = 20 ; Non = 5. Une note chiffrée est reprise telle quelle (sur 5 : multipliée par 4).</li>
         <li>Les critères sont rangés en 6 familles : Présentation (1 à 4), Gestion des acteurs (5 à 8), Jugement (9 à 16), Violations &amp; temps (17 à 19), Présence &amp; mécanique (20 à 24), Duo &amp; impact (25 à 29).</li>
-        <li>Note d'une famille = moyenne de ses critères notés, sur 20 ; l'écart compare avec l'observation précédente. Chaque point de couleur = une observation, de la plus ancienne (à gauche) à la plus récente.</li>
+        <li>Note d'une famille = moyenne de ses critères notés, sur 100 ; l'écart compare avec l'observation précédente. Chaque point de couleur = une observation, de la plus ancienne (à gauche) à la plus récente.</li>
         <li>« À travailler » = critères à 10 ou moins sur la dernière observation ; « En progrès » / « En recul » = mention qui a monté / baissé.</li>
       </ol>
       <p>Ce n'est pas une note officielle : c'est un repère pour suivre ta progression critère par critère.</p>
@@ -4648,7 +4651,7 @@ function renderEvalCard_(ev) {
           <a class="small-btn secondary" href="${escapeHtml(safeUrl_(ev.lien))}" target="_blank" rel="noopener">Ouvrir le PDF</a>
           <button type="button" class="small-btn secondary" data-eval-edit="${ev.id}">Corriger type / note</button>
         </div>
-        ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${ev.familles[k].toLocaleString("fr-FR")}</em></span>`).join("")}</div>` : ""}
+        ${ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined) ? `<div class="eval-fam">${EVAL_FAM_.map(([k, l]) => ev.familles[k] === null || ev.familles[k] === undefined ? "" : `<span class="eval-f"><i style="width:${ev.familles[k] / 20 * 100}%"></i><b>${escapeHtml(l)}</b><em>${n100_(ev.familles[k])}</em></span>`).join("")}</div>` : ""}
         ${axes.length ? `<div class="eval-axes">${axes.map(a => `<span>→ ${escapeHtml(a)}</span>`).join("")}</div>` : ""}
         <details class="pr-det" open><summary>Détail de l'évaluation</summary>
           ${syn ? `<div class="ev-bloc"><b>Synthèse</b><p>${escapeHtml(syn)}</p></div>` : ""}
@@ -4994,8 +4997,12 @@ function renderProgression() {
     const ev = (state.evaluations || []).find(x => String(x.id) === b.dataset.evalEdit); if (!ev) return;
     ouvrirModaleEdition_({ titre: "Corriger l'évaluation", champs: [
       { id: "type", label: "Type", value: ev.type || "Observation de match", type: "select", options: ["Observation de match", "Stage", "TIC", "Bilan de saison", "Autre"] },
-      { id: "note20", label: "Note / 20", value: ev.note20 === null || ev.note20 === undefined ? "" : String(ev.note20), type: "number" }
-    ], onSave: v => majEval(ev.id, { type: v.type, note20: v.note20 }, "Évaluation corrigée") });
+      { id: "note100", label: "Note / 100", value: ev.note20 === null || ev.note20 === undefined ? "" : String(n100_(ev.note20)), type: "number" }
+    ], onSave: v => {   // b112 — saisie sur 100, enregistrée sur 20 comme avant
+      const t = String(v.note100 || "").trim().replace(",", "."), n = Number(t);
+      if (t && (!isFinite(n) || n < 0 || n > 100)) throw new Error("La note doit être entre 0 et 100");
+      return majEval(ev.id, { type: v.type, note20: t ? String(Math.round(n / 5 * 100) / 100) : "" }, "Évaluation corrigée");
+    } });
   }));
   root.querySelectorAll(".eval-head button, .eval-head a").forEach(b => b.addEventListener("click", e => e.stopPropagation()));
   root.querySelectorAll("[data-eval-lier]").forEach(b => b.addEventListener("click", () => {
