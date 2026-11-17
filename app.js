@@ -487,6 +487,7 @@ function setActiveTab(tab) {
   if (estTel_() && tab === "stats" && state.statsSubView === "rapprochement") state.statsSubView = "overview";   // rapprochement = PC seulement
   const navTab = (tab === "stats" && demande === "estimation") ? demande : tab;
   RECH.changerPage(state.activeTab, tab);   // b36 : filtres propres à chaque page
+  const ongletAvant = state.activeTab;
   state.activeTab = tab;
   const entreeDirecte = !!document.querySelector(`nav.tabs .tab[data-tab="${navTab}"]`);
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === navTab || (!entreeDirecte && b.dataset.tab === "monespace" && ONGLETS_MON_ESPACE_.indexOf(tab) >= 0)));
@@ -501,9 +502,40 @@ function setActiveTab(tab) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   state.filteredRows = filterRows(state.allRows);
   renderTab_(tab);
+  if (ongletAvant !== tab) animerEntree_(document.getElementById(tab));
   RECH.majBouton();
   if (tab === "qcm" && !state.qcmStats) loadQcmStats();
   if (progressionVisible_() && !state.qcmStats) loadQcmStats();
+}
+/* b115 — animation d'arrivée sur une page : blocs qui montent en cascade, chiffres qui défilent,
+   barres qui se remplissent. Seulement au changement d'onglet (jamais aux rafraîchissements),
+   et rien si l'appareil demande moins d'animations. */
+const MOINS_ANIM_ = (() => { try { return window.matchMedia("(prefers-reduced-motion: reduce)"); } catch (e) { return { matches: false }; } })();
+function animerEntree_(panel) {
+  if (!panel || MOINS_ANIM_.matches) return;
+  panel.classList.remove("rt-entre"); void panel.offsetWidth;   // relance l'animation CSS
+  panel.classList.add("rt-entre");
+  clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre"), 900);
+  defilerChiffres_(panel);
+}
+const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v";
+function defilerChiffres_(panel) { panel.querySelectorAll(CHIFFRES_ANIMES_).forEach(defilerChiffre_); }
+// « 1 159,06 € » → défile de 0 à 1159,06 en gardant le format (espaces, virgule, unité).
+function defilerChiffre_(el) {
+  const brut = el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.nodeValue : "";
+  const m = brut.match(/^(\D*?)(-?\d(?:[\d\s\u202f\u00a0]*\d)?(?:,\d+)?)(.*)$/);
+  if (!m) return;
+  const cible = Number(m[2].replace(/[\s\u202f\u00a0]/g, "").replace(",", "."));
+  if (!isFinite(cible) || Math.abs(cible) < 2) return;
+  const dec = (m[2].split(",")[1] || "").length, t0 = performance.now(), duree = 650;
+  const noeud = el.firstChild;
+  const pas = now => {
+    if (!noeud.isConnected) return;   // la page a été redessinée entre-temps
+    const k = Math.min(1, (now - t0) / duree), e = 1 - Math.pow(1 - k, 3);
+    noeud.nodeValue = m[1] + (cible * e).toLocaleString("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + m[3];
+    if (k < 1) requestAnimationFrame(pas); else noeud.nodeValue = brut;
+  };
+  requestAnimationFrame(pas);
 }
 /* b67 — sur PC, Progression est une sous-vue de la page Analyse (state.activeTab === "stats") :
    les chargements asynchrones doivent re-rendre dans les deux cas. */
@@ -1335,6 +1367,9 @@ function renderAll() {
   state.filteredRows = filterRows(state.allRows);
   try { hotelScan_(); } catch (e) { console.warn("Hôtel :", e); }
   renderTab_(state.activeTab || "accueil");
+  // b115 — page redessinée pendant son animation d'arrivée (données qui arrivent) : on relance les chiffres.
+  const pAnim = document.getElementById(state.activeTab || "accueil");
+  if (pAnim && pAnim.classList.contains("rt-entre")) defilerChiffres_(pAnim);
   safeRender_(renderTabBadges_, null, "Badges");
 }
 
