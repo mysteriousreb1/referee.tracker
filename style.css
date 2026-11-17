@@ -5476,3 +5476,62 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
   .tab-indic, nav.tabs .tab, .mrow-chev, .card-head, .small-btn, .rt-btn, .tabs-mini-btn, .stats-theme-btn { transition: none !important; }
   .match-card.rt-ouvre .card-body > *, .tabs-mini-btn.active, .stats-theme-btn.active { animation: none !important; }
 }
+
+/* ===== b119 — écran de connexion repensé (même structure, nouveau visuel) ===== */
+.rt-login {
+  background:
+    radial-gradient(60% 50% at 15% 10%, rgba(245,180,0,.16), transparent 70%),
+    radial-gradient(55% 45% at 90% 95%, rgba(30,78,156,.55), transparent 70%),
+    linear-gradient(160deg, #0A1F44 0%, #071530 100%);
+  overflow-y: auto;
+}
+/* lignes de terrain en fond, très discrètes */
+.rt-login::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .07;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 118px, #fff 119px 121px, transparent 122px),
+    linear-gradient(#fff, #fff) center / 2px 100% no-repeat; }
+.rt-login-card { position: relative; max-width: 420px; padding: 32px 30px 26px; border-radius: 26px;
+  background: linear-gradient(180deg, rgba(20,48,98,.92), rgba(12,34,74,.94));
+  border: 1px solid rgba(255,255,255,.08); box-shadow: 0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.rt-login.is-visible .rt-login-card { animation: rtFenetre var(--m-lent, .5s) var(--m-courbe, ease) both; }
+.rt-login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.rt-login-brand img { width: 52px; height: auto; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
+.rt-login-brand span { display: flex; flex-direction: column; font-family: var(--display); font-weight: 900; font-style: italic; font-size: 19px; line-height: 1; letter-spacing: .01em; color: #fff; text-transform: uppercase; }
+.rt-login-brand b { color: var(--gold, #F5B400); }
+.rt-login-card h1 { font-size: 28px; color: #fff; letter-spacing: -.02em; }
+.rt-login-sub { margin: 6px 0 24px; font-size: 14px; line-height: 1.45; color: rgba(255,255,255,.66); }
+.rt-login-card label { margin-bottom: 8px; font-size: 11.5px; color: rgba(255,255,255,.7); }
+.rt-label-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rt-login-card button.rt-link.rt-oubli { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--gold, #F5B400); text-decoration: none; }
+.rt-login-card button.rt-link.rt-oubli:hover { text-decoration: underline; }
+.rt-champ { position: relative; margin-bottom: 18px; }
+.rt-champ > svg { position: absolute; left: 14px; top: 50%; width: 18px; height: 18px; margin-top: -9px; fill: none; stroke: #6B7A99; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; transition: stroke var(--m-rapide, .16s) ease; }
+.rt-champ:focus-within > svg { stroke: #0A1F44; }
+.rt-login-card .rt-champ input { margin: 0; padding: 14px 46px 14px 44px; border-radius: 14px; border: 2px solid transparent; background: #F4F6FB; font-size: 15.5px; }
+.rt-login-card .rt-champ input:focus { background: #fff; border-color: var(--gold, #F5B400); box-shadow: 0 0 0 4px rgba(245,180,0,.22); }
+.rt-login-card .rt-champ input::placeholder { color: #9AA6BF; }
+.rt-login-card button.rt-voir { position: absolute; right: 6px; top: 50%; width: 38px; height: 38px; margin-top: -19px; padding: 0; display: grid; place-items: center; background: transparent; border-radius: 10px; }
+.rt-voir svg { width: 20px; height: 20px; fill: none; stroke: #6B7A99; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rt-voir[aria-pressed="true"] svg { stroke: #0A1F44; }
+.rt-login-card button.rt-voir:hover { background: rgba(10,31,68,.06); filter: none; }
+.rt-login-card button[type="submit"], .rt-login-card #rtFirstGo, .rt-login-card #rtFirstDo, .rt-login-card #rtResetSend, .rt-login-card #rtResetDo {
+  min-height: 52px; margin-top: 6px; border-radius: 14px; font-size: 16px;
+  background: linear-gradient(180deg, #FFCB2E, #F5B400); box-shadow: 0 10px 24px rgba(245,180,0,.28);
+  transition: transform var(--m-rapide, .16s) ease, box-shadow var(--m-rapide, .16s) ease, filter .15s; }
+.rt-login-card button[type="submit"]:active:not(:disabled) { transform: scale(.98); box-shadow: 0 4px 12px rgba(245,180,0,.25); }
+.rt-login-msg { margin-top: 12px; text-align: center; }
+.rt-login-msg:empty { min-height: 0; margin: 0; }
+.rt-login-msg.is-error { padding: 10px 12px; border-radius: 12px; background: rgba(255,90,90,.12); color: #FFB4AE; }
+.rt-login-sep { display: flex; align-items: center; gap: 12px; margin: 22px 0 12px; font-size: 12.5px; color: rgba(255,255,255,.5); }
+.rt-login-sep::before, .rt-login-sep::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.12); }
+.rt-login-sep span { white-space: nowrap; }
+.rt-login-card .rt-login-first { margin: 0; min-height: 50px; border-radius: 14px; background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.22); }
+.rt-login-card .rt-login-first:hover:not(:disabled) { border-color: var(--gold, #F5B400); color: var(--gold, #F5B400); filter: none; }
+@media (max-width: 420px) {
+  .rt-login { padding: 16px; align-items: flex-start; padding-top: max(28px, env(safe-area-inset-top)); }
+  .rt-login-card { padding: 26px 20px 22px; border-radius: 22px; }
+  .rt-login-card h1 { font-size: 25px; }
+  .rt-login-sep span { white-space: normal; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { .rt-login.is-visible .rt-login-card { animation: none; } }

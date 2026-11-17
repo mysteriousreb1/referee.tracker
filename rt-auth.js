@@ -810,7 +810,7 @@ function _jsonpReseau(action, extra = {}) {
   }).catch(err => {
     if (err && /^AUTH_REQUIRED/.test(err.message || "")) {
       Session.clear();
-      showLogin("Connexion requise.");
+      showLogin("");   // b119 : pas de message rouge à l'ouverture, l'écran parle de lui-même
       throw apiError("Session expirée", "");
     }
     if (err && err.name === "AbortError") {
@@ -837,17 +837,21 @@ function buildLoginOverlay() {
   el.id = "rtLogin";
   el.className = "rt-login";
   el.innerHTML = `
-    <form class="rt-login-card" id="rtLoginForm" autocomplete="on">
-      <h1>Referee Tracker</h1>
-      <p class="rt-login-sub">Connexion requise</p>
-      <label for="rtEmail">Email</label>
-      <input id="rtEmail" name="email" type="email" autocomplete="username" required>
-      <label for="rtPwd">Mot de passe</label>
-      <input id="rtPwd" name="password" type="password" autocomplete="current-password" required>
+    <form class="rt-login-card rt-login-main" id="rtLoginForm" autocomplete="on">
+      <div class="rt-login-brand"><img src="./img/logo-icon.png" alt="" width="52" height="47"><span>Referee<b>Tracker</b></span></div>
+      <h1>Bon retour</h1>
+      <p class="rt-login-sub">Tes matchs, tes indemnités et tes trajets, au même endroit.</p>
+      <label for="rtEmail">E-mail</label>
+      <div class="rt-champ"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>
+        <input id="rtEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="ton e-mail" required></div>
+      <div class="rt-label-ligne"><label for="rtPwd">Mot de passe</label><button type="button" class="rt-link rt-oubli" id="rtForgotBtn">Oublié ?</button></div>
+      <div class="rt-champ"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <input id="rtPwd" name="password" type="password" autocomplete="current-password" required>
+        <button type="button" class="rt-voir" id="rtPwdVoir" aria-label="Afficher le mot de passe" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
       <button type="submit" id="rtLoginBtn">Se connecter</button>
       <div class="rt-login-msg" id="rtLoginMsg" role="status"></div>
+      <div class="rt-login-sep"><span>Nouveau sur Referee Tracker ?</span></div>
       <button type="button" class="rt-btn-ghost rt-login-first" id="rtFirstBtn">Ma première connexion</button>
-      <button type="button" class="rt-link" id="rtForgotBtn">Mot de passe oublié ?</button>
     </form>
 
     <form class="rt-login-card" id="rtFirstForm" style="display:none" autocomplete="off">
@@ -892,6 +896,13 @@ function buildLoginOverlay() {
     </form>`;
   document.body.appendChild(el);
 
+  // b119 — œil : afficher / masquer le mot de passe
+  document.getElementById("rtPwdVoir").addEventListener("click", () => {
+    const p = document.getElementById("rtPwd"), b = document.getElementById("rtPwdVoir"), voir = p.type === "password";
+    p.type = voir ? "text" : "password";
+    b.setAttribute("aria-pressed", voir ? "true" : "false");
+    b.setAttribute("aria-label", voir ? "Masquer le mot de passe" : "Afficher le mot de passe");
+  });
   document.getElementById("rtLoginForm").addEventListener("submit", ev => {
     ev.preventDefault();
     const btn = document.getElementById("rtLoginBtn");
@@ -908,6 +919,7 @@ function buildLoginOverlay() {
       .then(() => {
         Session.save("", email);
         document.getElementById("rtPwd").value = "";
+        document.getElementById("rtPwd").type = "password";
         hideLogin();
         startApp();
       })
