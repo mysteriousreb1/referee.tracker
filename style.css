@@ -5281,3 +5281,56 @@ td.dl-cell { min-width: 120px; }
 .dl-bar.dl-gold i { background: var(--gold); }
 .dl-bar.dl-navy i { background: #3b82f6; }
 td.neg-doux { color: var(--danger); }
+
+/* ===== b115 — respiration : plus d'espace entre les blocs (« rien ne s'entasse ») ===== */
+:root { --gap: 14px; }
+.section-title { margin: 34px 0 14px; }
+.panel > .section-title:first-child, .panel > :first-child .section-title:first-child { margin-top: 10px; }
+.kpi-grid { margin-bottom: 22px; }
+.kpi-grid + .kpi-grid { margin-top: -6px; }
+.table-card, .chart-card { margin-top: 16px; margin-bottom: 8px; }
+.stat-note { margin: 16px 0; line-height: 1.5; }
+.card-sub { line-height: 1.5; }
+.past-block { margin-top: 22px; }
+.cards { gap: 14px; }
+.stats-themes, .tabs-mini { margin-bottom: 18px; }
+.kpi .sub { display: block; margin-top: 6px; line-height: 1.4; }
+@media (max-width: 767px) {
+  .section-title { margin: 28px 0 12px; }
+  .kpi-grid { margin-bottom: 18px; }
+  .content { padding-left: 16px; padding-right: 16px; }
+}
+
+/* ===== b115 — motion design : arrivée sur une page (classe posée par animerEntree_) ===== */
+@keyframes rtMonte { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes rtBarre { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.panel.rt-entre > * { animation: rtMonte .45s cubic-bezier(.2,.75,.25,1) both; }
+.panel.rt-entre > *:nth-child(2) { animation-delay: .04s; }
+.panel.rt-entre > *:nth-child(3) { animation-delay: .08s; }
+.panel.rt-entre > *:nth-child(4) { animation-delay: .12s; }
+.panel.rt-entre > *:nth-child(5) { animation-delay: .16s; }
+.panel.rt-entre > *:nth-child(6) { animation-delay: .20s; }
+.panel.rt-entre > *:nth-child(n+7) { animation-delay: .24s; }
+.panel.rt-entre .kpi, .panel.rt-entre .tel-kpi, .panel.rt-entre .match-card { animation: rtMonte .5s cubic-bezier(.2,.75,.25,1) both; }
+.panel.rt-entre .kpi:nth-child(2), .panel.rt-entre .tel-kpi:nth-child(2), .panel.rt-entre .match-card:nth-child(2) { animation-delay: .06s; }
+.panel.rt-entre .kpi:nth-child(3), .panel.rt-entre .tel-kpi:nth-child(3), .panel.rt-entre .match-card:nth-child(3) { animation-delay: .12s; }
+.panel.rt-entre .kpi:nth-child(4), .panel.rt-entre .match-card:nth-child(4) { animation-delay: .18s; }
+.panel.rt-entre .kpi:nth-child(n+5), .panel.rt-entre .match-card:nth-child(n+5) { animation-delay: .24s; }
+.panel.rt-entre .dl-bar i, .panel.rt-entre .franchise-bar i, .panel.rt-entre .evt-bar i, .panel.rt-entre .pd-bar-t i, .panel.rt-entre .eval-f i {
+  transform-origin: left center; animation: rtBarre .8s cubic-bezier(.2,.75,.25,1) .15s both;
+}
+/* Barre du bas / onglets : l'icône de l'onglet choisi « saute » légèrement */
+@keyframes rtSaut { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-3px) scale(1.08); } 100% { transform: none; } }
+.tab.active svg, .tab.active .tab-icon { animation: rtSaut .35s ease both; }
+.tab { transition: color .2s ease, background-color .2s ease; }
+/* Sections dépliables : le contenu glisse en s'ouvrant */
+details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte .3s ease both; }
+/* Fenêtres (aide, édition) : arrivée en douceur */
+@keyframes rtFenetre { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+.rtm { animation: rtFenetre .28s cubic-bezier(.2,.75,.25,1) both; }
+/* Cartes cliquables : léger relief au survol (ordinateur) */
+@media (hover: hover) { .kpi, .table-card, .chart-card { transition: transform .18s ease, box-shadow .18s ease; } .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); } }
+@media (prefers-reduced-motion: reduce) {
+  .panel.rt-entre *, .tab.active svg, .tab.active .tab-icon, details[open] > *, .rtm { animation: none !important; }
+  .kpi, .table-card, .chart-card, .tab { transition: none !important; }
+}
