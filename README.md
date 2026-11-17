@@ -2,7 +2,7 @@
 
 Suivi complet de l'arbitrage basket FFBB : convocations 5×5 et 3×3 lues automatiquement depuis la boîte mail, base Google Sheets, agenda, paiements, statistiques et **revenu net réel** (indemnités − carburant − entretien).
 
-Site : https://mysteriousreb1.github.io/referee.tracker/
+Site : https://app.referee-tracker.fr/ (dépôt : github.com/referee-tracker-fr/referee.tracker)
 
 © 2026 Clément REBHOLZ — Tous droits réservés. Reproduction, copie ou réutilisation interdites sans autorisation écrite de l'auteur.
 
