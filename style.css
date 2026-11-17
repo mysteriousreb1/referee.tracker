@@ -5434,3 +5434,45 @@ details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte
 .acc-sl { flex-wrap: wrap; row-gap: 2px; }
 .acc-sl span { white-space: nowrap; }
 .acc-sl strong { white-space: nowrap; }
+
+/* ===== b118 — motion design pensé comme un système =====
+   Règles : 3 vitesses (rapide = retour au toucher, moyen = changement d'état, lent = arrivée de page),
+   une courbe « décélération » pour ce qui arrive, un léger « ressort » pour ce qu'on choisit.
+   Chaque mouvement dit quelque chose : d'où vient la page, quel onglet est choisi, ce qui s'ouvre. */
+:root { --m-rapide: .16s; --m-moyen: .3s; --m-lent: .5s; --m-courbe: cubic-bezier(.2,.75,.25,1); --m-ressort: cubic-bezier(.34,1.45,.64,1); }
+
+/* 1. La page glisse depuis le côté de l'onglet choisi (au lieu de monter d'en bas) */
+@keyframes rtDeDroite { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
+@keyframes rtDeGauche { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+.panel.rt-entre.rt-de-droite > * { animation-name: rtDeDroite; }
+.panel.rt-entre.rt-de-gauche > * { animation-name: rtDeGauche; }
+.panel.rt-entre > * { animation-duration: var(--m-lent); animation-timing-function: var(--m-courbe); }
+
+/* 2. Barre du bas (téléphone) : une pastille unique glisse vers l'onglet choisi */
+.tab-indic { position: absolute; left: 0; top: 0; z-index: 0; border-radius: 14px; background: var(--navy-800); pointer-events: none;
+  transition: transform var(--m-moyen) var(--m-ressort), width var(--m-moyen) var(--m-courbe); }
+nav.tabs.has-indic .tab { z-index: 1; }
+nav.tabs.has-indic .tab.active .tab-icon, nav.tabs.has-indic #tabMoreBtn.is-current .tab-icon { background: transparent !important; }
+nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
+.tab.active svg, .tab.active .tab-icon { animation: rtSaut var(--m-moyen) var(--m-ressort) both; }
+
+/* 3. Carte de match : le détail se déplie bloc par bloc, le chevron tourne */
+@keyframes rtDeplie { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.match-card.rt-ouvre .card-body > * { animation: rtDeplie var(--m-moyen) var(--m-courbe) both; }
+.match-card.rt-ouvre .card-body > *:nth-child(2) { animation-delay: .04s; }
+.match-card.rt-ouvre .card-body > *:nth-child(3) { animation-delay: .08s; }
+.match-card.rt-ouvre .card-body > *:nth-child(n+4) { animation-delay: .12s; }
+.mrow-chev { transition: transform var(--m-moyen) var(--m-ressort); }
+
+/* 4. Retour au toucher : ce qu'on presse s'enfonce un peu, puis revient */
+.card-head, .acc-saison, .kpi, .tel-kpi, .we-day, .acc-hero { transition: transform var(--m-rapide) ease, box-shadow var(--m-rapide) ease; }
+.card-head:active, .we-day:active, .acc-hero:active { transform: scale(.985); }
+.small-btn, .rt-btn, .tabs-mini-btn, .stats-theme-btn { transition: transform var(--m-rapide) ease, background-color var(--m-moyen) ease, color var(--m-moyen) ease; }
+
+/* 5. Sous-onglets (Vue d'ensemble / Analyse, thèmes) : le choix s'allume en douceur */
+.tabs-mini-btn.active, .stats-theme-btn.active { animation: rtPop var(--m-moyen) var(--m-ressort) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-indic, nav.tabs .tab, .mrow-chev, .card-head, .small-btn, .rt-btn, .tabs-mini-btn, .stats-theme-btn { transition: none !important; }
+  .match-card.rt-ouvre .card-body > *, .tabs-mini-btn.active, .stats-theme-btn.active { animation: none !important; }
+}
