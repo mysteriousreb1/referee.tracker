@@ -518,7 +518,7 @@ function animerEntree_(panel) {
   clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre"), 900);
   defilerChiffres_(panel);
 }
-const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v";
+const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v, .acc-big";
 function defilerChiffres_(panel) { panel.querySelectorAll(CHIFFRES_ANIMES_).forEach(defilerChiffre_); }
 // « 1 159,06 € » → défile de 0 à 1159,06 en gardant le format (espaces, virgule, unité).
 function defilerChiffre_(el) {
@@ -536,6 +536,46 @@ function defilerChiffre_(el) {
     if (k < 1) requestAnimationFrame(pas); else noeud.nodeValue = brut;
   };
   requestAnimationFrame(pas);
+}
+/* b116 — Accueil : carte de saison (anneau reçu / en attente, gros chiffres, courbe du net par mois). */
+function accSaisonCarte_(saison, aVenir, recuS, attS) {
+  const total = recuS + attS, part = total > 0 ? recuS / total : 0;
+  const R = 42, C = 2 * Math.PI * R, arc = (C * part).toFixed(1);
+  // Net (indemnités − carburant) des matchs joués, mois par mois, dans l'ordre de la saison
+  const parMois = {};
+  saison.filter(r => r._isPast && r._date).forEach(r => {
+    const k = r._date.getFullYear() * 100 + r._date.getMonth();
+    parMois[k] = (parMois[k] || 0) + (r._amount || 0) - realFuelCostClient(r._kmEff, r._date);
+  });
+  const cles = Object.keys(parMois).map(Number).sort((a, b) => a - b);
+  let courbe = "";
+  if (cles.length >= 2) {
+    const v = cles.map(k => parMois[k]), mx = Math.max(...v, 1), W = 260, H = 54;
+    const pts = v.map((x, i) => [6 + i * (W - 12) / (v.length - 1), H - 6 - Math.max(0, x) / mx * (H - 14)]);
+    const ligne = pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ");
+    const mois = k => new Date(Math.floor(k / 100), k % 100, 1).toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
+    courbe = `<div class="acc-courbe">
+      <span class="acc-courbe-t">Ton net, mois par mois</span>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Net par mois : ${cles.map((k, i) => mois(k) + " " + Math.round(v[i]) + " €").join(", ")}">
+        <polygon class="acc-courbe-aire" points="6,${H} ${ligne} ${W - 6},${H}"/>
+        <polyline class="acc-courbe-l" points="${ligne}" pathLength="100"/>
+        ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6"/>`).join("")}
+      </svg>
+      <span class="acc-courbe-x"><i>${escapeHtml(mois(cles[0]))}</i><i>${escapeHtml(mois(cles[cles.length - 1]))}</i></span>
+    </div>`;
+  }
+  return `<section class="acc-saison" aria-label="Ma saison ${escapeHtml(state.selectedSeason || "")}">
+    <div class="acc-anneau">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="acc-anneau-fond" cx="50" cy="50" r="${R}"/><circle class="acc-anneau-arc" cx="50" cy="50" r="${R}" stroke-dasharray="${arc} ${C.toFixed(1)}" style="--arc:${arc}"/></svg>
+      <div class="acc-anneau-c"><strong class="acc-big">${formatMoneyC(total)}</strong><span>saison ${escapeHtml((state.selectedSeason || "").replace(/^20(\d\d)\/20(\d\d)$/, "$1/$2"))}</span></div>
+    </div>
+    <div class="acc-saison-d">
+      <div class="acc-sl acc-sl--ok"><i></i><span>Reçu</span><strong class="acc-big">${formatMoneyC(recuS)}</strong></div>
+      <div class="acc-sl acc-sl--att"><i></i><span>En attente</span><strong class="acc-big">${formatMoneyC(attS)}</strong></div>
+      <div class="acc-sl acc-sl--n"><span>${saison.length} match${saison.length > 1 ? "s" : ""}</span><strong>${aVenir.length} à venir</strong></div>
+      ${courbe}
+    </div>
+  </section>`;
 }
 /* b67 — sur PC, Progression est une sous-vue de la page Analyse (state.activeTab === "stats") :
    les chargements asynchrones doivent re-rendre dans les deux cas. */
@@ -1806,12 +1846,7 @@ function renderAccueil() {
   const aVenir = saison.filter(r => !r._isPast);
   const recuS = saison.reduce((t, r) => t + (r._encaisse || 0), 0);
   const attS = saison.reduce((t, r) => t + (r._reste || 0), 0);
-  const saisonHtml = `<div class="acc-season">
-    <div class="acc-s"><span class="acc-s-val">${saison.length}</span><span class="acc-s-lbl">Matchs saison</span></div>
-    <div class="acc-s"><span class="acc-s-val">${aVenir.length}</span><span class="acc-s-lbl">À venir</span></div>
-    <div class="acc-s acc-s--ok"><span class="acc-s-val">${formatMoneyC(recuS)}</span><span class="acc-s-lbl">Paiements reçus</span><span class="acc-s-sub">encaissés depuis le début de la saison ${escapeHtml(state.selectedSeason || "")}</span></div>
-    <div class="acc-s acc-s--att"><span class="acc-s-val">${formatMoneyC(attS)}</span><span class="acc-s-lbl">En attente</span><span class="acc-s-sub">reste à percevoir sur la saison · ${saison.filter(r => (r._reste || 0) > 0).length} mission(s)</span></div>
-  </div>`;
+  const saisonHtml = accSaisonCarte_(saison, aVenir, recuS, attS);
   root.innerHTML = `
     ${bienvenue}
     ${accSilence_(actifs)}
@@ -2302,6 +2337,25 @@ function niveauCarteBrut_(row) {
   return carte("niv-autre", "—");
 }
 
+/* b116 — ligne d'infos d'une carte : rôle, km, compte à rebours (à venir) — avec petites icônes. */
+const ICO_ = {
+  role: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  km: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
+  temps: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+};
+function mrowMeta_(row) {
+  const role = cleanText(get(row, "Mon rôle")), km = row._kmEff != null ? row._kmEff : row._km;
+  let dans = "";
+  if (row._date && !row._isPast) {
+    const j = Math.round((new Date(row._date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+    if (j >= 0 && j <= 14) dans = j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " j";
+  }
+  const it = [];
+  if (role) it.push(`<span>${ICO_.role}${escapeHtml(role)}</span>`);
+  if (km > 0) it.push(`<span>${ICO_.km}${formatNumber(Math.round(km), " km")}</span>`);
+  if (dans) it.push(`<span class="mrow-dans${dans === "aujourd'hui" || dans === "demain" ? " is-proche" : ""}">${ICO_.temps}${escapeHtml(dans)}</span>`);
+  return it.length ? `<div class="mrow-meta">${it.join("")}</div>` : "";
+}
 function renderMatchCard(row) {
   const uid = escapeHtml(get(row, "UID"));
   const format = get(row, "Format");
@@ -2335,11 +2389,12 @@ function renderMatchCard(row) {
   return `
     <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}${state.cartesOuvertes.has(uid) ? " open" : ""}" data-uid="${uid}">
       <div class="card-head mrow" role="button" tabindex="0" aria-expanded="${state.cartesOuvertes.has(uid) ? "true" : "false"}">
-        <div class="mrow-date"><strong>${escapeHtml(date)}</strong><span>${escapeHtml([jourCourt, time].filter(Boolean).join(" · "))}</span></div>
+        <div class="mrow-date">${row._date ? `<span class="mrow-cal"><b>${escapeHtml(jourCourt)}</b><strong>${row._date.getDate()}</strong><i>${escapeHtml(row._date.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""))}</i></span>` : `<strong>${escapeHtml(date)}</strong>`}${time ? `<span class="mrow-h">${escapeHtml(time)}</span>` : ""}</div>
         <div class="mrow-logo">${logoCompetition(row)}</div>
         <div class="mrow-main">
           <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
           <p class="card-sub">${escapeHtml(sous || get(row, "Libellé compétition") || "")}</p>
+          ${mrowMeta_(row)}
           <div class="badges">
             <span class="badge-niveau">${escapeHtml(niv.badge)}</span>
             ${examCF ? `<span class="badge badge-examinateur">Examinateur</span>` : ""}
@@ -4013,8 +4068,8 @@ function renderStatsInner_() {
       ${renderCashFlow_(s.cash_flow)}
       ${renderComparaisonN1_(s.comparaison_saison_precedente)}
       ${renderAggTable("Par saison", s.par_saison, "Saison")}
-      ${renderAggTable("Par mois", s.par_mois, "Mois")}
-      ${renderAggTable("Par niveau", s.par_niveau, "Niveau")}`,
+      ${renderAggTable("Par mois", s.par_mois, "Mois", "mois")}
+      ${renderAggTable("Par niveau", s.par_niveau, "Niveau", "niveau")}`,
     km: `${renderKmTrajets_()}
       ${renderKmParMois_()}
       ${efficacite}
@@ -4034,6 +4089,7 @@ function renderStatsInner_() {
     ${blocs[theme]}
   `;
   root.querySelectorAll("[data-stheme]").forEach(btn => btn.addEventListener("click", () => { state.statsTheme = btn.dataset.stheme; renderStats(); }));
+  dessinerGraphesVue_();
   attachFormationsListeners_(root);
 }
 
@@ -5597,10 +5653,47 @@ function barreLigne_(label, v, max, cls) {
   const p = max > 0 && v > 0 ? Math.max(3, Math.round(v / max * 100)) : 0;
   return `<span class="dl-lbl">${escapeHtml(label)}</span><span class="dl-bar${cls ? " " + cls : ""}" aria-hidden="true"><i style="width:${p}%"></i></span>`;
 }
-function renderAggTable(title, rows, keyLabel) {
+/* b116 — « vrais graphiques » de la Vue d'ensemble : graphique en tête, tableau dépliable dessous.
+   Les canvas sont dessinés après l'injection du HTML (dessinerGraphesVue_). */
+const VUE_GRAPHES_ = { attente: [], charts: [] };
+function dessinerGraphesVue_() {
+  VUE_GRAPHES_.charts.forEach(c => { try { c.destroy(); } catch (e) {} });
+  VUE_GRAPHES_.charts = [];
+  const a = VUE_GRAPHES_.attente; VUE_GRAPHES_.attente = [];
+  if (typeof Chart === "undefined") return;
+  const sombre = document.documentElement.dataset.theme !== "light";
+  const grille = sombre ? "rgba(255,255,255,.08)" : "rgba(10,31,68,.08)", texte = sombre ? "#A7B3CC" : AN.COLORS.muted;
+  const eur = v => Number(v).toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " €";
+  a.forEach(g => {
+    const el = document.getElementById(g.id); if (!el) return;
+    const horiz = g.type === "niveau";
+    const labels = g.rows.map(r => /^\d{4}-\d{2}$/.test(r.label) ? labelMois(r.label) : r.label);
+    VUE_GRAPHES_.charts.push(new Chart(el.getContext("2d"), {
+      type: "bar",
+      data: { labels, datasets: [
+        { label: "Net réel", data: g.rows.map(r => round2(r.net_reel)), backgroundColor: "#22c55e", borderRadius: 6, stack: "s", maxBarThickness: 46 },
+        { label: "Carburant", data: g.rows.map(r => round2(r.cout_reel)), backgroundColor: "rgba(239,68,68,.75)", borderRadius: 6, stack: "s", maxBarThickness: 46 }
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: horiz ? "y" : "x",
+        animation: { duration: MOINS_ANIM_.matches ? 0 : 900, easing: "easeOutQuart" },
+        plugins: {
+          legend: { position: "bottom", labels: { color: texte, boxWidth: 12, padding: 14, font: { family: "Montserrat, sans-serif", size: 11.5 } } },
+          tooltip: { backgroundColor: "#0A1F44", padding: 10, cornerRadius: 8, callbacks: { label: i => " " + i.dataset.label + " : " + eur(i.raw), footer: it => "Indemnités : " + eur(g.rows[it[0].dataIndex].indemnite) + " · " + g.rows[it[0].dataIndex].count + " mission(s)" } }
+        },
+        scales: {
+          // l'axe des montants affiche « 300 € » ; l'autre axe garde ses libellés (mois, niveaux)
+          x: { stacked: true, grid: { display: horiz, color: grille }, ticks: Object.assign({ color: texte, font: { size: 11 } }, horiz ? { callback: v => eur(v) } : {}) },
+          y: { stacked: true, grid: { display: !horiz, color: grille }, ticks: Object.assign({ color: texte, font: { size: 11 } }, horiz ? {} : { callback: v => eur(v) }) }
+        }
+      }
+    }));
+  });
+}
+function renderAggTable(title, rows, keyLabel, graphe) {
   if (!rows || !rows.length) return "";
   const maxNet = Math.max(0, ...rows.map(r => Number(r.net_reel) || 0));
-  const body = `<div class="table-card"><div class="table-wrap"><table>
+  const table = `<div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>${escapeHtml(keyLabel || "Clé")}</th><th class="num">Missions</th><th class="num">Indemnités</th><th class="num">Carburant</th><th class="num">Net réel</th><th class="num">KM</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
         <td class="dl-cell">${barreLigne_(r.label, Number(r.net_reel) || 0, maxNet)}</td>
@@ -5611,6 +5704,14 @@ function renderAggTable(title, rows, keyLabel) {
         <td class="num">${formatNumber(r.km, "")}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>`;
+  let body = table;
+  if (graphe && rows.length >= 2) {
+    const id = "vueGraphe_" + graphe;
+    VUE_GRAPHES_.attente.push({ id, type: graphe, rows });
+    const h = graphe === "niveau" ? Math.max(180, rows.length * 44 + 70) : 280;
+    body = `<div class="chart-card vue-graphe"><div class="chart-box" style="height:${h}px"><canvas id="${id}" role="img" aria-label="${escapeHtml(title)} : net réel et carburant"></canvas></div></div>
+      <details class="vue-detail"><summary>Voir le détail en tableau</summary>${table}</details>`;
+  }
   return foldable_(title, body, { count: rows.length });
 }
 
@@ -7498,7 +7599,11 @@ function fmtHeure(h) {
   return t ? formatHeureFr(t) : String(h || "").trim();   // -> "20h30"
 }
 function badge(text, cls = "") { return text ? `<span class="badge ${cls}">${escapeHtml(text)}</span>` : ""; }
-function empty(text) { return `<div class="empty">${escapeHtml(text)}</div>`; }
+function empty(text) { return /^Chargement/.test(text) ? squelette_() : `<div class="empty">${escapeHtml(text)}</div>`; }
+/* b116 — chargement : blocs gris animés à la forme d'une page, au lieu de « Chargement… ». */
+function squelette_(court) {
+  return `<div class="squelette" role="status" aria-label="Chargement"><div class="sq sq-titre"></div>${court ? "" : `<div class="sq-grille"><div class="sq sq-carte"></div><div class="sq sq-carte"></div></div>`}<div class="sq sq-ligne"></div><div class="sq sq-ligne"></div><div class="sq sq-ligne sq-court"></div></div>`;
+}
 
 let _statusTimer = 0;
 function setStatus(message, type) {
@@ -9069,7 +9174,7 @@ function renderHotel() {
   if (!root) return;
   if (state.hotels === undefined || state.hotels === null) {
     loadHotels();
-    root.innerHTML = `<p class="card-sub">Chargement…</p>`;
+    root.innerHTML = squelette_();
     return;
   }
   const hs = state.hotels.slice().sort((a, b) => {
@@ -9241,7 +9346,7 @@ function loadRapports() { persoCharger_("rapp", "rapports", r => { state.rapport
 function erreurPerso_(msg, id) {
   return `<div class="table-card" style="padding:16px;text-align:center;margin-top:12px"><p class="card-sub" style="margin:0 0 10px">Chargement impossible (${escapeHtml(msg)}).</p><button type="button" class="small-btn secondary" id="${id}">Réessayer</button></div>`;
 }
-function chargementPerso_() { return `<p class="card-sub" style="margin-top:12px">Chargement…</p>`; }
+function chargementPerso_() { return squelette_(true); }
 
 /* b19 — e-Licence = le VRAI document officiel (PDF ou capture), rien d'inventé.
    Une licence vaut pour une saison : au 30/07, l'ancienne est retirée
