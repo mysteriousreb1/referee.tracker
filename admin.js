@@ -1842,7 +1842,7 @@
 
   // =====================================================================
   // b97d — ASSISTANT IA : synthèse du jour + questions libres. La console rassemble des chiffres agrégés
-  // (cockpit, usage, arbitres, stock de moteurs), les envoie au moteur principal (route admin.ia) qui interroge l'IA.
+  // (cockpit, usage, arbitres, stock de moteurs), les envoie à la fonction Supabase admin-ia (b126) qui interroge l'IA.
   // Aucun contenu de convocation n'est transmis. La réponse s'affiche ici, rien n'est appliqué automatiquement.
   // =====================================================================
   const IA_EX = ["Quels arbitres risquent de décrocher et pourquoi ?", "Quels paiements en retard dois-je surveiller en premier ?", "Les inscriptions de la semaine se passent-elles bien ?", "Que faut-il corriger en priorité côté technique ?"];
@@ -1873,11 +1873,11 @@
     return txt.slice(0, 24000);
   }
   async function iaAppel(question) {
-    const l = await sbRest("profils?select=api_url&limit=1"); const url = l && l[0] && l[0].api_url;
-    if (!url) throw new Error("Moteur principal introuvable (api_url absent de ton profil).");
+    // b126 — fonction Supabase admin-ia (le moteur principal n'accepte que son propriétaire, pas le compte admin dédié)
     const donnees = await iaDonnees(), t = await jeton();
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin.ia", token: t, donnees, question: question || "" }), redirect: "follow", credentials: "omit" });
+    const r = await fetch(SB_URL + "/functions/v1/admin-ia", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ donnees, question: question || "" }) });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
     if (!j || j.success === false) throw new Error((j && j.error) || "Réponse illisible du moteur");
     let rep = (j.result || {}).texte || "", actions = [];
     // b99 — bloc ```actions [...]``` proposé par l'IA : extrait AVANT de remettre les prénoms (les ARB-n servent à retrouver l'arbitre)
@@ -2005,7 +2005,7 @@
             montrer(iaAppel.synth, iaDonnees.chiffres, iaDonnees.veille, "Aujourd'hui " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), acts); histo(jourIso()); return;
           }
           box.classList.remove("ia-load"); box.innerHTML = '<p class="mut tiny">' + (q ? "Question : " + esc(q) + " · " : "") + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</p>" + mdVersHtml(t); iaRendActions(box, acts);
-        } catch (e) { box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
+        } catch (e) { if (/AUTH_REQUIRED/.test(e.message)) return erreur(e); box.classList.remove("ia-load"); box.innerHTML = '<p class="err">Assistant indisponible : ' + esc(e.message) + "</p>"; }
       };
       $("iaSynth").onclick = () => go("");
       $("iaGo").onclick = () => { const q = $("iaQ").value.trim(); if (q) go(q); };
