@@ -2425,6 +2425,7 @@ function renderMatchCard(row) {
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
+        ${creneau3x3Html_(row)}
         ${renderTransport_(row, uid)}
         ${typeof window.rtFraisMatchHtml === "function" ? window.rtFraisMatchHtml(row) : ""}
         ${estTel_() ? renderActions(row) : ""}
@@ -6603,6 +6604,34 @@ document.addEventListener("click", async e => {
   } catch (err) { b.disabled = false; b.textContent = "Supprimer"; setStatus("Erreur : " + err.message, "error"); }
 });
 
+/* b122 — tournoi 3x3 à deux barèmes (mail « demi-journée X € / journée Y € ») : l'arbitre choisit, l'indemnité est recalculée par le moteur. */
+function creneau3x3Html_(row) {
+  if (row._format !== "3x3") return "";
+  const w = String(get(row, "Warning finance") || "");
+  const m = w.match(/barèmes 3x3 demi-journée ([\d.,]+) € \/ journée ([\d.,]+) €(?: \((demi-journée|journée) retenue\))?/);
+  if (!m) return "";
+  const choix = m[3] === "journée" ? "journee" : m[3] === "demi-journée" ? "demi" : "";
+  const uid = escapeHtml(get(row, "UID"));
+  const b = (c, lib, eur) => `<button type="button" class="small-btn${choix === c ? "" : " secondary"}" data-creneau3x3="${c}" data-fixe="${escapeHtml(eur)}" data-uid="${uid}" aria-pressed="${choix === c}">${lib} · ${escapeHtml(eur)} €</button>`;
+  return `<div class="cr3x3"><span class="cr3x3-t">${choix ? "Ta présence" : "Tu es là combien de temps ?"}</span><div class="cr3x3-b">${b("demi", "Demi-journée", m[1])}${b("journee", "Journée", m[2])}</div>
+    <span class="card-sub">Le mail annonce deux montants : ton choix fixe l'indemnité (+ km A/R × 0,40 €).</span></div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-creneau3x3]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const uid = b.dataset.uid, creneau = b.dataset.creneau3x3, fixe = b.dataset.fixe;
+  b.disabled = true;
+  try {
+    const res = await jsonp("mission.creneau3x3", { uid, creneau, fixe });
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+    if (!res.result) throw new Error("Moteur pas encore à jour");
+    remplacerLigne_(uid, res.row);
+    setStatus(creneau === "journee" ? "Journée enregistrée : indemnité recalculée" : "Demi-journée enregistrée : indemnité recalculée", "ok");
+    renderAll();
+  } catch (err) { b.disabled = false; setStatus("Erreur : " + err.message, "error"); }
+});
+
 /* b122 — rétablir une mission écartée ou annulée à tort (Analyse › Suivi › Matchs annulés). */
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-retablir-mission]");
@@ -7769,8 +7798,9 @@ function renderAnalyse() {
 
   const eurHeureGlobal = heuresTotal > 0 ? net / heuresTotal : 0;
   const eurKmGlobal = kmTotal > 0 ? brut / kmTotal : 0;
-  const nonPayes = rows.filter(r => !r._paye);
-  const montantDu = nonPayes.reduce((t, r) => t + r._brut, 0);
+  // b123 — reste dû réel (paiements partiels déduits), même calcul que la page Paiements
+  const nonPayes = rows.filter(r => (r._reste || 0) > 0);
+  const montantDu = nonPayes.reduce((t, r) => t + (r._reste || 0), 0);
 
   root.innerHTML = `
     <div class="analysis-toolbar"><div class="toolbar-summary"><strong>${escapeHtml(AN.saison)}</strong> · ${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div></div>

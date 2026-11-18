@@ -283,7 +283,7 @@ const ECRITURES = {
   addHotel: 1, deleteHotel: 1,
   "elicence.set": 1, "elicence.document": 1, "elicence.carte": 1, 
   "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1,
-  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
+  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "mission.retablir": 1, "mission.creneau3x3": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
 };
 
 
@@ -831,6 +831,18 @@ function _jsonpReseau(action, extra = {}) {
     throw err;
   });
 }
+
+// b123 — bibliothèques lourdes (PDF, QR code : 460 Ko) chargées après l'ouverture, quand le navigateur est au repos :
+// l'app s'affiche plus vite ; elles sont prêtes bien avant qu'on ouvre un export ou la double authentification.
+(function chargerOutilsDiffere_() {
+  const charger = () => ["./vendor/jspdf.umd.min.js", "./vendor/qrcode.js"].forEach((src, i) => {
+    const s = document.createElement("script"); s.src = src; s.async = false;
+    if (i === 0) s.addEventListener("load", () => { const a = document.createElement("script"); a.src = "./vendor/jspdf.plugin.autotable.min.js"; document.body.appendChild(a); });
+    document.body.appendChild(s);
+  });
+  const go = () => (window.requestIdleCallback ? requestIdleCallback(charger, { timeout: 4000 }) : setTimeout(charger, 2500));
+  if (document.readyState === "complete") go(); else window.addEventListener("load", go);
+})();
 
 // b122 — compte ouvert au chargement de la page (sert à détecter une reconnexion avec un AUTRE compte)
 try { window.__rtDernierEmail = window.__rtDernierEmail || Session.email || ""; } catch (e) {}

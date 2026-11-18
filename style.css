@@ -5551,3 +5551,9 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
   #accueil.panel.active { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 @media (min-width: 1100px) { #accueil.panel.active:not(:has(> .acc-grid)) > .acc-saison { grid-column: 1 / -1; } }
+
+/* ===== b123 — 3x3 : choix demi-journée / journée ===== */
+.cr3x3 { display: grid; gap: 8px; margin: 12px 0; padding: 12px 14px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--gold) 60%, var(--line)); background: color-mix(in srgb, var(--gold) 7%, transparent); }
+.cr3x3-t { font-weight: 800; font-size: 13px; }
+.cr3x3-b { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr3x3-b .small-btn { flex: 1 1 140px; }
