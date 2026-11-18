@@ -1427,9 +1427,6 @@ function renderAll() {
   state.filteredRows = filterRows(state.allRows);
   try { hotelScan_(); } catch (e) { console.warn("Hôtel :", e); }
   renderTab_(state.activeTab || "accueil");
-  // b115 — page redessinée pendant son animation d'arrivée (données qui arrivent) : on relance les chiffres.
-  const pAnim = document.getElementById(state.activeTab || "accueil");
-  if (pAnim && pAnim.classList.contains("rt-entre")) defilerChiffres_(pAnim);
   safeRender_(renderTabBadges_, null, "Badges");
 }
 

@@ -638,7 +638,7 @@
       '<div class="grid-2">' + carte("Tickets par catégorie", "", listeKN(T.par_categorie)) + carte("Tickets par gravité", "", listeKN(T.par_gravite)) + "</div>" +
       '<div class="grid-2">' + carte("Consentements", A.consentements.arbitres + " arbitre(s) ont accepté", listeKN(A.consentements.versions)) + carte("Actions de l'administration", A.journal_30j.total + " entrée(s) au journal en 30 j", listeKN(A.journal_30j.top)) + "</div>" +
       '<div class="subtab">Moteurs (Google Apps Script)</div><div class="tiles">' +
-        tuileB(M.installes, "Moteurs installés", "", "") + tuileB(M.sante.ok, "En bonne santé", "green", "passage < 30 min") + tuileB(M.sante.lent, "Lents", M.sante.lent ? "orange" : "green", "30 min à 3 h") + tuileB(M.sante.arrete, "Arrêtés", M.sante.arrete ? "red" : "green", "> 3 h sans passage") + tuileB(M.sante.inconnu, "État inconnu", M.sante.inconnu ? "orange" : "green", "pas encore publié (b86)") +
+        tuileB(M.installes, "Moteurs installés", "", "") + tuileB(M.sante.ok, "En bonne santé", "green", "nouvelles < 75 min (calcul serveur : < 30 min)") + tuileB(M.sante.lent, "Lents", M.sante.lent ? "orange" : "green", "calcul serveur : 30 min à 3 h") + tuileB(M.sante.arrete, "Arrêtés", M.sante.arrete ? "red" : "green", "> 3 h sans passage") + tuileB(M.sante.inconnu, "État inconnu", M.sante.inconnu ? "orange" : "green", "pas encore publié (b86)") +
         tuileB(M.latence_min_mediane == null ? "—" : M.latence_min_mediane + " min", "Dernier passage (médiane)", etat(M.latence_min_mediane, 15, 60, true), "") +
         tuileB(M.commandes_30j, "Commandes envoyées", "", "30 jours") + tuileB(pc1(M.taux_succes), "Commandes réussies", etat(M.taux_succes, 95, 80), M.commandes_erreur + " en erreur") + tuileB(M.delai_cmd_min_median == null ? "—" : M.delai_cmd_min_median + " min", "Délai d'exécution", etat(M.delai_cmd_min_median, 10, 30, true), "médiane") +
         tuileB(M.adresse_non_localisee, "Adresse non localisée", M.adresse_non_localisee ? "red" : "green", "km et carburant faux") + tuileB(M.synchro_ancienne_48h, "Sans synchro depuis 48 h", M.synchro_ancienne_48h ? "orange" : "green", "") +
@@ -1101,12 +1101,16 @@
   };
 
   // ---- Moteurs (tous les arbitres)
+  // b122 — un moteur publie son état une fois par heure (Code.gs publierEtatMoteur_) : « en retard » seulement après 75 min
+  // sans nouvelles, « arrêté » après 3 h (avant : 30 min → la moitié des moteurs paraissaient lents alors qu'ils tournaient).
+  const santeMoteur = (x) => { if (x.battement_min == null) return x.sante; return x.battement_min < 75 ? "ok" : x.battement_min < 180 ? "lent" : "arrete"; };
+  const moteursNorm = (l) => { (l || []).forEach((x) => { x.sante = santeMoteur(x); }); return l || []; };
   rendus.moteurs = async function (force) {
     const el = $("sec-moteurs");
-    if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = (await admin("moteurs.liste")).data || []; }
+    if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = moteursNorm((await admin("moteurs.liste")).data); }
     const l = cache.moteurs, n = (st) => l.filter((x) => x.sante === st).length;
     $("navMoteurs").textContent = (n("arrete") + n("lent")) || "";
-    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 5 min. Vert : passé il y a moins de 30 min · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
+    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 5 min. Vert : nouvelles il y a moins de 75 min (chaque moteur se signale une fois par heure) · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
       '<div class="tiles">' + tuileB(l.length, "Moteurs", "") + tuileB(n("ok"), "En marche", "green") + tuileB(n("lent"), "En retard", "orange") + tuileB(n("arrete"), "Arrêtés", "red") + tuileB(n("inconnu"), "État inconnu", "") +
         tuileB(l.reduce((t, x) => t + x.commandes.attente, 0), "Commandes en attente", "") + tuileB(l.reduce((t, x) => t + x.commandes.erreur, 0), "Commandes en erreur (7 j)", "") + "</div>" +
       '<div class="row" style="margin:10px 0"><button class="btn sm" id="moDiag">Diagnostic de tous les moteurs</button><button class="btn sm" id="moSync">Synchroniser tous les moteurs</button></div><div id="moT"></div>';
@@ -1706,7 +1710,7 @@
         courant === "tickets" ? null : admin("tickets.liste").then((j) => { cache.tickets = j.data || []; $("navTickets").textContent = cache.tickets.filter((t) => t.statut !== "Fermé").length || ""; }),
         courant === "alertes" ? null : admin("alertes.global").then((j) => { cache.alertesG = j; const P = j.par_arbitre || []; $("navAlertes").textContent = P.reduce((t, x) => t + x.regler + x.avant, 0) || ""; }),
         courant === "rcsignal" ? null : rcCompteur(),
-        courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = j.data || []; $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
+        courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = moteursNorm(j.data); $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
       ].filter(Boolean));
     } catch (e) {
       if (/AUTH_REQUIRED/.test(e.message)) return voir("vLogin");
