@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b120" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b121" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -18,8 +18,16 @@
     <div class="gate-card">
       <img src="./apple-touch-icon.png" alt="" class="gate-logo" />
       <h1>Administration</h1>
-      <p>Connecte-toi d'abord dans l'app Referee Tracker (même navigateur), puis reviens sur cette page.</p>
-      <a class="btn pri" href="./">Ouvrir l'app</a>
+      <p>Connecte-toi avec le compte administrateur. Un code à 6 chiffres te sera ensuite demandé.</p>
+      <form id="adminLoginForm" class="gate-form" autocomplete="on">
+        <label for="adminEmail">E-mail</label>
+        <input id="adminEmail" type="email" autocomplete="username" inputmode="email" required />
+        <label for="adminPwd">Mot de passe</label>
+        <input id="adminPwd" type="password" autocomplete="current-password" required />
+        <button class="btn pri" id="adminLoginBtn" type="submit">Se connecter</button>
+        <p id="adminLoginMsg" class="mut" role="status"></p>
+      </form>
+      <p class="mut tiny">Tu peux aussi te connecter d'abord dans <a href="./">l'app</a> avec un compte administrateur, puis revenir ici.</p>
     </div>
   </main>
 
@@ -89,7 +97,7 @@
       </nav>
       <div class="side-foot">
         <span id="qui" class="mut"></span>
-        <div class="row"><a class="btn sm" href="./">App</a><button class="btn sm" id="btnTheme" title="Thème">◐</button></div>
+        <div class="row"><a class="btn sm" href="./">App</a><button class="btn sm" id="btnTheme" title="Thème">◐</button><button class="btn sm" id="btnSortir" title="Se déconnecter de l'administration">Sortir</button></div>
         <span class="mut tiny">Toutes les actions sont journalisées.</span>
       </div>
     </aside>
@@ -153,6 +161,6 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./admin.js?v=2026-11-18-b120"></script>
+  <script src="./admin.js?v=2026-11-18-b121"></script>
 </body>
 </html>

@@ -27,8 +27,12 @@
   const copier = (t) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(new Error("Presse-papiers indisponible"))).then(() => toast("Copié ✓", "ok"), (e) => toast(e.message, "err"));
 
   // ---------- session / auth (conservé b62) ----------
-  const session = () => { try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; } };
-  const sauver = (s) => { try { localStorage.setItem(STORE, JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at || Math.floor(Date.now() / 1000) + (s.expires_in || 3600) })); } catch (e) {} };
+  // b121 — compte admin dédié (ex. it@referee-tracker.fr) : session à part (STORE_ADMIN), sans toucher à celle de l'app.
+  // Sans session admin, on reprend la session de l'app comme avant.
+  const STORE_ADMIN = "rt_admin_session";
+  const cleSession = () => { try { return localStorage.getItem(STORE_ADMIN) ? STORE_ADMIN : STORE; } catch (e) { return STORE; } };
+  const session = () => { try { return JSON.parse(localStorage.getItem(cleSession()) || "null"); } catch (e) { return null; } };
+  const sauver = (s, cle) => { try { localStorage.setItem(cle || cleSession(), JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at || Math.floor(Date.now() / 1000) + (s.expires_in || 3600) })); } catch (e) {} };
   const claims = (t) => { try { let b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return JSON.parse(atob(b)); } catch (e) { return {}; } };
   async function jeton() {
     const s = session();
@@ -1660,6 +1664,23 @@
       $("btnCsvStats").addEventListener("click", () => csv([["arbitre", "email", "matchs", "5x5", "3x3", "autres", "indemnites", "recus", "payables", "evaluations"].concat(s.mois)].concat(arb.map((a) => [nom(a), a.email, a.matchs, a.f5, a.f3, a.autres, a.indemnites, a.payes, a.payables, a.evaluations].concat(s.mois.map((m) => a.par_mois[m] || 0)))), "stats_arbitres.csv"));
     } else tableCourante = null;
   };
+
+  // b121 — connexion directe à l'admin (e-mail + mot de passe), puis code à 6 chiffres comme avant.
+  $("adminLoginForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const b = $("adminLoginBtn"), m = $("adminLoginMsg");
+    b.disabled = true; m.textContent = "Vérification…"; m.className = "mut";
+    try {
+      const r = await fetch(SB_URL + "/auth/v1/token?grant_type=password", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("adminEmail").value.trim(), password: $("adminPwd").value }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(/invalid/i.test(j.error_description || j.msg || "") ? "E-mail ou mot de passe incorrect." : (j.error_description || j.msg || "Connexion impossible"));
+      sauver(j, STORE_ADMIN); $("adminPwd").value = ""; m.textContent = "";
+      await demarrer();
+    } catch (e) { m.textContent = e.message; m.className = "err"; }
+    finally { b.disabled = false; }
+  });
+  $("btnSortir").addEventListener("click", () => { try { localStorage.removeItem(STORE_ADMIN); } catch (e) {} location.reload(); });
 
   // ---------- démarrage ----------
   async function demarrer() {
