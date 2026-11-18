@@ -10,7 +10,7 @@
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b124" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-18-b125" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -27,7 +27,7 @@
         <button class="btn pri" id="adminLoginBtn" type="submit">Se connecter</button>
         <p id="adminLoginMsg" class="mut" role="status"></p>
       </form>
-      <p class="mut tiny">Tu peux aussi te connecter d'abord dans <a href="./">l'app</a> avec un compte administrateur, puis revenir ici.</p>
+      <p class="mut tiny">La connexion de l'admin est séparée de celle de <a href="./">l'app</a> : ton compte arbitre reste connecté dans l'app.</p>
     </div>
   </main>
 
@@ -43,6 +43,7 @@
       <p id="mfaTxt">Saisis le code à 6 chiffres de ton application d'authentification.</p>
       <div class="row"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" /><button class="btn pri" id="btnCode">Valider</button></div>
       <p id="mfaMsg" class="err"></p>
+      <button class="btn sm" id="btnMfaSortir" type="button">Changer de compte</button>
     </div>
   </main>
 
@@ -161,7 +162,7 @@
   <script src="./vendor/qrcode.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./nouveautes.js?v=2026-11-18-b124"></script>
-  <script src="./admin.js?v=2026-11-18-b124"></script>
+  <script src="./nouveautes.js?v=2026-11-18-b125"></script>
+  <script src="./admin.js?v=2026-11-18-b125"></script>
 </body>
 </html>

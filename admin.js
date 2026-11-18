@@ -6,7 +6,6 @@
 (function () {
   const SB_URL = "https://jlstedchnmdteazuqbly.supabase.co";
   const SB_KEY = "sb_publishable_B1w244FrkzbIn-SZ-T_z8w_4HVg9stb";   // clé publique (publiable par conception)
-  const STORE = "rt_sb_session";                                       // même session que l'app
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const voir = (id) => ["vLogin", "vMfa", "vAdmin"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
@@ -28,9 +27,9 @@
 
   // ---------- session / auth (conservé b62) ----------
   // b121 — compte admin dédié (adresse « it » du domaine) : session à part (STORE_ADMIN), sans toucher à celle de l'app.
-  // Sans session admin, on reprend la session de l'app comme avant.
+  // b125 — plus de repli sur la session de l'app : un compte arbitre non admin rendait l'admin vide, sans sortie possible.
   const STORE_ADMIN = "rt_admin_session";
-  const cleSession = () => { try { return localStorage.getItem(STORE_ADMIN) ? STORE_ADMIN : STORE; } catch (e) { return STORE; } };
+  const cleSession = () => STORE_ADMIN;
   const session = () => { try { return JSON.parse(localStorage.getItem(cleSession()) || "null"); } catch (e) { return null; } };
   const sauver = (s, cle) => { try { localStorage.setItem(cle || cleSession(), JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at || Math.floor(Date.now() / 1000) + (s.expires_in || 3600) })); } catch (e) {} };
   const claims = (t) => { try { let b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return JSON.parse(atob(b)); } catch (e) { return {}; } };
@@ -46,6 +45,7 @@
     const t = await jeton();
     const r = await fetch(SB_URL + "/auth/v1/" + chemin, { method: methode || "GET", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: corps ? JSON.stringify(corps) : undefined });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
     if (!r.ok) throw new Error(j.msg || j.error_description || j.message || "Erreur " + r.status);
     return j;
   }
@@ -56,6 +56,7 @@
       const t = await jeton();
       const r = await fetch(SB_URL + "/functions/v1/admin", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ action }, extra || {})) });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
       if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
       return j;
     } finally { if (--enCours <= 0) { enCours = 0; $("chargement").classList.add("hidden"); } }
@@ -101,7 +102,7 @@
   // ---------- UI génériques ----------
   let toastT = null;
   function toast(txt, type) { const t = $("toast"); t.textContent = txt; t.className = "toast " + (type || ""); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add("hidden"), 3200); }
-  function erreur(e) { const m = $("msg"); m.textContent = e && e.message ? e.message : String(e); m.classList.remove("hidden"); if (/AUTH_REQUIRED/.test(m.textContent)) voir("vLogin"); }
+  function erreur(e) { const m = $("msg"); m.textContent = e && e.message ? e.message : String(e); m.classList.remove("hidden"); if (/AUTH_REQUIRED/.test(m.textContent)) sortir("Session expirée ou compte sans accès admin : reconnecte-toi."); }
   function effacerMsg() { $("msg").classList.add("hidden"); }
   let dlgAnnuler = null;   // callback d'annulation du dialogue courant (✕ ou Échap)
   function dialogue(titre, html, apres) { dlgAnnuler = null; $("dlgTitre").textContent = titre; $("dlgBody").innerHTML = html; if (!$("dlg").open) $("dlg").showModal(); if (apres) apres($("dlgBody")); }
@@ -829,7 +830,7 @@
   async function rpcAdmin(nom) {
     const r = await fetch(SB_URL + "/rest/v1/rpc/" + nom, { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: "{}" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
+    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "AUTH_REQUIRED" : (j.message || "Erreur " + r.status));
     return j;
   }
   const ONGLETS_LIB = { accueil: "Accueil", matchs: "Matchs", paiements: "Paiements", stats: "Analyse", estimation: "Estimation", alertes: "Alertes", reglement: "Règlement (chat)", rapports: "Rapports", export: "Export", progression: "Progression", qcm: "QCM", contacts: "Contacts", procedures: "Procédures", elicence: "e-Licence", equipement: "Équipement", hotel: "Hôtels", indispos: "Indisponibilités", monespace: "Mon espace" };
@@ -1036,7 +1037,7 @@
   async function rpcP(nom, corps) {
     const r = await fetch(SB_URL + "/rest/v1/rpc/" + nom, { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify(corps || {}) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "Accès refusé : reconnecte-toi avec ton code à 6 chiffres" : (j.message || "Erreur " + r.status));
+    if (!r.ok) throw new Error(/acces_refuse/.test(JSON.stringify(j)) ? "AUTH_REQUIRED" : (j.message || "Erreur " + r.status));
     return j;
   }
   const CA_SEG = { A: ["Compte jamais ouvert", "« Ton espace t'attend »"], B: ["Pas de transfert automatique", "« Passe tes convocations en automatique »"], C: ["Configuration à terminer", "« Encore 2 minutes pour des calculs justes »"], D: ["Derniers réglages", "« Encore N réglages »"] };
@@ -1693,7 +1694,14 @@
     } catch (e) { m.textContent = e.message; m.className = "err"; }
     finally { b.disabled = false; }
   });
-  $("btnSortir").addEventListener("click", () => { try { localStorage.removeItem(STORE_ADMIN); } catch (e) {} location.reload(); });
+  // Déconnexion admin : efface la session admin et revient au formulaire (la session de l'app n'est pas touchée).
+  function sortir(txt) {
+    try { localStorage.removeItem(STORE_ADMIN); } catch (e) {}
+    $("msg").classList.add("hidden"); voir("vLogin");
+    const m = $("adminLoginMsg"); m.textContent = txt || ""; m.className = txt ? "err" : "mut";
+  }
+  $("btnSortir").addEventListener("click", () => { sortir(); location.reload(); });
+  $("btnMfaSortir").addEventListener("click", () => sortir());
 
   // ---------- démarrage ----------
   async function demarrer() {
@@ -1713,7 +1721,7 @@
         courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = moteursNorm(j.data); $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
       ].filter(Boolean));
     } catch (e) {
-      if (/AUTH_REQUIRED/.test(e.message)) return voir("vLogin");
+      if (/AUTH_REQUIRED/.test(e.message)) return sortir(session() ? "Ce compte n'a pas accès à l'administration : connecte-toi avec le compte admin." : "");
       erreur(e);
     }
   }
