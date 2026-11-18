@@ -1084,6 +1084,14 @@
     el.insertAdjacentHTML("afterbegin", "<div id=\"caBox\"></div>"); campagneCarte($("caBox"));   // b104
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
+    // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
+    { const N = window.RT_NOUV || {}, L = window.RT_NOUVEAUTES || [];
+      const sortie = N.sortie ? new Date(N.sortie + "T00:00:00") : null, fin = sortie ? new Date(+sortie + 14 * 864e5) : null, actif = sortie && Date.now() < +fin;
+      el.insertAdjacentHTML("afterbegin", '<div class="card nv-auto"><div class="card-head"><h3>Bandeau automatique « Nouvelle version »</h3><span class="sub">' + (actif ? badge("en cours", "green") : badge("terminé", "gray")) + "</span></div>" +
+        '<div class="nv-apercu"><span class="nv-k">Nouveau</span><p>' + esc(N.texte || "—") + '</p><span class="nv-b">Voir</span></div>' +
+        '<p class="mut tiny">Version <b>' + esc(N.version || "—") + "</b> sortie le " + (sortie ? fmtD(sortie) : "—") + ". Chaque arbitre le voit pendant 24 h à partir de sa première ouverture de l'app" + (fin ? ", jusqu'au " + fmtD(fin) + " au plus tard" : "") + ". La croix le masque pour de bon.</p>" +
+        (L.length ? '<details class="nv-liste"><summary>Fenêtre « Ce qui change » (' + L.length + " points)</summary><ul>" + L.map((x) => "<li><b>" + esc(x[1]) + "</b> — " + esc(x[2]) + "</li>").join("") + "</ul></details>" : "") +
+        '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js).</p></div>'); }
     const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };
     tableCourante = tableau(el.querySelector("#coT"), [
       { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Destinataire", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },

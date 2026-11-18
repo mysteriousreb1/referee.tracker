@@ -10674,17 +10674,9 @@ state.reglCat = "5x5";
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
 
 /* b104 — fenêtre « Nouveautés » ouverte depuis le bandeau de mise à jour. */
-/* b121 — nouveautés de la version : la fenêtre « Ce qui change » et le bandeau automatique.
-   À CHAQUE mise en ligne visible pour les arbitres : mettre à jour RT_NOUV (version, date, phrase) et la liste,
-   texte validé par Clément avant la mise en ligne. Le bandeau s'affiche seul pendant 24 h pour chaque arbitre. */
-const RT_NOUV = { version: "b121", sortie: "2026-11-18", texte: "Nouvelle version : Accueil repensé, notes sur 100, cartes de match plus claires et nouvel écran de connexion." };
-const RT_NOUVEAUTES = [
-  ["◔", "Accueil repensé", "Un anneau montre ce que tu as reçu et ce qui reste à venir sur la saison, avec la courbe de ton net mois par mois."],
-  ["★", "Notes sur 100", "Toutes tes notes d'observation s'affichent maintenant sur 100, plus faciles à comparer."],
-  ["▦", "Cartes de match plus claires", "La date en petit calendrier, ton rôle, les km et « dans 3 j » d'un coup d'œil."],
-  ["▤", "Graphiques", "Dans Analyse, « Par mois » et « Par niveau » deviennent des graphiques à barres."],
-  ["⇄", "App plus fluide", "Pages qui glissent, chiffres qui défilent, chargements plus doux. Coupé si ton téléphone demande moins d'animations."]
-];
+/* b122 — RT_NOUV et RT_NOUVEAUTES sont dans nouveautes.js (lus aussi par l'admin). */
+const RT_NOUV = window.RT_NOUV || { version: "", sortie: "1970-01-01", texte: "" };
+const RT_NOUVEAUTES = window.RT_NOUVEAUTES || [];
 // Bandeau automatique : 24 h à partir de la 1re ouverture de cette version (dans les 14 jours qui suivent sa sortie), ✕ le masque.
 function rtMajAuto_() {
   try {

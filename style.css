@@ -5535,3 +5535,19 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
   .rt-login-sep span { white-space: normal; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) { .rt-login.is-visible .rt-login-card { animation: none; } }
+
+/* ===== b122 — Accueil sur grand écran : saison et prochain match côte à côte, toute la largeur utilisée ===== */
+@media (min-width: 1100px) {
+  #accueil.panel.active { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 18px; align-items: stretch; }
+  #accueil.panel.active > * { grid-column: 1 / -1; min-width: 0; }
+  #accueil.panel.active > .acc-saison { grid-column: 1; margin: 0 0 18px; }
+  #accueil.panel.active > .acc-grid { grid-column: 2; margin: 0 0 18px; }
+  #accueil .acc-grid--solo .acc-hero { max-width: none; height: 100%; }
+  #accueil .acc-saison { grid-template-columns: 170px 1fr; align-content: center; }
+  #accueil .acc-anneau { width: 170px; height: 170px; }
+  #accueil .acc-anneau-c strong { font-size: 24px; }
+}
+@media (min-width: 1700px) {
+  #accueil.panel.active { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (min-width: 1100px) { #accueil.panel.active:not(:has(> .acc-grid)) > .acc-saison { grid-column: 1 / -1; } }
