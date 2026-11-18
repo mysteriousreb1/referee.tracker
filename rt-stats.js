@@ -429,7 +429,10 @@ const RT_STATS = (function () {
   dateReception,
   datePaiementPrevu,
   montantRecu: montantRecuTotal,
-  isActive: !statut.toLowerCase().includes("annul") && format !== "Alerte",
+  // b122 — passager / transport en commun : aucun km conduit (même règle que l'app, app.js normalizeRows)
+  sansVoiture: idx["Mode transport"] !== undefined && /^(passager|transport)$/.test(String(r[idx["Mode transport"]] || "").trim()),
+  // b122 — même définition d'un match actif que l'app : ni annulé, ni alerte, ni ignoré
+  isActive: !/annul|alerte|ignor/i.test(statut) && format !== "Alerte",
   date: parseDate_(dateStr)
   };
   }).filter(e => e.isActive);
@@ -437,6 +440,7 @@ const RT_STATS = (function () {
   // même jour au même lieu = un SEUL trajet A/R. On répartit km + coûts à
   // parts égales entre les matchs du groupe ; l'indemnité reste entière.
   appliquerDoublesStats_(enriched);
+  enriched.forEach(e => { if (e.sansVoiture) recalculerKmDouble_(e, 0, e.doubleTaille || 1); });   // b122 : ni carburant, ni usure, ni km conduits
   const filtered = (seasonFilter && seasonFilter !== "Toutes les saisons") ?
   enriched.filter(e => e.season === seasonFilter) :
   enriched;
