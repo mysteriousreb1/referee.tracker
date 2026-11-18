@@ -1427,9 +1427,6 @@ function renderAll() {
   state.filteredRows = filterRows(state.allRows);
   try { hotelScan_(); } catch (e) { console.warn("Hôtel :", e); }
   renderTab_(state.activeTab || "accueil");
-  // b115 — page redessinée pendant son animation d'arrivée (données qui arrivent) : on relance les chiffres.
-  const pAnim = document.getElementById(state.activeTab || "accueil");
-  if (pAnim && pAnim.classList.contains("rt-entre")) defilerChiffres_(pAnim);
   safeRender_(renderTabBadges_, null, "Badges");
 }
 
@@ -2428,6 +2425,7 @@ function renderMatchCard(row) {
       </div>
       <div class="card-body">
         ${renderMoneyStrip(row._amount, cost, net)}
+        ${creneau3x3Html_(row)}
         ${renderTransport_(row, uid)}
         ${typeof window.rtFraisMatchHtml === "function" ? window.rtFraisMatchHtml(row) : ""}
         ${estTel_() ? renderActions(row) : ""}
@@ -4191,13 +4189,14 @@ function renderMatchsAnnules() {
     .sort(sortByDateDesc);
   if (!rows.length) return "";
   const body = `<div class="table-card"><div class="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th><th>Annulation</th></tr></thead>
+      <thead><tr><th>Date</th><th>Format</th><th>Rencontre</th><th>Lieu</th><th>Annulation</th><th></th></tr></thead>
       <tbody>${rows.map(r => `<tr>
         <td>${escapeHtml(get(r, "Date match"))}</td>
         <td>${escapeHtml(r._format)}</td>
         <td>${escapeHtml(rencontreLabel(r))}</td>
         <td>${escapeHtml(get(r, "Ville") || get(r, "Salle"))}</td>
         <td>${escapeHtml(get(r, "Warning général") || "—")}</td>
+        <td>${/^(Écartée|Annulé à la dernière minute)/.test(get(r, "Warning général")) ? `<button type="button" class="small-btn secondary" data-retablir-mission="${escapeHtml(get(r, "UID"))}">Rétablir</button>` : ""}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>`;
   return foldable_("Matchs annulés", body, { count: rows.length });
@@ -5776,7 +5775,7 @@ function renderStatsClient(periodeRecue) {
         <strong>${formatMoney(gross - cost)}</strong>
         <span class="sub">${rows.length} mission(s) · ${cinq} en 5×5 · ${trois} en 3×3</span>
       </div>
-      <div class="kpi"><label>Indemnités perçues</label><strong>${formatMoney(gross)}</strong></div>
+      <div class="kpi"><label>Indemnités (joués + désignés)</label><strong>${formatMoney(gross)}</strong></div>
       <div class="kpi"><label>Carburant réel</label><strong>−${formatMoney(cost)}</strong></div>
       <div class="kpi"><label>KM total A/R</label><strong>${formatNumber(km, " km")}</strong></div>
       <div class="kpi"><label>€ / km</label><strong>${money(km > 0 ? gross / km : 0)}</strong></div>
@@ -6444,7 +6443,7 @@ const ALERTE_TYPES_ = [
   [/date : ia|date lue par l'ia/i, "infos", "Date lue par l'IA", "L'IA a lu la date du match dans le mail (le texte contenait une autre date, souvent celle d'envoi). Rien à faire si elle est juste."],
   [/date (de match |3x3 )?(illisible|non lue|non trouvée|improbable)/i, "regler", "Date de match illisible", "Ouvre le match et saisis la bonne date (puis l'agenda se met à jour)."],
   [/heure (de match |de rdv 3x3 )?(illisible|non trouvée)/i, "regler", "Heure illisible", "Ouvre le match et renseigne l'heure du match ou du rendez-vous."],
-  [/pdf|non reconnu|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
+  [/pdf|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
   [/convocation fbi/i, "infos", "Convocation FBI à compléter", "Équipes, rôle et collègue absents du mail : complète-les dès que tu les connais."],
   [/kilom|km /i, "avant", "Kilométrage manquant ou à vérifier", "Renseigne ou contrôle les km A/R avant le match : l'indemnité kilométrique en dépend."],
   [/adresse/i, "avant", "Adresse de la salle manquante", "Complète l'adresse pour l'itinéraire Waze et le calcul des km."],
@@ -6593,7 +6592,7 @@ document.addEventListener("click", async e => {
   if (!b) return;
   e.preventDefault(); e.stopPropagation();
   const uid = b.getAttribute("data-supprimer-mission");
-  if (!uid || !confirm("Supprimer cette mission 3x3 ?\nElle disparaît de l'app et de l'agenda (la ligne reste dans le Sheet, statut « Annulé »).")) return;
+  if (!uid || !confirm("Supprimer cette mission 3x3 ?\nElle disparaît de l'app et de l'agenda. En cas d'erreur, tu pourras la rétablir dans Analyse › Suivi › Matchs annulés.")) return;
   b.disabled = true; b.textContent = "Suppression…";
   try {
     const res = await jsonp("mission.ecarter", { uid });
@@ -6603,6 +6602,52 @@ document.addEventListener("click", async e => {
     setStatus("Mission supprimée", "ok");
     renderAll();
   } catch (err) { b.disabled = false; b.textContent = "Supprimer"; setStatus("Erreur : " + err.message, "error"); }
+});
+
+/* b122 — tournoi 3x3 à deux barèmes (mail « demi-journée X € / journée Y € ») : l'arbitre choisit, l'indemnité est recalculée par le moteur. */
+function creneau3x3Html_(row) {
+  if (row._format !== "3x3") return "";
+  const w = String(get(row, "Warning finance") || "");
+  const m = w.match(/barèmes 3x3 demi-journée ([\d.,]+) € \/ journée ([\d.,]+) €(?: \((demi-journée|journée) retenue\))?/);
+  if (!m) return "";
+  const choix = m[3] === "journée" ? "journee" : m[3] === "demi-journée" ? "demi" : "";
+  const uid = escapeHtml(get(row, "UID"));
+  const b = (c, lib, eur) => `<button type="button" class="small-btn${choix === c ? "" : " secondary"}" data-creneau3x3="${c}" data-fixe="${escapeHtml(eur)}" data-uid="${uid}" aria-pressed="${choix === c}">${lib} · ${escapeHtml(eur)} €</button>`;
+  return `<div class="cr3x3"><span class="cr3x3-t">${choix ? "Ta présence" : "Tu es là combien de temps ?"}</span><div class="cr3x3-b">${b("demi", "Demi-journée", m[1])}${b("journee", "Journée", m[2])}</div>
+    <span class="card-sub">Le mail annonce deux montants : ton choix fixe l'indemnité (+ km A/R × 0,40 €).</span></div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-creneau3x3]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const uid = b.dataset.uid, creneau = b.dataset.creneau3x3, fixe = b.dataset.fixe;
+  b.disabled = true;
+  try {
+    const res = await jsonp("mission.creneau3x3", { uid, creneau, fixe });
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+    if (!res.result) throw new Error("Moteur pas encore à jour");
+    remplacerLigne_(uid, res.row);
+    setStatus(creneau === "journee" ? "Journée enregistrée : indemnité recalculée" : "Demi-journée enregistrée : indemnité recalculée", "ok");
+    renderAll();
+  } catch (err) { b.disabled = false; setStatus("Erreur : " + err.message, "error"); }
+});
+
+/* b122 — rétablir une mission écartée ou annulée à tort (Analyse › Suivi › Matchs annulés). */
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-retablir-mission]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const uid = b.getAttribute("data-retablir-mission");
+  if (!uid || !confirm("Rétablir cette mission ?\nElle revient dans tes matchs et ton argent (statut « À recevoir »).")) return;
+  b.disabled = true; b.textContent = "…";
+  try {
+    const res = await jsonp("mission.retablir", { uid });
+    if (!res || res.success === false) throw new Error((res && res.error) || "Refusé par le serveur");
+    if (!res.result) throw new Error("Moteur pas encore à jour");
+    remplacerLigne_(uid, res.row);
+    setStatus("Mission rétablie", "ok");
+    renderAll();
+  } catch (err) { b.disabled = false; b.textContent = "Rétablir"; setStatus("Erreur : " + err.message, "error"); }
 });
 
 /* b19 — annulation de dernière minute : statut Annulé, indemnité et km
@@ -7742,7 +7787,7 @@ function renderAnalyse() {
 
   const brut = sum("_brut");
   const carburant = sum("_carburant");
-  const net = round2(brut - carburant);
+  const net = round2(sum("_net"));   // b122 — même net que les lignes (indemnités − carburant − frais de match : péage, parking…)
   const kmTotal = sum("_km");
   const heuresRoute = sum("_heuresRoute");
   const heuresTotal = sum("_heuresTotal");
@@ -7753,8 +7798,9 @@ function renderAnalyse() {
 
   const eurHeureGlobal = heuresTotal > 0 ? net / heuresTotal : 0;
   const eurKmGlobal = kmTotal > 0 ? brut / kmTotal : 0;
-  const nonPayes = rows.filter(r => !r._paye);
-  const montantDu = nonPayes.reduce((t, r) => t + r._brut, 0);
+  // b123 — reste dû réel (paiements partiels déduits), même calcul que la page Paiements
+  const nonPayes = rows.filter(r => (r._reste || 0) > 0);
+  const montantDu = nonPayes.reduce((t, r) => t + (r._reste || 0), 0);
 
   root.innerHTML = `
     <div class="analysis-toolbar"><div class="toolbar-summary"><strong>${escapeHtml(AN.saison)}</strong> · ${rows.length} mission(s) · ${formatNumber(kmTotal, " km")} · ${formatHeures(heuresTotal)}</div></div>
@@ -10674,17 +10720,9 @@ state.reglCat = "5x5";
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
 
 /* b104 — fenêtre « Nouveautés » ouverte depuis le bandeau de mise à jour. */
-/* b121 — nouveautés de la version : la fenêtre « Ce qui change » et le bandeau automatique.
-   À CHAQUE mise en ligne visible pour les arbitres : mettre à jour RT_NOUV (version, date, phrase) et la liste,
-   texte validé par Clément avant la mise en ligne. Le bandeau s'affiche seul pendant 24 h pour chaque arbitre. */
-const RT_NOUV = { version: "b121", sortie: "2026-11-18", texte: "Nouvelle version : Accueil repensé, notes sur 100, cartes de match plus claires et nouvel écran de connexion." };
-const RT_NOUVEAUTES = [
-  ["◔", "Accueil repensé", "Un anneau montre ce que tu as reçu et ce qui reste à venir sur la saison, avec la courbe de ton net mois par mois."],
-  ["★", "Notes sur 100", "Toutes tes notes d'observation s'affichent maintenant sur 100, plus faciles à comparer."],
-  ["▦", "Cartes de match plus claires", "La date en petit calendrier, ton rôle, les km et « dans 3 j » d'un coup d'œil."],
-  ["▤", "Graphiques", "Dans Analyse, « Par mois » et « Par niveau » deviennent des graphiques à barres."],
-  ["⇄", "App plus fluide", "Pages qui glissent, chiffres qui défilent, chargements plus doux. Coupé si ton téléphone demande moins d'animations."]
-];
+/* b122 — RT_NOUV et RT_NOUVEAUTES sont dans nouveautes.js (lus aussi par l'admin). */
+const RT_NOUV = window.RT_NOUV || { version: "", sortie: "1970-01-01", texte: "" };
+const RT_NOUVEAUTES = window.RT_NOUVEAUTES || [];
 // Bandeau automatique : 24 h à partir de la 1re ouverture de cette version (dans les 14 jours qui suivent sa sortie), ✕ le masque.
 function rtMajAuto_() {
   try {

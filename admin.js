@@ -404,7 +404,7 @@
         inp("pRecep", "Adresse de réception", p.adresse_reception, "prenom@referee-tracker.fr") + '</div><label class="f" style="margin-top:10px">URL du moteur (Apps Script /exec)<input id="pApi" value="' + esc(p.api_url || "") + '" placeholder="https://script.google.com/macros/s/…/exec" class="mono"></label>' +
         '<div class="subtab">Fonctions activées</div><div class="row">' + ["ia", "evaluations", "elicence", "classements"].map((k) => chk("fn_" + k, LIB_FN[k] || k, fn[k] !== false)).join("") + "</div>" +
         '<div class="row" style="margin-top:12px"><button class="btn pri" id="pSave">Enregistrer le profil</button><span id="pMsg" class="mut"></span></div></details>' +
-        completHtml + (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"err\">" + esc(f.inscription.erreur || "—") + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
+        completHtml + (f.inscription ? '<div class="card"><div class="card-head"><h3>Inscription</h3>' + badgeStatut(f.inscription.statut) + "</div><dl class=\"kv\"><dt>Date</dt><dd>" + fmt(f.inscription.created_at) + "</dd><dt>Fichiers</dt><dd>" + (Array.isArray(f.inscription.fichiers) ? f.inscription.fichiers.length : 0) + (f.inscription.fichiers_ok ? " ✓" : "") + "</dd><dt>Erreur</dt><dd class=\"" + (f.inscription.statut === "prete" ? "mut" : "err") + "\">" + (f.inscription.erreur && f.inscription.statut === "prete" ? "ancienne erreur, corrigée (" + esc(f.inscription.erreur.slice(0, 60)) + "…)" : esc(f.inscription.erreur || "—")) + "</dd><dt>Traitée le</dt><dd>" + fmt(f.inscription.traite_le) + "</dd></dl></div>" : "") +
         '<dl class="kv card"><dt>Identifiant</dt><dd class="mono">' + esc(u.id) + "</dd><dt>Code 1re connexion</dt><dd>" + (p.code_premiere_utilise ? badge("utilisé", "green") : p.code_premiere_expire ? badge("expire " + fmt(p.code_premiere_expire), new Date(p.code_premiere_expire) < new Date() ? "red" : "gold") : badge("aucun", "gray")) + "</dd><dt>Onboarding</dt><dd>" + ouiNon(p.onboarding_fait) + "</dd><dt>E-mail connexion</dt><dd>" + esc(p.email_connexion || u.email) + "</dd><dt>Fournisseur mail</dt><dd>" + esc(p.fournisseur_mail || "—") + "</dd></dl></div>" +
       '<div class="tabpane" data-pane="matchs"><div class="toolbar"><span class="mut">50 derniers · consultation journalisée</span><span class="sp"></span><button class="btn sm" id="fSolder" title="Historique importé jamais pointé (saisons passées)">Solder l\'historique…</button><select id="fSaison"><option value="">Toutes saisons</option>' + (f.saisons || []).map((s) => '<option value="' + esc(s) + '"' + (s === saison ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" + matchsHtml + "</div>" +
       '<div class="tabpane" data-pane="alertes"><div class="card">' + alertesHtml + '</div><div class="card" id="alZ"><p class="mut">Chargement des alertes…</p></div></div>' +
@@ -563,7 +563,8 @@
       { t: "Zones", k: (i) => zonesTxt(i.zones), cl: "nw", r: (i) => esc(zonesTxt(i.zones)) },
       { t: "Fichiers", k: "fichiers", cl: "right", r: (i) => '<span class="num">' + i.fichiers + "</span> " + (i.fichiers_ok ? badge("ok", "green") : i.fichiers ? badge("à vérifier", "orange") : "") },
       { t: "Statut", k: "statut", r: (i) => badgeStatut(i.statut) + (i.api_url ? " " + badge("moteur", "green") : "") },
-      { t: "Erreur", k: "erreur", r: (i) => '<span class="err tiny">' + esc(i.erreur || "") + "</span>" },
+      // b122 — une inscription terminée (« prête ») peut garder le texte d'une ancienne tentative ratée : on ne l'affiche plus comme une erreur.
+      { t: "Erreur", k: "erreur", r: (i) => i.erreur && i.statut === "prete" ? '<span class="mut tiny" title="' + esc(i.erreur) + '">ancienne erreur, corrigée</span>' : '<span class="err tiny">' + esc(i.erreur || "") + "</span>" },
       { t: "", cl: "actions", r: (i) => (i.statut === "attente" ? '<button class="btn sm pri" data-act="accepter">Accepter</button>' : '<button class="btn sm" data-act="cmd" title="Commande + JSON">Commande</button>') + (i.statut !== "prete" ? '<button class="btn sm" data-act="moteur">Moteur créé</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="code">Envoyer le code</button>' : "") + (i.erreur ? '<button class="btn sm" data-act="route">Route faite</button>' : "") + (i.statut !== "erreur" ? '<button class="btn sm danger" data-act="rejeter">Rejeter</button>' : "") + (i.user_id ? '<button class="btn sm" data-act="fiche">Fiche</button>' : "") },
     ], l, { recherche: rechercheCourante, tri: "Date", sens: -1, filtre: (i) => !filtreInsc || i.statut === filtreInsc, texte: (i) => [i.email, i.prenom, i.nom_ffbb, i.statut, i.erreur, zonesTxt(i.zones)].join(" ").toLowerCase(),
       action: async (act, i) => {
@@ -637,7 +638,7 @@
       '<div class="grid-2">' + carte("Tickets par catégorie", "", listeKN(T.par_categorie)) + carte("Tickets par gravité", "", listeKN(T.par_gravite)) + "</div>" +
       '<div class="grid-2">' + carte("Consentements", A.consentements.arbitres + " arbitre(s) ont accepté", listeKN(A.consentements.versions)) + carte("Actions de l'administration", A.journal_30j.total + " entrée(s) au journal en 30 j", listeKN(A.journal_30j.top)) + "</div>" +
       '<div class="subtab">Moteurs (Google Apps Script)</div><div class="tiles">' +
-        tuileB(M.installes, "Moteurs installés", "", "") + tuileB(M.sante.ok, "En bonne santé", "green", "passage < 30 min") + tuileB(M.sante.lent, "Lents", M.sante.lent ? "orange" : "green", "30 min à 3 h") + tuileB(M.sante.arrete, "Arrêtés", M.sante.arrete ? "red" : "green", "> 3 h sans passage") + tuileB(M.sante.inconnu, "État inconnu", M.sante.inconnu ? "orange" : "green", "pas encore publié (b86)") +
+        tuileB(M.installes, "Moteurs installés", "", "") + tuileB(M.sante.ok, "En bonne santé", "green", "nouvelles < 75 min (calcul serveur : < 30 min)") + tuileB(M.sante.lent, "Lents", M.sante.lent ? "orange" : "green", "calcul serveur : 30 min à 3 h") + tuileB(M.sante.arrete, "Arrêtés", M.sante.arrete ? "red" : "green", "> 3 h sans passage") + tuileB(M.sante.inconnu, "État inconnu", M.sante.inconnu ? "orange" : "green", "pas encore publié (b86)") +
         tuileB(M.latence_min_mediane == null ? "—" : M.latence_min_mediane + " min", "Dernier passage (médiane)", etat(M.latence_min_mediane, 15, 60, true), "") +
         tuileB(M.commandes_30j, "Commandes envoyées", "", "30 jours") + tuileB(pc1(M.taux_succes), "Commandes réussies", etat(M.taux_succes, 95, 80), M.commandes_erreur + " en erreur") + tuileB(M.delai_cmd_min_median == null ? "—" : M.delai_cmd_min_median + " min", "Délai d'exécution", etat(M.delai_cmd_min_median, 10, 30, true), "médiane") +
         tuileB(M.adresse_non_localisee, "Adresse non localisée", M.adresse_non_localisee ? "red" : "green", "km et carburant faux") + tuileB(M.synchro_ancienne_48h, "Sans synchro depuis 48 h", M.synchro_ancienne_48h ? "orange" : "green", "") +
@@ -1084,6 +1085,14 @@
     el.insertAdjacentHTML("afterbegin", "<div id=\"caBox\"></div>"); campagneCarte($("caBox"));   // b104
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
+    // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
+    { const N = window.RT_NOUV || {}, L = window.RT_NOUVEAUTES || [];
+      const sortie = N.sortie ? new Date(N.sortie + "T00:00:00") : null, fin = sortie ? new Date(+sortie + 14 * 864e5) : null, actif = sortie && Date.now() < +fin;
+      el.insertAdjacentHTML("afterbegin", '<div class="card nv-auto"><div class="card-head"><h3>Bandeau automatique « Nouvelle version »</h3><span class="sub">' + (actif ? badge("en cours", "green") : badge("terminé", "gray")) + "</span></div>" +
+        '<div class="nv-apercu"><span class="nv-k">Nouveau</span><p>' + esc(N.texte || "—") + '</p><span class="nv-b">Voir</span></div>' +
+        '<p class="mut tiny">Version <b>' + esc(N.version || "—") + "</b> sortie le " + (sortie ? fmtD(sortie) : "—") + ". Chaque arbitre le voit pendant 24 h à partir de sa première ouverture de l'app" + (fin ? ", jusqu'au " + fmtD(fin) + " au plus tard" : "") + ". La croix le masque pour de bon.</p>" +
+        (L.length ? '<details class="nv-liste"><summary>Fenêtre « Ce qui change » (' + L.length + " points)</summary><ul>" + L.map((x) => "<li><b>" + esc(x[1]) + "</b> — " + esc(x[2]) + "</li>").join("") + "</ul></details>" : "") +
+        '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js).</p></div>'); }
     const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };
     tableCourante = tableau(el.querySelector("#coT"), [
       { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Destinataire", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
@@ -1092,12 +1101,16 @@
   };
 
   // ---- Moteurs (tous les arbitres)
+  // b122 — un moteur publie son état une fois par heure (Code.gs publierEtatMoteur_) : « en retard » seulement après 75 min
+  // sans nouvelles, « arrêté » après 3 h (avant : 30 min → la moitié des moteurs paraissaient lents alors qu'ils tournaient).
+  const santeMoteur = (x) => { if (x.battement_min == null) return x.sante; return x.battement_min < 75 ? "ok" : x.battement_min < 180 ? "lent" : "arrete"; };
+  const moteursNorm = (l) => { (l || []).forEach((x) => { x.sante = santeMoteur(x); }); return l || []; };
   rendus.moteurs = async function (force) {
     const el = $("sec-moteurs");
-    if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = (await admin("moteurs.liste")).data || []; }
+    if (force || !cache.moteurs) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.moteurs = moteursNorm((await admin("moteurs.liste")).data); }
     const l = cache.moteurs, n = (st) => l.filter((x) => x.sante === st).length;
     $("navMoteurs").textContent = (n("arrete") + n("lent")) || "";
-    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 5 min. Vert : passé il y a moins de 30 min · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
+    el.innerHTML = '<p class="mut tiny">Chaque arbitre a son moteur (Google Apps Script) qui lit ses convocations toutes les 5 min. Vert : nouvelles il y a moins de 75 min (chaque moteur se signale une fois par heure) · orange : moins de 3 h · rouge : arrêté. « Inconnu » : moteur antérieur à b86 (pas encore d\'état publié).</p>' +
       '<div class="tiles">' + tuileB(l.length, "Moteurs", "") + tuileB(n("ok"), "En marche", "green") + tuileB(n("lent"), "En retard", "orange") + tuileB(n("arrete"), "Arrêtés", "red") + tuileB(n("inconnu"), "État inconnu", "") +
         tuileB(l.reduce((t, x) => t + x.commandes.attente, 0), "Commandes en attente", "") + tuileB(l.reduce((t, x) => t + x.commandes.erreur, 0), "Commandes en erreur (7 j)", "") + "</div>" +
       '<div class="row" style="margin:10px 0"><button class="btn sm" id="moDiag">Diagnostic de tous les moteurs</button><button class="btn sm" id="moSync">Synchroniser tous les moteurs</button></div><div id="moT"></div>';
@@ -1697,7 +1710,7 @@
         courant === "tickets" ? null : admin("tickets.liste").then((j) => { cache.tickets = j.data || []; $("navTickets").textContent = cache.tickets.filter((t) => t.statut !== "Fermé").length || ""; }),
         courant === "alertes" ? null : admin("alertes.global").then((j) => { cache.alertesG = j; const P = j.par_arbitre || []; $("navAlertes").textContent = P.reduce((t, x) => t + x.regler + x.avant, 0) || ""; }),
         courant === "rcsignal" ? null : rcCompteur(),
-        courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = j.data || []; $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
+        courant === "moteurs" ? null : admin("moteurs.liste").then((j) => { cache.moteurs = moteursNorm(j.data); $("navMoteurs").textContent = cache.moteurs.filter((x) => x.sante === "arrete" || x.sante === "lent").length || ""; }),
       ].filter(Boolean));
     } catch (e) {
       if (/AUTH_REQUIRED/.test(e.message)) return voir("vLogin");

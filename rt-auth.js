@@ -81,7 +81,7 @@ const Session = {
   },
   save(_token, email) {
     const now = Date.now();
-    window.__rtEmail = email; window.__rtSince = now;
+    window.__rtEmail = email; window.__rtSince = now; window.__rtDernierEmail = email;   // b122 : survit à Session.clear (session expirée)
     try {
       localStorage.removeItem(TOKEN_KEY);   // ancien jeton Apps Script (avant b47) : jamais conservé
       localStorage.setItem(EMAIL_KEY, email || "");
@@ -93,7 +93,8 @@ const Session = {
     try { SB.clear(); } catch (e) {}
     try {
       [TOKEN_KEY, EMAIL_KEY, SINCE_KEY, CFG_KEY, "rt-reglement-hist-v1", "rt_logos_v1", "rt-alertes-traitees-v2", "rt_pay_ecarts", "rt_rb_payeurs_v1", "rt_last_matchs"].forEach(k => localStorage.removeItem(k));
-      Object.keys(localStorage).filter(k => k.indexOf("rt_c_") === 0 || k.indexOf("rt_rb_") === 0 || k.indexOf("rt_pay") === 0).forEach(k => localStorage.removeItem(k));
+      Object.keys(localStorage).filter(k => k.indexOf("rt_c_") === 0 || k.indexOf("rt_rb_") === 0 || k.indexOf("rt_pay") === 0 ||
+        /^(rt-rapp-brouillon:|rt-reglement-hist-|rt-rf-mail|rt_rech_hist|rt-checklist-|rt-pd-coches|rt_qcm_themes|rt-import-masque|rt-histo-masque)/.test(k)).forEach(k => localStorage.removeItem(k));   // b122 : brouillons et historiques perso aussi
       sessionStorage.clear();
     } catch (e) {}
   }
@@ -240,7 +241,10 @@ function _apiFetch_(action, body, urlApi) {
    (licence, téléphones des collègues) ne traînent plus dans le navigateur. */
 // b47 (A15) — plus de script inline : la version vient de <meta name="rt-version"> (CSP sans 'unsafe-inline' ni hash).
 window.RT_VERSION = window.RT_VERSION || (function () { try { return document.querySelector('meta[name="rt-version"]').content; } catch (e) { return "x"; } })();
-const CACHE_VERSION = String(window.RT_VERSION || "x").replace(/[^\w-]/g, "");
+// b122 — le cache des données ne dépend plus de la version du site (purgé à chaque mise en ligne, il forçait 4 à 6 appels
+// lents aux moteurs à la 1re ouverture). Changer CACHE_FORMAT seulement si le format des données en cache change.
+const CACHE_FORMAT = "f1";
+const CACHE_VERSION = CACHE_FORMAT;
 const CACHE_PREFIX  = "rt_c_" + CACHE_VERSION + "_";
 const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;
 (function purgerAnciensCaches_() {
@@ -279,7 +283,7 @@ const ECRITURES = {
   addHotel: 1, deleteHotel: 1,
   "elicence.set": 1, "elicence.document": 1, "elicence.carte": 1, 
   "rapport.add": 1, "rapport.file": 1, "rapport.delete": 1, "rapport.dossier": 1, "rapport.modele.send": 1,
-  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
+  "alerte.ignorer": 1, "mission.ecarter": 1, "mission.annuler": 1, "mission.retablir": 1, "mission.creneau3x3": 1, "ticket.add": 1, "emarque.set": 1   // b18-b19 (alerte.traiter : volontairement hors liste, ne touche pas aux matchs)
 };
 
 
@@ -828,6 +832,21 @@ function _jsonpReseau(action, extra = {}) {
   });
 }
 
+// b123 — bibliothèques lourdes (PDF, QR code : 460 Ko) chargées après l'ouverture, quand le navigateur est au repos :
+// l'app s'affiche plus vite ; elles sont prêtes bien avant qu'on ouvre un export ou la double authentification.
+(function chargerOutilsDiffere_() {
+  const charger = () => ["./vendor/jspdf.umd.min.js", "./vendor/qrcode.js"].forEach((src, i) => {
+    const s = document.createElement("script"); s.src = src; s.async = false;
+    if (i === 0) s.addEventListener("load", () => { const a = document.createElement("script"); a.src = "./vendor/jspdf.plugin.autotable.min.js"; document.body.appendChild(a); });
+    document.body.appendChild(s);
+  });
+  const go = () => (window.requestIdleCallback ? requestIdleCallback(charger, { timeout: 4000 }) : setTimeout(charger, 2500));
+  if (document.readyState === "complete") go(); else window.addEventListener("load", go);
+})();
+
+// b122 — compte ouvert au chargement de la page (sert à détecter une reconnexion avec un AUTRE compte)
+try { window.__rtDernierEmail = window.__rtDernierEmail || Session.email || ""; } catch (e) {}
+
 /* ---------------- Écran de connexion ---------------- */
 
 function buildLoginOverlay() {
@@ -915,9 +934,12 @@ function buildLoginOverlay() {
     msg.className = "rt-login-msg";
 
     // b47 (A03) — UNE connexion : Supabase. Apps Script vérifie ce même jeton.
+    const emailAvant = String(window.__rtDernierEmail || window.__rtEmail || Session.email || "").toLowerCase();
     SB.login(email, pwd)
       .then(() => {
         Session.save("", email);
+        // b122 — autre compte que le précédent sur cet appareil : on repart d'une page neuve (rien en mémoire du compte d'avant)
+        if (emailAvant && emailAvant !== email.toLowerCase()) { location.reload(); return; }
         document.getElementById("rtPwd").value = "";
         document.getElementById("rtPwd").type = "password";
         hideLogin();
@@ -2337,7 +2359,7 @@ async function startApp() {
   // b26 — préchargement discret des lectures Apps Script lentes (QCM, enjeux,
   // classements, config) : les onglets s'ouvrent ensuite sans attente.
   setTimeout(function () {
-    ["qcmStats", "enjeux", "classements", "config"].forEach((a, i) => setTimeout(() => { try { jsonp(a).catch(() => {}); } catch (e) {} }, i * 1500));
+    ["qcmStats"].forEach((a, i) => setTimeout(() => { try { jsonp(a).catch(() => {}); } catch (e) {} }, i * 1500));   // b122 : enjeux, classements, config sont déjà chargés par loadData (doublons retirés)
   }, 4000);
   if (!SB.actif) return;
   // b74 — bandeau global et mode maintenance réglés par l'admin (config_globale pub.textes, lisible par tout connecté).
