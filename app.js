@@ -2001,7 +2001,7 @@ function accAnnonces_(z) {
   if (!z || typeof SB === "undefined" || !SB.actif) return;
   SB.get("annonces?select=id,texte,action,lib_action,style,expire_le&masque_le=is.null&order=cree_le.asc" + (window.rtSub_ && window.rtSub_() ? "&user_id=eq." + encodeURIComponent(window.rtSub_()) : "")).then(l => {
     const now = Date.now(), a = (l || []).filter(x => !x.expire_le || Date.parse(x.expire_le) > now);
-    rtBandeauMaj_(a.filter(x => x.style === "maj")[0]);   // b104 — bandeau de mise à jour en haut de l'app
+    rtBandeauMaj_(a.filter(x => x.style === "maj")[0] || rtMajAuto_());   // b104 — bandeau de mise à jour ; b121 : sinon celui de la nouvelle version
     if (!a.length) { z.innerHTML = ""; return; }
     z.innerHTML = a.map(x => `<div class="acc-annonce acc-annonce--${escapeHtml(x.style || "info")}" role="status" data-ann="${Number(x.id)}">
       <span class="acc-annonce-t">${escapeHtml(x.texte)}</span>
@@ -10674,13 +10674,29 @@ state.reglCat = "5x5";
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-imp-histo]"); if (b) rtImportHistorique_(); });
 
 /* b104 — fenêtre « Nouveautés » ouverte depuis le bandeau de mise à jour. */
+/* b121 — nouveautés de la version : la fenêtre « Ce qui change » et le bandeau automatique.
+   À CHAQUE mise en ligne visible pour les arbitres : mettre à jour RT_NOUV (version, date, phrase) et la liste,
+   texte validé par Clément avant la mise en ligne. Le bandeau s'affiche seul pendant 24 h pour chaque arbitre. */
+const RT_NOUV = { version: "b121", sortie: "2026-11-18", texte: "Nouvelle version : Accueil repensé, notes sur 100, cartes de match plus claires et nouvel écran de connexion." };
 const RT_NOUVEAUTES = [
-  ["€", "Télépéage au relevé", "Saisis le total du relevé du mois : il est réparti sur tes matchs en voiture, au prorata des km."],
-  ["▤", "Billet, amende", "Train ou bus : ajoute le prix du billet. Une amende se déduit du net du match, hors frais réels."],
-  ["◎", "Covoiturage plus juste", "La part du passager couvre aussi l'usure de la voiture du conducteur."],
-  ["🏀", "Réponses du Règlement", "La réponse en gras, l'essentiel visible, « Pourquoi » et sources en un tap."],
-  ["✓", "Moins de boutons", "Le SMS au collègue coche le contact tout seul. La cloche n'apparaît que s'il y a du nouveau."]
+  ["◔", "Accueil repensé", "Un anneau montre ce que tu as reçu et ce qui reste à venir sur la saison, avec la courbe de ton net mois par mois."],
+  ["★", "Notes sur 100", "Toutes tes notes d'observation s'affichent maintenant sur 100, plus faciles à comparer."],
+  ["▦", "Cartes de match plus claires", "La date en petit calendrier, ton rôle, les km et « dans 3 j » d'un coup d'œil."],
+  ["▤", "Graphiques", "Dans Analyse, « Par mois » et « Par niveau » deviennent des graphiques à barres."],
+  ["⇄", "App plus fluide", "Pages qui glissent, chiffres qui défilent, chargements plus doux. Coupé si ton téléphone demande moins d'animations."]
 ];
+// Bandeau automatique : 24 h à partir de la 1re ouverture de cette version (dans les 14 jours qui suivent sa sortie), ✕ le masque.
+function rtMajAuto_() {
+  try {
+    const cle = "rt-nouv-" + RT_NOUV.version;
+    if (localStorage.getItem(cle + "-vu") === "1") return null;
+    if (Date.now() - Date.parse(RT_NOUV.sortie + "T00:00:00") > 14 * 864e5) return null;
+    let debut = Number(localStorage.getItem(cle + "-debut"));
+    if (!debut) { debut = Date.now(); localStorage.setItem(cle + "-debut", String(debut)); }
+    if (Date.now() - debut > 864e5) return null;
+    return { id: "auto-" + RT_NOUV.version, texte: RT_NOUV.texte, lib_action: "Voir", action: "nouveautes", local: cle };
+  } catch (e) { return null; }
+}
 function rtNouveautes_() {
   let d = document.getElementById("rtNouv");
   if (!d) {
@@ -10702,7 +10718,7 @@ function rtBandeauMaj_(x) {
   const d = document.createElement("div"); d.id = "rtMajBan"; d.className = "rt-majban"; d.dataset.id = String(x.id); d.setAttribute("role", "status");
   d.innerHTML = `<span class="rt-majban-k">Nouveau</span><p>${escapeHtml(x.texte)}</p><button type="button" class="rt-majban-go">${escapeHtml(x.lib_action || "Voir")}</button><button type="button" class="rt-majban-x" aria-label="Masquer">✕</button>`;
   main.prepend(d);
-  const fermer = async () => { d.remove(); const z = document.querySelector(`[data-ann="${Number(x.id)}"]`); if (z) z.remove(); try { await SB.write("PATCH", "annonces?id=eq." + Number(x.id), { masque_le: new Date().toISOString() }); } catch (e) {} };
+  const fermer = async () => { d.remove(); if (x.local) { try { localStorage.setItem(x.local + "-vu", "1"); } catch (e) {} return; } const z = document.querySelector(`[data-ann="${Number(x.id)}"]`); if (z) z.remove(); try { await SB.write("PATCH", "annonces?id=eq." + Number(x.id), { masque_le: new Date().toISOString() }); } catch (e) {} };
   d.querySelector(".rt-majban-go").addEventListener("click", () => { if (x.action === "nouveautes") rtNouveautes_(); else if (typeof setActiveTab === "function") setActiveTab(x.action); fermer(); });
   d.querySelector(".rt-majban-x").addEventListener("click", fermer);
 }
