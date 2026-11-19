@@ -1069,12 +1069,12 @@ function renderReglement() {
             <div class="regl-empty-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7"/><path d="M9 11h5"/></svg></div>
             <h3>Ton formateur règlement</h3>
             <p class="regl-empty-hint">Pose une question, ou raconte une action de ton match : l'IA te dit ce qui allait, ce qui n'allait pas, la bonne procédure et comment progresser, articles FIBA à l'appui.</p>
-            <p class="regl-empty-hint regl-ex">Exemple : « 3e QT, le n°7 tire à 3 points, le défenseur atterrit sous ses pieds après le tir. J'étais en Trail, j'ai laissé jouer. Qu'aurais-je dû faire ? »</p>
+            <div class="regl-exs"><span>Essaie par exemple :</span>${["3e QT, le n°7 tire à 3 points, le défenseur atterrit sous ses pieds. J'étais en Trail, j'ai laissé jouer. Qu'aurais-je dû faire ?", "Quand faut-il remettre 14 secondes au chronomètre des tirs ?", "Un entraîneur reçoit sa 2e faute technique : quelle procédure ?"].map(q => `<button type="button" class="regl-ex-chip" data-regl-ex="${escapeHtml(q)}">${escapeHtml(q)}</button>`).join("")}</div>
           </div>`}
         <div class="regl-status" id="reglStatus" role="status">${state._reglEnCours ? `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…` : ""}</div>
       </div>
       <form class="regl-form" id="reglForm">
-        <textarea id="reglInput" rows="1" placeholder="Raconte une situation de match (ce qui s'est passé, ce que tu as sifflé) ou pose ta question…" aria-label="Question de règlement"></textarea>
+        <textarea id="reglInput" rows="1" placeholder="Ta question ou ton action de match…" aria-label="Question de règlement"></textarea>
         <button type="submit" class="regl-send" id="reglSend"${state._reglEnCours ? " disabled" : ""} aria-label="Envoyer" title="Envoyer (Entrée)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
       </form>
     </div>`;
@@ -1335,6 +1335,8 @@ function attachReglementListeners_(root) {
   });
   const docs = root.querySelector("#reglDocsBtn");
   if (docs) docs.addEventListener("click", reglDocsModal_);
+  // b129 — exemple touché : il remplit la zone de saisie (rien n'est envoyé tout seul)
+  root.querySelectorAll("[data-regl-ex]").forEach(b => b.addEventListener("click", () => { const ta = document.getElementById("reglInput"); if (!ta) return; ta.value = b.dataset.reglEx; ta.dispatchEvent(new Event("input")); ta.focus(); }));
   const form = root.querySelector("#reglForm");
   if (form) form.addEventListener("submit", e => {
     e.preventDefault();
@@ -9807,7 +9809,7 @@ function renderRapportsPanel_() {
   const actions = r => `${r.fichier ? `<a class="action-link" href="${escapeHtml(safeUrl_(r.fichier))}" target="_blank" rel="noopener">Voir / imprimer</a> <button type="button" class="action-link" data-rapp-send="${escapeHtml(r.id)}">Envoyer par mail</button>` : `<label class="action-link" style="cursor:pointer">Ajouter le fichier<input type="file" hidden accept="application/pdf,image/*" data-rapp-file="${escapeHtml(r.id)}"></label>`} <button type="button" class="action-link" data-rapp-del="${escapeHtml(r.id)}">Supprimer</button>`;
   const vue = state.rappVue === "sauvegarde" ? "sauvegarde" : "officiels";   // b73 : formulaires officiels FFBB remplis dans l'app
   const sous = `<div class="tabs-mini rapp-seg" role="tablist">
-    <button type="button" class="tabs-mini-btn${vue === "officiels" ? " active" : ""}" data-rapp-vue="officiels">Rapports officiels FFBB</button>
+    <button type="button" class="tabs-mini-btn${vue === "officiels" ? " active" : ""}" data-rapp-vue="officiels">Formulaires officiels</button>
     <button type="button" class="tabs-mini-btn${vue === "sauvegarde" ? " active" : ""}" data-rapp-vue="sauvegarde">Sauvegarde${mes.length ? ` (${mes.length})` : ""}</button>
   </div>`;
   if (vue === "officiels") return sous + renderRapportsOfficiels_(ms);
@@ -9901,14 +9903,17 @@ function rfChamp_(k, lib, val, opts) {
   const o = opts || {};
   return `<div class="field${o.large ? " rf-large" : ""}"><label for="rf_${k}">${escapeHtml(lib)}</label><input id="rf_${k}" data-rf-champ="${k}" type="text" value="${escapeHtml(val || "")}"${o.ph ? ` placeholder="${escapeHtml(o.ph)}"` : ""} autocomplete="off" /></div>`;
 }
+/* b129 — icône et couleur de chaque formulaire officiel (liste des rapports) */
+const RF_ICO_ = { "incident-disciplinaire": ["!", "#E0313C"], "faute-disqualifiante": ["D", "#EA580C"], reclamation: ["R", "#2563EB"], "incident-materiel": ["⚙", "#64748B"], "commotion-cerebrale": ["+", "#16A34A"] };
 function renderRapportsOfficiels_(ms) {
   if (!RF_.cartes) { rfCartes_().then(() => rerenderPerso_()).catch(err => setStatus("Erreur : " + err.message, "error")); return chargementPerso_(); }
   const C = RF_.cartes, e = rfEtat_();
   if (!e.id) {
     return `<p class="card-sub rf-intro">Choisis le formulaire officiel. L'app le pré-remplit avec ta convocation, l'assistant met en forme ta description, puis tout est écrit aux bons endroits du PDF officiel, prêt à envoyer.</p>
-      <div class="rapp-modeles rf-choix">${Object.values(C).map(f => `<button type="button" class="rapp-modele rf-carte" data-rf-form="${escapeHtml(f.id)}">
-        <strong>${escapeHtml(f.titre)}</strong><span class="card-sub">${escapeHtml(f.sous)}</span>
-        <span class="rf-go">Remplir →</span></button>`).join("")}</div>
+      <div class="rapp-modeles rf-choix">${Object.values(C).map(f => { const [ico, coul] = RF_ICO_[f.id] || ["▤", "#64748B"], delai = (String(f.sous || "").match(/sous\s*(\d+\s*h)/i) || [])[1], p = String(f.sous || "").split(" · "), reste = p.slice(1).join(" · ").replace(/(à remettre )?sous\s*\d+\s*h,?\s*/i, ""), sous = p[0] + (reste ? " · " + reste : "");
+        return `<button type="button" class="rapp-modele rf-carte" data-rf-form="${escapeHtml(f.id)}" style="--rf:${coul}">
+        <span class="rf-ico" aria-hidden="true">${ico}</span><span class="rf-txt"><strong>${escapeHtml(f.titre)}</strong><span class="card-sub">${escapeHtml(sous)}</span></span>
+        ${delai ? `<span class="rf-delai">Sous ${escapeHtml(delai)}</span>` : ""}<span class="rf-go">Remplir →</span></button>`; }).join("")}</div>
       <div class="rf-vierges field"><label for="rfVierge">Besoin d'un formulaire vierge, à imprimer ?</label>
         <select id="rfVierge"><option value="">Choisir un formulaire…</option>${Object.values(C).map(f => `<option value="${escapeHtml(f.fichier)}">${escapeHtml(f.titre)}</option>`).join("")}</select></div>`;
   }
