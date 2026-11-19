@@ -92,8 +92,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+      # On publie une copie sans README, licence ni fichiers de configuration du dépôt.
+      - name: Préparer le dossier publié
+        run: |
+          set -e
+          mkdir _site
+          git -c core.quotepath=off ls-files | grep -vE '^\.|(^|/)[^/]*\.md$|^LICENSE$' | while IFS= read -r f; do
+            mkdir -p "_site/$(dirname "$f")"; cp "$f" "_site/$f"
+          done
+          test -f _site/index.html && test -f _site/CNAME
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: .
+          path: _site
       - id: deploiement
         uses: actions/deploy-pages@v4
