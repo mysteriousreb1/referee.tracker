@@ -768,3 +768,37 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .nv-b { padding: 5px 10px; border-radius: 8px; background: #fff; color: #0B1F3B; font-size: 12px; font-weight: 800; }
 .nv-liste summary { cursor: pointer; font-weight: 700; font-size: 12.5px; margin: 4px 0; }
 .nv-liste ul { margin: 6px 0 8px; padding-left: 18px; } .nv-liste li { margin: 4px 0; font-size: 12.5px; }
+
+/* b131 — motion design de l'administration : réactions au survol et au clic, fenêtres et messages qui arrivent en douceur,
+   lignes de tableaux en cascade à l'ouverture d'une section. Tout est coupé si l'appareil demande moins d'animations. */
+@media (prefers-reduced-motion: no-preference) {
+  .btn { transition: transform .15s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease, filter .2s ease; }
+  .btn:active:not(:disabled) { transform: scale(.97); }
+  .nav a { transition: background-color .2s ease, color .2s ease, transform .2s ease, padding-left .2s ease; }
+  .nav a:hover:not(.active) { padding-left: 14px; }
+  .nav a.active { box-shadow: 0 6px 16px rgba(245, 180, 0, .28); }
+  .nav-count { transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+  .nav a:hover .nav-count { transform: scale(1.12); }
+  .card { transition: box-shadow .25s ease, border-color .25s ease; }
+  .tile { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+  .tile.clic:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(11, 31, 59, .12); }
+  .tile::before { transition: width .25s ease; }
+  .tile.clic:hover::before { width: 6px; }
+  tbody tr { transition: background-color .15s ease; }
+  .sec.entre tbody tr { animation: aLigne .4s cubic-bezier(.2, .75, .25, 1) both; }
+  .sec.entre tbody tr:nth-child(2) { animation-delay: .03s; } .sec.entre tbody tr:nth-child(3) { animation-delay: .06s; }
+  .sec.entre tbody tr:nth-child(4) { animation-delay: .09s; } .sec.entre tbody tr:nth-child(5) { animation-delay: .12s; }
+  .sec.entre tbody tr:nth-child(6) { animation-delay: .15s; } .sec.entre tbody tr:nth-child(7) { animation-delay: .18s; }
+  .sec.entre tbody tr:nth-child(n+8) { animation-delay: .2s; }
+  @keyframes aLigne { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  dialog[open] { animation: aDlg .28s cubic-bezier(.2, .8, .2, 1) both; }
+  dialog[open]::backdrop { animation: aFond .28s ease both; }
+  @keyframes aDlg { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes aFond { from { opacity: 0; } to { opacity: 1; } }
+  .toast:not(.hidden) { animation: aToast .35s cubic-bezier(.3, 1.4, .5, 1) both; }
+  @keyframes aToast { from { opacity: 0; transform: translate(-50%, 16px) scale(.95); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .bars .b i { transform-origin: bottom; }
+  .sec.entre .bars .b i { animation: aBarreV .6s cubic-bezier(.2, .75, .25, 1) .1s both; }
+  @keyframes aBarreV { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .ac-todo li:hover { transform: translateX(3px); }
+}

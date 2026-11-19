@@ -18,6 +18,9 @@ const RT_ACTIONS_LECTURE = ["ping", "matchs", "stats", "config", "classements", 
 
 /* b53 — mode téléphone (≤ 767 px) : navigation 4 onglets, Matchs fusionnés, Argent, trésorerie compacte. */
 const estTel_ = () => window.innerWidth <= 767;
+/* b131 — animations « de réaction » permises seulement juste après un geste (pas lors d'un rafraîchissement automatique). */
+(function () { let t = null; const geste = () => { document.documentElement.classList.add("rt-geste"); clearTimeout(t); t = setTimeout(() => document.documentElement.classList.remove("rt-geste"), 800); };
+  ["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, geste, { capture: true, passive: true })); })();
 let state = {
   cartesOuvertes: new Set(),   // b67 : UID des cartes de match dépliées (survit aux re-rendus)
   allRows: [],

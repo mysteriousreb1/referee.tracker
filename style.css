@@ -4432,11 +4432,11 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 /* ===== b73 — finitions V1 : apparitions douces, retours tactiles, chiffres ===== */
 @keyframes rtIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes rtPop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
-.rf-carte, .rf { animation: rtIn .32s cubic-bezier(.2,.7,.2,1) both; }   /* écrans ouverts par l'utilisateur seulement (pas de clignotement aux rafraîchissements) */
+html.rt-geste .rf-carte, html.rt-geste .rf { animation: rtIn .32s cubic-bezier(.2,.7,.2,1) both; }   /* écrans ouverts par l'utilisateur seulement (pas de clignotement aux rafraîchissements) */
 .match-card { transition: transform .16s ease, box-shadow .16s ease; }
 @media (hover: hover) { .match-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(10,31,68,.16); } }
 button:active:not(:disabled), .small-btn:active:not(:disabled), .tabs-mini-btn:active { transform: scale(.97); }
-.tabs-mini-btn.active { animation: rtPop .25s ease both; }
+html.rt-geste .tabs-mini-btn.active { animation: rtPop .25s ease both; }
 .rf-case input:checked + *, .rf-radio input:checked { animation: rtPop .2s ease; }
 :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
@@ -5325,7 +5325,7 @@ td.neg-doux { color: var(--danger); }
 .tab.active svg, .tab.active .tab-icon { animation: rtSaut .35s ease both; }
 .tab { transition: color .2s ease, background-color .2s ease; }
 /* Sections dépliables : le contenu glisse en s'ouvrant */
-details[open] > .past-body, details[open] > .stat-fold-body { animation: rtMonte .3s ease both; }
+html.rt-geste details[open] > .past-body, html.rt-geste details[open] > .stat-fold-body { animation: rtMonte .3s ease both; }
 /* Fenêtres (aide, édition) : arrivée en douceur */
 @keyframes rtFenetre { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
 .rtm { animation: rtFenetre .28s cubic-bezier(.2,.75,.25,1) both; }
@@ -5471,7 +5471,7 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
 .small-btn, .rt-btn, .tabs-mini-btn, .stats-theme-btn { transition: transform var(--m-rapide) ease, background-color var(--m-moyen) ease, color var(--m-moyen) ease; }
 
 /* 5. Sous-onglets (Vue d'ensemble / Analyse, thèmes) : le choix s'allume en douceur */
-.tabs-mini-btn.active, .stats-theme-btn.active { animation: rtPop var(--m-moyen) var(--m-ressort) both; }
+html.rt-geste .tabs-mini-btn.active, html.rt-geste .stats-theme-btn.active { animation: rtPop var(--m-moyen) var(--m-ressort) both; }
 
 @media (prefers-reduced-motion: reduce) {
   .tab-indic, nav.tabs .tab, .mrow-chev, .card-head, .small-btn, .rt-btn, .tabs-mini-btn, .stats-theme-btn { transition: none !important; }
@@ -5688,3 +5688,6 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
 .rt-cg-actions { position: sticky; bottom: -18px; margin: 6px -20px -18px; padding: 12px 20px 14px; background: linear-gradient(180deg, transparent, var(--surface, #fff) 22%); }
 @media (max-width: 400px) { .rt-cg-actions { margin: 6px -14px -14px; padding: 12px 14px 12px; bottom: -14px; } }
 .rt-login-brand { justify-content: center; }   /* b130 : logo centré dans le bloc de connexion (demande de Clément) */
+
+/* b131 — bug « ça saute » : certaines animations se rejouaient à chaque rafraîchissement des données (onglets, blocs dépliés,
+   cartes de rapports). Elles ne jouent plus que juste après un geste de l'arbitre (classe html.rt-geste posée 0,8 s). */
