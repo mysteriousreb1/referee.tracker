@@ -1866,22 +1866,20 @@ const CONSENT = {
     d.className = "rt-consent";
     d.setAttribute("role", "dialog");
     d.setAttribute("aria-modal", "true");
-    d.innerHTML = `<div class="rt-consent-box">
-      <h2>Bienvenue sur Referee Tracker</h2>
-      <p>Avant de continuer, merci de lire et d'accepter :</p>
-      <ul>
-        <li><a href="./cgu.html" target="_blank" rel="noopener">les conditions d'utilisation</a> ;</li>
-        <li><a href="./confidentialite.html" target="_blank" rel="noopener">la politique de confidentialité</a> (vos données et celles des personnes citées sur vos convocations).</li>
-      </ul>
-      <div class="rt-consent-comm"><strong>Nouveautés et offres</strong><p>Tu recevras les nouveautés et offres de Referee Tracker (au plus 2 par mois), par e-mail et par WhatsApp si ton numéro est connu. Tu peux t'y opposer ici, puis à tout moment dans Mon profil → Communications ou par le lien présent dans chaque message.</p>
-        <label class="rt-consent-chk"><input type="checkbox" id="rtConsentRefus"> Je ne souhaite pas les recevoir.</label></div>
-      <div class="rt-consent-off"><strong>Un outil indépendant</strong><p>Referee Tracker n'est pas un site officiel de la FFBB, ni d'une ligue ou d'un comité. Les montants, notes et dates affichés sont des estimations : seuls tes documents officiels font foi. L'éditeur décline toute responsabilité en cas d'erreur ou d'oubli de l'application.</p>
-        <label class="rt-consent-chk"><input type="checkbox" id="rtConsentOff"> J'ai compris : ce n'est pas un outil officiel et je reste seul responsable de mes démarches.</label></div>
-      <label class="rt-consent-chk"><input type="checkbox" id="rtConsentChk"> J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité.</label>
+    // b130 — écran repensé : deux cartes à cocher (obligatoires), un interrupteur pour les offres, bouton principal en bas.
+    d.innerHTML = `<div class="rt-consent-box rt-cg">
+      <div class="rt-cg-head"><img src="./img/logo-icon.png" alt="" width="44" height="40"><div><h2>Bienvenue sur Referee Tracker</h2><p>Deux confirmations et c'est parti.</p></div></div>
+      <div class="rt-cg-docs">
+        <a class="rt-cg-doc" href="./cgu.html" target="_blank" rel="noopener"><span aria-hidden="true">§</span>Conditions d'utilisation<i aria-hidden="true">›</i></a>
+        <a class="rt-cg-doc" href="./confidentialite.html" target="_blank" rel="noopener"><span aria-hidden="true">⛨</span>Politique de confidentialité<i aria-hidden="true">›</i></a>
+      </div>
+      <label class="rt-cg-card"><input type="checkbox" id="rtConsentOff"><span class="rt-cg-box" aria-hidden="true"></span><span class="rt-cg-txt"><b>Un outil indépendant</b><small>Referee Tracker n'est pas un site officiel de la FFBB, ni d'une ligue ou d'un comité. Les montants, notes et dates affichés sont des estimations : seuls tes documents officiels font foi. L'éditeur décline toute responsabilité en cas d'erreur ou d'oubli de l'application. J'ai compris : ce n'est pas un outil officiel et je reste seul responsable de mes démarches.</small></span></label>
+      <label class="rt-cg-card"><input type="checkbox" id="rtConsentChk"><span class="rt-cg-box" aria-hidden="true"></span><span class="rt-cg-txt"><b>J'accepte les conditions</b><small>J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité (mes données et celles des personnes citées sur mes convocations).</small></span></label>
+      <label class="rt-cg-opt"><input type="checkbox" id="rtConsentRefus"><span class="rt-cg-sw" aria-hidden="true"></span><span class="rt-cg-txt"><b>Ne pas recevoir les nouveautés et offres</b><small>Nouveautés et offres de Referee Tracker : au plus 2 par mois, par e-mail et WhatsApp. Tu peux aussi t'y opposer plus tard dans Mon profil → Communications ou par le lien de chaque message.</small></span></label>
       <p class="rt-consent-msg" id="rtConsentMsg"></p>
-      <div class="rt-consent-actions">
+      <div class="rt-consent-actions rt-cg-actions">
         <button type="button" class="rt-btn" id="rtConsentOk" disabled>Accepter et continuer</button>
-        <button type="button" class="rt-btn-danger" id="rtConsentNo">Refuser et me déconnecter</button>
+        <button type="button" class="rt-cg-refus" id="rtConsentNo">Refuser et me déconnecter</button>
       </div></div>`;
     document.body.appendChild(d);
     const chk = document.getElementById("rtConsentChk"), ok = document.getElementById("rtConsentOk"), refus = document.getElementById("rtConsentRefus");
