@@ -5687,3 +5687,4 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
 @media (prefers-reduced-motion: no-preference) { #rtConsent .rt-cg { animation: rtFenetre .4s cubic-bezier(.2,.8,.2,1) both; } }
 .rt-cg-actions { position: sticky; bottom: -18px; margin: 6px -20px -18px; padding: 12px 20px 14px; background: linear-gradient(180deg, transparent, var(--surface, #fff) 22%); }
 @media (max-width: 400px) { .rt-cg-actions { margin: 6px -14px -14px; padding: 12px 14px 12px; bottom: -14px; } }
+.rt-login-brand { justify-content: center; }   /* b130 : logo centré dans le bloc de connexion (demande de Clément) */
