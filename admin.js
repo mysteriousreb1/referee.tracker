@@ -994,7 +994,7 @@
     return r.status === 204 || r.status === 201 ? null : r.json();
   }
   const ANN_MODELES = {
-    sans_match: { t: "Bonjour {prenom} ! Aucun match n'est encore arrivé dans ton espace. Pour que tout se remplisse tout seul, transfère tes convocations FBI vers {adresse} (en gardant une copie). Le guide de démarrage t'explique tout en 5 minutes.", a: "guide", l: "Ouvrir le guide" },
+    sans_match: { t: "Bonjour {prenom} ! Aucun match n'est encore arrivé dans ton espace. Pour que tout se remplisse tout seul, transfère tes convocations vers {adresse} (en gardant une copie). Le guide de démarrage t'explique tout en 5 minutes.", a: "guide", l: "Ouvrir le guide" },
     dispo: { t: "{prenom}, pense à mettre à jour tes indisponibilités pour les prochaines semaines : ça évite les désignations impossibles.", a: "", l: "" },
     profil: { t: "{prenom}, ton profil est incomplet (adresse de départ, véhicule) : sans lui, les km et les frais ne peuvent pas être calculés.", a: "profil", l: "Compléter mon profil" } };
   async function bannieres(box) {
