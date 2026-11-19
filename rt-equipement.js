@@ -102,7 +102,7 @@
     const parCat = {}; L.forEach(x => { parCat[x.categorie] = (parCat[x.categorie] || 0) + num(x.montant_ttc); });
     const b = ST.brouillon || {};
     root.innerHTML = `
-      <h2 class="section-title">Équipement &amp; frais <span class="count">${L.length}</span></h2>
+      <h2 class="section-title">Équipement &amp; frais <span class="count">${L.length}</span>${typeof infoI_ === "function" ? infoI_(...INFO_PAGES_.equipement) : ""}</h2>
       <div class="kpi-grid">
         <div class="kpi hero"><label>Dépensé cette saison (${esc(sc)})</label><strong>${eur(totS)}</strong><span class="sub">${indemS ? Math.round(totS / indemS * 100) + " % de tes indemnités de la saison" : "aucune indemnité cette saison"}</span></div>
         <div class="kpi"><label>Total depuis le début</label><strong>${eur(total)}</strong></div>
