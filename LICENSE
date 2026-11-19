@@ -1,0 +1,27 @@
+Copyright (c) 2026 Referee Tracker (l'éditeur du service). Tous droits réservés.
+
+Ce dépôt est rendu visible uniquement pour permettre la publication du service
+Referee Tracker. Sa visibilité ne vaut ni licence ni autorisation.
+
+Sans autorisation écrite et préalable de l'auteur, il est interdit de copier,
+reproduire, modifier, adapter, traduire, distribuer, publier, vendre, louer ou
+réutiliser tout ou partie de ce dépôt : code source, textes, interface, charte
+graphique, logos, images, données et documentation. Cette interdiction vaut
+aussi pour l'utilisation de ce contenu pour créer un produit ou un service
+concurrent, ou pour entraîner un modèle d'intelligence artificielle.
+
+Le nom « Referee Tracker » et le logo sont des signes distinctifs de l'auteur.
+
+Les bibliothèques tierces incluses (dossiers vendor/ et fonts/, le cas échéant)
+restent soumises à leurs propres licences, indiquées dans leurs fichiers et dans
+les mentions légales du service.
+
+Contact : voir les mentions légales du service.
+
+---
+
+Copyright (c) 2026 Referee Tracker (the publisher of the service). All rights reserved.
+This repository is visible only so that the Referee Tracker service can be
+published. No licence is granted. Copying, modifying, redistributing or reusing
+any part of it, including to build a competing product or to train an AI model,
+is prohibited without prior written permission.
