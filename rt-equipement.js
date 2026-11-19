@@ -102,8 +102,8 @@
     const parCat = {}; L.forEach(x => { parCat[x.categorie] = (parCat[x.categorie] || 0) + num(x.montant_ttc); });
     const b = ST.brouillon || {};
     root.innerHTML = `
-      <h2 class="section-title">Équipement &amp; frais <span class="count">${L.length}</span></h2>
-      <div class="kpi-grid">
+      <h2 class="section-title">Équipement &amp; frais <span class="count">${L.length}</span>${typeof infoI_ === "function" ? infoI_(...INFO_PAGES_.equipement) : ""}</h2>
+      <div class="kpi-grid eq-kpis">
         <div class="kpi hero"><label>Dépensé cette saison (${esc(sc)})</label><strong>${eur(totS)}</strong><span class="sub">${indemS ? Math.round(totS / indemS * 100) + " % de tes indemnités de la saison" : "aucune indemnité cette saison"}</span></div>
         <div class="kpi"><label>Total depuis le début</label><strong>${eur(total)}</strong></div>
         <div class="kpi"><label>Achats</label><strong>${L.length}</strong></div>
@@ -114,7 +114,7 @@
       <div class="table-card eq-ajout">
         <div class="eq-ajout-t"><strong>Ajouter un achat</strong><span class="card-sub">Dépose la facture : date, montant, frais de port et articles sont lus automatiquement (PDF). Une photo est aussi acceptée.</span></div>
         <label class="eq-drop" for="eqFichier"><input id="eqFichier" type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" />
-          <span>${ST.fichier ? "Fichier : " + esc(ST.fichier.name) : "Choisir une facture (PDF, JPG, PNG — 5 Mo max)"}</span></label>
+          <span class="eq-drop-ico" aria-hidden="true">⇪</span><span>${ST.fichier ? "Fichier : " + esc(ST.fichier.name) : "Choisir une facture (PDF, JPG, PNG — 5 Mo max)"}</span></label>
         <form id="eqForm" class="toolbar form-formation" style="align-items:end">
           <div class="field"><label for="eqDate">Date d'achat</label><input id="eqDate" type="date" required value="${esc(b.date || "")}" /></div>
           <div class="field"><label for="eqFour">Boutique</label><input id="eqFour" type="text" maxlength="80" placeholder="FFBB Store, Decathlon…" value="${esc(b.fournisseur || "")}" /></div>

@@ -3,10 +3,11 @@
    À CHAQUE mise en ligne visible pour les arbitres : changer version (bNNN), sortie (AAAA-MM-JJ), la phrase du bandeau
    et 3 à 5 lignes de la liste ; texte validé par Clément avant la mise en ligne. Le bandeau s'affiche seul 24 h pour chaque arbitre. */
 "use strict";
-window.RT_NOUV = { version: "b128", sortie: "2026-11-20", texte: "Nouvelle version : niveau à choisir dans une liste, Progression plus claire et une confirmation rapide à la connexion." };
+window.RT_NOUV = { version: "b129", sortie: "2026-11-21", texte: "Nouvelle version : filière en échelle, rapports plus clairs, exemples à toucher dans Règlement et Accueil plus lisible sur téléphone." };
 window.RT_NOUVEAUTES = [
-  ["▾", "Niveau dans une liste", "Dans Mon profil, ton niveau se choisit maintenant dans la liste officielle de la filière : plus de saisie à la main."],
-  ["★", "Progression", "Les notes sont des estimations calculées à partir de tes fiches, c'est maintenant indiqué. Ta place dans la filière est marquée « Toi »."],
-  ["✓", "Une confirmation à la connexion", "On te demande une fois de confirmer que Referee Tracker est un outil indépendant, non officiel."],
-  ["⌂", "Inscription", "Les arbitres départementaux ne sont plus inscrits d'office en ligue régionale."]
+  ["▲", "Filière en échelle", "Les grades déjà franchis sont cochés et ta place est mise en avant, avec « Toi »."],
+  ["i", "Bulles d'aide", "Un « i » explique chaque page (Progression, e-Licence, Rapports, Équipement…). Touche « Compris » pour le fermer."],
+  ["!", "Rapports", "Chaque formulaire officiel a sa couleur et son délai d'envoi bien visible."],
+  ["?", "Règlement", "Touche un exemple pour le copier dans ta question."],
+  ["⌂", "Accueil sur téléphone", "Les matchs du week-end sont plus lisibles : heure et montant en haut, équipes sur toute la largeur."]
 ];
