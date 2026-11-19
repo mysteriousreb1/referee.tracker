@@ -1124,7 +1124,7 @@ function renderProfile() {
         <div class="rt-field"><label for="pfNom">Nom sur les convocations</label>
           <input id="pfNom" type="text" value="${esc(p.nom_ffbb)}" placeholder="NOM Prénom"></div>
         <div class="rt-field"><label for="pfNiveau">Niveau d'arbitrage</label>
-          <input id="pfNiveau" type="text" list="pfNiveauxListe" value="${esc(p.niveau)}" placeholder="ex. Région 2 (REG-2) – JPR Rouge"><datalist id="pfNiveauxListe">${(typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX ? ONBOARD.NIVEAUX : []).map(n => `<option value="${esc(n)}">`).join("")}</datalist><p class="rt-muted" id="pfPlafond" style="margin:6px 0 0;font-size:13px">${esc(rtPlafondNiveau_(p.niveau))}</p></div>
+          <select id="pfNiveau">${rtOptionsNiveau_(p.niveau)}</select><p class="rt-muted" id="pfPlafond" style="margin:6px 0 0;font-size:13px">${esc(rtPlafondNiveau_(p.niveau))}</p></div>
       </div>
       <div class="rt-field"><label for="pfMailFfbb">Email connu de ta fédération${p.email_ffbb ? "" : ' <span class="rt-tag">à renseigner</span>'}</label>
         <input id="pfMailFfbb" type="email" value="${esc(p.email_ffbb)}" placeholder="celui qui reçoit tes convocations"></div>
@@ -1308,7 +1308,7 @@ function renderProfile() {
     </section>`;
 
   document.getElementById("rtLogoutBtn").addEventListener("click", logout);
-  { const ni = document.getElementById("pfNiveau"), pl = document.getElementById("pfPlafond"); if (ni && pl) ni.addEventListener("input", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
+  { const ni = document.getElementById("pfNiveau"), pl = document.getElementById("pfPlafond"); if (ni && pl) ni.addEventListener("change", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
   // b71 — export / suppression de compte (Edge « compte », jeton de session de l'arbitre).
   const compteApi = async (corps) => {
     const t = await SB.token();
@@ -1836,7 +1836,8 @@ function pushResyncInstaller_() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "rt-push-changed") PUSH.resync("force"); });
 }
 /* b58 — CGU + politique de confidentialité acceptées avant tout usage (preuve en base, RLS). */
-const RT_CGU_VERSION = "2026-11-08";   // b78d : politique v4 (prospection avec opposition, plus de relevé bancaire)
+const RT_CGU_VERSION = "2026-11-20";   // b128 : + case « outil indépendant, non officiel » → acceptation redemandée à tous
+// ancien : "2026-11-08"   // b78d : politique v4 (prospection avec opposition, plus de relevé bancaire)
 // ancien :   // b70 : CGU v3 + politique v3 → ré-acceptation demandée à tous
 /* b78d — appel à l'Edge « compte » utilisable hors de Mon profil (écran d'acceptation). */
 async function rtCompteApi_(corps) {
@@ -1867,13 +1868,15 @@ const CONSENT = {
     d.setAttribute("aria-modal", "true");
     d.innerHTML = `<div class="rt-consent-box">
       <h2>Bienvenue sur Referee Tracker</h2>
-      <p>Les conditions et la politique de confidentialité ont été mises à jour (8 novembre 2026). Avant de continuer, merci de les lire et de les accepter :</p>
+      <p>Avant de continuer, merci de lire et d'accepter :</p>
       <ul>
         <li><a href="./cgu.html" target="_blank" rel="noopener">les conditions d'utilisation</a> ;</li>
         <li><a href="./confidentialite.html" target="_blank" rel="noopener">la politique de confidentialité</a> (vos données et celles des personnes citées sur vos convocations).</li>
       </ul>
       <div class="rt-consent-comm"><strong>Nouveautés et offres</strong><p>Tu recevras les nouveautés et offres de Referee Tracker (au plus 2 par mois), par e-mail et par WhatsApp si ton numéro est connu. Tu peux t'y opposer ici, puis à tout moment dans Mon profil → Communications ou par le lien présent dans chaque message.</p>
         <label class="rt-consent-chk"><input type="checkbox" id="rtConsentRefus"> Je ne souhaite pas les recevoir.</label></div>
+      <div class="rt-consent-off"><strong>Un outil indépendant</strong><p>Referee Tracker n'est pas un site officiel de la FFBB, ni d'une ligue ou d'un comité. Les montants, notes et dates affichés sont des estimations : seuls tes documents officiels font foi. L'éditeur décline toute responsabilité en cas d'erreur ou d'oubli de l'application.</p>
+        <label class="rt-consent-chk"><input type="checkbox" id="rtConsentOff"> J'ai compris : ce n'est pas un outil officiel et je reste seul responsable de mes démarches.</label></div>
       <label class="rt-consent-chk"><input type="checkbox" id="rtConsentChk"> J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité.</label>
       <p class="rt-consent-msg" id="rtConsentMsg"></p>
       <div class="rt-consent-actions">
@@ -1885,7 +1888,8 @@ const CONSENT = {
     /* b78d : un arbitre qui s'est déjà opposé garde son choix (case pré-cochée « je ne souhaite pas »). */
     let commAvant = null;
     rtCompteApi_({ action: "communications.lire" }).then(j => { commAvant = j.communications || {}; if (commAvant.date && commAvant.offres === false) refus.checked = true; }).catch(() => {});
-    chk.addEventListener("change", () => { ok.disabled = !chk.checked; });
+    const off = document.getElementById("rtConsentOff"), maj = () => { ok.disabled = !(chk.checked && off.checked); };
+    chk.addEventListener("change", maj); off.addEventListener("change", maj);
     document.getElementById("rtConsentNo").addEventListener("click", () => logout());
     ok.addEventListener("click", async () => {
       ok.disabled = true;
@@ -1951,6 +1955,13 @@ function cablerPremiereConnexion_() {
   });
 }
 
+/* b128 — niveau choisi dans la liste imposée (filière FFBB) : un menu, plus de saisie libre.
+   Une ancienne valeur hors liste reste affichée (marquée « à mettre à jour ») tant qu'on n'en choisit pas une autre. */
+function rtOptionsNiveau_(v) {
+  const L = (typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX) || [], cur = String(v || "");
+  return `<option value="">Choisir…</option>` + (cur && L.indexOf(cur) < 0 ? `<option value="${esc(cur)}" selected>${esc(cur)} (à mettre à jour)</option>` : "") +
+    L.map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+}
 const ONBOARD = {
   etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", carb: "e10", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
   N_ETAPES: 7,   // b77 : 0 identité · 1 adresse · 2 véhicule · 3 zones de paiement · 4 convocations · 5 historique · 6 notifications
@@ -2009,9 +2020,9 @@ const ONBOARD = {
       b.innerHTML = '<h2>Bienvenue ' + esc(D.prenom || "") + ' 👋</h2><p>Quelques réglages pour que l\'app calcule tout à ta place. Tout reste modifiable ensuite dans Mon profil.</p>' + chips +
         this.champ("onbNom", "Ton NOM PRÉNOM exactement comme sur tes convocations", D.nom_ffbb, 'autocapitalize="characters" placeholder="ex. MARTIN JULIE"') +
         this.champ("onbPrenom", "Ton prénom (signature des SMS)", D.prenom, 'autocomplete="given-name"') +
-        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><input id="onbNiveau" list="onbNiveauxListe" value="' + esc(D.niveau) + '" placeholder="ex. Région 2 (REG-2) – JPR Rouge"><datalist id="onbNiveauxListe">' + this.NIVEAUX.map(n => '<option value="' + esc(n) + '">').join("") + '</datalist><p class="rt-muted" id="onbPlafond" style="margin:6px 0 0;font-size:13px">' + esc(rtPlafondNiveau_(D.niveau)) + '</p></div>';
+        '<div class="rt-field"><label for="onbNiveau">Ton niveau</label><select id="onbNiveau">' + rtOptionsNiveau_(D.niveau) + '</select><p class="rt-muted" id="onbPlafond" style="margin:6px 0 0;font-size:13px">' + esc(rtPlafondNiveau_(D.niveau)) + '</p></div>';
       b.querySelectorAll(".rt-chip").forEach(c => c.addEventListener("click", () => { document.getElementById("onbNom").value = c.dataset.nom; }));
-      { const ni = document.getElementById("onbNiveau"), pl = document.getElementById("onbPlafond"); if (ni && pl) ni.addEventListener("input", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
+      { const ni = document.getElementById("onbNiveau"), pl = document.getElementById("onbPlafond"); if (ni && pl) ni.addEventListener("change", () => { pl.textContent = rtPlafondNiveau_(ni.value); }); }
     } else if (e === 1) {
       b.innerHTML = '<h2>Ton point de départ</h2><p>Sert à calculer tes kilomètres et ton carburant. Il n\'est visible que par toi.</p>' +
         this.champ("onbAdr", "Adresse", D.adresse, 'autocomplete="street-address" placeholder="ex. 12 rue des Lilas"') +
@@ -2025,9 +2036,12 @@ const ONBOARD = {
         this.champ("onbCv", "Puissance fiscale (CV, sur la carte grise)", D.cv, 'inputmode="numeric"');
     } else if (e === 3) {
       const D2 = this.data, opt = (l, v) => l.map(x => '<option value="' + x[0] + '"' + (x[0] === v ? " selected" : "") + '>' + esc(x[1]) + '</option>').join("");
+      // b128 — arbitre club / départemental : la ligue n'est plus cochée d'office (ils la cochaient sans arbitrer en région).
+      const depOuClub = /^(arbitre club|d[ée]partemental)/i.test(D2.niveau || "");
+      if (!this._ligueVue) { this._ligueVue = true; if (depOuClub) D2.zligue = ""; }
       b.innerHTML = '<h2>Qui te paie ?</h2><p>Tes désignations viennent de trois niveaux. Choisis les tiens : l\'app applique les bons barèmes et les bonnes périodes de paiement.</p>' +
         '<div class="rt-onb-zone is-on"><div class="rt-onb-zone-head"><strong>Comité départemental</strong><span class="rt-tag">obligatoire</span></div><p class="rt-help">Championnats départementaux, 3x3, jeunes. Payé par le comité ou le club selon la rencontre.</p><select id="onbZcd">' + opt(this.COMITES, D2.zcd) + '</select></div>' +
-        '<div class="rt-onb-zone' + (D2.zligue ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZligueOn"' + (D2.zligue ? " checked" : "") + '> <strong>Ligue régionale</strong></label><span class="rt-tag">arbitre régional</span></div><p class="rt-help">RM2 / RF2 / PNM / PNF, U15-U18 régionaux… Payé par la ligue par virement, par périodes.</p><select id="onbZligue"' + (D2.zligue ? "" : " disabled") + '>' + opt(this.LIGUES, D2.zligue || "LRGEB") + '</select></div>' +
+        '<div class="rt-onb-zone' + (D2.zligue ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZligueOn"' + (D2.zligue ? " checked" : "") + '> <strong>Ligue régionale</strong></label><span class="rt-tag">arbitre régional</span></div><p class="rt-help">RM2 / RF2 / PNM / PNF, U15-U18 régionaux… Payé par la ligue par virement, par périodes.' + (depOuClub ? ' <b>Tu es arbitre départemental : ne coche que si tu es aussi désigné sur des matchs régionaux.</b>' : '') + '</p><select id="onbZligue"' + (D2.zligue ? "" : " disabled") + '>' + opt(this.LIGUES, D2.zligue || "LRGEB") + '</select></div>' +
         '<div class="rt-onb-zone' + (D2.zcf ? " is-on" : "") + '"><div class="rt-onb-zone-head"><label class="rt-onb-check"><input type="checkbox" id="onbZcf"' + (D2.zcf ? " checked" : "") + '> <strong>Championnat de France</strong></label><span class="rt-tag">JPR / CF</span></div><p class="rt-help">U15-U18 France, NM3/NF3 et au-dessus. Payé par la FFBB par virement.</p></div>';
       const lo = document.getElementById("onbZligueOn"), ls = document.getElementById("onbZligue");
       lo.addEventListener("change", () => { ls.disabled = !lo.checked; lo.closest(".rt-onb-zone").classList.toggle("is-on", lo.checked); if (lo.checked && !ls.value) ls.value = "LRGEB"; RT_CARTE.maj(); });
@@ -2131,7 +2145,7 @@ const FICHE = {
   },
   verifier() {
     if (typeof SB === "undefined" || !SB.actif || document.getElementById("rtFiche")) return;
-    if (document.querySelector("#rtOnb, #rtTour, #rtMaintenance, .rt-consent:not(#rtFiche)")) { if (++FICHE._essais < 40) setTimeout(FICHE.verifier, 3000); return; }
+    if (document.querySelector("#rtOnb, #rtTour, #rtMaintenance, .rt-consent:not(#rtFiche)")) { if (++FICHE._essais < 200) setTimeout(FICHE.verifier, 3000); return; }
     Promise.all([SB.get("profils?select=niveau,parcours,telephone,zones,nom_ffbb,email_ffbb,fiche_maj_le&limit=1"), window.rtPubApp()]).then(([l, cfg]) => {
       const p = l && l[0]; if (!p || cfg.fiche_obligatoire === false) return;
       if (p.fiche_maj_le && cfg.fiche_revalider_avant && Date.parse(p.fiche_maj_le) < Date.parse(cfg.fiche_revalider_avant + "T00:00:00")) p.fiche_maj_le = null;   // revalidation demandée par l'admin
