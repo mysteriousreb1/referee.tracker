@@ -3762,7 +3762,7 @@ details.regl-sources summary::-webkit-details-marker { display: none; }
   .acc-s-sub, .kpi small, .kpi .kpi-sub { font-size: 11.5px; }
   .detail-grid { gap: 8px; }
 
-  /* Boutons d'action du détail (Waze, SMS, Contact fait, FBI, Annulé…) : grille 2 colonnes, pleine largeur */
+  /* Boutons d'action du détail (Waze, SMS, Contact fait, Annulé…) : grille 2 colonnes, pleine largeur */
   .match-card .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .match-card .actions > * { width: 100%; margin: 0; justify-content: center; text-align: center; min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
   .match-card .actions > :last-child:nth-child(odd) { grid-column: span 2; }   /* dernier bouton seul : pleine largeur */

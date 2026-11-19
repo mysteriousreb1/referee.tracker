@@ -644,7 +644,7 @@ function loadData() {
       _plus(loadPrixCarburant, "Prix carburant", 1200);
       try { chargerFonctions_(); } catch (e) {}   // b80
       if (CLASSEMENTS_ACTIFS_) { _plus(loadClassements, "Classements", 2200); _plus(loadEnjeux, "Enjeux", 3500); _plus(chargerResultatsFfbb_, "Résultats (classements)", 1600); }   // b70 : désactivé (source non autorisée, données périmées)
-      // b19 : page Indispos supprimée (pas de connexion FBI possible).
+      // b19 : page Indispos supprimée.
     })
     .catch(showApiError)
     .then(() => { state._loadEnCours = false; });
@@ -3687,7 +3687,7 @@ function virCandidats_(payeur) {
     && !/^(Reçu|Bénévole|Annulé)$/.test(get(r, "Statut paiement")) && r._date && r._date <= new Date()).sort((a, b) => a._date - b._date);
 }
 function virTaux_() { const t = Number(((typeof Profil !== "undefined" && Profil.config && Profil.config.tarifs) || {}).indemnite_km); return t > 0 && t < 2 ? t : 0.40; }
-// b89 — km estimés par Referee Tracker (pas lus sur une convocation) : 3x3, mails FBI sans montant.
+// b89 — km estimés par Referee Tracker (pas lus sur une convocation) : 3x3, convocations e-mail sans montant.
 function virEstime_(r) { return r._format === "3x3" || /estim|calcul/i.test(get(r, "Warning finance") || ""); }
 function virLieu_(r) { return cleanText(get(r, "Salle") || "").toLowerCase() + "|" + cleanText(get(r, "Ville") || "").toLowerCase(); }
 // b89 — l'écart s'explique-t-il par les km retenus par le payeur sur les matchs estimés ? (centime exact, km entiers)
@@ -6420,7 +6420,7 @@ function idAlerte_(r) {
 /* b69 (G) — Alertes en 3 sections :
    « À régler maintenant » (import raté / PDF non reconnu, arbitre non trouvé, date ou heure illisible, trop-perçu),
    « À faire avant le match » (km / adresse / collègue manquants sur un match FUTUR, statut « À vérifier » d'un match passé),
-   « Infos » repliée (barème CD67 appliqué, indemnité estimée, convocation FBI à compléter, 3×3 à vérifier…).
+   « Infos » repliée (barème CD67 appliqué, indemnité estimée, convocation à compléter, 3×3 à vérifier…).
    Exclus : matchs passés Reçu/Bénévole, lignes Alerte de plus de 30 jours, warnings « INFO: ». Les retards de
    paiement vivent dans Paiements (plus comptés dans le badge Alertes). */
 function warningsAlerte_(r) { return warningsReels(r).filter(w => !/^INFO\s*:/i.test(w)); }
@@ -6443,8 +6443,8 @@ const ALERTE_TYPES_ = [
   [/date : ia|date lue par l'ia/i, "infos", "Date lue par l'IA", "L'IA a lu la date du match dans le mail (le texte contenait une autre date, souvent celle d'envoi). Rien à faire si elle est juste."],
   [/date (de match |3x3 )?(illisible|non lue|non trouvée|improbable)/i, "regler", "Date de match illisible", "Ouvre le match et saisis la bonne date (puis l'agenda se met à jour)."],
   [/heure (de match |de rdv 3x3 )?(illisible|non trouvée)/i, "regler", "Heure illisible", "Ouvre le match et renseigne l'heure du match ou du rendez-vous."],
-  [/pdf|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
-  [/convocation fbi/i, "infos", "Convocation FBI à compléter", "Équipes, rôle et collègue absents du mail : complète-les dès que tu les connais."],
+  [/pdf|aucune mission créée|ni lieu ni événement|équipe recevante ou visiteuse absente|recevant et visiteur identiques|vérifier fbi|vérifier tes désignations|annulation/i, "regler", "Import raté ou PDF non reconnu", "Ouvre le mail d'origine : si c'est une vraie désignation, saisis-la ; sinon ignore l'alerte."],
+  [/convocation (fbi )?e-mail|convocation fbi/i, "infos", "Convocation à compléter", "Équipes, rôle et collègue absents du mail : complète-les dès que tu les connais."],
   [/kilom|km /i, "avant", "Kilométrage manquant ou à vérifier", "Renseigne ou contrôle les km A/R avant le match : l'indemnité kilométrique en dépend."],
   [/adresse/i, "avant", "Adresse de la salle manquante", "Complète l'adresse pour l'itinéraire Waze et le calcul des km."],
   [/coll[èe]gue/i, "avant", "Collègue manquant", "Ajoute ton collègue (nom, téléphone) pour le covoiturage et le contact d'avant-match."],
@@ -9369,7 +9369,7 @@ document.addEventListener("click", ev => {
 });
 
 /* =====================================================================
-   MODULES PERSO (05/10/2026) — e-Licence, Indispos FBI, Rapports.
+   MODULES PERSO (05/10/2026) — e-Licence, Indispos, Rapports.
    Sous-vues de l'onglet « Procédures » (state.contactsSubView).
    ===================================================================== */
 function isoL_(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
