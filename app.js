@@ -4540,7 +4540,7 @@ function renderEvalTel_(evals) {
     <div class="table-card evt-card"><h3>Mes dernières fiches</h3>
       ${dern.map(ev => { const axes = [ev.axe1, ev.axe2].filter(Boolean).map(a => String(a).replace(/^\[[^\]]*\]\s*/, ""));
         return `<div class="evt-row" role="button" tabindex="0"><div class="evt-row-h"><span class="evt-date">${escapeHtml(evalDateCourte_(ev))}</span><span class="evt-champ">${escapeHtml(ev.championnat || ev.type || "Observation")}</span><span class="evt-note" style="background:${coul(ev.note20)}">${n100_(ev.note20)}</span></div>
-          <div class="evt-row-d">${ev.observateur ? `<p><b>Observateur</b> ${escapeHtml(ev.observateur)}</p>` : ""}${axes.length ? `<p><b>À travailler</b></p><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : `<p class="card-sub">Pas d'axe de travail noté sur cette fiche.</p>`}</div></div>`; }).join("")}
+          <div class="evt-row-d">${axes.length ? `<p><b>À travailler</b></p><ul>${axes.map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : `<p class="card-sub">Pas d'axe de travail noté sur cette fiche.</p>`}</div></div>`; }).join("")}
     </div>`;
 }
 function renderEvalSynthese_(evals) {
@@ -4554,7 +4554,7 @@ function renderEvalSynthese_(evals) {
   const avecFam = evals.filter(ev => ev.familles && EVAL_FAM_.some(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined)).length;
   const etendue = fam.length >= 2 ? Math.max(...fam.map(f => f.v)) - Math.min(...fam.map(f => f.v)) : 0;
   const pire = (fam.length >= 2 && avecFam >= 2 && etendue >= 1) ? fam.slice().sort((a, b) => a.v - b.v)[0] : null;
-  const sousTitre = ev => ev ? escapeHtml([ev.championnat || ev.rencontre || "", evalDateCourte_(ev), ev.observateur].filter(Boolean).join(" · ")) : "";
+  const sousTitre = ev => ev ? escapeHtml([ev.championnat || ev.rencontre || "", evalDateCourte_(ev)].filter(Boolean).join(" · ")) : "";
   return `
     <div class="kpi-grid ev-kpis">
       <div class="kpi ev-kpi-note ev-kpi-main"><label>Dernière observation</label><strong>${dObs ? evalNoteHtml_(dObs) : "—"}</strong><span class="sub">${dObs ? sousTitre(dObs) : "aucune observation notée"}${tendance !== null ? ` · <b class="${tendance >= 0 ? "ev-up" : "ev-down"}">${tendance >= 0 ? "+" : ""}${n100_(tendance)}</b> vs précédente` : ""}</span></div>
@@ -4660,7 +4660,7 @@ function buildEvalCharts_(evals) {
         { label: "Tendance (3 obs.)", data: moyMobile, borderColor: "rgba(10,31,68,.55)", borderDash: [5, 4], borderWidth: 2, pointRadius: 0, spanGaps: true, tension: .4 },
         ...(avecStages ? [{ label: "Stages / TIC", data: notees.map(ev => evalEstMatch_(ev) ? null : n100_(ev.note20)), borderColor: "#2f6fe0", backgroundColor: "#2f6fe0", showLine: false, pointRadius: 7, pointStyle: "rectRot" }] : [])
       ] }, options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 100 } },
-      plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.noteBrute ? "Note : " + ev.noteBrute + " · " : "") + (ev.championnat || ev.rencontre || "") + (ev.observateur ? " · " + ev.observateur : ""); } } } } } });
+      plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { afterLabel: i => { const ev = notees[i.dataIndex]; return (ev.noteBrute ? "Note : " + ev.noteBrute + " · " : "") + (ev.championnat || ev.rencontre || ""); } } } } } });
   }
   const c2 = ctx("chartEvalRadar");
   if (c2) {
@@ -4754,7 +4754,7 @@ function renderEvalCard_(ev) {
           <div class="eval-main">
             <div class="eval-titre"><span class="badge ${EVAL_TYPE_CLS_[t] || "gray"}">${escapeHtml(t)}</span>${ev.instance ? `<span class="badge">${escapeHtml(ev.instance)}</span>` : ""}${ev.championnat ? `<span class="badge gray">${escapeHtml(ev.championnat)}</span>` : ""}${ev.saison ? `<span class="badge gray">${escapeHtml(ev.saison)}</span>` : ""}</div>
             <strong>${escapeHtml(estMatch ? (ev.rencontre || "Match non rattaché") : (ev.rencontre || ev.championnat || t))}</strong>
-            <span class="card-sub">${escapeHtml([ev.dateEval || ev.dateMatch, ev.observateur ? "Observateur : " + ev.observateur : ""].filter(Boolean).join(" · "))}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}${ev.statut && !/^Analysé/.test(ev.statut) ? ` · <span class="ev-down">${escapeHtml(ev.statut)}</span>` : ""}</span>
+            <span class="card-sub">${escapeHtml(ev.dateEval || ev.dateMatch || "")}${estMatch && !ev.uidMatch ? ` · <button type="button" class="action-link" data-eval-lier="${ev.id}">Rattacher à un match</button>` : ""}${ev.statut && !/^Analysé/.test(ev.statut) ? ` · <span class="ev-down">${escapeHtml(ev.statut)}</span>` : ""}</span>
           </div>
           <div class="eval-side"><span class="eval-chevron" aria-hidden="true"></span></div>
         </summary>
@@ -4769,7 +4769,7 @@ function renderEvalCard_(ev) {
           ${syn ? `<div class="ev-bloc"><b>Synthèse</b><p>${escapeHtml(syn)}</p></div>` : ""}
           ${ev.pointsForts && ev.pointsForts.length ? `<div class="ev-bloc"><b>Points forts</b><ul>${ev.pointsForts.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>` : ""}
           ${ev.plan && ev.plan.length ? `<div class="ev-bloc"><b>Plan de travail</b><ol>${ev.plan.map(x => `<li>${escapeHtml(evalSansPrefixe_(x))}</li>`).join("")}</ol></div>` : ""}
-          ${ev.grille && ev.grille.length ? `<details class="ev-grille-det"><summary>Grille d'origine (${ev.grille.length} critères)</summary><table class="eval-grille"><tbody>${ev.grille.map(g => `<tr><td>${escapeHtml(g.critere)}</td><td>${escapeHtml(g.valeur)}</td></tr>`).join("")}</tbody></table></details>` : ""}
+          ${ev.grille && ev.grille.length ? `<details class="ev-grille-det"><summary>Grille d'origine (${ev.grille.length} critères)</summary><table class="eval-grille"><tbody>${ev.grille.filter(g => !/observat|examinat|[ée]valuat(eur|rice)/i.test(g.critere || "")).map(g => `<tr><td>${escapeHtml(g.critere)}</td><td>${escapeHtml(g.valeur)}</td></tr>`).join("")}</tbody></table></details>` : ""}
           <div class="actions ev-actions">
             <button type="button" class="small-btn secondary" data-eval-reanalyse="${ev.id}">Ré-analyser le PDF</button>
             <button type="button" class="action-link alerte-danger" data-del-eval-lien="${escapeHtml(ev.lien)}" data-del-eval-fichier="${escapeHtml(ev.fichier)}">Retirer du suivi (le PDF reste dans le Drive)</button>
@@ -4836,7 +4836,8 @@ const FILIERE_ = [
 const PARCOURS_ = [["Groupe potentiel", "Formations le week-end", /potentiel/], ["JPR Bleu", "U15 France le dimanche", /jpr bleu/], ["JPR Rouge", "NF3 · U18 · U15 France le dimanche", /jpr rouge/]];
 function renderFiliere_(niveauProgression) {
   let prof = ""; try { prof = (Profil && Profil.config && Profil.config.profil && Profil.config.profil.niveau) || ""; } catch (e) {}
-  const n = String(niveauProgression || prof || "").toLowerCase();
+  const reconnu = v => !!v && FILIERE_.some(([, , L]) => L.some(([, , re]) => re.test(v)));
+  const n = [niveauProgression, prof].map(v => String(v || "").toLowerCase()).find(reconnu) || String(niveauProgression || prof || "").toLowerCase();
   let trouve = false, rang = 0;
   const marches = FILIERE_.map(([g, c, L]) => `<section class="fl-g" style="--c:${c}"><h4>${escapeHtml(g)}</h4>${L.map(([t, p, re]) => { rang++; const moi = !trouve && !!n && re.test(n); if (moi) trouve = true;
     return `<div class="fl-m${moi ? " moi" : ""}"><span class="fl-n">${rang}</span><div><b>${escapeHtml(t)}</b><small>${escapeHtml(p)}</small></div>${moi ? '<span class="fl-toi">Toi</span>' : ""}</div>`; }).join("")}</section>`).join("");
@@ -4880,6 +4881,7 @@ function renderProgression() {
   if (estTel_()) {
     root.innerHTML = `
       <h2 class="section-title">Progression</h2>
+      <p class="card-sub ev-estim">Les notes affichées ici sont des estimations calculées à partir de tes fiches : seule la fiche officielle fait foi.</p>
       <div class="kpi-grid">
         <div class="kpi hero">
           <label>Niveau actuel</label>
@@ -4896,6 +4898,7 @@ function renderProgression() {
 
   root.innerHTML = `
     <h2 class="section-title">Progression</h2>
+    <p class="card-sub ev-estim">Les notes affichées ici sont des estimations calculées à partir de tes fiches : seule la fiche officielle fait foi.</p>
     <div class="kpi-grid">
       <div class="kpi hero">
         <label>Niveau actuel</label>

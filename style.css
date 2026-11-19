@@ -3967,9 +3967,9 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-consent-box a { color: var(--red, #c62828); }
 .rt-consent-chk { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; font-weight: 600; }
 .rt-consent-chk input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
-.rt-consent-comm { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 10px 14px 4px; margin: 12px 0; }
-.rt-consent-comm p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
-.rt-consent-comm .rt-consent-chk { margin: 8px 0 6px; }
+.rt-consent-comm, .rt-consent-off { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 10px 14px 4px; margin: 12px 0; }
+.rt-consent-comm p, .rt-consent-off p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+.rt-consent-comm .rt-consent-chk, .rt-consent-off .rt-consent-chk { margin: 8px 0 6px; }
 .rt-consent-msg { color: #c62828; min-height: 1.2em; margin: 4px 0; }
 .rt-consent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 
@@ -5565,3 +5565,6 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
 .rt-info > summary:hover, .rt-info[open] > summary { border-color: currentColor; color: var(--text); }
 .rt-info > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .rt-info > p { position: fixed; z-index: 1000; left: 16px; right: 16px; bottom: calc(16px + var(--nav-h, 0px) + env(safe-area-inset-bottom, 0px)); max-width: 440px; margin: 0 auto; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--text); text-transform: none; letter-spacing: 0; white-space: normal; text-align: left; }
+
+/* b128 — Progression : mention « estimations » */
+.ev-estim { margin: -4px 0 12px; font-size: 13px; }
