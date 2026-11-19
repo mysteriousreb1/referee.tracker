@@ -5557,3 +5557,11 @@ nav.tabs .tab { transition: color var(--m-moyen) var(--m-courbe); }
 .cr3x3-t { font-weight: 800; font-size: 13px; }
 .cr3x3-b { display: flex; flex-wrap: wrap; gap: 8px; }
 .cr3x3-b .small-btn { flex: 1 1 140px; }
+
+/* b127 — petit « i » d'information (Règlement, QCM) : <details>, sans JavaScript */
+.rt-info { display: inline-block; vertical-align: middle; margin-left: 8px; position: relative; font-family: var(--body); }
+.rt-info > summary { list-style: none; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--muted); color: var(--muted); font: 700 13px/19px var(--body); font-style: italic; text-align: center; user-select: none; }
+.rt-info > summary::-webkit-details-marker { display: none; }
+.rt-info > summary:hover, .rt-info[open] > summary { border-color: currentColor; color: var(--text); }
+.rt-info > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.rt-info > p { position: fixed; z-index: 1000; left: 16px; right: 16px; bottom: calc(16px + var(--nav-h, 0px) + env(safe-area-inset-bottom, 0px)); max-width: 440px; margin: 0 auto; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--text); text-transform: none; letter-spacing: 0; white-space: normal; text-align: left; }

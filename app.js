@@ -1053,7 +1053,7 @@ function renderReglement() {
     <div class="regl-wrap">
       <div class="regl-head">
         <div class="regl-head-t">
-          <h2 class="section-title">Règlement <span class="count">IA</span></h2>
+          <h2 class="section-title">Règlement <span class="count">IA</span><details class="rt-info"><summary aria-label="D'où viennent les règlements ?" title="D'où viennent les règlements ?">i</summary><p>Les règlements utilisés sont les textes officiels publiés (règles FIBA et leur version française). Referee Tracker en garde une copie, reprise telle quelle, sans modification ni détournement, uniquement pour te permettre de chercher plus vite. Pour le 3×3, quelques textes publiés seulement en anglais sont accompagnés d'une traduction automatique. En cas de doute, le texte officiel fait foi. Referee Tracker est un projet indépendant, sans lien avec les instances du basket.</p></details></h2>
           <div class="regl-seg" role="tablist" aria-label="Règlement interrogé">${["5x5", "3x3"].map(c => `<button type="button" role="tab" aria-selected="${(state.reglCat || "5x5") === c}" class="regl-seg-b${(state.reglCat || "5x5") === c ? " is-on" : ""}" data-regl-cat="${c}"><span class="regl-seg-l">Règlement </span>${c === "5x5" ? "5×5" : "3×3"}</button>`).join("")}</div>
           <div class="regl-head-sub">${(state.reglCat || "5x5") === "3x3" ? "Règles officielles FIBA 3×3" : "Règles officielles FIBA 5×5"}${nbDocs === null ? "" : " · " + nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
         </div>
@@ -5973,7 +5973,7 @@ function renderQcm() {
   const s = state.qcmStats;
   const pret = !!state.qcmBank;
   root.innerHTML = `
-    <h2 class="section-title">QCM arbitrage</h2>
+    <h2 class="section-title">QCM arbitrage<details class="rt-info"><summary aria-label="D'où viennent les questions ?" title="D'où viennent les questions ?">i</summary><p>Les questions viennent des banques de questions officielles de la FFBB destinées à la formation des arbitres (éditions 2025 et 2022). Elles sont reprises telles quelles, sans modification ni détournement, et proposées uniquement dans un but de formation. Referee Tracker est un projet indépendant, sans lien avec la FFBB.</p></details></h2>
     <div class="qz-modes">
       <div class="qz-mode">
         <h3>Entraînement</h3>
