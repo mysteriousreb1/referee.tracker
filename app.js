@@ -4678,7 +4678,7 @@ function buildEvalCharts_(evals) {
         ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k] === null || derniere.familles[k] === undefined ? null : n100_(derniere.familles[k])), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5 }] : []),
         { label: "Moyenne 3 dernières", data: moy.map(v => v === null ? null : n100_(v)), borderColor: "#0A1F44", backgroundColor: "rgba(10,31,68,.06)", borderDash: [5, 4], pointBackgroundColor: "#0A1F44", borderWidth: 1.5 }
       ] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: AN.COLORS.grid }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: grilleGraph_() }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
 }
 /* ===================== b71 — GRILLE RÉGIONALE D'OBSERVATION (modèle 2026/2027) =====================
@@ -5286,7 +5286,7 @@ document.addEventListener("click", e => {
 const INFO_PAGES_ = {
   elicence: ["À quoi sert cette page ?", "Range ici ta licence de la saison (PDF ou capture) pour l'avoir toujours sur toi. Rien n'est envoyé à la fédération : c'est ta copie personnelle."],
   rapports: ["À quoi sert cette page ?", "Les formulaires de rapport (incident, faute disqualifiante, réclamation…) se remplissent ici puis s'envoient par toi, depuis ta messagerie. L'app ne transmet rien à ta place."],
-  equipement: ["À quoi sert cette page ?", "Note ce que tu achètes pour arbitrer (tenue, sifflet, chaussures…) : l'app en tient le compte sur la saison et l'ajoute à ton bilan."],
+  equipement: ["À quoi sert cette page ?", "Note ce que tu achètes pour arbitrer (tenue, sifflet, chaussures…) : l'app en tient le compte sur la saison, à part : rien n'est retiré de tes indemnités."],
   progression: ["D'où viennent ces chiffres ?", "Les notes et graphiques sont des estimations calculées à partir des fiches que tu as importées. Seule la fiche officielle fait foi."]
 };
 function ouvrirModaleInfo_(titre, html) {
@@ -7733,6 +7733,8 @@ function formatMoneyC(v) {
 function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
 function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + suffix; }
 function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }
+/* b143 — grille des graphiques discrète, accordée au thème (avant : grille claire très visible en mode sombre). */
+function grilleGraph_() { return document.documentElement.getAttribute("data-theme") === "dark" ? "rgba(255,255,255,.07)" : "rgba(10,31,68,.07)"; }
 function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
 function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
 function safeUrl_(u) { u = String(u == null ? "" : u).trim(); return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : "#"; }
@@ -8544,7 +8546,7 @@ const chartBase = {
   },
   scales: {
     x: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
-    y: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
+    y: { grid: { color: grilleGraph_() }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
   }
 };
 
@@ -8637,7 +8639,7 @@ function buildChartNiveau(rows) {
         tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: (i) => `${money(i.parsed.x)} — ${g[i.dataIndex].count} mission(s)` } }
       },
       scales: {
-        x: { grid: { color: AN.COLORS.grid }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
+        x: { grid: { color: grilleGraph_() }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } },
         y: { grid: { display: false }, ticks: { font: { size: 11 }, color: AN.COLORS.muted } }
       }
     }
@@ -8757,7 +8759,7 @@ function buildChartNuage(rows) {
         }
       },
       scales: {
-        x: { ...chartBase.scales.x, grid: { color: AN.COLORS.grid }, title: { display: true, text: "distance aller-retour (km)", font: { size: 11 }, color: AN.COLORS.muted } },
+        x: { ...chartBase.scales.x, grid: { color: grilleGraph_() }, title: { display: true, text: "distance aller-retour (km)", font: { size: 11 }, color: AN.COLORS.muted } },
         y: { ...chartBase.scales.y, title: { display: true, text: "net par heure (€)", font: { size: 11 }, color: AN.COLORS.muted } }
       }
     }

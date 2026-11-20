@@ -6,7 +6,7 @@
   --green: #0E7B47; --green-soft: #E4F5EC; --orange: #B5590A; --orange-soft: #FFF0DE; --danger: #B42318;
   --shadow-soft: 0 8px 22px rgba(10, 31, 68, 0.08); --shadow: 0 20px 48px rgba(10, 31, 68, 0.14);
   --side-w: 236px; --r-lg: 16px; --r-md: 11px; --r-sm: 8px;
-  --body: "Montserrat", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+  --body: "Montserrat", system-ui, sans-serif; --mono: "Montserrat", system-ui, sans-serif;   /* b143 — chiffres dans la police de l'admin */
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -865,3 +865,11 @@ details.pli > summary.card-head { margin-bottom: 0; }
 details.pli[open] > summary.card-head { margin-bottom: 10px; }
 .bd-off { border-color: var(--danger, #E0313C); color: var(--danger, #E0313C); }
 .bd-aide { margin: 8px 0 0; line-height: 1.5; }
+
+/* b143 — socle commun : chiffres alignés, barres de défilement discrètes */
+body { font-variant-numeric: tabular-nums; }
+code { font-family: ui-monospace, monospace; }
+* { scrollbar-width: thin; scrollbar-color: rgba(127, 140, 160, .45) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(127, 140, 160, .45); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
