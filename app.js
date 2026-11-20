@@ -4140,17 +4140,20 @@ function renderKmTrajets_() {
   const plusLong = T.slice().sort((a, b) => b.km - a.km)[0];
   const parNiv = {};
   rows.forEach(r => { const c = PAYEURS_LIB_[payeurAffiche_(r)] || "Autre"; const o = parNiv[c] = parNiv[c] || { n: 0, km: 0 }; o.n++; o.km += km(r); });
+  // b145 — une seule ligne par ville (« Strasbourg » = « STRASBOURG »), nom écrit proprement ; ville inconnue à part, en dernier
+  const nomVille = v => String(v || "").toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
   const parVille = {};
-  T.forEach(t => { const o = parVille[t.ville] = parVille[t.ville] || { n: 0, km: 0 }; o.n++; o.km += t.km; });
-  const villes = Object.entries(parVille).sort((a, b) => b[1].km - a[1].km).slice(0, 8);
+  T.forEach(t => { const brut = String(t.ville || "").trim(), cle = brut && brut !== "—" ? brut.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "?";
+    const o = parVille[cle] = parVille[cle] || { nom: cle === "?" ? "Lieu non renseigné" : nomVille(brut), n: 0, km: 0 }; o.n++; o.km += t.km; });
+  const villes = Object.entries(parVille).sort((a, b) => (a[0] === "?") - (b[0] === "?") || b[1].km - a[1].km).slice(0, 8).map(([, o]) => [o.nom, o]);
   return `<h2 class="section-title">KM &amp; trajets</h2>
-    <div class="kpi-grid">
+    <div class="kpi-grid km-kpis">
       <div class="kpi hero"><label>Km parcourus (aller-retour)</label><strong>${formatNumber(Math.round(kmFaits), " km")}</strong><span class="sub">${faits.length} trajet(s) effectué(s) · ${formatNumber(Math.round(kmVenir), " km")} encore prévus (${venir.length} trajet(s))</span></div>
       <div class="kpi"><label>Km moyen par trajet</label><strong>${formatNumber(T.length ? Math.round((kmFaits + kmVenir) / T.length) : 0, " km")}</strong></div>
       <div class="kpi"><label>Carburant</label><strong>${formatMoney(carb)}</strong><span class="sub">prix réel du litre à la date</span></div>
       <div class="kpi"><label>Entretien</label><strong>${formatMoney(ent)}</strong><span class="sub">enveloppe annuelle / km</span></div>
       <div class="kpi"><label>Coût réel aux 100 km</label><strong>${money((kmFaits + kmVenir) ? (carb + ent) / (kmFaits + kmVenir) * 100 : 0)}</strong></div>
-      ${plusLong ? `<div class="kpi"><label>Plus long trajet</label><strong>${formatNumber(Math.round(plusLong.km), " km")}</strong><span class="sub">${escapeHtml(plusLong.ville)} · ${escapeHtml(plusLong.d.toLocaleDateString("fr-FR"))}</span></div>` : ""}
+      ${plusLong ? `<div class="kpi"><label>Plus long trajet</label><strong>${formatNumber(Math.round(plusLong.km), " km")}</strong><span class="sub">${escapeHtml(nomVille(plusLong.ville))} · ${escapeHtml(plusLong.d.toLocaleDateString("fr-FR"))}</span></div>` : ""}
     </div>
     <div class="km-cols">
       <div class="table-card"><div class="table-wrap"><table>
@@ -4182,7 +4185,7 @@ function renderKmParMois_() {
   return `<h2 class="section-title">Km par mois</h2>
     <div class="table-card"><div class="table-wrap"><table>
       <thead><tr><th>Mois</th><th class="num">Matchs</th><th class="num">Km A/R</th><th class="num">Carburant</th><th class="num">Entretien</th></tr></thead>
-      <tbody>${cles.map(k => `<tr><td class="dl-cell">${barreLigne_(k.slice(5) + "/" + k.slice(0, 4), mois[k].km, maxKm, "dl-navy")}</td><td class="num">${mois[k].n}</td><td class="num">${formatNumber(Math.round(mois[k].km), " km")}</td><td class="num">${formatMoney(mois[k].carb)}</td><td class="num">${formatMoney(mois[k].ent)}</td></tr>`).join("")}
+      <tbody>${cles.map(k => `<tr><td class="dl-cell">${barreLigne_(new Date(Number(k.slice(0, 4)), Number(k.slice(5)) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase()), mois[k].km, maxKm, "dl-navy")}</td><td class="num">${mois[k].n}</td><td class="num">${formatNumber(Math.round(mois[k].km), " km")}</td><td class="num">${formatMoney(mois[k].carb)}</td><td class="num">${formatMoney(mois[k].ent)}</td></tr>`).join("")}
       <tr><td><strong>Total</strong></td><td class="num"><strong>${tot.n}</strong></td><td class="num"><strong>${formatNumber(Math.round(tot.km), " km")}</strong></td><td class="num"><strong>${formatMoney(tot.carb)}</strong></td><td class="num"><strong>${formatMoney(tot.ent)}</strong></td></tr></tbody>
     </table></div></div>
     <p class="card-sub">Km réellement parcourus (un doublé ne compte qu'un seul aller-retour). Entretien selon ton enveloppe annuelle de Mon profil.</p>`;
