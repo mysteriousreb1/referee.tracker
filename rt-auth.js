@@ -2346,9 +2346,32 @@ const MFA_U = {
   }
 };
 
+/* b140 — QUESTIONNAIRE BÊTA : à partir du 01/12/2026, une fenêtre propose l'avis (2 min) à la connexion,
+   tant que l'arbitre n'a pas répondu. « Plus tard » : reproposé 3 jours après. Réponses : page avis.html. */
+async function avisBeta_() {
+  if (Date.now() < Date.parse("2026-12-01T00:00:00+01:00") || document.getElementById("rtAvis")) return;
+  let plusTard = 0; try { plusTard = Number(localStorage.getItem("rt_avis_plus_tard") || 0); } catch (e) {}
+  if (plusTard > Date.now()) return;
+  let j = {};
+  try { const r = await fetch(SB_URL + "/functions/v1/retours", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (await SB.token()) }, body: JSON.stringify({ action: "statut" }) }); j = await r.json(); } catch (e) { return; }
+  if (!j.ok || j.repondu) return;
+  const el = document.createElement("div");
+  el.id = "rtAvis"; el.className = "rt-modal is-visible";
+  el.innerHTML = '<div class="rt-modal-card" role="dialog" aria-modal="true" aria-labelledby="rtAvisT"><div class="rt-modal-head"><h2 id="rtAvisT">Ton avis sur la bêta</h2>' +
+    '<button type="button" class="rt-modal-close" id="rtAvisX" aria-label="Fermer">&times;</button></div>' +
+    '<p>Tu fais partie des premiers arbitres à utiliser Referee Tracker. 6 questions, 2 minutes : ce qui t\'aide, ce qui manque, ce qui bugue. Ton avis décide de la suite.</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><a class="rt-btn" href="./avis.html" id="rtAvisGo">Donner mon avis</a><button type="button" class="rt-btn-ghost" id="rtAvisPlusTard">Plus tard</button></div></div>';
+  document.body.appendChild(el);
+  const fermer = () => { try { localStorage.setItem("rt_avis_plus_tard", String(Date.now() + 3 * 864e5)); } catch (e) {} el.remove(); };
+  el.querySelector("#rtAvisX").addEventListener("click", fermer);
+  el.querySelector("#rtAvisPlusTard").addEventListener("click", fermer);
+  el.addEventListener("click", (ev) => { if (ev.target === el) fermer(); });
+}
+
 async function startApp() {
   marquerActivite_(true);   // b77
   if (!(await MFA_U.porte())) return;   // b77 : code 2FA si activée
+  setTimeout(() => { try { avisBeta_(); } catch (e) {} }, 5000);   // b140 — questionnaire bêta à partir du 01/12/2026
   try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
   usageInstaller_();   // b71

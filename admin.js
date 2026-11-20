@@ -1136,6 +1136,33 @@
       if (!(await confirmer(v ? "Activer le bilan mensuel" : "Couper le bilan mensuel", v ? "Le bilan partira <strong>automatiquement</strong> le 1er de chaque mois à tous les arbitres actifs concernés, sans validation. Activer ?" : "Plus aucun bilan ne partira tant que tu ne le réactives pas. Couper ?", v ? "Activer" : "Couper"))) return;
       try { await bilanApi("activer", { actif: v }); maj({ actif: v, destinataires: "?" }); toast(v ? "Bilan mensuel activé" : "Bilan mensuel coupé", "ok"); } catch (e) { erreur(e); } };
   }
+  // b140 — STATISTIQUES DES MAILS : totaux tirés de nos propres envois (aucun suivi d'ouverture ni de clic → rien à déclarer comme traceur).
+  const LIB_MAIL = { "nouveautes.envoyer": "Mail des nouveautés", "bilan.envoye": "Bilan mensuel", "rappel_convoc.envoye": "Rappel « aucune convocation »", "message.envoyer": "Messages de l'admin", "campagne.envoyer": "Campagne configuration" };
+  function statsMailsCarte(box) {
+    box.innerHTML = '<div class="card"><div class="card-head"><h3>Statistiques des mails</h3><span class="sub">30 derniers jours · anonymes</span></div><div id="smZ"><p class="mut">Chargement…</p></div>' +
+      '<p class="mut tiny">Comptés à partir de nos envois, sans pixel de suivi : on ne sait pas qui ouvre ou clique, et c\'est voulu (RGPD).</p></div>';
+    rpcAdmin("rt_stats_mails").then((j) => {
+      const L = j.envois || [], R = j.refus || {};
+      const lignes = L.length ? L.map((x) => "<tr><td>" + esc(LIB_MAIL[x.type] || x.type) + "</td><td>" + x.mails_30j + "</td><td>" + (x.echecs_30j ? badge(x.echecs_30j, "orange") : "0") + "</td><td>" + x.mails_total + "</td><td>" + (x.dernier ? esc(new Date(x.dernier).toLocaleDateString("fr-FR")) : "—") + "</td></tr>").join("")
+        : '<tr><td colspan="5" class="mut">Aucun envoi pour l\'instant.</td></tr>';
+      box.querySelector("#smZ").innerHTML = '<div class="tbl"><table><thead><tr><th>Mail</th><th>Envoyés 30 j</th><th>Échecs</th><th>Total</th><th>Dernier</th></tr></thead><tbody>' + lignes + "</tbody></table></div>" +
+        '<p class="mut tiny">Désinscriptions sur ' + j.arbitres + " arbitres : nouveautés et offres " + (R.nouveautes_offres || 0) + " · bilan " + (R.bilan || 0) + " · rappel convocations " + (R.rappel || 0) + "</p>";
+    }).catch((e) => { box.querySelector("#smZ").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+  }
+  // b140 — AVIS DES TESTEURS BÊTA (page avis.html, fonction « retours »).
+  function avisCarte(box) {
+    box.innerHTML = '<div class="card"><div class="card-head"><h3>Avis des testeurs bêta</h3><span class="sub" id="avEtat"></span></div><div id="avZ"><p class="mut">Chargement…</p></div></div>';
+    rpcAdmin("rt_retours_beta").then((L) => {
+      L = Array.isArray(L) ? L : [];
+      const moy = (k) => { const v = L.map((x) => x.reponses && x.reponses[k]).filter((n) => typeof n === "number"); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : "—"; };
+      box.querySelector("#avEtat").textContent = L.length + " réponse(s) · note moyenne " + moy("note") + " / 5 · recommandation " + moy("recommande") + " / 10";
+      box.querySelector("#avZ").innerHTML = L.length ? L.map((x) => { const r = x.reponses || {};
+        const ligne = (lib, v) => v ? "<p><b>" + lib + " :</b> " + esc(v) + "</p>" : "";
+        return '<details class="av"><summary><b>' + esc(x.prenom || "?") + "</b> · " + (r.note ?? "—") + "/5 · reco " + (r.recommande ?? "—") + "/10" + (x.temoignage_ok ? " · " + badge("témoignage publiable", "green") : "") + ' <span class="mut tiny">' + esc(new Date(x.maj_le).toLocaleDateString("fr-FR")) + "</span></summary>" +
+          ligne("Ce qui aide", r.utile) + ligne("Ce qui manque", r.manque) + ligne("Bugs", r.bugs) + ligne("Témoignage", r.temoignage) + "</details>"; }).join("")
+        : '<p class="mut">Aucune réponse pour l\'instant. Le questionnaire est proposé dans l\'app, à la connexion, à partir du 01/12/2026.</p>';
+    }).catch((e) => { box.querySelector("#avZ").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+  }
   async function nvMail(action, contenu, to, id, quand) {
     const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to, id, quand }) });
     const j = await r.json().catch(() => ({}));
@@ -1659,14 +1686,14 @@
       '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn" id="msTest">Envoyer un test à moi</button><button class="btn" id="msBrSave">Enregistrer le brouillon</button><button class="btn" id="msBrLoad">Reprendre le brouillon</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
-      '<div id="nmBox2"></div><div id="bmBox"></div><div id="caBox2"></div>' +
+      '<div id="nmBox2"></div><div id="bmBox"></div><div id="caBox2"></div><div id="smBox"></div><div id="avBox"></div>' +
       '<div class="card" id="mlAuto"></div>' +
       '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
     // b134 — tout ce qui part vers les arbitres est ici : message, mail des nouveautés, campagne, e-mails automatiques.
     window.majCompteurEnvois = (j) => { const z = $("envCpt"); if (!z || !j) return; const plein = j.envois_ce_mois >= j.max, p = (j.programmes || [])[0];
       z.className = "env-cpt" + (plein ? " plein" : ""); z.innerHTML = "Communications du mois (nouveautés et offres) : <b>" + j.envois_ce_mois + " / " + j.max + "</b>" + (plein ? " · limite atteinte, prochain envoi possible le 1er du mois" : "") + (p ? " · prochain envoi programmé : <b>" + esc(new Date(p.quand).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</b>" : ""); };
-    nouveautesCarte($("nmBox2")); bilanCarte($("bmBox")); campagneCarte($("caBox2"));
+    nouveautesCarte($("nmBox2")); bilanCarte($("bmBox")); campagneCarte($("caBox2")); statsMailsCarte($("smBox")); avisCarte($("avBox"));
     (async () => { const z = $("mlAuto"); if (!z) return;
       try { if (!cache.config) cache.config = await admin("config.get"); } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
       const ml = ((cache.config.data || []).find((r) => r.cle === "pub.mails") || {}).valeur || {};
