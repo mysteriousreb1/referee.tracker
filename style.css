@@ -5851,3 +5851,20 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 #pfOuverture { min-width: 160px; }
 /* b152 — réglages sur téléphone : explication sur toute la largeur, boutons dessous (au lieu d'une colonne étroite) */
 @media (max-width: 600px) { .rt-kv { flex-direction: column; align-items: stretch; gap: 10px; } .rt-kv-btns { flex-wrap: wrap; } }
+
+/* ===== b153 — iPhone : QCM et fenêtre « filière » ===== */
+/* Filière : la fenêtre reste sous l'heure et au-dessus de la barre du bas, croix toujours visible, bouton Fermer collé en bas. */
+#rtFiliere { padding: calc(env(safe-area-inset-top, 0px) + 14px) 12px calc(env(safe-area-inset-bottom, 0px) + 14px) !important; align-items: stretch; }
+#rtFiliere .fil-box { max-height: 100%; overflow-y: auto; position: relative; padding-top: 0; }
+#rtFiliere .fil-barre { position: sticky; top: 0; height: 0; z-index: 3; display: flex; justify-content: flex-end; }
+#rtFiliere .fil-x { margin: 10px 4px 0 0; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 20px; line-height: 1; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+#rtFiliere .fl-h { padding-top: 16px; padding-right: 44px; }
+#rtFiliere .fil-pied { position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, var(--surface) 30%); padding: 18px 0 4px; margin: 0; }
+/* QCM sur téléphone : boutons Pause / Quitter discrets, question à taille normale, « Valider » jamais caché par la barre du bas. */
+@media (max-width: 767px) {
+  .qz-top-r .small-btn { padding: 6px 12px !important; font-size: 13px !important; background: transparent !important; border: 1px solid var(--line) !important; color: var(--text) !important; min-height: 0; }
+  .qz-wrap .qz-qtext { font-size: 17px !important; font-weight: 600; line-height: 1.5; }
+  .qz-wrap .qz-actions { margin-bottom: calc(var(--nav-h, 76px) + env(safe-area-inset-bottom, 0px) + 18px); }
+  .qz-bar { margin: 12px 0 16px; }
+}
+#rtFiliere .fil-box { max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px) !important; }
