@@ -5715,3 +5715,22 @@ body { font-variant-numeric: tabular-nums; }
 .regl-doc-list { grid-template-columns: minmax(0, 1fr); }
 .regl-doc-i { flex: 1 1 auto; }
 .regl-doc-n { white-space: normal; overflow-wrap: anywhere; }
+
+/* ===== b144 — ACCUEIL ORDINATEUR revu =====
+   Ligne 1 : saison (anneau + courbe) | prochain match. Ligne 2 : les 4 chiffres du week-end sur toute la largeur
+   (avant : coincés en 2×2 à droite, montants qui se chevauchaient). Salutation sur une ligne, sans grand bandeau vide. */
+.brand { width: fit-content; border-radius: 12px; }
+.brand:focus:not(:focus-visible) { outline: none; }
+@media (min-width: 1100px) {
+  #accueil .acc-grid { display: contents; }
+  #accueil.panel.active > .acc-grid > .acc-hero { grid-column: 2; margin: 0 0 18px; height: auto; }
+  #accueil.panel.active > .acc-grid > .acc-kpis { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0 0 22px; }
+  #accueil .acc-kpi { padding: 14px 18px; min-height: 0; text-align: left; align-items: flex-start; }
+  #accueil .acc-kpi-val { font-size: 26px; white-space: nowrap; }
+  #accueil .acc-kpi-lbl { white-space: nowrap; }
+  #accueil .acc-welcome { background: none; box-shadow: none; border: 0; padding: 0; margin: 0 0 14px; }
+  #accueil .acc-welcome-hi { color: var(--text); font-size: 28px; }
+  #accueil .acc-welcome-date { color: var(--muted) !important; }
+  #accueil .acc-hero-actions .acc-btn span { overflow: visible; text-overflow: clip; }
+}
+@media (min-width: 1500px) { #accueil .acc-kpi { flex-direction: row; align-items: baseline; gap: 10px; } }
