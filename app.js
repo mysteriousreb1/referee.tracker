@@ -59,6 +59,14 @@ let state = {
    risque, contrairement à un artifact Claude). Par défaut : on respecte
    prefers-color-scheme du système si rien n'est enregistré, sinon clair. */
 
+/* b152 — préférences d'affichage de l'appareil : texte plus grand, animations réduites, montants masqués. */
+function rtPrefsAppliquer() {
+  const h = document.documentElement, lire = k => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };
+  h.classList.toggle("rt-grand", lire("rt-texte") === "grand");
+  h.classList.toggle("rt-calme", lire("rt-anim") === "calme");
+  h.classList.toggle("rt-discret", lire("rt-discret") === "discret");
+}
+rtPrefsAppliquer();
 function initTheme() {
   let saved = null;
   try { saved = localStorage.getItem("rt-theme"); } catch (e) { /* stockage indisponible : on ignore */ }
@@ -6849,13 +6857,20 @@ function exportRecap_(rows) {
    Au-delà : tout devient imposable. Information indicative, à vérifier sur service-public.fr. */
 const PASS_ANNUEL_ = { 2024: 46368, 2025: 47100, 2026: 48060 };
 function renderFranchise_(annee, total) {
+  // b152 — carte aérée : 3 chiffres lisibles, la barre, puis une seule phrase d'explication
   const pass = PASS_ANNUEL_[annee] || PASS_ANNUEL_[Math.max.apply(null, Object.keys(PASS_ANNUEL_).map(Number))];
   const plafond = round2(pass * 0.145), part = plafond ? Math.min(100, Math.round(total / plafond * 100)) : 0, depasse = total > plafond;
-  return `<div class="table-card franchise${depasse ? " is-over" : part >= 80 ? " is-near" : ""}" style="padding:14px 16px;margin:10px 0">
-    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>Franchise des arbitres ${annee}</strong><span>${formatMoney(total)} / ${formatMoney(plafond)}</span></div>
+  const eq = typeof window.rtEquipementAnnee === "function" ? window.rtEquipementAnnee(annee) : 0;
+  return `<div class="table-card franchise${depasse ? " is-over" : part >= 80 ? " is-near" : ""}">
+    <div class="fr-tete"><strong>Franchise des arbitres ${annee}</strong><span class="fr-pct">${part} % du plafond</span></div>
+    <div class="fr-chiffres">
+      <div><span>Indemnités ${annee}</span><b>${formatMoney(total)}</b></div>
+      <div><span>Plafond exonéré</span><b>${formatMoney(plafond)}</b></div>
+      <div><span>${depasse ? "Dépassement" : "Il te reste"}</span><b class="${depasse ? "fr-rouge" : "fr-vert"}">${formatMoney(Math.abs(plafond - total))}</b></div>
+    </div>
     <div class="franchise-bar"><i style="width:${part}%"></i></div>
-    ${(() => { const eq = typeof window.rtEquipementAnnee === "function" ? window.rtEquipementAnnee(annee) : 0; return eq ? `<p class="card-sub" style="margin:6px 0 0">Équipement acheté en ${annee} : <strong>${formatMoney(eq)}</strong> · gain après équipement : <strong>${formatMoney(total - eq)}</strong> (onglet Équipement).</p>` : ""; })()}
-    <p class="card-sub" style="margin:6px 0 0">${depasse ? "Plafond dépassé : la franchise ne s'applique plus et tes indemnités de l'année peuvent devenir soumises à cotisations et à l'impôt. Vérifie ta situation auprès de ton comité, de l'Urssaf ou des impôts." : `Indemnités exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee} (${formatMoney(plafond)}). Il te reste ${formatMoney(Math.max(0, plafond - total))}.`} Information indicative.</p>
+    <p class="card-sub fr-note">${depasse ? "Plafond dépassé : tes indemnités de l'année peuvent devenir soumises à cotisations et à l'impôt. Vérifie ta situation auprès de ton comité, de l'Urssaf ou des impôts." : `Tes indemnités sont exonérées de cotisations et d'impôt jusqu'à 14,5 % du plafond de la Sécurité sociale ${annee}.`} Information indicative.</p>
+    ${eq ? `<p class="card-sub fr-note">Équipement acheté en ${annee} : ${formatMoney(eq)} (suivi à part, non déduit).</p>` : ""}
   </div>`;
 }
 function exportTotals(rows) {
@@ -9540,6 +9555,9 @@ function licCarteHtml_(e, grand) {
     ${c.numero_long ? `<div class="lic-long">${escapeHtml(c.numero_long)}</div>` : ""}
   </div>`;
 }
+/* b152 — menu « ⋯ » de la licence : se ferme en cliquant ailleurs ou avec Échap. */
+document.addEventListener("click", ev => { document.querySelectorAll("details.lic-plus[open]").forEach(d => { if (!d.contains(ev.target) || ev.target.closest(".lic-menu button")) d.removeAttribute("open"); }); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") document.querySelectorAll("details.lic-plus[open]").forEach(d => d.removeAttribute("open")); });
 function licCarteBloc_(e) {
   return `<div class="lic-zone">
     ${licCarteHtml_(e, false)}
@@ -9547,9 +9565,13 @@ function licCarteBloc_(e) {
       <button type="button" class="small-btn" id="licPlein" title="Présenter la licence en plein écran">⛶ Présenter</button>
       ${e.doc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'original</button>` : ""}
       ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF</a>` : ""}
-      <button type="button" class="small-btn secondary pc-seul" id="licCorriger">Corriger</button>
-      <label class="small-btn secondary pc-seul" style="cursor:pointer">Remplacer<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
-      <button type="button" class="small-btn secondary alerte-danger pc-seul" id="elicDocDel">Retirer</button>
+      <details class="lic-plus pc-seul"><summary class="small-btn secondary" aria-label="Plus d'actions sur la licence" title="Plus d'actions">⋯</summary>
+        <div class="lic-menu" role="menu">
+          <button type="button" role="menuitem" id="licCorriger">Corriger les informations</button>
+          <label role="menuitem" style="cursor:pointer">Remplacer le document<input type="file" id="elicDocFile" accept="application/pdf,image/*" hidden /></label>
+          <button type="button" role="menuitem" class="lic-menu-danger" id="elicDocDel">Retirer la licence</button>
+        </div>
+      </details>
     </div>
   </div>`;
 }

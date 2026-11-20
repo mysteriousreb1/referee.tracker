@@ -1261,7 +1261,24 @@ function renderProfile() {
         <div class="rt-kv-btns">
           <button type="button" class="rt-btn-ghost" id="pfThemeClair">Clair</button>
           <button type="button" class="rt-btn-ghost" id="pfThemeSombre">Sombre</button>
+          <button type="button" class="rt-btn-ghost" id="pfThemeAuto" title="Suit le réglage clair/sombre de ton téléphone ou ordinateur">Auto</button>
         </div>
+      </div>
+      <div class="rt-kv">
+        <div><b>Taille du texte</b><span class="rt-help">Grossit toute l'app, sur cet appareil.</span></div>
+        <div class="rt-kv-btns" data-pref="rt-texte"><button type="button" class="rt-btn-ghost" data-v="">Normale</button><button type="button" class="rt-btn-ghost" data-v="grand">Grande</button></div>
+      </div>
+      <div class="rt-kv">
+        <div><b>Animations</b><span class="rt-help">Réduites : l'app s'affiche sans effets de mouvement.</span></div>
+        <div class="rt-kv-btns" data-pref="rt-anim"><button type="button" class="rt-btn-ghost" data-v="">Normales</button><button type="button" class="rt-btn-ghost" data-v="calme">Réduites</button></div>
+      </div>
+      <div class="rt-kv">
+        <div><b>Montants</b><span class="rt-help">Masqués : les sommes sont floutées (pratique quand tu montres l'app).</span></div>
+        <div class="rt-kv-btns" data-pref="rt-discret"><button type="button" class="rt-btn-ghost" data-v="">Visibles</button><button type="button" class="rt-btn-ghost" data-v="discret">Masqués</button></div>
+      </div>
+      <div class="rt-kv">
+        <div><b>Ouvrir l'app sur</b><span class="rt-help">La page affichée à l'ouverture.</span></div>
+        <div class="rt-kv-btns"><select id="pfOuverture" aria-label="Page d'ouverture"><option value="">Accueil</option><option value="matchs">Matchs 5×5</option><option value="paiements">Paiements</option><option value="stats">Analyse</option><option value="progression">Progression</option></select></div>
       </div>
     </section>
 
@@ -1395,10 +1412,21 @@ function renderProfile() {
   if (dOff) dOff.addEventListener("click", () => { try { localStorage.setItem("rt_depart", "0"); } catch (e) {} majDepart(); toast("Départ conseillé désactivé."); });
   majDepart();
   const tc = document.getElementById("pfThemeClair"), ts = document.getElementById("pfThemeSombre");
-  const majTheme = () => { const d = document.documentElement.getAttribute("data-theme") === "dark"; if (tc) tc.classList.toggle("is-on", !d); if (ts) ts.classList.toggle("is-on", d); };
+  const ta = document.getElementById("pfThemeAuto");
+  const majTheme = () => { let auto = false; try { auto = !localStorage.getItem("rt-theme"); } catch (e) {} const d = document.documentElement.getAttribute("data-theme") === "dark";
+    if (tc) tc.classList.toggle("is-on", !auto && !d); if (ts) ts.classList.toggle("is-on", !auto && d); if (ta) ta.classList.toggle("is-on", auto); };
   if (tc) tc.addEventListener("click", () => { setTheme("light"); majTheme(); });
   if (ts) ts.addEventListener("click", () => { setTheme("dark"); majTheme(); });
+  if (ta) ta.addEventListener("click", () => { try { localStorage.removeItem("rt-theme"); } catch (e) {} if (typeof initTheme === "function") initTheme(); majTheme(); toast("Thème automatique : il suit ton appareil."); });
   majTheme();
+  // b152 — préférences d'affichage de l'appareil (taille du texte, animations, montants masqués, page d'ouverture)
+  body.querySelectorAll("[data-pref]").forEach(g => {
+    const cle = g.dataset.pref, maj = () => { let v = ""; try { v = localStorage.getItem(cle) || ""; } catch (e) {} g.querySelectorAll("[data-v]").forEach(b => b.classList.toggle("is-on", b.dataset.v === v)); };
+    g.addEventListener("click", ev => { const b = ev.target.closest("[data-v]"); if (!b) return; try { if (b.dataset.v) localStorage.setItem(cle, b.dataset.v); else localStorage.removeItem(cle); } catch (e) {} if (typeof rtPrefsAppliquer === "function") rtPrefsAppliquer(); maj(); });
+    maj();
+  });
+  const ouv = document.getElementById("pfOuverture");
+  if (ouv) { try { ouv.value = localStorage.getItem("rt-ouverture") || ""; } catch (e) {} ouv.addEventListener("change", () => { try { if (ouv.value) localStorage.setItem("rt-ouverture", ouv.value); else localStorage.removeItem("rt-ouverture"); } catch (e) {} toast("Page d'ouverture enregistrée."); }); }
   body.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", () => delVehicule(Number(b.dataset.del))));
 }
@@ -1958,7 +1986,14 @@ function cablerPremiereConnexion_() {
 function rtOptionsNiveau_(v) {
   const L = (typeof ONBOARD !== "undefined" && ONBOARD.NIVEAUX) || [], cur = String(v || "");
   return `<option value="">Choisir…</option>` + (cur && L.indexOf(cur) < 0 ? `<option value="${esc(cur)}" selected>${esc(cur)} (à mettre à jour)</option>` : "") +
-    L.map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+    rtNiveauxGroupes_(L.map(n => [n, n]), cur);
+}
+/* b152 — niveaux rangés par famille (comme à l'inscription sur le site) au lieu d'une longue liste à la suite. */
+function rtNiveauxGroupes_(items, cur) {
+  const FAM = [["Club", /club/i], ["Départemental", /départemental|^EAR/i], ["Régional", /région/i], ["Fédéral et national", /fédéral|national|haut niveau/i], ["International", /FIBA|international/i]];
+  const groupes = FAM.map(f => [f[0], []]).concat([["Autre", []]]);
+  items.forEach(it => { const i = FAM.findIndex(f => f[1].test(it[1])); groupes[i >= 0 ? i : groupes.length - 1][1].push(it); });
+  return groupes.filter(g => g[1].length).map(([nom, l]) => `<optgroup label="${esc(nom)}">${l.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(t)}</option>`).join("")}</optgroup>`).join("");
 }
 const ONBOARD = {
   etape: 0, data: { nom_ffbb: "", prenom: "", niveau: "", adresse: "", code_postal: "", ville: "", vnom: "", carb: "e10", conso: "6,0", cv: "5", zcd: "CD67", zligue: "LRGEB", zcf: false }, sug: null, reception: "",
@@ -2174,7 +2209,7 @@ const FICHE = {
         <div class="rt-field"><label for="fiLigue">Ligue</label><select id="fiLigue"><option value="">Choisir…</option>${ONBOARD.LIGUES.map(([k, l]) => `<option value="${k}"${z.ligue === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       </div>
       <div class="rt-field" id="fiCdAutreF" hidden><label for="fiCdAutre">Nom ou numéro du comité</label><input id="fiCdAutre" type="text" value="${esc(z.cd_autre || "")}"></div>
-      <div class="rt-field"><label for="fiNiv">Niveau d'arbitrage principal</label><select id="fiNiv"><option value="">Choisir…</option>${FICHE.NIV.map(([k, l]) => `<option value="${k}"${cn === k ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <div class="rt-field"><label for="fiNiv">Niveau d'arbitrage principal</label><select id="fiNiv"><option value="">Choisir…</option>${rtNiveauxGroupes_(FICHE.NIV, cn)}</select>
         <p class="rt-muted" id="fiPlafond" style="margin:6px 0 0;font-size:13px"></p></div>
       <div class="rt-field" id="fiParF" hidden><label for="fiPar" id="fiParL"></label><select id="fiPar"></select></div>
       <p class="rt-consent-msg" id="fiMsg" role="alert"></p>
@@ -2372,6 +2407,7 @@ async function startApp() {
   marquerActivite_(true);   // b77
   if (!(await MFA_U.porte())) return;   // b77 : code 2FA si activée
   setTimeout(() => { try { avisBeta_(); } catch (e) {} }, 5000);   // b140 — questionnaire bêta à partir du 01/12/2026
+  setTimeout(() => { let o = ""; try { o = localStorage.getItem("rt-ouverture") || ""; } catch (e) {} const b = o && document.querySelector('[data-tab="' + o + '"]'); if (b && typeof state !== "undefined" && state.activeTab === "accueil") b.click(); }, 400);   // b152 — page d'ouverture choisie dans les réglages
   try { CONSENT.verifier(); } catch (e) {}
   pushResyncInstaller_();
   usageInstaller_();   // b71
