@@ -2754,6 +2754,7 @@ button.acc-ligne:active { transform: scale(.995); }
   --text: #0B1F3B; --muted: #5E6C84; --line: #E1E7F0;
   --display: "Montserrat", system-ui, sans-serif;
   --body: "Montserrat", system-ui, sans-serif;
+  --mono: "Montserrat", system-ui, sans-serif;   /* b143 — plus de police « machine à écrire » : chiffres dans la police de l'app, alignés (tnum) */
 }
 :root[data-theme="dark"] {
   --navy-900: #0B1F3B; --navy-800: #133863; --navy-700: #245A9C; --navy-600: #3770B8;
@@ -3994,7 +3995,7 @@ select, .rt-search-sec select, .chart-filter select, .payment-row select { text-
 .rt-kv > div:first-child .rt-help { display: block; margin: 2px 0 0; }
 .rt-kv-btns { display: flex; flex: 0 0 auto; gap: 6px; align-items: center; flex-wrap: nowrap; }
 .rt-kv .rt-btn-ghost, .rt-kv .rt-btn { min-height: 36px; padding: 6px 12px; font-size: 13px; }
-.rt-kv .rt-btn-ghost.is-on { border-color: var(--red, #E4002B); color: var(--red, #E4002B); font-weight: 700; }
+.rt-kv .rt-btn-ghost.is-on { border-color: var(--navy-700, #1B4A80); background: var(--navy-700, #1B4A80); color: #fff; font-weight: 700; }   /* b143 — choix actif en bleu (le rouge = erreur) */
 .rt-summary-btn { display: inline-block; list-style: none; cursor: pointer; }
 .rt-summary-btn::-webkit-details-marker { display: none; }
 #tkForm[open] .rt-summary-btn { margin-bottom: 12px; }
@@ -4579,7 +4580,8 @@ html.rt-geste .tabs-mini-btn.active { animation: rtPop .25s ease both; }
 .rt-profile-body .rt-kv { border-top: 1px solid var(--line); padding: 12px 0; }
 .rt-profile-body .rt-kv:first-of-type { border-top: 0; }
 .rt-profile-body .rt-kv .rt-btn-ghost { border-radius: 999px; }
-.rt-profile-body .rt-kv .rt-btn-ghost.is-on { background: var(--red); border-color: var(--red); color: #fff; }
+.rt-profile-body .rt-kv .rt-btn-ghost.is-on { background: var(--navy-700, #1B4A80); border-color: var(--navy-700, #1B4A80); color: #fff; }
+:root[data-theme="dark"] .rt-kv .rt-btn-ghost.is-on { background: var(--gold); border-color: var(--gold); color: #0B1F3B; }
 .rt-profile-body a { color: var(--navy-600); text-decoration: none; font-weight: 600; }
 :root[data-theme="dark"] .rt-profile-body a { color: #8FB4FF; }
 .rt-liens { display: grid; }
@@ -5694,3 +5696,22 @@ html.rt-geste .tabs-mini-btn.active, html.rt-geste .stats-theme-btn.active { ani
 
 /* b131 — bug « ça saute » : certaines animations se rejouaient à chaque rafraîchissement des données (onglets, blocs dépliés,
    cartes de rapports). Elles ne jouent plus que juste après un geste de l'arbitre (classe html.rt-geste posée 0,8 s). */
+
+/* b143 — LOT 1 DESIGN : socle commun ------------------------------------------------------------ */
+/* Chiffres alignés partout (colonnes, montants), dans la police de l'app. */
+body { font-variant-numeric: tabular-nums; }
+/* Barres de défilement discrètes, accordées au thème (plus de barre blanche en mode sombre). */
+* { scrollbar-width: thin; scrollbar-color: rgba(127, 140, 160, .45) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(127, 140, 160, .45); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 140, 160, .7); }
+*::-webkit-scrollbar-corner { background: transparent; }
+/* b143 — bulle d'aide : fond assombri derrière (elle ne « flotte » plus sur la page) ; sur ordinateur, centrée à l'écran. */
+.rt-info > .rt-info-pop { box-shadow: 0 0 0 100vmax rgba(5, 12, 25, .45), 0 18px 48px rgba(0, 0, 0, .35); }
+@media (min-width: 900px) { .rt-info > .rt-info-pop { top: 50%; bottom: auto; transform: translateY(-50%); } @keyframes rt-info-in { from { opacity: 0; transform: translateY(-46%) scale(.98); } to { opacity: 1; transform: translateY(-50%); } } }
+
+/* b143 — Documents du règlement : la liste ne déborde plus de la fenêtre (iPhone), « Retirer » toujours visible. */
+.regl-doc-list { grid-template-columns: minmax(0, 1fr); }
+.regl-doc-i { flex: 1 1 auto; }
+.regl-doc-n { white-space: normal; overflow-wrap: anywhere; }
