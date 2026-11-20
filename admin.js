@@ -1114,7 +1114,11 @@
     if (!z) return; const rendBandeau = () => bandeauCarte(z);
     let v = {}; try { if (!cache.config) cache.config = await admin("config.get"); v = ((cache.config.data || []).find((r) => r.cle === "pub.textes") || {}).valeur || {}; } catch (e) {}
     const actif = String(v.bandeau || "").trim(), dt = (x) => (x ? String(x).slice(0, 16) : "");
-    z.innerHTML = '<div class="card-head"><h2>Bandeau dans l\'app</h2><span class="sub">' + (actif ? "en ligne : « " + esc(actif.slice(0, 80)) + (actif.length > 80 ? "…" : "") + " »" : "aucun bandeau affiché") + "</span></div>" +
+    z.innerHTML = '<div class="card-head"><h2>Bandeau dans l\'app</h2><span class="sub">' + (() => { if (!actif) return "aucun bandeau affiché";   // b135 — état réel selon les dates (un bandeau expiré n'est plus « en ligne »)
+      const txt = "« " + esc(actif.slice(0, 80)) + (actif.length > 80 ? "…" : "") + " »", deb = Date.parse(v.bandeau_debut || ""), fin = Date.parse(v.bandeau_fin || ""), now = Date.now();
+      if (fin && fin < now) return badge("terminé", "gray") + " le " + esc(new Date(fin).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })) + " : " + txt;
+      if (deb && deb > now) return badge("programmé", "orange") + " à partir du " + esc(new Date(deb).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })) + " : " + txt;
+      return badge("en ligne", "green") + " " + txt; })() + "</span></div>" +
       '<div class="form-grid"><label class="f">Modèle<select id="bdMod">' + MODELES_BANDEAU.map((m, i) => '<option value="' + i + '">' + esc(m[0] ? m[1].slice(0, 60) + "…" : m[1]) + "</option>").join("") + '</select></label>' +
       '<label class="f">Style<select id="bdSty">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
       '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
