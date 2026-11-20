@@ -6170,7 +6170,7 @@ function renderQcmOptionsHtml_(q, s, verrouille) {
     return `<label class="${cls}">
       <input type="${q.multiple ? "checkbox" : "radio"}" name="qz-${q.id}" data-idx="${idx}"${sel ? " checked" : ""}${verrouille ? " disabled" : ""} />
       <span class="qz-mark">${QCM_LETTRES[idx] || idx + 1}</span>
-      <span class="qz-txt">${escapeHtml(qcmTexte_(a))}</span>
+      <span class="qz-txt">${escapeHtml(qcmTexte_(a).replace(new RegExp("^\\s*" + (QCM_LETTRES[idx] || "") + "\\s*[-–.):]\\s*"), ""))}</span>
     </label>`;
   }).join("");
 }
@@ -10802,7 +10802,7 @@ document.addEventListener("click", e => {
 document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("[data-fil-niveau]"); if (!b) return;
   const d = document.createElement("div"); d.className = "rt-consent"; d.id = "rtFiliere"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
-  d.innerHTML = `<div class="rt-consent-box fil-box">${renderFiliere_(b.getAttribute("data-fil-niveau") || "")}<div class="rt-consent-actions"><button type="button" class="rt-btn" data-fil-fermer>Fermer</button></div></div>`;
+  d.innerHTML = `<div class="rt-consent-box fil-box"><div class="fil-barre"><button type="button" class="fil-x" data-fil-fermer aria-label="Fermer la filière">×</button></div>${renderFiliere_(b.getAttribute("data-fil-niveau") || "")}<div class="rt-consent-actions fil-pied"><button type="button" class="rt-btn" data-fil-fermer>Fermer</button></div></div>`;   // b153 — croix toujours visible en haut, « Fermer » collé en bas
   document.body.appendChild(d);
   d.addEventListener("click", x => { if (x.target === d || x.target.closest("[data-fil-fermer]")) d.remove(); });
 });
