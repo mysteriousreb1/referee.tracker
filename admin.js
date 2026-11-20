@@ -1109,6 +1109,33 @@
       catch (e) { etat.textContent = ""; erreur(e); } finally { ev.target.disabled = false; }
     };
   }
+  // b139 — BILAN COMPTA MENSUEL : envoyé tout seul le 1er du mois (fonction Supabase bilan-mensuel + minuteur).
+  // Ici : l'activer / le couper, voir l'aperçu, s'envoyer un exemple. Rien n'est validé mois par mois.
+  async function bilanApi(action, extra) {
+    const r = await fetch(SB_URL + "/functions/v1/bilan-mensuel", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ action }, extra || {})) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
+    if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
+    return j;
+  }
+  function bilanCarte(box) {
+    const moisDef = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+    box.innerHTML = '<div class="card bm"><div class="card-head"><h3>Bilan compta mensuel</h3><span class="sub" id="bmEtat">automatique, le 1er du mois à 8 h</span></div>' +
+      '<p class="mut tiny">Chaque arbitre actif qui a eu de l\'activité reçoit son bilan du mois écoulé : matchs, indemnités, reçu, reste à percevoir, retards, matchs à venir. Il part tout seul, sans validation de ta part ; chaque arbitre peut l\'arrêter en un clic. Ce n\'est pas une offre : il ne compte pas dans les 2 communications du mois.</p>' +
+      '<div class="row nm-act"><label class="f">Mois<input type="month" id="bmMois" value="' + moisDef + '"></label><button class="btn" id="bmVoir">Aperçu</button><input id="bmTo" class="nm-to" type="email" placeholder="Adresse de l\'exemple (vide : adresse admin)"><button class="btn" id="bmEx">M\'envoyer un exemple</button><button class="btn pri" id="bmAct">…</button></div>' +
+      '<iframe id="bmVue" class="nm-vue" title="Aperçu du bilan" sandbox="" hidden></iframe></div>';
+    const z = (id) => box.querySelector("#" + id);
+    let actif = false;
+    const maj = (j) => { if (!j) return; actif = !!j.actif; z("bmAct").textContent = actif ? "Couper l'envoi automatique" : "Activer l'envoi automatique";
+      z("bmAct").className = "btn " + (actif ? "bd-off" : "pri"); z("bmEtat").innerHTML = (actif ? badge("activé", "green") : badge("coupé", "gray")) + " · le 1er du mois à 8 h · " + (j.destinataires ?? "?") + " arbitre(s) concernés le mois choisi"; };
+    bilanApi("apercu", { mois: moisDef }).then(maj).catch(() => {});
+    z("bmVoir").onclick = async () => { try { const j = await bilanApi("apercu", { mois: z("bmMois").value }); maj(j); z("bmVue").hidden = false; z("bmVue").srcdoc = j.html; } catch (e) { erreur(e); } };
+    z("bmEx").onclick = async () => { const a = z("bmTo").value.trim(); if (!(await confirmer("Envoyer un exemple", "Envoyer un bilan d'exemple marqué [EXEMPLE] à <strong>" + esc(a || "l'adresse admin") + "</strong> seulement ?", "Envoyer"))) return;
+      try { const j = await bilanApi("exemple", { mois: z("bmMois").value, to: a }); toast("Exemple envoyé à " + j.envoye_a, "ok"); } catch (e) { erreur(e); } };
+    z("bmAct").onclick = async () => { const v = !actif;
+      if (!(await confirmer(v ? "Activer le bilan mensuel" : "Couper le bilan mensuel", v ? "Le bilan partira <strong>automatiquement</strong> le 1er de chaque mois à tous les arbitres actifs concernés, sans validation. Activer ?" : "Plus aucun bilan ne partira tant que tu ne le réactives pas. Couper ?", v ? "Activer" : "Couper"))) return;
+      try { await bilanApi("activer", { actif: v }); maj({ actif: v, destinataires: "?" }); toast(v ? "Bilan mensuel activé" : "Bilan mensuel coupé", "ok"); } catch (e) { erreur(e); } };
+  }
   async function nvMail(action, contenu, to, id, quand) {
     const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to, id, quand }) });
     const j = await r.json().catch(() => ({}));
@@ -1632,14 +1659,14 @@
       '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn" id="msTest">Envoyer un test à moi</button><button class="btn" id="msBrSave">Enregistrer le brouillon</button><button class="btn" id="msBrLoad">Reprendre le brouillon</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
-      '<div id="nmBox2"></div><div id="caBox2"></div>' +
+      '<div id="nmBox2"></div><div id="bmBox"></div><div id="caBox2"></div>' +
       '<div class="card" id="mlAuto"></div>' +
       '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
     // b134 — tout ce qui part vers les arbitres est ici : message, mail des nouveautés, campagne, e-mails automatiques.
     window.majCompteurEnvois = (j) => { const z = $("envCpt"); if (!z || !j) return; const plein = j.envois_ce_mois >= j.max, p = (j.programmes || [])[0];
       z.className = "env-cpt" + (plein ? " plein" : ""); z.innerHTML = "Communications du mois (nouveautés et offres) : <b>" + j.envois_ce_mois + " / " + j.max + "</b>" + (plein ? " · limite atteinte, prochain envoi possible le 1er du mois" : "") + (p ? " · prochain envoi programmé : <b>" + esc(new Date(p.quand).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</b>" : ""); };
-    nouveautesCarte($("nmBox2")); campagneCarte($("caBox2"));
+    nouveautesCarte($("nmBox2")); bilanCarte($("bmBox")); campagneCarte($("caBox2"));
     (async () => { const z = $("mlAuto"); if (!z) return;
       try { if (!cache.config) cache.config = await admin("config.get"); } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
       const ml = ((cache.config.data || []).find((r) => r.cle === "pub.mails") || {}).valeur || {};
