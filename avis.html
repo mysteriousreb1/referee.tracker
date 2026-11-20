@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src https://jlstedchnmdteazuqbly.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Ton avis — Referee Tracker</title>
+  <link rel="stylesheet" href="./fonts/fonts.css?v=2026-11-21-b140" />
+  <link rel="icon" href="./favicon-32.png?v=2026-11-21-b140" sizes="32x32" type="image/png" />
+  <style>
+    :root { --fond:#EEF1F7; --carte:#FFFFFF; --txt:#0C1730; --mut:#5B6884; --ligne:#E3E8F2; --navy:#0A1F44; --jaune:#F5B400; --champ:#F7F9FC; --err:#C62828; }
+    @media (prefers-color-scheme: dark) { :root { --fond:#0B1220; --carte:#141C2E; --txt:#E8EDF7; --mut:#A3AEC6; --ligne:#243049; --champ:#1B2437; --err:#FF8A80; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--fond); color:var(--txt); font-family:Montserrat,'Segoe UI',Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+    main { max-width:620px; margin:0 auto; padding:24px 16px 48px; }
+    .entete { background:var(--navy); color:#fff; border-radius:20px 20px 0 0; padding:24px 24px 26px; }
+    .entete .marque { font-weight:900; font-style:italic; letter-spacing:.04em; font-size:18px; }
+    .entete .marque span { color:var(--jaune); }
+    .entete h1 { margin:18px 0 6px; font-size:26px; line-height:1.2; }
+    .entete p { margin:0; color:#CED2DA; font-size:14.5px; line-height:1.55; }
+    form, .fin { background:var(--carte); border:1px solid var(--ligne); border-top:0; border-radius:0 0 20px 20px; padding:22px 24px 26px; }
+    fieldset { border:0; margin:0 0 22px; padding:0; }
+    legend, label.q { display:block; font-weight:800; font-size:15.5px; margin-bottom:10px; }
+    .aide { color:var(--mut); font-size:13px; font-weight:500; margin:-6px 0 10px; }
+    .echelle { display:flex; gap:6px; flex-wrap:wrap; }
+    .echelle input { position:absolute; opacity:0; pointer-events:none; }
+    .echelle label { min-width:44px; height:44px; display:grid; place-items:center; border:1.5px solid var(--ligne); border-radius:12px; background:var(--champ); font-weight:800; cursor:pointer; padding:0 8px; }
+    .echelle input:checked + label { background:var(--jaune); border-color:var(--jaune); color:var(--navy); }
+    .echelle input:focus-visible + label { outline:3px solid var(--jaune); outline-offset:2px; }
+    .bornes { display:flex; justify-content:space-between; color:var(--mut); font-size:12px; margin-top:6px; }
+    textarea { width:100%; min-height:88px; border:1.5px solid var(--ligne); border-radius:12px; background:var(--champ); color:var(--txt); font:inherit; font-size:15px; padding:12px; resize:vertical; }
+    textarea:focus { outline:3px solid var(--jaune); outline-offset:1px; }
+    .case { display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
+    .case input { width:20px; height:20px; margin-top:1px; accent-color:var(--jaune); flex:none; }
+    button { width:100%; border:0; border-radius:14px; background:var(--jaune); color:var(--navy); font:inherit; font-weight:800; font-size:16px; padding:16px; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:default; }
+    .msg { min-height:20px; margin-top:12px; font-size:14px; text-align:center; }
+    .msg.err { color:var(--err); }
+    .fin h2 { margin:0 0 8px; }
+    .fin p { color:var(--mut); line-height:1.6; }
+    .fin a { color:var(--txt); font-weight:800; }
+    .legal { color:var(--mut); font-size:12px; text-align:center; margin-top:18px; line-height:1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="entete">
+      <div class="marque">REFEREE <span>TRACKER</span></div>
+      <h1 id="titre">Ton avis sur la bêta</h1>
+      <p>6 questions, 2 minutes. Tu peux revenir modifier tes réponses avec le même lien.</p>
+    </div>
+    <form id="f" novalidate hidden>
+      <fieldset>
+        <legend>Globalement, l'app te sert-elle ?</legend>
+        <div class="echelle" id="note"></div>
+        <div class="bornes"><span>Pas du tout</span><span>Énormément</span></div>
+      </fieldset>
+      <fieldset>
+        <label class="q" for="utile">Ce qui t'aide le plus</label>
+        <textarea id="utile" maxlength="600" placeholder="Une fonction, un écran, un gain de temps…"></textarea>
+      </fieldset>
+      <fieldset>
+        <label class="q" for="manque">Ce qui manque ou te gêne</label>
+        <textarea id="manque" maxlength="600" placeholder="Ce que tu aimerais voir, ce qui est compliqué…"></textarea>
+      </fieldset>
+      <fieldset>
+        <label class="q" for="bugs">Un bug ou une erreur rencontrée ?</label>
+        <textarea id="bugs" maxlength="600" placeholder="Où, quand, ce qui s'est passé (facultatif)"></textarea>
+      </fieldset>
+      <fieldset>
+        <legend>Recommanderais-tu Referee Tracker à un collègue arbitre ?</legend>
+        <div class="echelle" id="reco"></div>
+        <div class="bornes"><span>0 : jamais</span><span>10 : sans hésiter</span></div>
+      </fieldset>
+      <fieldset>
+        <label class="q" for="temoignage">Une phrase pour présenter l'app à d'autres arbitres <span class="aide">(facultatif)</span></label>
+        <textarea id="temoignage" maxlength="300" placeholder="Ex. : « Je ne perds plus le fil de mes indemnités. »"></textarea>
+        <label class="case"><input type="checkbox" id="temoOk" /> <span>J'accepte que cette phrase soit publiée sur le site referee-tracker.fr avec mon prénom et mon niveau d'arbitrage. Je peux retirer mon accord à tout moment en écrivant à contact@referee-tracker.fr.</span></label>
+      </fieldset>
+      <button type="submit" id="go">Envoyer mon avis</button>
+      <div class="msg" id="msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fin" id="fin" hidden>
+      <h2 id="finTitre">Merci !</h2>
+      <p id="finTexte">Ton avis est bien enregistré. Chaque réponse est lue et aide à décider de la suite.</p>
+      <p><a href="./">Ouvrir l'app</a></p>
+    </div>
+    <p class="legal">Tes réponses servent uniquement à améliorer l'app. <a href="./confidentialite.html">Confidentialité</a></p>
+  </main>
+  <script src="./avis.js?v=2026-11-21-b140"></script>
+</body>
+</html>
