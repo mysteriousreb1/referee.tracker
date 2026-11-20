@@ -1120,7 +1120,7 @@
     return j;
   }
   function bilanCarte(box) {
-    const moisDef = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+    const moisDef = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();   // b151 — en heure locale (toISOString reculait d'un mois)
     box.innerHTML = '<div class="card bm"><div class="card-head"><h3>Bilan compta mensuel</h3><span class="sub" id="bmEtat">automatique, le 1er du mois à 8 h</span></div>' +
       '<p class="mut tiny">Chaque arbitre actif qui a eu de l\'activité reçoit son bilan du mois écoulé : matchs, indemnités, reçu, reste à percevoir, retards, matchs à venir. Il part tout seul, sans validation de ta part ; chaque arbitre peut l\'arrêter en un clic. Ce n\'est pas une offre : il ne compte pas dans les 2 communications du mois.</p>' +
       '<div class="row nm-act"><label class="f">Mois<input type="month" id="bmMois" value="' + moisDef + '"></label><button class="btn" id="bmVoir">Aperçu</button><input id="bmTo" class="nm-to" type="email" placeholder="Adresse de l\'exemple (vide : adresse admin)"><button class="btn" id="bmEx">M\'envoyer un exemple</button><button class="btn pri" id="bmAct">…</button></div>' +
@@ -1182,8 +1182,14 @@
       '<div class="nm-g">' + ch("nmSujet", "Sujet du mail", d.sujet, 120) + ch("nmPer", "Période (en haut à droite)", d.periode, 60) + "</div>" +
       '<fieldset class="nm-v"><legend>En vedette</legend><div class="nm-g">' + ch("nmVt", "Titre", d.vedette.titre, 80) + ch("nmVb", "Texte du bouton (facultatif)", d.vedette.bouton, 40) + "</div>" + ch("nmVx", "Texte", d.vedette.texte, 400, true) + ch("nmVl", "Lien du bouton (adresse referee-tracker.fr)", d.vedette.lien, 300) + "</fieldset>" +
       d.items.map((x, i) => '<fieldset class="nm-i"><legend>Nouveauté ' + (i + 1) + ' <span class="mut tiny">(facultative)</span></legend>' + ch("nmT" + i, "Titre", x.titre, 80) + ch("nmX" + i, "Texte", x.texte, 300, true) + "</fieldset>").join("") +
-      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><input id="nmTo" class="nm-to" type="email" placeholder="Adresse du test (vide : adresse admin)" aria-label="Adresse du test"><button class="btn" id="nmTest">Envoyer un test</button><button class="btn pri" id="nmEnv">Envoyer aux arbitres maintenant</button></div>' +
+      // b151 — trois étapes bien séparées : vérifier → s'envoyer un test → envoyer aux arbitres (maintenant ou programmé)
+      '<div class="nm-etapes">' +
+      '<div class="nm-etape"><span class="nm-num">1</span><div><b>Vérifier</b><div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button></div></div></div>' +
+      '<div class="nm-etape"><span class="nm-num">2</span><div><b>M\'envoyer un test</b><div class="row nm-act"><input id="nmTo" class="nm-to" type="email" placeholder="Adresse du test (vide : adresse admin)" aria-label="Adresse du test"><button class="btn" id="nmTest">Envoyer un test</button></div></div></div>' +
+      '<div class="nm-etape nm-etape--envoi"><span class="nm-num">3</span><div><b>Envoyer aux arbitres</b>' +
       '<div class="nm-prog"><label class="f">Programmer l\'envoi le<input type="datetime-local" id="nmQuand"></label><button class="btn" id="nmProg">Programmer</button><span class="mut tiny">Parti automatiquement à l\'heure choisie (à 10 min près). Tu peux l\'annuler d\'ici là.</span></div>' +
+      '<div class="nm-maint"><span class="mut tiny">ou tout de suite :</span><button class="btn pri" id="nmEnv">Envoyer aux arbitres maintenant</button></div></div></div>' +
+      '</div>' +
       '<div id="nmProgL"></div><div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
     const val = (id) => box.querySelector("#" + id).value.trim();
     const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
@@ -1490,7 +1496,7 @@
     const c = cache.config, rows = c.data || [], hist = c.historique || {};
     const ligne = rows.find((r) => r.cle === cfgCle) || { cle: cfgCle, valeur: {} };
     // b97d — Réglages : tuiles par thème (icône, couleur, phrase courte), éditeur pleine largeur, barre d'enregistrement collante.
-    const CFG_IC = { "pub.baremes": ["€", "#16A34A", "Paiements"], "pub.periodes_paiement": ["▦", "#16A34A", "Paiements"], "pub.ia": ["✦", "#7C3AED", "IA"], "pub.textes": ["⚑", "#EA580C", "Communication"], "pub.beta": ["✚", "#2563EB", "Inscriptions"], "pub.carburant": ["⛽", "#0891B2", "Trajets"], "pub.mails": ["✉", "#EA580C", "Communication"], "pub.app": ["◉", "#0B1F3B", "Application"], "pub.fonctions_defaut": ["☷", "#0B1F3B", "Application"] };
+    const CFG_IC = { "pub.baremes": ["€", "#16A34A", "Paiements"], "pub.periodes_paiement": ["▦", "#16A34A", "Paiements"], "pub.ia": ["✦", "#7C3AED", "IA"], "pub.textes": ["⚑", "#EA580C", "Communication"], "pub.beta": ["✚", "#2563EB", "Inscriptions"], "pub.carburant": ["⛽", "#0891B2", "Trajets"], "pub.mails": ["✉", "#EA580C", "Communication"], "pub.app": ["◉", "#0D9488", "Application"], "pub.fonctions_defaut": ["☷", "#0D9488", "Application"] };
     const court = (d) => String(d || "").split(" · ")[0];
     el.innerHTML = '<div class="cfg2"><div class="cfg2-tuiles">' + Object.keys(CFG).map((k) => { const ic = CFG_IC[k] || ["⚙", "#64748B", ""]; const r = rows.find((x) => x.cle === k);
         return '<button data-k="' + k + '" class="cfg2-t' + (k === cfgCle ? " on" : "") + '" style="--c:' + ic[1] + '"><span class="cfg2-ic">' + ic[0] + '</span><span class="cfg2-tx"><em>' + esc(ic[2]) + "</em><b>" + esc(CFG[k].titre) + "</b><small>" + esc(court(CFG[k].desc)) + "</small>" + (r ? '<small class="cfg2-maj">modifié ' + fmt(r.maj_le) + "</small>" : '<small class="cfg2-maj warn">valeurs par défaut</small>') + "</span></button>"; }).join("") + "</div>" +
