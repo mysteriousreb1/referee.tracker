@@ -5849,3 +5849,5 @@ html.rt-grand body { zoom: 1.1; }
 html.rt-calme *, html.rt-calme *::before, html.rt-calme *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, html.rt-discret .kpi strong, html.rt-discret td.num, html.rt-discret .acc-anneau-c strong, html.rt-discret .fr-chiffres b { filter: blur(7px); }
 #pfOuverture { min-width: 160px; }
+/* b152 — réglages sur téléphone : explication sur toute la largeur, boutons dessous (au lieu d'une colonne étroite) */
+@media (max-width: 600px) { .rt-kv { flex-direction: column; align-items: stretch; gap: 10px; } .rt-kv-btns { flex-wrap: wrap; } }
