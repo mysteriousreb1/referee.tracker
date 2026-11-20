@@ -1160,7 +1160,7 @@
         const ligne = (lib, v) => v ? "<p><b>" + lib + " :</b> " + esc(v) + "</p>" : "";
         return '<details class="av"><summary><b>' + esc(x.prenom || "?") + "</b> · " + (r.note ?? "—") + "/5 · reco " + (r.recommande ?? "—") + "/10" + (x.temoignage_ok ? " · " + badge("témoignage publiable", "green") : "") + ' <span class="mut tiny">' + esc(new Date(x.maj_le).toLocaleDateString("fr-FR")) + "</span></summary>" +
           ligne("Ce qui aide", r.utile) + ligne("Ce qui manque", r.manque) + ligne("Bugs", r.bugs) + ligne("Témoignage", r.temoignage) + "</details>"; }).join("")
-        : '<p class="mut">Aucune réponse pour l\'instant. L\'invitation part quand tu le décides (demande-le à Claude).</p>';
+        : '<p class="mut">Aucune réponse pour l\'instant. Le questionnaire est proposé dans l\'app, à la connexion, à partir du 01/12/2026.</p>';
     }).catch((e) => { box.querySelector("#avZ").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
   }
   async function nvMail(action, contenu, to, id, quand) {
