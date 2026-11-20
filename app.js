@@ -1051,7 +1051,7 @@ function renderReglement() {
   if (!root) return;
   const hist = reglHistLoad_();
   const docsInfo = state._reglDocs;
-  const nbDocs = docsInfo && docsInfo.docs ? docsInfo.docs.filter(d => d.lisible).length : null;
+  const nbDocs = docsInfo && docsInfo.docs ? docsInfo.docs.filter(d => d.lisible && /3\s*[x×]\s*3/i.test(String(d.nom || "")) === ((state.reglCat || "5x5") === "3x3")).length : null;
   root.innerHTML = `
     <div class="regl-wrap">
       <div class="regl-head">
@@ -1072,7 +1072,7 @@ function renderReglement() {
             <div class="regl-empty-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7"/><path d="M9 11h5"/></svg></div>
             <h3>Ton formateur règlement</h3>
             <p class="regl-empty-hint">Pose une question, ou raconte une action de ton match : l'IA te dit ce qui allait, ce qui n'allait pas, la bonne procédure et comment progresser, articles FIBA à l'appui.</p>
-            <div class="regl-exs"><span>Essaie par exemple :</span>${["3e QT, le n°7 tire à 3 points, le défenseur atterrit sous ses pieds. J'étais en Trail, j'ai laissé jouer. Qu'aurais-je dû faire ?", "Quand faut-il remettre 14 secondes au chronomètre des tirs ?", "Un entraîneur reçoit sa 2e faute technique : quelle procédure ?"].map(q => `<button type="button" class="regl-ex-chip" data-regl-ex="${escapeHtml(q)}">${escapeHtml(q)}</button>`).join("")}</div>
+            <div class="regl-exs"><span>Essaie par exemple :</span>${((state.reglCat || "5x5") === "3x3" ? ["Un joueur marque après un rebond défensif sans ressortir derrière l'arc : le panier compte-t-il ?", "Combien de temps dure la possession au chronomètre des tirs en 3×3 ?", "Une équipe commet sa 7e faute d'équipe : quelle sanction ?"] : ["3e QT, le n°7 tire à 3 points, le défenseur atterrit sous ses pieds. J'étais en Trail, j'ai laissé jouer. Qu'aurais-je dû faire ?", "Quand faut-il remettre 14 secondes au chronomètre des tirs ?", "Un entraîneur reçoit sa 2e faute technique : quelle procédure ?"]).map(q => `<button type="button" class="regl-ex-chip" data-regl-ex="${escapeHtml(q)}">${escapeHtml(q)}</button>`).join("")}</div>
           </div>`}
         <div class="regl-status" id="reglStatus" role="status">${state._reglEnCours ? `<span class="regl-typing"><i></i><i></i><i></i></span> L'IA lit le règlement…` : ""}</div>
       </div>
@@ -1101,7 +1101,7 @@ function reglChargerDocs_(forcer) {
     state._reglDocsEnCours = false;
     const sub = document.querySelector("#reglement .regl-head-sub");
     if (sub && state._reglDocs && state._reglDocs.docs) {
-      const n = state._reglDocs.docs.filter(d => d.lisible).length;
+      const n = state._reglDocs.docs.filter(d => d.lisible && /3\s*[x×]\s*3/i.test(String(d.nom || "")) === ((state.reglCat || "5x5") === "3x3")).length;
       sub.textContent = n + " document" + (n > 1 ? "s" : "") + " lu" + (n > 1 ? "s" : "") + " par l'IA" + (state._reglDocs.cache ? " · cache chaud" : "");
     }
     return state._reglDocs;
@@ -1114,7 +1114,9 @@ function reglDocsModal_() {
   ov.id = "rtmDialog"; ov.className = "rtm-ov";
   const dessiner = () => {
     const d = state._reglDocs;
-    const docs = d && d.docs ? d.docs : [];
+    // b142 — seulement les documents du règlement affiché (« 3x3 » dans le nom = 3x3, comme côté moteur)
+    const est3 = (n) => /3\s*[x×]\s*3/i.test(String(n || "")), cat3 = (state.reglCat || "5x5") === "3x3";
+    const docs = (d && d.docs ? d.docs : []).filter(x => est3(x.nom) === cat3);
     ov.innerHTML = `<div class="rtm regl-docs-m" role="dialog" aria-modal="true" aria-label="Documents du règlement">
       <div class="rtm-head"><h3>Documents lus par l'IA</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
       ${state._reglDocsEnCours && !docs.length ? `<p class="card-sub">Chargement…</p>` : !d ? `<p class="card-sub">Dossier corpus introuvable (Drive « Referee Tracker - Corpus »).</p>` : `
@@ -1991,7 +1993,7 @@ function notifCompter_() {
     const ouvrir = (o) => { P.hidden = !o; btn.setAttribute("aria-expanded", o ? "true" : "false"); if (!o) notifCompter_(); };
     btn.addEventListener("click", (e) => { e.stopPropagation(); ouvrir(P.hidden); });
     document.getElementById("rtNotifFermer").addEventListener("click", () => ouvrir(false));
-    document.addEventListener("click", (e) => { if (!P.hidden && !P.contains(e.target) && e.target !== btn) ouvrir(false); });
+    document.addEventListener("click", (e) => { if (!P.hidden && e.target.isConnected && !P.contains(e.target) && e.target !== btn) ouvrir(false); });   // b142 — « OK » retire la notification du panneau : ce clic ne doit pas le fermer
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") ouvrir(false); });
     P.addEventListener("click", (e) => { if (e.target.closest("[data-ann-go],[data-tab-go]")) setTimeout(() => ouvrir(false), 0); });
   };

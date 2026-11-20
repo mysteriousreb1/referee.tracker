@@ -4602,7 +4602,10 @@ html.rt-geste .tabs-mini-btn.active { animation: rtPop .25s ease both; }
 .rt-demo-tag { margin: 0 0 8px; display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--gold); color: var(--navy-900); }
 .cf-l-date { color: var(--text); }
 .rt-profile-body .rt-details > summary:not(:has(b))::after { margin-left: auto; }
-.rt-bandeau-global { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--gold-soft); border-left: 4px solid var(--gold); color: var(--text); font-weight: 600; font-size: 14px; }
+.rt-bandeau-global { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--gold-soft); border-left: 4px solid var(--gold); color: var(--text); font-weight: 600; font-size: 14px; display: flex; align-items: flex-start; gap: 10px; }
+.rt-bandeau-global > span { flex: 1; }
+.rt-bandeau-x { flex: none; width: 28px; height: 28px; margin: -4px -6px -4px 0; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 20px; line-height: 1; cursor: pointer; opacity: .7; }
+.rt-bandeau-x:hover, .rt-bandeau-x:focus-visible { opacity: 1; background: rgba(127,127,127,.15); }
 
 /* b77 — surbrillance or = niveau le plus haut de l'arbitre (niv-top), quel que soit ce niveau.
    Le Championnat de France garde l'or quand c'est le niveau phare (cas d'un arbitre CF) ; sinon violet. */

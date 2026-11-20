@@ -1206,12 +1206,13 @@
       z.querySelectorAll("[data-annul]").forEach((b) => (b.onclick = async () => { if (!(await confirmer("Annuler l'envoi programmé", "Annuler cet envoi ? Rien ne partira.", "Annuler l'envoi"))) return; try { quota(await nvMail("annuler", null, null, b.dataset.annul)); toast("Envoi annulé", "ok"); } catch (e) { erreur(e); } }));
       if (window.majCompteurEnvois) window.majCompteurEnvois(j); };
     nvMail("etat").then(quota).catch(() => {});   // b137 — compteur affiché dès l'ouverture
+    // b138/b142 — une fois programmé OU envoyé, le formulaire est vidé (brouillon local effacé aussi)
+    const viderForm = () => { box.querySelectorAll(".nm-g input, .nm fieldset input, .nm fieldset textarea, #nmQuand").forEach((x) => { if (x.id !== "nmSujet") x.value = ""; });
+      box.querySelector("#nmSujet").value = "Les grandes nouveautés de Referee Tracker"; box.querySelector("#nmVue").hidden = true; lire(); try { localStorage.removeItem(CLE); } catch (e) {} };
     box.querySelector("#nmProg").onclick = async () => { const v = box.querySelector("#nmQuand").value; if (!v) return toast("Choisis la date et l'heure", "err"); const c = lire(), quand = new Date(v);
       if (!(await confirmer("Programmer l'envoi", "Envoyer « " + esc(c.sujet) + " » aux arbitres le <strong>" + esc(quand.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })) + "</strong> ? Tu pourras l'annuler jusqu'à l'heure prévue.", "Programmer"))) return;
       try { quota(await nvMail("programmer", c, null, null, quand.toISOString())); toast("Envoi programmé", "ok");
-        // b138 — une fois programmé, le formulaire est vidé (le mail est gardé côté serveur jusqu'à son envoi)
-        box.querySelectorAll(".nm-g input, .nm fieldset input, .nm fieldset textarea, #nmQuand").forEach((x) => { if (x.id !== "nmSujet") x.value = ""; });
-        box.querySelector("#nmSujet").value = "Les grandes nouveautés de Referee Tracker"; box.querySelector("#nmVue").hidden = true; res.innerHTML = ""; lire(); } catch (e) { erreur(e); } };
+        viderForm(); } catch (e) { erreur(e); } };
     box.querySelector("#nmApercu").onclick = async () => { try { const j = await nvMail("apercu", lire()); quota(j); const f = box.querySelector("#nmVue"); f.hidden = false; f.srcdoc = j.html; } catch (e) { erreur(e); } };
     box.querySelector("#nmSim").onclick = async () => { try { const j = await nvMail("simuler", lire()); quota(j);
       res.innerHTML = '<p><b>' + j.destinataires.length + " arbitre(s)</b> le recevraient" + (j.exclus ? " · " + j.exclus + " ont refusé les nouveautés" : "") + ' :</p><p class="tiny">' + j.destinataires.map(esc).join(" · ") + "</p>";
@@ -1224,7 +1225,7 @@
       try { const j = await nvMail("simuler", c); quota(j); nbDest = j.destinataires.length; if (j.envois_ce_mois >= j.max) return toast("Limite de " + j.max + " envois atteinte ce mois-ci", "err"); if (!nbDest) return toast("Aucun arbitre n'accepte les nouveautés", "err"); } catch (e) { return erreur(e); }
       if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » maintenant à <strong>" + nbDest + " arbitre(s)</strong> ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
       env.disabled = true; const lib = env.textContent; env.textContent = "Envoi en cours…"; res.innerHTML = '<p class="nm-cours"><span class="nm-spin"></span>Envoi en cours, 4 arbitres à la fois : ne ferme pas la page (environ 30 s).</p>';
-      try { const j = await nvMail("envoyer", c); quota(j); res.innerHTML = '<p class="nm-ok"><b>Envoyé à ' + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); }
+      try { const j = await nvMail("envoyer", c); quota(j); res.innerHTML = '<p class="nm-ok"><b>Envoyé à ' + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); viderForm(); }
       catch (e) { res.innerHTML = '<p class="err">Envoi impossible : ' + esc(e.message) + "</p>"; erreur(e); } finally { env.textContent = lib; env.disabled = false; } };
   }
   // ---------- b84 : bandeau affiché en haut de l'app de tous les arbitres (maintenance, sauvegarde, nouveauté) ----------
