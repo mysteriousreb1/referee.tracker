@@ -1093,9 +1093,10 @@ function reglScrollBas_() {
 
 /* Documents lus par l'IA (dossier Drive « Referee Tracker - Corpus »). */
 function reglChargerDocs_(forcer) {
-  if ((state._reglDocs !== undefined && !forcer) || state._reglDocsEnCours) return Promise.resolve(state._reglDocs);
+  if (state._reglDocsEnCours && state._reglDocsP) return state._reglDocsP;   // b143 — chargement en cours : on attend le même (sinon la fenêtre restait sur « Chargement… »)
+  if (state._reglDocs !== undefined && !forcer) return Promise.resolve(state._reglDocs);
   state._reglDocsEnCours = true;
-  return jsonp("reglement.docs").then(res => {
+  return state._reglDocsP = jsonp("reglement.docs").then(res => {
     state._reglDocs = (res && res.success && res.result && res.result.ok) ? res.result : null;
   }).catch(() => { state._reglDocs = null; }).then(() => {
     state._reglDocsEnCours = false;
@@ -1108,6 +1109,8 @@ function reglChargerDocs_(forcer) {
   });
 }
 function reglTaille_(o) { o = Number(o) || 0; return o < 1024 ? o + " o" : o < 1048576 ? Math.round(o / 1024) + " Ko" : (o / 1048576).toFixed(1).replace(".", ",") + " Mo"; }
+/* b143 — nom lisible : « 1-reglement-officiel-FIBA-2024-FR.txt » → « Reglement officiel FIBA 2024 FR » (le vrai nom reste en infobulle). */
+function reglNomJoli_(n) { const t = String(n || "").replace(/^\d+\s*[-_.]\s*/, "").replace(/\.(txt|md|pdf)$/i, "").replace(/[-_]+/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
 function reglDocsModal_() {
   const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
   const ov = document.createElement("div");
@@ -1123,12 +1126,12 @@ function reglDocsModal_() {
       <ul class="regl-doc-list">${docs.length ? docs.map(x => `
         <li class="regl-doc${x.lisible ? "" : " regl-doc--off"}">
           <div class="regl-doc-i">
-            <div class="regl-doc-n">${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener">${escapeHtml(x.nom)}</a>` : escapeHtml(x.nom)}</div>
+            <div class="regl-doc-n">${x.url ? `<a href="${escapeHtml(safeUrl_(x.url))}" target="_blank" rel="noopener" title="${escapeHtml(x.nom)}">${escapeHtml(reglNomJoli_(x.nom))}</a>` : escapeHtml(reglNomJoli_(x.nom))}</div>
             <div class="regl-doc-s">${escapeHtml(x.type)} · ${escapeHtml(reglTaille_(x.taille))} · mis à jour le ${escapeHtml(x.maj)}${x.lisible ? "" : " · <b>non lu</b> (archive)"}</div>
           </div>
           <button type="button" class="small-btn secondary regl-doc-del" data-id="${escapeHtml(x.id)}" data-nom="${escapeHtml(x.nom)}" title="Retirer (corbeille Drive)">Retirer</button>
         </li>`).join("") : `<li class="card-sub">Aucun document : dépose le règlement, les interprétations et le manuel technique.</li>`}</ul>
-      <div class="regl-doc-cache">${d.cache ? `Cache : ${d.cache.docs} document(s), ${d.cache.passages} passages, ${Math.round(d.cache.chars / 1000)} k caractères` : "Cache froid : la première question prendra quelques secondes de plus."}${d.modele ? ` · modèle ${escapeHtml(d.modele)}` : ""}</div>
+      <div class="regl-doc-cache">${d.cache ? `Cache : ${d.cache.docs} document(s), ${d.cache.passages} passages, ${Math.round(d.cache.chars / 1000)} k caractères` : "Cache froid : la première question prendra quelques secondes de plus."}</div>
       <div class="regl-doc-add">
         <label class="small-btn regl-doc-up"><input type="file" id="reglDocFile" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" multiple hidden /><span>+ Ajouter des documents</span></label>
         <button type="button" class="small-btn secondary" id="reglDocReload">Recharger le corpus</button>

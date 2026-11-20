@@ -5710,3 +5710,8 @@ body { font-variant-numeric: tabular-nums; }
 /* b143 — bulle d'aide : fond assombri derrière (elle ne « flotte » plus sur la page) ; sur ordinateur, centrée à l'écran. */
 .rt-info > .rt-info-pop { box-shadow: 0 0 0 100vmax rgba(5, 12, 25, .45), 0 18px 48px rgba(0, 0, 0, .35); }
 @media (min-width: 900px) { .rt-info > .rt-info-pop { top: 50%; bottom: auto; transform: translateY(-50%); } @keyframes rt-info-in { from { opacity: 0; transform: translateY(-46%) scale(.98); } to { opacity: 1; transform: translateY(-50%); } } }
+
+/* b143 — Documents du règlement : la liste ne déborde plus de la fenêtre (iPhone), « Retirer » toujours visible. */
+.regl-doc-list { grid-template-columns: minmax(0, 1fr); }
+.regl-doc-i { flex: 1 1 auto; }
+.regl-doc-n { white-space: normal; overflow-wrap: anywhere; }
