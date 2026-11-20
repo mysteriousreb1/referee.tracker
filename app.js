@@ -9544,7 +9544,7 @@ function licCarteBloc_(e) {
   return `<div class="lic-zone">
     ${licCarteHtml_(e, false)}
     <div class="elic-doc-act lic-act">
-      <button type="button" class="small-btn" id="licPlein">Présenter (plein écran)</button>
+      <button type="button" class="small-btn" id="licPlein" title="Présenter la licence en plein écran">⛶ Présenter</button>
       ${e.doc ? `<button type="button" class="small-btn secondary" id="elicDocVoir">Voir l'original</button>` : ""}
       ${e.docUrl ? `<a class="small-btn secondary" href="${escapeHtml(safeUrl_(e.docUrl))}" target="_blank" rel="noopener">PDF</a>` : ""}
       <button type="button" class="small-btn secondary pc-seul" id="licCorriger">Corriger</button>
