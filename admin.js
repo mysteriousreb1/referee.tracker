@@ -168,7 +168,7 @@
   function moisLbl(ym) { const [y, m] = ym.split("-"); return ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"][Number(m) - 1] + " " + y.slice(2); }
 
   // ---------- navigation ----------
-  const SECTIONS = { accueil: "Accueil", services: "Services & quotas", pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Messages", communication: "Communication", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
+  const SECTIONS = { accueil: "Accueil", services: "Services & quotas", pilotage: "Pilotage", kpiapp: "Indicateurs application", dashboard: "Tableau de bord", usage: "Connexions & usage", messages: "Envois aux arbitres", communication: "Dans l'app", config: "Configuration", tickets: "Tickets", sante: "Santé technique", moteurs: "Moteurs", journal: "Journal d'audit",
     kpiarb: "Indicateurs arbitres", arbitres: "Arbitres", inscriptions: "Inscriptions", stats: "Statistiques arbitres", agenda: "Matchs à venir", paiements: "Paiements", alertes: "Alertes", qualite: "Qualité des données", tech: "Statistiques techniques", appstats: "Utilisation", cockpit: "Stats", analyses: "Analyses", userstats: "Tableau des arbitres", assistant: "Assistant IA" };   // b86 : 2 espaces
   // b97 — tout dans la barre de gauche (plus de sous-onglets) ; anciennes sections encore joignables par leur adresse.
   const ESPACE_DE = { analyses: "app", accueil: "app", services: "app", assistant: "app", cockpit: "app", appstats: "app", usage: "app", tech: "app", sante: "app", moteurs: "app", config: "app", journal: "app", pilotage: "app", dashboard: "app", kpiapp: "app" };
@@ -1107,24 +1107,36 @@
       if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » aux arbitres listés par la simulation ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
       env.disabled = true; try { const j = await nvMail("envoyer", c); res.innerHTML = "<p><b>Envoyé à " + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); } catch (e) { erreur(e); } };
   }
+  // ---------- b84 : bandeau affiché en haut de l'app de tous les arbitres (maintenance, sauvegarde, nouveauté) ----------
+  const MODELES_BANDEAU = [["", "— Modèle —", "info"], ["maint", "Maintenance prévue ce soir de 22 h à 23 h : l'app peut être indisponible quelques minutes.", "alerte"], ["sauv", "Sauvegarde en cours : tes données sont protégées, certaines mises à jour peuvent prendre quelques minutes de plus.", "info"], ["nouv", "Nouvelle version disponible : recharge l'app pour en profiter.", "succes"], ["inc", "Incident en cours sur la lecture des convocations : nous corrigeons, rien n'est perdu.", "alerte"]];
+  // b134 — sortie de « Messages » : vit maintenant dans « Dans l'app », avec les autres affichages dans l'app.
+  async function bandeauCarte(z) {
+    if (!z) return; const rendBandeau = () => bandeauCarte(z);
+    let v = {}; try { if (!cache.config) cache.config = await admin("config.get"); v = ((cache.config.data || []).find((r) => r.cle === "pub.textes") || {}).valeur || {}; } catch (e) {}
+    const actif = String(v.bandeau || "").trim(), dt = (x) => (x ? String(x).slice(0, 16) : "");
+    z.innerHTML = '<div class="card-head"><h2>Bandeau dans l\'app</h2><span class="sub">' + (actif ? "en ligne : « " + esc(actif.slice(0, 80)) + (actif.length > 80 ? "…" : "") + " »" : "aucun bandeau affiché") + "</span></div>" +
+      '<div class="form-grid"><label class="f">Modèle<select id="bdMod">' + MODELES_BANDEAU.map((m, i) => '<option value="' + i + '">' + esc(m[0] ? m[1].slice(0, 60) + "…" : m[1]) + "</option>").join("") + '</select></label>' +
+      '<label class="f">Style<select id="bdSty">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+      '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
+      '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="bdDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="bdFin" value="' + esc(dt(v.bandeau_fin)) + '"></label></div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier le bandeau</button><button class="btn" id="bdOff">Retirer le bandeau</button><span class="mut tiny">Visible à la prochaine ouverture de l\'app (ou rechargement). Le mode maintenance complet se règle dans Configuration.</span></div>';
+    z.querySelector("#bdMod").addEventListener("change", (e) => { const m = MODELES_BANDEAU[Number(e.target.value)]; if (m && m[0]) { z.querySelector("#bdTxt").value = m[1]; z.querySelector("#bdSty").value = m[2]; } });
+    const ecrire = async (nv) => { try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, v, nv) }); cache.config = null; toast(nv.bandeau ? "Bandeau publié" : "Bandeau retiré", "ok"); rendBandeau(); } catch (e) { toast(e.message, "err"); } };
+    z.querySelector("#bdPub").addEventListener("click", () => { const t = z.querySelector("#bdTxt").value.trim(); if (t.length < 5) return toast("Texte trop court", "err"); ecrire({ bandeau: t, bandeau_style: z.querySelector("#bdSty").value, bandeau_debut: z.querySelector("#bdDeb").value || "", bandeau_fin: z.querySelector("#bdFin").value || "" }); });
+    z.querySelector("#bdOff").addEventListener("click", () => ecrire({ bandeau: "", bandeau_debut: "", bandeau_fin: "" }));
+  }
+
+  // b134 — « Dans l'app » (ex-Communication) : seulement ce qui s'AFFICHE dans l'app des arbitres
+  // (bandeau automatique de version, bandeau d'information, bannières personnelles). Tout ce qui PART (mails, notifications) est dans « Envois ».
   rendus.communication = async function (force) {
     const el = $("sec-communication");
-    if (force || !cache.config || !cache.journalMsg) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); cache.journalMsg = await admin("journal.liste", { filtre_action: "message" }); }
-    const cfgV = (k) => ((cache.config.data || []).find((r) => r.cle === k) || {}).valeur || {};
-    const tx = cfgV("pub.textes"), ml = cfgV("pub.mails"), env = (cache.journalMsg.data || []).filter((x) => /message\.envoyer/.test(x.action || ""));
-    const MOD = [["attente", "Liste d'attente"], ["recue", "Demande reçue"], ["guides", "Guide et manuel"], ["compte_pret", "Compte prêt"]];
-    el.innerHTML = '<div class="grid-2"><div class="card"><div class="card-head"><h3>Bandeau dans l\'app</h3><span class="sub">' + (tx.bandeau ? "affiché" : "aucun") + "</span></div>" +
-        (tx.bandeau ? '<p class="rt-bandeau-apercu">' + esc(tx.bandeau) + '</p><p class="mut tiny">Du ' + esc(tx.bandeau_debut || "maintenant") + " au " + esc(tx.bandeau_fin || "sans fin") + " · style " + esc(tx.bandeau_style || "info") + "</p>" : '<p class="vide">Aucun bandeau</p>') +
-        '<p class="mut tiny">Mode maintenance : ' + (tx.maintenance ? badge("ACTIVÉ", "red") : badge("désactivé", "green")) + '</p><div class="row"><a class="btn sm" href="#messages">Publier / retirer un bandeau</a><button class="btn sm" id="coCfgT">Planifier (Configuration)</button></div></div>' +
-      '<div class="card"><div class="card-head"><h3>Textes des e-mails</h3><span class="sub">4 modèles envoyés aux arbitres</span></div><div class="tbl"><table><thead><tr><th>Modèle</th><th>Sujet</th><th>Message ajouté</th></tr></thead><tbody>' +
-        MOD.map(([k, l]) => "<tr><td>" + esc(l) + "</td><td>" + (ml[k] && ml[k].sujet ? esc(ml[k].sujet) : '<span class="mut">texte d\'origine</span>') + "</td><td>" + (ml[k] && ml[k].message ? esc(ml[k].message.slice(0, 80)) : '<span class="mut">—</span>') + "</td></tr>").join("") +
-        '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn sm pri" id="coCfgM">Modifier les textes</button></div></div></div>' +
-      '<div class="card" id="coAnn"><p class="mut">Chargement des bannières…</p></div>' +
-      '<div class="card"><div class="card-head"><h3>Historique des envois</h3><span class="sub">messages, diffusions, notifications (journal d\'audit)</span></div><div id="coT"></div></div>';
-    el.querySelector("#coCfgM").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; };
-    el.insertAdjacentHTML("afterbegin", "<div id=\"caBox\"></div>"); campagneCarte($("caBox"));   // b104
-    el.insertAdjacentHTML("afterbegin", "<div id=\"nmBox\"></div>"); nouveautesCarte($("nmBox"));   // b132
-    el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
+    if (force || !cache.config) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); }
+    const tx = ((cache.config.data || []).find((r) => r.cle === "pub.textes") || {}).valeur || {};
+    el.innerHTML = '<div class="card" id="coBand"></div>' +
+      '<p class="mut tiny co-maint">Mode maintenance : ' + (tx.maintenance ? badge("ACTIVÉ", "red") : badge("désactivé", "green")) + ' · <a href="#config" id="coCfgT">réglages des textes de l\'app</a></p>' +
+      '<div class="card" id="coAnn"><p class="mut">Chargement des bannières…</p></div>';
+    bandeauCarte($("coBand"));
+    el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
     // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
     { const N = window.RT_NOUV || {}, L = window.RT_NOUVEAUTES || [];
@@ -1134,11 +1146,6 @@
         '<p class="mut tiny">Version <b>' + esc(N.version || "—") + "</b> sortie le " + (sortie ? fmtD(sortie) : "—") + ". Chaque arbitre le voit pendant 24 h à partir de sa première ouverture de l'app" + (fin ? ", jusqu'au " + fmtD(fin) + " au plus tard" : "") + ". La croix le masque pour de bon.</p>" +
         (L.length ? '<details class="nv-liste"><summary>Fenêtre « Ce qui change » (' + L.length + " points)</summary><ul>" + L.map((x) => "<li><b>" + esc(x[1]) + "</b> — " + esc(x[2]) + "</li>").join("") + "</ul></details>" : "") +
         '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js).</p></div>'); }
-    const nomU = (id) => { const a = (cache.arbitres || []).find((x) => x.id === id); return a ? nomDe(a.profil, a.email) : (id ? id.slice(0, 8) : "tous"); };
-    tableCourante = tableau(el.querySelector("#coT"), [
-      { t: "Date", k: "at", r: (x) => fmt(x.at) }, { t: "Destinataire", k: "cible_user", r: (x) => esc(nomU(x.cible_user)) },
-      { t: "Détail", k: (x) => JSON.stringify(x.details || {}), r: (x) => '<span class="tiny">' + esc(JSON.stringify(x.details || {}).slice(0, 180)) + "</span>" },
-    ], env, { recherche: rechercheCourante });
   };
 
   // ---- Moteurs (tous les arbitres)
@@ -1550,9 +1557,20 @@
       '<div id="msWa" class="wa-liste" hidden></div>' +
       '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn" id="msApercu">Aperçu</button><button class="btn" id="msTest">Envoyer un test à moi</button><button class="btn" id="msBrSave">Enregistrer le brouillon</button><button class="btn" id="msBrLoad">Reprendre le brouillon</button><button class="btn pri" id="msEnv">Envoyer</button></div></div>' +
       '<div class="card"><div class="card-head"><h2>Aperçu</h2><span class="sub">tel que l\'arbitre le recevra</span></div><div id="msPrev" class="mail-prev"><p class="mut">Rédige un message puis clique sur « Aperçu ».</p></div></div></div>' +
-      '<div class="card" id="bandCard"></div>' +
+      '<div id="nmBox2"></div><div id="caBox2"></div>' +
+      '<div class="card" id="mlAuto"></div>' +
       '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
+    // b134 — tout ce qui part vers les arbitres est ici : message, mail des nouveautés, campagne, e-mails automatiques.
+    nouveautesCarte($("nmBox2")); campagneCarte($("caBox2"));
+    (async () => { const z = $("mlAuto"); if (!z) return;
+      try { if (!cache.config) cache.config = await admin("config.get"); } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
+      const ml = ((cache.config.data || []).find((r) => r.cle === "pub.mails") || {}).valeur || {};
+      const MOD = [["attente", "Liste d'attente"], ["recue", "Demande reçue"], ["guides", "Guide et manuel"], ["compte_pret", "Compte prêt"]];
+      z.innerHTML = '<div class="card-head"><h2>E-mails automatiques</h2><span class="sub">4 modèles envoyés tout seuls pendant l\'inscription</span></div><div class="tbl"><table><thead><tr><th>Modèle</th><th>Sujet</th><th>Message ajouté</th></tr></thead><tbody>' +
+        MOD.map(([k, lb]) => "<tr><td>" + esc(lb) + "</td><td>" + (ml[k] && ml[k].sujet ? esc(ml[k].sujet) : '<span class="mut">texte d\'origine</span>') + "</td><td>" + (ml[k] && ml[k].message ? esc(ml[k].message.slice(0, 80)) : '<span class="mut">—</span>') + "</td></tr>").join("") +
+        '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn sm pri" id="mlCfg">Modifier les textes</button></div>';
+      z.querySelector("#mlCfg").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; }; })();
     // ---------- b80 : liste de diffusion (qui reçoit quoi, opposition, réinscription sur demande, export) ----------
     const etatComm = (a) => { const c = comm(a); return !c.date ? "non_informe" : c.offres === true ? "abonne" : "oppose"; };
     const diff = { q: "", etat: "", cd: "" };
@@ -1587,24 +1605,6 @@
         try { const j = await admin("communications.reinscrire", { user_id: a.id, canal: (a.profil || {}).telephone ? "tout" : "offres", motif }); a.profil.communications = j.communications; toast("Réinscrit aux offres", "ok"); rendDiff(); majCompte(); } catch (e) { toast(e.message, "err"); } }));
     };
     setTimeout(rendDiff, 0);
-    // ---------- b84 : bandeau affiché en haut de l'app de tous les arbitres (maintenance, sauvegarde, nouveauté) ----------
-    const MODELES_BANDEAU = [["", "— Modèle —", "info"], ["maint", "Maintenance prévue ce soir de 22 h à 23 h : l'app peut être indisponible quelques minutes.", "alerte"], ["sauv", "Sauvegarde en cours : tes données sont protégées, certaines mises à jour peuvent prendre quelques minutes de plus.", "info"], ["nouv", "Nouvelle version disponible : recharge l'app pour en profiter.", "succes"], ["inc", "Incident en cours sur la lecture des convocations : nous corrigeons, rien n'est perdu.", "alerte"]];
-    const rendBandeau = async () => {
-      const z = $("bandCard"); if (!z) return;
-      let v = {}; try { if (!cache.config) cache.config = await admin("config.get"); v = ((cache.config.data || []).find((r) => r.cle === "pub.textes") || {}).valeur || {}; } catch (e) {}
-      const actif = String(v.bandeau || "").trim(), dt = (x) => (x ? String(x).slice(0, 16) : "");
-      z.innerHTML = '<div class="card-head"><h2>Bandeau dans l\'app</h2><span class="sub">' + (actif ? "en ligne : « " + esc(actif.slice(0, 80)) + (actif.length > 80 ? "…" : "") + " »" : "aucun bandeau affiché") + "</span></div>" +
-        '<div class="form-grid"><label class="f">Modèle<select id="bdMod">' + MODELES_BANDEAU.map((m, i) => '<option value="' + i + '">' + esc(m[0] ? m[1].slice(0, 60) + "…" : m[1]) + "</option>").join("") + '</select></label>' +
-        '<label class="f">Style<select id="bdSty">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
-        '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
-        '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="bdDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="bdFin" value="' + esc(dt(v.bandeau_fin)) + '"></label></div>' +
-        '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier le bandeau</button><button class="btn" id="bdOff">Retirer le bandeau</button><span class="mut tiny">Visible à la prochaine ouverture de l\'app (ou rechargement). Le mode maintenance complet se règle dans Configuration.</span></div>';
-      z.querySelector("#bdMod").addEventListener("change", (e) => { const m = MODELES_BANDEAU[Number(e.target.value)]; if (m && m[0]) { z.querySelector("#bdTxt").value = m[1]; z.querySelector("#bdSty").value = m[2]; } });
-      const ecrire = async (nv) => { try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, v, nv) }); cache.config = null; toast(nv.bandeau ? "Bandeau publié" : "Bandeau retiré", "ok"); rendBandeau(); } catch (e) { toast(e.message, "err"); } };
-      z.querySelector("#bdPub").addEventListener("click", () => { const t = z.querySelector("#bdTxt").value.trim(); if (t.length < 5) return toast("Texte trop court", "err"); ecrire({ bandeau: t, bandeau_style: z.querySelector("#bdSty").value, bandeau_debut: z.querySelector("#bdDeb").value || "", bandeau_fin: z.querySelector("#bdFin").value || "" }); });
-      z.querySelector("#bdOff").addEventListener("click", () => ecrire({ bandeau: "", bandeau_debut: "", bandeau_fin: "" }));
-    };
-    setTimeout(rendBandeau, 0);
     $("msModele").addEventListener("change", (e) => { const m = MODELES_MSG[Number(e.target.value)]; if (m && m[0] && Number(e.target.value)) { $("msSujet").value = m[0]; $("msTxt").value = m[1]; } });
     const apercu = () => { const sujet = $("msSujet").value.trim() || "Sujet", texte = $("msTxt").value.trim() || "…";
       $("msPrev").innerHTML = '<div class="mp-head">REFEREE <b>TRACKER</b></div><div class="mp-body"><h3>' + esc(sujet) + "</h3><p>Bonjour Prénom,</p>" + texte.split(/\n{2,}/).map((x) => "<p>" + esc(x).replace(/\n/g, "<br>") + "</p>").join("") + '<span class="mp-btn">Ouvrir l\'application</span><small>Message de l\'équipe Referee Tracker · une question ? contact@referee-tracker.fr</small></div>'; };
