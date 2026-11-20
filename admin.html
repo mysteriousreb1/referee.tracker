@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' ; font-src 'self' ; img-src 'self' data:; connect-src https://jlstedchnmdteazuqbly.supabase.co https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' ; font-src 'self' ; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src https://jlstedchnmdteazuqbly.supabase.co https://script.google.com https://script.googleusercontent.com https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="color-scheme" content="light dark" />
   <title>Administration — Referee Tracker</title>
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-21-b149" />
+  <link rel="stylesheet" href="./vendor/leaflet.css" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-21-b150" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -160,10 +161,11 @@
   <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitre"></h3><button class="btn sm" id="dlgClose">✕</button></div><div id="dlgBody"></div></dialog>
   <div id="toast" class="toast hidden"></div>
   <script src="./vendor/qrcode.js"></script>
+  <script src="./vendor/leaflet.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./nouveautes.js?v=2026-11-21-b149"></script>
-  <script src="./rt-format.js?v=2026-11-21-b149"></script>
-  <script src="./admin.js?v=2026-11-21-b149"></script>
+  <script src="./nouveautes.js?v=2026-11-21-b150"></script>
+  <script src="./rt-format.js?v=2026-11-21-b150"></script>
+  <script src="./admin.js?v=2026-11-21-b150"></script>
 </body>
 </html>
