@@ -813,3 +813,4 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .nm-act { flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .nm-vue { width: 100%; height: 720px; margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: #E9EEF6; }
 @media (max-width: 700px) { .nm-g { grid-template-columns: 1fr; } }
+.nm-to { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 13px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 7px 10px; }

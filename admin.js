@@ -1070,8 +1070,8 @@
   }
   // b132 — MAIL « LES GRANDES NOUVEAUTÉS » : rédaction, aperçu, simulation, test à soi, puis envoi (2 par mois maximum).
   // Envoi par la fonction Supabase admin-nouveautes (désinscription en un clic dans chaque mail). Brouillon gardé sur cet appareil.
-  async function nvMail(action, contenu) {
-    const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu }) });
+  async function nvMail(action, contenu, to) {
+    const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to }) });
     const j = await r.json().catch(() => ({}));
     if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
     if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
@@ -1087,7 +1087,7 @@
       '<div class="nm-g">' + ch("nmSujet", "Sujet du mail", d.sujet, 120) + ch("nmPer", "Période (en haut à droite)", d.periode, 60) + "</div>" +
       '<fieldset class="nm-v"><legend>En vedette</legend><div class="nm-g">' + ch("nmVt", "Titre", d.vedette.titre, 80) + ch("nmVb", "Texte du bouton (facultatif)", d.vedette.bouton, 40) + "</div>" + ch("nmVx", "Texte", d.vedette.texte, 400, true) + ch("nmVl", "Lien du bouton (adresse referee-tracker.fr)", d.vedette.lien, 300) + "</fieldset>" +
       d.items.map((x, i) => '<fieldset class="nm-i"><legend>Nouveauté ' + (i + 1) + ' <span class="mut tiny">(facultative)</span></legend>' + ch("nmT" + i, "Titre", x.titre, 80) + ch("nmX" + i, "Texte", x.texte, 300, true) + "</fieldset>").join("") +
-      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><button class="btn" id="nmTest">M\'envoyer un test</button><button class="btn pri" id="nmEnv" disabled>Envoyer aux arbitres</button></div>' +
+      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><input id="nmTo" class="nm-to" type="email" placeholder="Adresse du test (vide : adresse admin)" aria-label="Adresse du test"><button class="btn" id="nmTest">Envoyer un test</button><button class="btn pri" id="nmEnv" disabled>Envoyer aux arbitres</button></div>' +
       '<div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
     const val = (id) => box.querySelector("#" + id).value.trim();
     const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
@@ -1099,7 +1099,10 @@
     box.querySelector("#nmSim").onclick = async () => { try { const j = await nvMail("simuler", lire()); quota(j);
       res.innerHTML = '<p><b>' + j.destinataires.length + " arbitre(s)</b> le recevraient" + (j.exclus ? " · " + j.exclus + " ont refusé les nouveautés" : "") + ' :</p><p class="tiny">' + j.destinataires.map(esc).join(" · ") + "</p>";
       env.disabled = !j.destinataires.length || j.envois_ce_mois >= j.max; } catch (e) { erreur(e); } };
-    box.querySelector("#nmTest").onclick = async () => { try { await nvMail("test", lire()); toast("Mail de test envoyé sur l'adresse admin", "ok"); } catch (e) { erreur(e); } };
+    const to = box.querySelector("#nmTo"); try { to.value = localStorage.getItem(CLE + "_to") || ""; } catch (e) {}
+    box.querySelector("#nmTest").onclick = async () => { const a = to.value.trim(); try { localStorage.setItem(CLE + "_to", a); } catch (e) {}
+      if (!(await confirmer("Envoyer un test", "Envoyer le mail marqué [TEST] à <strong>" + esc(a || "l'adresse admin") + "</strong> seulement ?", "Envoyer le test"))) return;
+      try { const j = await nvMail("test", lire(), a); toast("Test envoyé à " + j.envoye_a, "ok"); } catch (e) { erreur(e); } };
     env.onclick = async () => { const c = lire();
       if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » aux arbitres listés par la simulation ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
       env.disabled = true; try { const j = await nvMail("envoyer", c); res.innerHTML = "<p><b>Envoyé à " + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); } catch (e) { erreur(e); } };
