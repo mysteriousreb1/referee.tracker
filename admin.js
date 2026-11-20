@@ -1109,8 +1109,8 @@
       catch (e) { etat.textContent = ""; erreur(e); } finally { ev.target.disabled = false; }
     };
   }
-  async function nvMail(action, contenu, to) {
-    const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to }) });
+  async function nvMail(action, contenu, to, id, quand) {
+    const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to, id, quand }) });
     const j = await r.json().catch(() => ({}));
     if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
     if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
@@ -1127,8 +1127,9 @@
       '<div class="nm-g">' + ch("nmSujet", "Sujet du mail", d.sujet, 120) + ch("nmPer", "Période (en haut à droite)", d.periode, 60) + "</div>" +
       '<fieldset class="nm-v"><legend>En vedette</legend><div class="nm-g">' + ch("nmVt", "Titre", d.vedette.titre, 80) + ch("nmVb", "Texte du bouton (facultatif)", d.vedette.bouton, 40) + "</div>" + ch("nmVx", "Texte", d.vedette.texte, 400, true) + ch("nmVl", "Lien du bouton (adresse referee-tracker.fr)", d.vedette.lien, 300) + "</fieldset>" +
       d.items.map((x, i) => '<fieldset class="nm-i"><legend>Nouveauté ' + (i + 1) + ' <span class="mut tiny">(facultative)</span></legend>' + ch("nmT" + i, "Titre", x.titre, 80) + ch("nmX" + i, "Texte", x.texte, 300, true) + "</fieldset>").join("") +
-      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><input id="nmTo" class="nm-to" type="email" placeholder="Adresse du test (vide : adresse admin)" aria-label="Adresse du test"><button class="btn" id="nmTest">Envoyer un test</button><button class="btn pri" id="nmEnv" disabled>Envoyer aux arbitres</button></div>' +
-      '<div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
+      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><input id="nmTo" class="nm-to" type="email" placeholder="Adresse du test (vide : adresse admin)" aria-label="Adresse du test"><button class="btn" id="nmTest">Envoyer un test</button><button class="btn pri" id="nmEnv">Envoyer aux arbitres maintenant</button></div>' +
+      '<div class="nm-prog"><label class="f">Programmer l\'envoi le<input type="datetime-local" id="nmQuand"></label><button class="btn" id="nmProg">Programmer</button><span class="mut tiny">Parti automatiquement à l\'heure choisie (à 10 min près). Tu peux l\'annuler d\'ici là.</span></div>' +
+      '<div id="nmProgL"></div><div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
     const val = (id) => box.querySelector("#" + id).value.trim();
     const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
       try { localStorage.setItem(CLE, JSON.stringify(c)); } catch (e) {} return c; };
@@ -1139,23 +1140,35 @@
       const clip = choix[0] && choix[0].id === "ref-clips"; poser("nmVb", ved.bouton || (clip ? "Découvrir REF CLIPS" : "")); poser("nmVl", clip ? "https://clips.referee-tracker.fr/" : "");
       for (let i = 0; i < 4; i++) { poser("nmT" + i, (items[i] || {}).titre || ""); poser("nmX" + i, (items[i] || {}).texte || ""); }
       if (!box.querySelector("#nmPer").value) poser("nmPer", new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase()));
-      env.disabled = true; lire(); box.querySelector("#nmApercu").click(); };
+      lire(); box.querySelector("#nmApercu").click(); };
     assistantIA(box.querySelector(".nm-ia"), { format: "nouveautes", max: 5, ouvert: true, titre: "Créer le mail à partir des modifications",
       remplir: (c) => remplirMail("", c[0], c.slice(1), c),
       appliquer: (r, c) => remplirMail(r.sujet, r.vedette || {}, r.items || [], c) });
-    box.querySelectorAll("input, textarea").forEach((x) => x.addEventListener("input", () => { env.disabled = true; }));   // tout changement oblige à re-simuler
-    const quota = (j) => { if (j && j.max) box.querySelector("#nmQuota").textContent = j.envois_ce_mois + " / " + j.max + " envois ce mois-ci"; };
+    let nbDest = null;   // b137 — nombre d'arbitres de la dernière simulation (refaite toute seule avant l'envoi si besoin)
+    const quota = (j) => { if (!j || !j.max) return; const q = box.querySelector("#nmQuota"), plein = j.envois_ce_mois >= j.max;
+      q.innerHTML = '<span class="nm-cpt' + (plein ? " plein" : "") + '">' + j.envois_ce_mois + " / " + j.max + "</span> envoi" + (j.envois_ce_mois > 1 ? "s" : "") + " ce mois-ci" + (j.prevus_ce_mois ? " · " + j.prevus_ce_mois + " programmé" + (j.prevus_ce_mois > 1 ? "s" : "") : "");
+      const z = box.querySelector("#nmProgL"); const L = j.programmes || [];
+      z.innerHTML = L.length ? '<div class="nm-pl"><b>Envois programmés</b>' + L.map((x) => '<div class="nm-pi"><span>' + esc(new Date(x.quand).toLocaleString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</span><span>" + esc(x.sujet) + '</span><button class="btn sm" data-annul="' + x.id + '">Annuler</button></div>').join("") + "</div>" : "";
+      z.querySelectorAll("[data-annul]").forEach((b) => (b.onclick = async () => { if (!(await confirmer("Annuler l'envoi programmé", "Annuler cet envoi ? Rien ne partira.", "Annuler l'envoi"))) return; try { quota(await nvMail("annuler", null, null, b.dataset.annul)); toast("Envoi annulé", "ok"); } catch (e) { erreur(e); } }));
+      if (window.majCompteurEnvois) window.majCompteurEnvois(j); };
+    nvMail("etat").then(quota).catch(() => {});   // b137 — compteur affiché dès l'ouverture
+    box.querySelector("#nmProg").onclick = async () => { const v = box.querySelector("#nmQuand").value; if (!v) return toast("Choisis la date et l'heure", "err"); const c = lire(), quand = new Date(v);
+      if (!(await confirmer("Programmer l'envoi", "Envoyer « " + esc(c.sujet) + " » aux arbitres le <strong>" + esc(quand.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })) + "</strong> ? Tu pourras l'annuler jusqu'à l'heure prévue.", "Programmer"))) return;
+      try { quota(await nvMail("programmer", c, null, null, quand.toISOString())); toast("Envoi programmé", "ok"); } catch (e) { erreur(e); } };
     box.querySelector("#nmApercu").onclick = async () => { try { const j = await nvMail("apercu", lire()); quota(j); const f = box.querySelector("#nmVue"); f.hidden = false; f.srcdoc = j.html; } catch (e) { erreur(e); } };
     box.querySelector("#nmSim").onclick = async () => { try { const j = await nvMail("simuler", lire()); quota(j);
       res.innerHTML = '<p><b>' + j.destinataires.length + " arbitre(s)</b> le recevraient" + (j.exclus ? " · " + j.exclus + " ont refusé les nouveautés" : "") + ' :</p><p class="tiny">' + j.destinataires.map(esc).join(" · ") + "</p>";
-      env.disabled = !j.destinataires.length || j.envois_ce_mois >= j.max; } catch (e) { erreur(e); } };
+      nbDest = j.destinataires.length; } catch (e) { erreur(e); } };
     const to = box.querySelector("#nmTo"); try { to.value = localStorage.getItem(CLE + "_to") || ""; } catch (e) {}
     box.querySelector("#nmTest").onclick = async () => { const a = to.value.trim(); try { localStorage.setItem(CLE + "_to", a); } catch (e) {}
       if (!(await confirmer("Envoyer un test", "Envoyer le mail marqué [TEST] à <strong>" + esc(a || "l'adresse admin") + "</strong> seulement ?", "Envoyer le test"))) return;
       try { const j = await nvMail("test", lire(), a); toast("Test envoyé à " + j.envoye_a, "ok"); } catch (e) { erreur(e); } };
     env.onclick = async () => { const c = lire();
-      if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » aux arbitres listés par la simulation ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
-      env.disabled = true; try { const j = await nvMail("envoyer", c); res.innerHTML = "<p><b>Envoyé à " + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); } catch (e) { erreur(e); } };
+      try { const j = await nvMail("simuler", c); quota(j); nbDest = j.destinataires.length; if (j.envois_ce_mois >= j.max) return toast("Limite de " + j.max + " envois atteinte ce mois-ci", "err"); if (!nbDest) return toast("Aucun arbitre n'accepte les nouveautés", "err"); } catch (e) { return erreur(e); }
+      if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » maintenant à <strong>" + nbDest + " arbitre(s)</strong> ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
+      env.disabled = true; const lib = env.textContent; env.textContent = "Envoi en cours…"; res.innerHTML = '<p class="nm-cours"><span class="nm-spin"></span>Envoi en cours, 4 arbitres à la fois : ne ferme pas la page (environ 30 s).</p>';
+      try { const j = await nvMail("envoyer", c); quota(j); res.innerHTML = '<p class="nm-ok"><b>Envoyé à ' + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); }
+      catch (e) { res.innerHTML = '<p class="err">Envoi impossible : ' + esc(e.message) + "</p>"; erreur(e); } finally { env.textContent = lib; env.disabled = false; } };
   }
   // ---------- b84 : bandeau affiché en haut de l'app de tous les arbitres (maintenance, sauvegarde, nouveauté) ----------
   const MODELES_BANDEAU = [["", "— Modèle —", "info"], ["maint", "Maintenance prévue ce soir de 22 h à 23 h : l'app peut être indisponible quelques minutes.", "alerte"], ["sauv", "Sauvegarde en cours : tes données sont protégées, certaines mises à jour peuvent prendre quelques minutes de plus.", "info"], ["nouv", "Nouvelle version disponible : recharge l'app pour en profiter.", "succes"], ["inc", "Incident en cours sur la lecture des convocations : nous corrigeons, rien n'est perdu.", "alerte"]];
@@ -1601,7 +1614,8 @@
     // b80 — segments (comité, ligue, niveau) construits depuis les profils
     const valSeg = (a, k) => { const p = a.profil || {}; return k === "niveau" ? String(p.niveau || "") : String((p.zones || {})[k] || "").toUpperCase(); };
     const segOpts = (k) => [...new Set(l.map((a) => valSeg(a, k)).filter(Boolean))].sort().map((v) => '<option value="' + esc(v) + '">' + esc(v) + "</option>").join("");
-    el.innerHTML = '<div class="grid-2 msg-grid"><div class="card"><div class="card-head"><h2>Nouveau message</h2><span class="sub">e-mail au design Referee Tracker et/ou notification sur le téléphone</span></div>' +
+    el.innerHTML = '<div class="env-cpt" id="envCpt">Communications du mois (nouveautés et offres) : <b>…</b></div>' +
+      '<div class="grid-2 msg-grid"><div class="card"><div class="card-head"><h2>Nouveau message</h2><span class="sub">e-mail au design Referee Tracker et/ou notification sur le téléphone</span></div>' +
       '<label class="f">Destinataires<select id="msCible"><option value="actifs">Arbitres actifs (' + actifs + ')</option><option value="tous">Tous les comptes non suspendus (' + l.length + ")</option>" + l.map((a) => '<option value="' + a.id + '">' + esc(nomDe(a.profil, a.email)) + "</option>").join("") + "</select></label>" +
       '<div class="form-grid seg-grid"><label class="f">Comité<select id="msCd"><option value="">Tous</option>' + segOpts("cd") + '</select></label><label class="f">Ligue<select id="msLg"><option value="">Toutes</option>' + segOpts("ligue") + '</select></label><label class="f">Niveau<select id="msNiv"><option value="">Tous</option>' + segOpts("niveau") + "</select></label></div>" +
       '<p class="mut tiny" id="msCompte"></p>' +
@@ -1619,6 +1633,8 @@
       '<div class="card" id="diffCard"></div>' +
       '<div class="card"><div class="card-head"><h2>Historique des envois</h2><button class="btn sm" id="msHist">Afficher</button></div><div id="msHistZ"><p class="mut">Clique sur « Afficher ».</p></div></div>';
     // b134 — tout ce qui part vers les arbitres est ici : message, mail des nouveautés, campagne, e-mails automatiques.
+    window.majCompteurEnvois = (j) => { const z = $("envCpt"); if (!z || !j) return; const plein = j.envois_ce_mois >= j.max, p = (j.programmes || [])[0];
+      z.className = "env-cpt" + (plein ? " plein" : ""); z.innerHTML = "Communications du mois (nouveautés et offres) : <b>" + j.envois_ce_mois + " / " + j.max + "</b>" + (plein ? " · limite atteinte, prochain envoi possible le 1er du mois" : "") + (p ? " · prochain envoi programmé : <b>" + esc(new Date(p.quand).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</b>" : ""); };
     nouveautesCarte($("nmBox2")); campagneCarte($("caBox2"));
     (async () => { const z = $("mlAuto"); if (!z) return;
       try { if (!cache.config) cache.config = await admin("config.get"); } catch (e) { z.innerHTML = '<p class="err">' + esc(e.message) + "</p>"; return; }
