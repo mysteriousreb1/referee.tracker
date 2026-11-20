@@ -877,3 +877,17 @@ code { font-family: ui-monospace, monospace; }
 /* b150 — carte des matchs à venir */
 .ag-map { height: 380px; border-radius: 12px; overflow: hidden; }
 .ag-carte .leaflet-popup-content { font: 500 13px/1.45 var(--body); color: #0B1F3B; }
+
+/* b151 — ENVOIS : la carte ne déborde plus à droite ; le mail des nouveautés en 3 étapes séparées
+   (le vrai envoi n'est plus collé au bouton de test). */
+.nm, .nm * { min-width: 0; }
+.nm { max-width: 100%; overflow-wrap: anywhere; }
+.nm .card-head { flex-wrap: wrap; gap: 6px; }
+.nm-etapes { display: grid; gap: 10px; margin-top: 14px; }
+.nm-etape { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.nm-etape > div > b { display: block; margin-bottom: 6px; }
+.nm-num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13px; background: var(--line); }
+.nm-etape--envoi { border-color: var(--gold); background: rgba(245, 180, 0, .06); }
+.nm-etape--envoi .nm-num { background: var(--gold); color: #0B1F3B; }
+.nm-etape .nm-prog { margin-top: 0; padding-top: 0; border-top: 0; }
+.nm-maint { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
