@@ -5144,6 +5144,38 @@ function renderProgression() {
       onSave: v => majEval(ev.id, { uid: String(v.uid || "").split(" · ")[0] }, "Match rattaché") });
   }));
   attachPastToggle(root);   // b67 : « Mes exams » garde son état déplié après un re-rendu
+  progOnglets_(root);   // b147
+}
+/* b147 — PROGRESSION EN SOUS-MENUS : la page faisait 4 écrans de haut. Les blocs déjà rendus sont rangés
+   dans 4 onglets (le titre et l'avertissement « estimations » restent visibles en haut). */
+const PROG_ONGLETS_ = [["niveau", "Mon niveau"], ["plan", "Plan de travail"], ["evals", "Mes évaluations"], ["grille", "Grille & profil"]];
+function progOnglets_(root) {
+  const enfants = [...root.children].filter(el => !el.classList.contains("prog-onglets"));
+  if (enfants.length < 4) return;   // écran de chargement ou page vide : rien à ranger
+  let groupe = "niveau";
+  enfants.forEach(el => {
+    const t = (el.querySelector("h2, h3, summary") || el).textContent || "";
+    if (el.classList.contains("page-title") || el.classList.contains("ev-estim")) { el.dataset.prog = "tous"; return; }
+    if (/Plan de développement/.test(el.textContent) && el.tagName === "H2") groupe = "plan";
+    else if (el.classList.contains("pd-fam") || el.classList.contains("og-card")) { el.dataset.prog = "grille"; return; }
+    else if (el.classList.contains("eval-charts") || el.classList.contains("ev-depot") || el.classList.contains("eval-exams") || /Thèmes faibles/.test(t)) { el.dataset.prog = "evals"; return; }
+    else if (el.tagName === "H2" || /Historique du niveau|Ajouter un niveau/.test(t)) groupe = "niveau";
+    el.dataset.prog = groupe;
+  });
+  const actif = PROG_ONGLETS_.some(o => o[0] === state.progOnglet) ? state.progOnglet : "niveau";
+  const barre = document.createElement("div");
+  barre.className = "tabs-mini prog-onglets"; barre.setAttribute("role", "tablist");
+  barre.innerHTML = PROG_ONGLETS_.map(([k, l]) => `<button type="button" role="tab" class="tabs-mini-btn${k === actif ? " active" : ""}" data-prog-onglet="${k}" aria-selected="${k === actif}">${l}</button>`).join("");
+  const apres = enfants.filter(el => el.dataset.prog === "tous").pop() || root.firstElementChild;
+  apres.after(barre);
+  const montrer = k => {
+    state.progOnglet = k;
+    enfants.forEach(el => { el.hidden = el.dataset.prog !== "tous" && el.dataset.prog !== k; });
+    barre.querySelectorAll("[data-prog-onglet]").forEach(b => { const on = b.dataset.progOnglet === k; b.classList.toggle("active", on); b.setAttribute("aria-selected", on); });
+    window.dispatchEvent(new Event("resize"));   // graphiques dessinés cachés : on les recale à l'affichage
+  };
+  barre.addEventListener("click", e => { const b = e.target.closest("[data-prog-onglet]"); if (b) montrer(b.dataset.progOnglet); });
+  montrer(actif);
 }
 
 /* Onglet Contacts & Procédures (19/09/2026) — carnet de contacts (clubs,
