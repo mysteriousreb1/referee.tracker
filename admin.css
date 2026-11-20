@@ -855,3 +855,13 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
 .nm-cours, .nm-ok { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; }
 .nm-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--gold); animation: nmTourne .8s linear infinite; }
 @keyframes nmTourne { to { transform: rotate(360deg); } }
+
+/* b138 — blocs repliables (liste de diffusion, bannières publiées) */
+details.pli > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+details.pli > summary::-webkit-details-marker { display: none; }
+details.pli > summary::before { content: "▸"; font-size: 13px; color: var(--muted); transition: transform .2s; }
+details.pli[open] > summary::before { transform: rotate(90deg); }
+details.pli > summary.card-head { margin-bottom: 0; }
+details.pli[open] > summary.card-head { margin-bottom: 10px; }
+.bd-off { border-color: var(--danger, #E0313C); color: var(--danger, #E0313C); }
+.bd-aide { margin: 8px 0 0; line-height: 1.5; }

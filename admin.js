@@ -1011,7 +1011,7 @@
       '<div id="annIa"></div>' +
       '<label class="ann-t">Message <span class="mut tiny">{prenom} et {adresse} sont remplacés pour chaque arbitre</span><textarea id="annTxt" rows="3" maxlength="400"></textarea></label>' +
       '<div class="row"><label>Bouton<select id="annAct"><option value="">Aucun</option><option value="profil">Ouvrir le profil</option><option value="guide">Ouvrir le guide</option><option value="import">Importer mes PDF (historique)</option><option value="paiements">Onglet Paiements</option><option value="matchs">Onglet Matchs</option></select></label><input id="annLib" placeholder="Texte du bouton" maxlength="40"><button class="btn pri" id="annGo">Publier</button></div>' +
-      '<div class="subtab">Bannières publiées</div><div id="annT"></div>';
+      '<details class="pli"><summary class="subtab">Bannières publiées · cliquer pour afficher</summary><div id="annT"></div></details>';
     const $b = (id) => box.querySelector("#" + id);
     $b("annCible").onchange = () => $b("annChoix").classList.toggle("hidden", $b("annCible").value !== "choix");
     $b("annMod").onchange = () => { const m = ANN_MODELES[$b("annMod").value]; if (!m) return; $b("annTxt").value = m.t; $b("annAct").value = m.a; $b("annLib").value = m.l; if ($b("annMod").value === "sans_match") { $b("annCible").value = "sans"; $b("annChoix").classList.add("hidden"); } };
@@ -1154,7 +1154,10 @@
     nvMail("etat").then(quota).catch(() => {});   // b137 — compteur affiché dès l'ouverture
     box.querySelector("#nmProg").onclick = async () => { const v = box.querySelector("#nmQuand").value; if (!v) return toast("Choisis la date et l'heure", "err"); const c = lire(), quand = new Date(v);
       if (!(await confirmer("Programmer l'envoi", "Envoyer « " + esc(c.sujet) + " » aux arbitres le <strong>" + esc(quand.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })) + "</strong> ? Tu pourras l'annuler jusqu'à l'heure prévue.", "Programmer"))) return;
-      try { quota(await nvMail("programmer", c, null, null, quand.toISOString())); toast("Envoi programmé", "ok"); } catch (e) { erreur(e); } };
+      try { quota(await nvMail("programmer", c, null, null, quand.toISOString())); toast("Envoi programmé", "ok");
+        // b138 — une fois programmé, le formulaire est vidé (le mail est gardé côté serveur jusqu'à son envoi)
+        box.querySelectorAll(".nm-g input, .nm fieldset input, .nm fieldset textarea, #nmQuand").forEach((x) => { if (x.id !== "nmSujet") x.value = ""; });
+        box.querySelector("#nmSujet").value = "Les grandes nouveautés de Referee Tracker"; box.querySelector("#nmVue").hidden = true; res.innerHTML = ""; lire(); } catch (e) { erreur(e); } };
     box.querySelector("#nmApercu").onclick = async () => { try { const j = await nvMail("apercu", lire()); quota(j); const f = box.querySelector("#nmVue"); f.hidden = false; f.srcdoc = j.html; } catch (e) { erreur(e); } };
     box.querySelector("#nmSim").onclick = async () => { try { const j = await nvMail("simuler", lire()); quota(j);
       res.innerHTML = '<p><b>' + j.destinataires.length + " arbitre(s)</b> le recevraient" + (j.exclus ? " · " + j.exclus + " ont refusé les nouveautés" : "") + ' :</p><p class="tiny">' + j.destinataires.map(esc).join(" · ") + "</p>";
@@ -1186,13 +1189,14 @@
       '<label class="f">Style<select id="bdSty">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
       '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
       '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="bdDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="bdFin" value="' + esc(dt(v.bandeau_fin)) + '"></label></div>' +
-      '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier le bandeau</button><button class="btn" id="bdOff">Retirer le bandeau</button><span class="mut tiny">Visible à la prochaine ouverture de l\'app (ou rechargement). Le mode maintenance complet se règle dans Configuration.</span></div>';
+      '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier ou programmer</button>' + (actif ? '<button class="btn bd-off" id="bdOff">Retirer pour tous maintenant</button>' : "") + '</div>' +
+      '<p class="mut tiny bd-aide"><b>Programmer :</b> remplis « Afficher à partir du » et/ou « Jusqu\'au », puis « Publier ou programmer ». <b>Retirer :</b> « Retirer pour tous maintenant » l\'enlève de l\'app de tous les arbitres à leur prochaine ouverture (ou rechargement). Le mode maintenance complet se règle dans Configuration.</p>';
     z.querySelector(".card-head").insertAdjacentHTML("afterend", '<div class="bd-ia"></div>');   // b136
     assistantIA(z.querySelector(".bd-ia"), { format: "bandeau", max: 3, appliquer: (r) => { if (r.texte) z.querySelector("#bdTxt").value = r.texte; } });
     z.querySelector("#bdMod").addEventListener("change", (e) => { const m = MODELES_BANDEAU[Number(e.target.value)]; if (m && m[0]) { z.querySelector("#bdTxt").value = m[1]; z.querySelector("#bdSty").value = m[2]; } });
     const ecrire = async (nv) => { try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, v, nv) }); cache.config = null; toast(nv.bandeau ? "Bandeau publié" : "Bandeau retiré", "ok"); rendBandeau(); } catch (e) { toast(e.message, "err"); } };
     z.querySelector("#bdPub").addEventListener("click", () => { const t = z.querySelector("#bdTxt").value.trim(); if (t.length < 5) return toast("Texte trop court", "err"); ecrire({ bandeau: t, bandeau_style: z.querySelector("#bdSty").value, bandeau_debut: z.querySelector("#bdDeb").value || "", bandeau_fin: z.querySelector("#bdFin").value || "" }); });
-    z.querySelector("#bdOff").addEventListener("click", () => ecrire({ bandeau: "", bandeau_debut: "", bandeau_fin: "" }));
+    const off = z.querySelector("#bdOff"); if (off) off.addEventListener("click", async () => { if (!(await confirmer("Retirer le bandeau", "Retirer le bandeau de l'app de <strong>tous les arbitres</strong> maintenant ?", "Retirer pour tous"))) return; ecrire({ bandeau: "", bandeau_debut: "", bandeau_fin: "" }); });
   }
 
   // b134 — « Dans l'app » (ex-Communication) : seulement ce qui s'AFFICHE dans l'app des arbitres
@@ -1652,14 +1656,16 @@
       const nb = (f) => l.filter(f).length;
       let d = l.filter((a) => { const p = a.profil || {}; const t = (nomDe(p, a.email) + " " + a.email + " " + (p.telephone || "")).toLowerCase();
         return (!diff.q || t.includes(diff.q)) && (!diff.etat || etatComm(a) === diff.etat || (diff.etat === "wa" && comm(a).whatsapp === true && waNum(p.telephone))) && (!diff.cd || valSeg(a, "cd") === diff.cd); });
-      z.innerHTML = '<div class="card-head"><h2>Liste de diffusion</h2><span class="sub">' + l.length + " compte(s) · seuls les abonnés reçoivent les offres ; les messages de service vont à tous</span></div>" +
+      // b138 — liste repliée par défaut (menu déroulant), l'état ouvert/fermé est gardé pendant les filtres
+      z.innerHTML = '<details class="pli"' + (diff.ouvert ? " open" : "") + '><summary class="card-head"><h2>Liste de diffusion</h2><span class="sub">' + l.length + " compte(s) · " + nb((a) => etatComm(a) === "abonne") + " abonnés aux offres · cliquer pour afficher</span></summary>" +
         '<div class="tiles mini">' + [["abonne", "Abonnés offres", nb((a) => etatComm(a) === "abonne"), "green"], ["wa", "WhatsApp possible", nb((a) => comm(a).whatsapp === true && waNum((a.profil || {}).telephone)), "green"], ["oppose", "Opposés", nb((a) => etatComm(a) === "oppose"), "red"], ["non_informe", "Pas encore informés", nb((a) => etatComm(a) === "non_informe"), "orange"]].map((t) => '<div class="tile ' + t[3] + ' clic' + (diff.etat === t[0] ? " on" : "") + '" data-etat="' + t[0] + '"><b>' + t[2] + "</b><span>" + t[1] + "</span></div>").join("") + "</div>" +
         '<div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0"><input id="dfQ" placeholder="Rechercher (nom, e-mail, téléphone)" value="' + esc(diff.q) + '" style="flex:1;min-width:200px"><select id="dfCd"><option value="">Tous comités</option>' + segOpts("cd").replace('value="' + esc(diff.cd) + '"', 'value="' + esc(diff.cd) + '" selected') + '</select><button class="btn sm" id="dfTous">Tout afficher</button><button class="btn sm" id="dfCsv">Exporter CSV (' + d.length + ")</button></div>" +
         '<div class="tbl"><table><thead><tr><th>Arbitre</th><th>Contact</th><th>Comité · ligue</th><th>Offres</th><th>WhatsApp</th><th>Choix</th><th></th></tr></thead><tbody>' +
         (d.length ? d.map((a) => { const p = a.profil || {}, c = comm(a), e = etatComm(a);
           return "<tr><td><strong>" + esc(nomDe(p, a.email)) + "</strong><br>" + badgeStatut(p.statut) + '</td><td class="tiny">' + esc(p.email_connexion || a.email || "") + "<br>" + esc(p.telephone || "—") + '</td><td class="tiny">' + esc(valSeg(a, "cd") || "—") + " · " + esc(valSeg(a, "ligue") || "—") + "</td><td>" + (e === "abonne" ? badge("abonné", "green") : e === "oppose" ? badge("opposé", "red") : badge("pas informé", "orange")) + "</td><td>" + (c.whatsapp === true && waNum(p.telephone) ? badge("oui", "green") : badge(p.telephone ? "non" : "sans n°", "")) + '</td><td class="tiny mut">' + (c.date ? fmt(c.date) + "<br>" + esc(c.source || "") : "—") + "</td><td>" +
             (e === "abonne" || c.whatsapp === true ? '<button class="btn sm" data-dret="' + a.id + '">Retirer</button>' : "") + (e !== "abonne" ? ' <button class="btn sm" data-drein="' + a.id + '">Réinscrire (sur demande)</button>' : "") + "</td></tr>"; }).join("") : '<tr><td colspan="7" class="vide">Aucun compte</td></tr>') + "</tbody></table></div>" +
-        '<p class="mut tiny">Pas encore informés : comptes créés avant le choix « Je ne souhaite pas les recevoir » ; le choix leur est demandé à la prochaine connexion. Réinscrire n\'est permis qu\'à la demande de l\'arbitre (motif journalisé).</p>';
+        '<p class="mut tiny">Pas encore informés : comptes créés avant le choix « Je ne souhaite pas les recevoir » ; le choix leur est demandé à la prochaine connexion. Réinscrire n\'est permis qu\'à la demande de l\'arbitre (motif journalisé).</p></details>';
+      z.querySelector("details.pli").addEventListener("toggle", (e) => { diff.ouvert = e.target.open; });
       z.querySelectorAll("[data-etat]").forEach((t) => t.addEventListener("click", () => { diff.etat = diff.etat === t.dataset.etat ? "" : t.dataset.etat; rendDiff(); }));
       const q = z.querySelector("#dfQ"); q.addEventListener("input", () => { diff.q = q.value.trim().toLowerCase(); const pos = q.selectionStart; rendDiff(); const q2 = $("dfQ"); q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {} });
       z.querySelector("#dfCd").addEventListener("change", (e) => { diff.cd = e.target.value; rendDiff(); });
