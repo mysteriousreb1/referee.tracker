@@ -873,3 +873,7 @@ code { font-family: ui-monospace, monospace; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: rgba(127, 140, 160, .45); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+
+/* b150 — carte des matchs à venir */
+.ag-map { height: 380px; border-radius: 12px; overflow: hidden; }
+.ag-carte .leaflet-popup-content { font: 500 13px/1.45 var(--body); color: #0B1F3B; }

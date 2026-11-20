@@ -550,7 +550,7 @@
     const el = $("sec-inscriptions");
     if (force || !cache.inscriptions) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.inscriptions = (await admin("inscriptions.liste")).data || []; }
     const l = cache.inscriptions; $("navInscriptions").textContent = l.filter((i) => i.statut === "recue" || i.statut === "erreur" || i.statut === "attente").length || "";
-    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["attente", "recue", "moteur_attribue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(s.replace("_", " ")) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
+    el.innerHTML = '<div class="toolbar"><span class="pill' + (!filtreInsc ? " on" : "") + '" data-f="">Toutes (' + l.length + ")</span>" + ["attente", "recue", "moteur_attribue", "moteur_cree", "prete", "erreur"].map((s) => '<span class="pill' + (filtreInsc === s ? " on" : "") + '" data-f="' + s + '">' + esc(({ attente: "En attente", recue: "Reçues", moteur_attribue: "Moteur en route", moteur_cree: "Moteur créé", prete: "Prêtes", erreur: "En erreur" })[s] || s) + " (" + l.filter((i) => i.statut === s).length + ")</span>").join("") +
       '<span class="sp"></span><button class="btn sm" id="btnCmdFile">Copier la commande file d\'attente</button><button class="btn sm" id="btnCsvInsc">Export CSV</button></div>' +
       '<p class="mut tiny">Places : <code>pub.beta</code> (Configuration) — au-delà de <em>max</em>, les demandes arrivent en « attente » et tu les acceptes ici une par une. Parcours : inscription reçue → <code>zsh rt-beta.sh --file-attente</code> crée le moteur → « Marquer moteur créé » (api_url) → « Envoyer le code » (statut prête). Une erreur de route Cloudflare se lève avec « Route faite ».</p><div id="tblInsc"></div>';
     el.querySelectorAll(".pill").forEach((p) => p.addEventListener("click", () => { filtreInsc = p.dataset.f; rendus.inscriptions(false); }));
@@ -720,7 +720,8 @@
     // ---- moniteur d'alertes (règles)
     const AL = [];
     horsLigne.forEach((m) => AL.push({ s: m.minutes == null || m.minutes > 360 ? 1 : 2, d: "Moteurs", m: "Moteur sans nouvelles depuis " + (m.minutes == null ? "toujours" : hm(m.minutes)), o: m.prenom, l: "#moteurs" }));
-    M.filter((m) => vRef && m.version && m.version !== vRef).forEach((m) => AL.push({ s: 3, d: "Moteurs", m: "Version " + m.version + " (dernière : " + vRef + ")", o: m.prenom, l: "#moteurs" }));
+    { const vieux = M.filter((m) => vRef && m.version && m.version !== vRef);   // b150 — une seule ligne au lieu d'une par moteur
+      if (vieux.length) AL.push({ s: 3, d: "Moteurs", m: vieux.length + " moteur" + (vieux.length > 1 ? "s" : "") + " pas à jour (dernière version : " + vRef + ")", o: vieux.map((m) => m.prenom).filter(Boolean).slice(0, 4).join(", ") + (vieux.length > 4 ? "…" : ""), l: "#moteurs" }); }
     if (err7) AL.push({ s: err7 > 50 ? 2 : 3, d: "Application", m: err7 + " erreur(s) JavaScript sur 7 jours", o: (C.erreurs || []).length + " type(s)", l: "#cockpit" });
     if (F.tickets_bloquants) AL.push({ s: 1, d: "Support", m: F.tickets_bloquants + " ticket(s) bloquant(s) ouvert(s)", o: "Tickets", l: "#tickets" });
     else if (F.tickets_ouverts) AL.push({ s: 3, d: "Support", m: F.tickets_ouverts + " ticket(s) ouvert(s)", o: "Tickets", l: "#tickets" });
@@ -1372,16 +1373,56 @@
     const el = $("sec-agenda");
     if (force || !cache.agenda || cache.agenda.j !== agJours) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.agenda = { j: agJours, d: (await admin("matchs.avenir", { jours: agJours })).data || [] }; }
     const l = cache.agenda.d;
-    el.innerHTML = '<div class="toolbar"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Horizon <select id="agJ">' + [7, 14, 30, 60].map((n) => '<option value="' + n + '"' + (n === agJours ? " selected" : "") + ">" + n + " jours</option>").join("") + '</select></label><span class="sp"></span><span class="mut tiny">' + l.length + " match(s) · " + euro(l.reduce((t, x) => t + (Number(x.indemnite_totale) || 0), 0)) + " d'indemnités · " + Math.round(l.reduce((t, x) => t + (Number(x.km_a_r_stats) || 0), 0)) + ' km A/R</span></div><div id="agT"></div>';
+    el.innerHTML = '<div class="card ag-carte"><div class="card-head"><h3>Carte des matchs</h3><span class="sub" id="agCarteEtat">une épingle par salle · clic = détails</span></div><div id="agMap" class="ag-map"></div></div>' +
+      '<div class="toolbar"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Horizon <select id="agJ">' + [7, 14, 30, 60].map((n) => '<option value="' + n + '"' + (n === agJours ? " selected" : "") + ">" + n + " jours</option>").join("") + '</select></label><span class="sp"></span><span class="mut tiny">' + l.length + " match(s) · " + euro(l.reduce((t, x) => t + (Number(x.indemnite_totale) || 0), 0)) + " d'indemnités · " + Math.round(l.reduce((t, x) => t + (Number(x.km_a_r_stats) || 0), 0)) + ' km A/R</span></div><div id="agT"></div>';
     el.querySelector("#agJ").onchange = (e) => { agJours = Number(e.target.value); rendus.agenda(true); };
     tableCourante = tableau(el.querySelector("#agT"), [
       { t: "Date", k: "date_match", r: (x) => esc(fmtD(x.date_match)) + ' <span class="mut tiny">' + esc(x.heure_rdv || "") + "</span>" }, { t: "Arbitre", k: "prenom", r: (x) => esc(x.prenom || "—") },
       { t: "Compétition", k: "libelle_competition", r: (x) => esc(x.libelle_competition || "") + '<br><span class="mut tiny">' + esc(x.niveau_administratif || x.format || "") + "</span>" },
-      { t: "Rencontre", k: "recevant", r: (x) => esc([x.recevant, x.visiteur_evenement].filter(Boolean).join(" – ")) + '<br><span class="mut tiny">' + esc(x.ville || "") + "</span>" },
+      { t: "Rencontre", k: "recevant", r: (x) => esc([x.recevant, x.visiteur_evenement].filter(Boolean).map(casseNom).join(" – ")) + '<br><span class="mut tiny">' + esc(casseNom(x.salle ? x.salle + " · " + (x.ville || "") : x.ville || "")) + "</span>" },
       { t: "Rôle", k: "mon_role", r: (x) => esc(x.mon_role || "") }, { t: "Collègue", k: "collegue_nom", r: (x) => esc(x.collegue_nom || "—") },
-      { t: "Km A/R", k: (x) => Number(x.km_a_r_stats) || 0, cl: "num right", r: (x) => esc(x.km_a_r_stats || "—") }, { t: "Indemnité", k: (x) => Number(x.indemnite_totale) || 0, cl: "num right", r: (x) => (x.indemnite_totale != null ? esc(x.indemnite_totale) + " €" : "—") },
+      { t: "Km A/R", k: (x) => Number(x.km_a_r_stats) || 0, cl: "num right", r: (x) => esc(x.km_a_r_stats || "—") }, { t: "Indemnité", k: (x) => Number(x.indemnite_totale) || 0, cl: "num right", r: (x) => (x.indemnite_totale != null ? esc(Number(x.indemnite_totale).toLocaleString("fr-FR", { style: "currency", currency: "EUR" })) : "—") },
     ], l, { recherche: rechercheCourante, clic: (x) => ficheDe(x.user_id) });
+    agCarte(el.querySelector("#agMap"), el.querySelector("#agCarteEtat"), l);
   };
+  // b150 — « SAINT-LOUIS BASKET » → « Saint-Louis Basket » (sigles courts gardés : ASL, BC, CTC…)
+  const PETITS_MOTS = new Set(["de", "du", "des", "et", "la", "le", "les", "sur", "en", "au", "aux", "à", "d", "l"]);
+  const casseNom = (t) => String(t || "").replace(/\p{L}[\p{L}'’.]*/gu, (m, i) => { const b = m.toLowerCase();
+    if (i > 0 && PETITS_MOTS.has(b)) return b;   // « Espace Sportif et Culturel »
+    return m.length <= 3 && m === m.toUpperCase() ? m : b.charAt(0).toUpperCase() + b.slice(1); });
+  // b150 — CARTE DES MATCHS À VENIR : une épingle par salle (adresse → position via OpenStreetMap, gardée en mémoire sur cet ordinateur).
+  async function geoSalle(m) {
+    const q = [m.adresse || m.salle, m.ville].filter(Boolean).join(", "); if (!q) return null;
+    const cle = "rt_geo_" + q.toLowerCase();
+    try { const c = localStorage.getItem(cle); if (c) return JSON.parse(c); } catch (e) {}
+    await new Promise((ok) => setTimeout(ok, 1100));   // règle d'usage OpenStreetMap : 1 demande par seconde
+    try {
+      const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=fr&q=" + encodeURIComponent(q), { headers: { "Accept-Language": "fr" } });
+      const j = await r.json(), p = j && j[0] ? [Number(j[0].lat), Number(j[0].lon)] : null;
+      try { localStorage.setItem(cle, JSON.stringify(p)); } catch (e) {}
+      return p;
+    } catch (e) { return null; }
+  }
+  async function agCarte(box, etat, l) {
+    if (!box || typeof L === "undefined") { if (box) box.closest(".card").hidden = true; return; }
+    const carte = L.map(box, { scrollWheelZoom: false }).setView([48.58, 7.75], 9);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(carte);
+    const parSalle = {};
+    l.forEach((m) => { const k = [m.adresse || m.salle, m.ville].filter(Boolean).join("|").toLowerCase(); if (k) (parSalle[k] = parSalle[k] || []).push(m); });
+    const groupes = Object.values(parSalle), points = [];
+    let faits = 0;
+    for (const g of groupes) {
+      const p = await geoSalle(g[0]); faits++;
+      if (etat) etat.textContent = faits < groupes.length ? "Placement des salles… " + faits + " / " + groupes.length : groupes.length + " salle(s) · clic = détails";
+      if (!p || !box.isConnected) continue;
+      points.push(p);
+      const html = "<b>" + esc(casseNom(g[0].salle || g[0].ville || "")) + "</b><br><span>" + esc(casseNom(g[0].ville || "")) + "</span><hr style=\"border:0;border-top:1px solid #ddd;margin:6px 0\">" +
+        g.map((m) => "<div style=\"margin:4px 0\"><b>" + esc(fmtD(m.date_match)) + "</b> " + esc(m.heure_rdv || "") + " · " + esc(m.prenom || "") + "<br>" + esc([m.recevant, m.visiteur_evenement].filter(Boolean).map(casseNom).join(" – ")) + (m.mon_role ? " <i>(" + esc(m.mon_role) + ")</i>" : "") + "</div>").join("");
+      L.marker(p).addTo(carte).bindPopup(html, { maxWidth: 320 });
+      if (points.length === 1) carte.setView(p, 10);
+    }
+    if (points.length > 1) carte.fitBounds(points, { padding: [30, 30] });
+  }
 
   // ---- Paiements (tous les arbitres)
   rendus.paiements = async function (force) {
