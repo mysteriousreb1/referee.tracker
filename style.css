@@ -5764,3 +5764,19 @@ body { font-variant-numeric: tabular-nums; }
 .prog-onglets::-webkit-scrollbar { display: none; }
 .prog-onglets .tabs-mini-btn { white-space: nowrap; }
 #progression > [hidden] { display: none !important; }   /* les blocs ont leur propre « display » : on force le masquage des onglets inactifs */
+
+/* ===== b148 — e-LICENCE sur ordinateur =====
+   Boutons sur une seule ligne : « Présenter » mis en avant, les actions de gestion (Corriger, Remplacer, Retirer)
+   plus petites et regroupées ; la carte e-Marque ne déborde plus de l'écran et reste à côté de la licence. */
+.elic-grid > * { min-width: 0; }
+.emq .card-sub { white-space: normal; }
+@media (min-width: 1000px) {
+  .elic-grid { grid-template-columns: minmax(0, 560px) minmax(0, 460px); gap: 22px; }
+  .lic-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .lic-act .small-btn { padding: 8px 12px; font-size: 13px; }
+  .lic-act .pc-seul { padding: 6px 11px; font-size: 13px; min-height: 0; background: transparent; }
+  .lic-act #licCorriger { margin-left: auto; }
+  .lic-act .pc-seul { padding: 6px 9px !important; }
+  .lic-act #elicDocDel.alerte-danger { border-color: transparent; color: var(--red, #FF4D6E) !important; background: transparent !important; }
+  .lic-act #elicDocDel:hover { border-color: currentColor; }
+}
