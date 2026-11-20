@@ -2403,7 +2403,11 @@ async function startApp() {
     // b81 — bandeau programmé (début / fin, heure de Paris saisie dans l'admin) et style.
     const maint = Date.now(), deb = v.bandeau_debut ? Date.parse(v.bandeau_debut) : 0, fin = v.bandeau_fin ? Date.parse(v.bandeau_fin) : 0;
     const b = (deb && maint < deb) || (fin && maint > fin) ? "" : String(v.bandeau || "").trim().slice(0, 300);
-    if (b && !document.getElementById("rtBandeauGlobal")) { const d = document.createElement("div"); d.id = "rtBandeauGlobal"; d.className = "rt-bandeau-global rt-bandeau-" + (["succes", "alerte"].indexOf(v.bandeau_style) >= 0 ? v.bandeau_style : "info"); d.setAttribute("role", "status"); d.textContent = b; const m = document.querySelector("main.content") || document.body; m.insertBefore(d, m.firstChild); }
+    // b142 — l'arbitre peut fermer le bandeau (×) : il ne revient pas tant que le texte ne change pas.
+    let ferme = ""; try { ferme = localStorage.getItem("rt_bandeau_ferme") || ""; } catch (e) {}
+    if (b && ferme !== b && !document.getElementById("rtBandeauGlobal")) { const d = document.createElement("div"); d.id = "rtBandeauGlobal"; d.className = "rt-bandeau-global rt-bandeau-" + (["succes", "alerte"].indexOf(v.bandeau_style) >= 0 ? v.bandeau_style : "info"); d.setAttribute("role", "status");
+      const t = document.createElement("span"); t.textContent = b; const x = document.createElement("button"); x.type = "button"; x.className = "rt-bandeau-x"; x.setAttribute("aria-label", "Fermer ce message"); x.textContent = "×";
+      x.addEventListener("click", () => { try { localStorage.setItem("rt_bandeau_ferme", b); } catch (e) {} d.remove(); }); d.append(t, x); const m = document.querySelector("main.content") || document.body; m.insertBefore(d, m.firstChild); }
     if (v.maintenance && !document.getElementById("rtMaintenance")) { const d = document.createElement("div"); d.id = "rtMaintenance"; d.className = "rt-consent"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.innerHTML = '<div class="rt-consent-box"><h2>Maintenance en cours</h2><p></p></div>'; d.querySelector("p").textContent = String(v.maintenance_texte || "").trim().slice(0, 300) || "Referee Tracker est en cours de mise à jour. Tes données sont en sécurité : reviens dans quelques minutes."; document.body.appendChild(d); }
   }).catch(() => {});
   jsonp("me")

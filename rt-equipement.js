@@ -142,7 +142,7 @@
             <button type="button" class="action-link" data-eq-suppr="${x.id}">Supprimer</button></div></div>
         </article>`).join("")}</div>`;
       }).join("") : (typeof empty === "function" ? empty("Aucun achat enregistré. Dépose ta première facture ci-dessus.") : "")}
-      <p class="card-sub" style="margin-top:12px">Garde tes factures : elles prouvent tes frais si tu dépasses un jour le plafond d'exonération (onglet Export → Année civile) ou si ton comité te rembourse une partie de la tenue. Information indicative.</p>`;
+      <p class="card-sub" style="margin-top:12px">Ces achats sont suivis à part : ils ne sont pas retirés de tes indemnités ni de ton net. Sous le plafond de la franchise des arbitres (onglet Export → Année civile), tu n'as rien à déclarer ni à déduire. Garde quand même tes factures, par exemple si ton comité rembourse une partie de la tenue. Information indicative.</p>`;
     brancher(root);
   }
 
