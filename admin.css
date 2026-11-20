@@ -822,3 +822,21 @@ pre.code { background: var(--navy-900); color: #fff; padding: 10px 12px; border-
   .nav-g, .nav-grp { font-size: 0; height: 1px; margin: 10px 14px 6px; background: rgba(255,255,255,.14); }
   .nav a:hover:not(.active) { padding-left: 0; }
 }
+
+/* b136 — blocs collés les uns aux autres (Envois, Inscriptions) : espacement régulier entre les blocs d'une page */
+.sec > .grid-2, .sec > .grid-3, #tblInsc { margin-bottom: 14px; }
+
+/* b136 — assistant IA de rédaction (même bloc dans Envois et Dans l'app) */
+.ia-r-box { margin: 4px 0 12px; border: 1px solid rgba(124, 58, 237, .35); border-radius: var(--r-md); background: linear-gradient(135deg, rgba(124, 58, 237, .08), rgba(37, 99, 235, .05)); padding: 0 12px; }
+.ia-r-box > summary { cursor: pointer; padding: 10px 0; font-weight: 800; font-size: 13px; list-style: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ia-r-box > summary::-webkit-details-marker { display: none; }
+.ia-r-ico { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: #7C3AED; color: #fff; font-size: 13px; }
+.ia-r-box[open] { padding-bottom: 12px; }
+.ia-r-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ia-r-sel { flex: 1 1 260px; min-width: 0; }
+.ia-r-liste { margin: 0 0 8px; padding-left: 22px; display: grid; gap: 6px; }
+.ia-r-liste:empty { display: none; }
+.ia-r-liste li { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; }
+.ia-r-liste li .sp { flex: 1; }
+.ia-r-liste li:first-child { border-color: var(--gold); }
+.ia-r-etat { align-self: center; }

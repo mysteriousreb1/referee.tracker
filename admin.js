@@ -1008,12 +1008,14 @@
       '<label>Style<select id="annStyle"><option value="info">Information</option><option value="alerte">Important</option></select></label>' +
       '<label>Fin d\'affichage<input id="annFin" type="date"></label></div>' +
       '<div id="annChoix" class="ann-choix hidden">' + A.map((a) => '<label><input type="checkbox" value="' + esc(a.id) + '"> ' + esc(nomDe(a.profil, a.email)) + ' <span class="mut tiny">' + (a.matchs || 0) + " match(s)</span></label>").join("") + "</div>" +
+      '<div id="annIa"></div>' +
       '<label class="ann-t">Message <span class="mut tiny">{prenom} et {adresse} sont remplacés pour chaque arbitre</span><textarea id="annTxt" rows="3" maxlength="400"></textarea></label>' +
       '<div class="row"><label>Bouton<select id="annAct"><option value="">Aucun</option><option value="profil">Ouvrir le profil</option><option value="guide">Ouvrir le guide</option><option value="import">Importer mes PDF (historique)</option><option value="paiements">Onglet Paiements</option><option value="matchs">Onglet Matchs</option></select></label><input id="annLib" placeholder="Texte du bouton" maxlength="40"><button class="btn pri" id="annGo">Publier</button></div>' +
       '<div class="subtab">Bannières publiées</div><div id="annT"></div>';
     const $b = (id) => box.querySelector("#" + id);
     $b("annCible").onchange = () => $b("annChoix").classList.toggle("hidden", $b("annCible").value !== "choix");
     $b("annMod").onchange = () => { const m = ANN_MODELES[$b("annMod").value]; if (!m) return; $b("annTxt").value = m.t; $b("annAct").value = m.a; $b("annLib").value = m.l; if ($b("annMod").value === "sans_match") { $b("annCible").value = "sans"; $b("annChoix").classList.add("hidden"); } };
+    assistantIA($b("annIa"), { format: "banniere", max: 3, appliquer: (r) => { if (r.texte) $b("annTxt").value = r.texte; } });   // b136
     $b("annGo").onclick = async () => {
       const txt = $b("annTxt").value.trim(), c = $b("annCible").value;
       if (txt.length < 5) return toast("Écris le message", "err");
@@ -1070,6 +1072,43 @@
   }
   // b132 — MAIL « LES GRANDES NOUVEAUTÉS » : rédaction, aperçu, simulation, test à soi, puis envoi (2 par mois maximum).
   // Envoi par la fonction Supabase admin-nouveautes (désinscription en un clic dans chaque mail). Brouillon gardé sur cet appareil.
+  // b136 — ASSISTANT IA DE RÉDACTION, le même partout (message, notification, bandeau, bannière, mail des nouveautés).
+  // On choisit des modifications du catalogue (nouveautes.js › RT_MODIFS) dans l'ordre d'importance et/ou on écrit une consigne ;
+  // l'IA (fonction Supabase admin-ia, mode « redaction ») propose le texte, qui remplit le formulaire. Rien n'est envoyé.
+  async function iaRediger(format, consigne, contexte) {
+    const r = await fetch(SB_URL + "/functions/v1/admin-ia", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ mode: "redaction", format, consigne, contexte }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
+    if (!r.ok || j.success === false) throw new Error(j.error || "Erreur " + r.status);
+    return j.result || {};
+  }
+  const MODIFS = () => (window.RT_MODIFS || []).slice().sort((a, b) => (b.grande ? 1 : 0) - (a.grande ? 1 : 0) || String(b.date).localeCompare(String(a.date)));
+  // opts : { format: "mail"|"notification"|"bandeau"|"banniere"|"nouveautes" ou fonction qui le renvoie, max, titre, appliquer(resultat, modifsChoisies), remplir(modifsChoisies) facultatif }
+  function assistantIA(box, opts) {
+    const choix = [], max = opts.max || 5;
+    box.innerHTML = '<details class="ia-r-box"' + (opts.ouvert ? " open" : "") + '><summary><span class="ia-r-ico">✦</span>' + esc(opts.titre || "Rédiger avec l'IA") + '<span class="mut tiny"> · choisis des modifications et/ou écris ta consigne</span></summary>' +
+      '<div class="ia-r-pick"><select class="ia-r-sel"><option value="">+ Ajouter une modification…</option>' + MODIFS().map((m) => '<option value="' + esc(m.id) + '">' + (m.grande ? "★ " : "") + esc(m.titre) + " · " + esc(fmtD(new Date(m.date + "T00:00:00"))) + "</option>").join("") + '</select><span class="mut tiny">' + max + " maximum, dans l'ordre d'importance</span></div>" +
+      '<ol class="ia-r-liste"></ol>' +
+      '<label class="f">Consigne (facultatif)<textarea class="ia-r-cons" rows="2" maxlength="1500" placeholder="Ex. : ton motivant, rappeler de mettre à jour son niveau…"></textarea></label>' +
+      '<div class="row"><button class="btn pri ia-r-go" type="button">✦ Rédiger</button>' + (opts.remplir ? '<button class="btn ia-r-brut" type="button">Remplir sans IA</button>' : "") + '<span class="mut tiny ia-r-etat"></span></div></details>';
+    const liste = box.querySelector(".ia-r-liste"), etat = box.querySelector(".ia-r-etat");
+    const rendre = () => { liste.innerHTML = choix.map((m, i) => '<li><b>' + (i === 0 && opts.format === "nouveautes" ? "En vedette · " : "") + esc(m.titre) + '</b><span class="sp"></span>' +
+        '<button type="button" class="btn sm" data-h="' + i + '" title="Monter"' + (i ? "" : " disabled") + ">↑</button><button type=\"button\" class=\"btn sm\" data-b=\"" + i + '" title="Descendre"' + (i < choix.length - 1 ? "" : " disabled") + '>↓</button><button type="button" class="btn sm" data-x="' + i + '" title="Retirer">✕</button></li>').join("");
+      liste.querySelectorAll("[data-h]").forEach((b) => (b.onclick = () => { const i = +b.dataset.h; [choix[i - 1], choix[i]] = [choix[i], choix[i - 1]]; rendre(); }));
+      liste.querySelectorAll("[data-b]").forEach((b) => (b.onclick = () => { const i = +b.dataset.b; [choix[i + 1], choix[i]] = [choix[i], choix[i + 1]]; rendre(); }));
+      liste.querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => { choix.splice(+b.dataset.x, 1); rendre(); })); };
+    box.querySelector(".ia-r-sel").onchange = (e) => { const m = (window.RT_MODIFS || []).find((x) => x.id === e.target.value); e.target.value = "";
+      if (!m) return; if (choix.some((x) => x.id === m.id)) return toast("Déjà choisie", "err"); if (choix.length >= max) return toast(max + " modifications maximum", "err"); choix.push(m); rendre(); };
+    const brut = box.querySelector(".ia-r-brut"); if (brut) brut.onclick = () => { if (!choix.length) return toast("Choisis au moins une modification", "err"); opts.remplir(choix.slice()); etat.textContent = "Rempli avec les textes du catalogue."; };
+    box.querySelector(".ia-r-go").onclick = async (ev) => {
+      const cons = box.querySelector(".ia-r-cons").value.trim(), fmt = typeof opts.format === "function" ? opts.format() : opts.format;
+      if (!cons && !choix.length) return toast("Choisis une modification ou écris une consigne", "err");
+      const ctx = choix.map((m, i) => (i + 1) + ". " + m.titre + " : " + m.texte).join("\n");
+      ev.target.disabled = true; etat.textContent = "L'IA rédige… (10 à 30 s)";
+      try { const r = await iaRediger(fmt, cons, ctx); opts.appliquer(r, choix.slice()); etat.textContent = "Texte proposé : relis-le avant d'envoyer."; }
+      catch (e) { etat.textContent = ""; erreur(e); } finally { ev.target.disabled = false; }
+    };
+  }
   async function nvMail(action, contenu, to) {
     const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu, to }) });
     const j = await r.json().catch(() => ({}));
@@ -1084,6 +1123,7 @@
     const ch = (id, lib, val, max, zone) => '<label class="nm-f"><span>' + lib + "</span>" + (zone ? '<textarea id="' + id + '" maxlength="' + max + '" rows="2">' + esc(val || "") + "</textarea>" : '<input id="' + id + '" maxlength="' + max + '" value="' + esc(val || "") + '">') + "</label>";
     box.innerHTML = '<div class="card nm"><div class="card-head"><h3>Mail « Les grandes nouveautés »</h3><span class="sub" id="nmQuota">2 envois maximum par mois</span></div>' +
       '<p class="mut tiny">Seulement les vraies grandes nouveautés (1 en vedette + jusqu\'à 4). Envoyé aux arbitres qui acceptent les nouveautés et offres, avec un lien de désinscription. Rien ne part sans ta confirmation.</p>' +
+      '<div class="nm-ia"></div>' +
       '<div class="nm-g">' + ch("nmSujet", "Sujet du mail", d.sujet, 120) + ch("nmPer", "Période (en haut à droite)", d.periode, 60) + "</div>" +
       '<fieldset class="nm-v"><legend>En vedette</legend><div class="nm-g">' + ch("nmVt", "Titre", d.vedette.titre, 80) + ch("nmVb", "Texte du bouton (facultatif)", d.vedette.bouton, 40) + "</div>" + ch("nmVx", "Texte", d.vedette.texte, 400, true) + ch("nmVl", "Lien du bouton (adresse referee-tracker.fr)", d.vedette.lien, 300) + "</fieldset>" +
       d.items.map((x, i) => '<fieldset class="nm-i"><legend>Nouveauté ' + (i + 1) + ' <span class="mut tiny">(facultative)</span></legend>' + ch("nmT" + i, "Titre", x.titre, 80) + ch("nmX" + i, "Texte", x.texte, 300, true) + "</fieldset>").join("") +
@@ -1093,6 +1133,16 @@
     const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
       try { localStorage.setItem(CLE, JSON.stringify(c)); } catch (e) {} return c; };
     const res = box.querySelector("#nmRes"), env = box.querySelector("#nmEnv");
+    // b136 — les 5 modifications choisies (dans l'ordre) remplissent le mail : la 1re en vedette, les suivantes en cartes
+    const poser = (id, v) => { const e = box.querySelector("#" + id); if (e && v !== undefined && v !== null) e.value = String(v); };
+    const remplirMail = (sujet, ved, items, choix) => { if (sujet) poser("nmSujet", sujet); poser("nmVt", ved.titre); poser("nmVx", ved.texte);
+      const clip = choix[0] && choix[0].id === "ref-clips"; poser("nmVb", ved.bouton || (clip ? "Découvrir REF CLIPS" : "")); poser("nmVl", clip ? "https://clips.referee-tracker.fr/" : "");
+      for (let i = 0; i < 4; i++) { poser("nmT" + i, (items[i] || {}).titre || ""); poser("nmX" + i, (items[i] || {}).texte || ""); }
+      if (!box.querySelector("#nmPer").value) poser("nmPer", new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase()));
+      env.disabled = true; lire(); box.querySelector("#nmApercu").click(); };
+    assistantIA(box.querySelector(".nm-ia"), { format: "nouveautes", max: 5, ouvert: true, titre: "Créer le mail à partir des modifications",
+      remplir: (c) => remplirMail("", c[0], c.slice(1), c),
+      appliquer: (r, c) => remplirMail(r.sujet, r.vedette || {}, r.items || [], c) });
     box.querySelectorAll("input, textarea").forEach((x) => x.addEventListener("input", () => { env.disabled = true; }));   // tout changement oblige à re-simuler
     const quota = (j) => { if (j && j.max) box.querySelector("#nmQuota").textContent = j.envois_ce_mois + " / " + j.max + " envois ce mois-ci"; };
     box.querySelector("#nmApercu").onclick = async () => { try { const j = await nvMail("apercu", lire()); quota(j); const f = box.querySelector("#nmVue"); f.hidden = false; f.srcdoc = j.html; } catch (e) { erreur(e); } };
@@ -1124,6 +1174,8 @@
       '<label class="f">Texte (300 caractères max)<textarea id="bdTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(actif) + "</textarea></label>" +
       '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="bdDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="bdFin" value="' + esc(dt(v.bandeau_fin)) + '"></label></div>' +
       '<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn pri" id="bdPub">Publier le bandeau</button><button class="btn" id="bdOff">Retirer le bandeau</button><span class="mut tiny">Visible à la prochaine ouverture de l\'app (ou rechargement). Le mode maintenance complet se règle dans Configuration.</span></div>';
+    z.querySelector(".card-head").insertAdjacentHTML("afterend", '<div class="bd-ia"></div>');   // b136
+    assistantIA(z.querySelector(".bd-ia"), { format: "bandeau", max: 3, appliquer: (r) => { if (r.texte) z.querySelector("#bdTxt").value = r.texte; } });
     z.querySelector("#bdMod").addEventListener("change", (e) => { const m = MODELES_BANDEAU[Number(e.target.value)]; if (m && m[0]) { z.querySelector("#bdTxt").value = m[1]; z.querySelector("#bdSty").value = m[2]; } });
     const ecrire = async (nv) => { try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, v, nv) }); cache.config = null; toast(nv.bandeau ? "Bandeau publié" : "Bandeau retiré", "ok"); rendBandeau(); } catch (e) { toast(e.message, "err"); } };
     z.querySelector("#bdPub").addEventListener("click", () => { const t = z.querySelector("#bdTxt").value.trim(); if (t.length < 5) return toast("Texte trop court", "err"); ecrire({ bandeau: t, bandeau_style: z.querySelector("#bdSty").value, bandeau_debut: z.querySelector("#bdDeb").value || "", bandeau_fin: z.querySelector("#bdFin").value || "" }); });
@@ -1553,6 +1605,7 @@
       '<label class="f">Destinataires<select id="msCible"><option value="actifs">Arbitres actifs (' + actifs + ')</option><option value="tous">Tous les comptes non suspendus (' + l.length + ")</option>" + l.map((a) => '<option value="' + a.id + '">' + esc(nomDe(a.profil, a.email)) + "</option>").join("") + "</select></label>" +
       '<div class="form-grid seg-grid"><label class="f">Comité<select id="msCd"><option value="">Tous</option>' + segOpts("cd") + '</select></label><label class="f">Ligue<select id="msLg"><option value="">Toutes</option>' + segOpts("ligue") + '</select></label><label class="f">Niveau<select id="msNiv"><option value="">Tous</option>' + segOpts("niveau") + "</select></label></div>" +
       '<p class="mut tiny" id="msCompte"></p>' +
+      '<div id="msIa"></div>' +
       '<label class="f">Modèle<select id="msModele">' + MODELES_MSG.map((m, i) => '<option value="' + i + '">' + esc(m[1] && i ? m[0] : m[1]) + "</option>").join("") + "</select></label>" +
       '<label class="f">Sujet<input id="msSujet" maxlength="120" placeholder="Ex. : Nouvelle version de l\'application"></label>' +
       '<label class="f">Message<textarea id="msTxt" rows="9" style="font-family:inherit" placeholder="Commence automatiquement par « Bonjour Prénom, »."></textarea></label>' +
@@ -1638,6 +1691,9 @@
       if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong> (" + destinataires().length + " destinataire(s) après filtres)" + (type === "promo" ? " (sauf ceux qui se sont opposés aux offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
       try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type, filtres: filtres() }); try { localStorage.removeItem("rt-msg-brouillon"); } catch (e) {} toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
     });
+    // b136 — assistant IA : mail ou notification selon le canal choisi
+    assistantIA($("msIa"), { format: () => ($("msCanal").value === "push" ? "notification" : "mail"), max: 5,
+      appliquer: (r) => { if (r.sujet) $("msSujet").value = r.sujet; if (r.texte) $("msTxt").value = r.texte; $("msTxt").dispatchEvent(new Event("input")); } });
     // b80 — test à soi-même, brouillon (gardé dans ce navigateur)
     $("msTest").addEventListener("click", async () => { const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim();
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
