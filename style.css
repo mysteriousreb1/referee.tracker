@@ -5734,3 +5734,11 @@ body { font-variant-numeric: tabular-nums; }
   #accueil .acc-hero-actions .acc-btn span { overflow: visible; text-overflow: clip; }
 }
 @media (min-width: 1500px) { #accueil .acc-kpi { flex-direction: row; align-items: baseline; gap: 10px; } }
+
+/* b145 — KM & trajets : les deux tableaux prennent chacun la moitié de la largeur et montrent toutes leurs colonnes ;
+   les 5 chiffres tiennent sur une ligne sur ordinateur. */
+.km-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; margin: 0 0 12px; }
+.km-cols .table-card { margin: 0; }
+.km-cols table { width: 100%; min-width: 0; }
+.km-cols td:first-child { white-space: normal; }
+@media (min-width: 1200px) { #stats .km-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }   /* l'ancienne règle « 4 colonnes » est en !important */
