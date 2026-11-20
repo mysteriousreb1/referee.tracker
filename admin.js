@@ -1068,6 +1068,42 @@
       if (!(await confirmer("Envoyer la campagne", "Envoyer l'e-mail aux arbitres des groupes " + s.join(", ") + " (liste de la simulation) ? Cette action est définitive.", "Envoyer"))) return;
       try { const id = await rpcP("rt_campagne", { segments: s, envoyer: true }); box.querySelector("#caEnv").disabled = true; suivre(id, "Envoi"); } catch (e) { toast(e.message, "err"); } };
   }
+  // b132 — MAIL « LES GRANDES NOUVEAUTÉS » : rédaction, aperçu, simulation, test à soi, puis envoi (2 par mois maximum).
+  // Envoi par la fonction Supabase admin-nouveautes (désinscription en un clic dans chaque mail). Brouillon gardé sur cet appareil.
+  async function nvMail(action, contenu) {
+    const r = await fetch(SB_URL + "/functions/v1/admin-nouveautes", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + (await jeton()), "Content-Type": "application/json" }, body: JSON.stringify({ action, contenu }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 403) throw new Error("AUTH_REQUIRED");
+    if (!r.ok || j.ok === false) throw new Error(j.error || "Erreur " + r.status);
+    return j;
+  }
+  function nouveautesCarte(box) {
+    const CLE = "rt_admin_mail_nouveautes";
+    let d = null; try { d = JSON.parse(localStorage.getItem(CLE) || "null"); } catch (e) {}
+    d = d || { sujet: "Les grandes nouveautés de Referee Tracker", periode: "", vedette: { titre: "", texte: "", bouton: "", lien: "" }, items: [{}, {}, {}, {}].map(() => ({ titre: "", texte: "" })) };
+    const ch = (id, lib, val, max, zone) => '<label class="nm-f"><span>' + lib + "</span>" + (zone ? '<textarea id="' + id + '" maxlength="' + max + '" rows="2">' + esc(val || "") + "</textarea>" : '<input id="' + id + '" maxlength="' + max + '" value="' + esc(val || "") + '">') + "</label>";
+    box.innerHTML = '<div class="card nm"><div class="card-head"><h3>Mail « Les grandes nouveautés »</h3><span class="sub" id="nmQuota">2 envois maximum par mois</span></div>' +
+      '<p class="mut tiny">Seulement les vraies grandes nouveautés (1 en vedette + jusqu\'à 4). Envoyé aux arbitres qui acceptent les nouveautés et offres, avec un lien de désinscription. Rien ne part sans ta confirmation.</p>' +
+      '<div class="nm-g">' + ch("nmSujet", "Sujet du mail", d.sujet, 120) + ch("nmPer", "Période (en haut à droite)", d.periode, 60) + "</div>" +
+      '<fieldset class="nm-v"><legend>En vedette</legend><div class="nm-g">' + ch("nmVt", "Titre", d.vedette.titre, 80) + ch("nmVb", "Texte du bouton (facultatif)", d.vedette.bouton, 40) + "</div>" + ch("nmVx", "Texte", d.vedette.texte, 400, true) + ch("nmVl", "Lien du bouton (adresse referee-tracker.fr)", d.vedette.lien, 300) + "</fieldset>" +
+      d.items.map((x, i) => '<fieldset class="nm-i"><legend>Nouveauté ' + (i + 1) + ' <span class="mut tiny">(facultative)</span></legend>' + ch("nmT" + i, "Titre", x.titre, 80) + ch("nmX" + i, "Texte", x.texte, 300, true) + "</fieldset>").join("") +
+      '<div class="row nm-act"><button class="btn" id="nmApercu">Aperçu</button><button class="btn" id="nmSim">Simuler (rien ne part)</button><button class="btn" id="nmTest">M\'envoyer un test</button><button class="btn pri" id="nmEnv" disabled>Envoyer aux arbitres</button></div>' +
+      '<div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
+    const val = (id) => box.querySelector("#" + id).value.trim();
+    const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
+      try { localStorage.setItem(CLE, JSON.stringify(c)); } catch (e) {} return c; };
+    const res = box.querySelector("#nmRes"), env = box.querySelector("#nmEnv");
+    box.querySelectorAll("input, textarea").forEach((x) => x.addEventListener("input", () => { env.disabled = true; }));   // tout changement oblige à re-simuler
+    const quota = (j) => { if (j && j.max) box.querySelector("#nmQuota").textContent = j.envois_ce_mois + " / " + j.max + " envois ce mois-ci"; };
+    box.querySelector("#nmApercu").onclick = async () => { try { const j = await nvMail("apercu", lire()); quota(j); const f = box.querySelector("#nmVue"); f.hidden = false; f.srcdoc = j.html; } catch (e) { erreur(e); } };
+    box.querySelector("#nmSim").onclick = async () => { try { const j = await nvMail("simuler", lire()); quota(j);
+      res.innerHTML = '<p><b>' + j.destinataires.length + " arbitre(s)</b> le recevraient" + (j.exclus ? " · " + j.exclus + " ont refusé les nouveautés" : "") + ' :</p><p class="tiny">' + j.destinataires.map(esc).join(" · ") + "</p>";
+      env.disabled = !j.destinataires.length || j.envois_ce_mois >= j.max; } catch (e) { erreur(e); } };
+    box.querySelector("#nmTest").onclick = async () => { try { await nvMail("test", lire()); toast("Mail de test envoyé sur l'adresse admin", "ok"); } catch (e) { erreur(e); } };
+    env.onclick = async () => { const c = lire();
+      if (!(await confirmer("Envoyer le mail", "Envoyer « " + esc(c.sujet) + " » aux arbitres listés par la simulation ? Cette action est définitive et compte pour un des 2 envois du mois.", "Envoyer"))) return;
+      env.disabled = true; try { const j = await nvMail("envoyer", c); res.innerHTML = "<p><b>Envoyé à " + j.envoyes + " arbitre(s)</b>" + (j.echecs.length ? " · échec : " + j.echecs.map(esc).join(", ") : "") + "</p>"; toast("Mail envoyé", "ok"); } catch (e) { erreur(e); } };
+  }
   rendus.communication = async function (force) {
     const el = $("sec-communication");
     if (force || !cache.config || !cache.journalMsg) { el.innerHTML = '<p class="mut">Chargement…</p>'; cache.config = await admin("config.get"); cache.journalMsg = await admin("journal.liste", { filtre_action: "message" }); }
@@ -1084,6 +1120,7 @@
       '<div class="card"><div class="card-head"><h3>Historique des envois</h3><span class="sub">messages, diffusions, notifications (journal d\'audit)</span></div><div id="coT"></div></div>';
     el.querySelector("#coCfgM").onclick = () => { cfgCle = "pub.mails"; location.hash = "#config"; };
     el.insertAdjacentHTML("afterbegin", "<div id=\"caBox\"></div>"); campagneCarte($("caBox"));   // b104
+    el.insertAdjacentHTML("afterbegin", "<div id=\"nmBox\"></div>"); nouveautesCarte($("nmBox"));   // b132
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; location.hash = "#config"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
     // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
