@@ -5759,3 +5759,8 @@ body { font-variant-numeric: tabular-nums; }
 .rf-tete [data-rf-retour] { background: transparent; border: 1px solid var(--line); color: var(--muted); box-shadow: none; padding: 7px 12px; font-weight: 700; }
 .rf-tete [data-rf-retour]:hover { color: var(--text); border-color: var(--muted); }
 .rf-tete strong { font-size: 18px; }
+/* b147 — sous-menus de Progression : barre défilable sur téléphone, collée au titre */
+.prog-onglets { display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin: 4px 0 18px; }
+.prog-onglets::-webkit-scrollbar { display: none; }
+.prog-onglets .tabs-mini-btn { white-space: nowrap; }
+#progression > [hidden] { display: none !important; }   /* les blocs ont leur propre « display » : on force le masquage des onglets inactifs */
