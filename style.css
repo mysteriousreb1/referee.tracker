@@ -5742,3 +5742,20 @@ body { font-variant-numeric: tabular-nums; }
 .km-cols table { width: 100%; min-width: 0; }
 .km-cols td:first-child { white-space: normal; }
 @media (min-width: 1200px) { #stats .km-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }   /* l'ancienne règle « 4 colonnes » est en !important */
+
+/* ===== b146 — RAPPORTS : cartes lisibles sur ordinateur =====
+   Icône et délai sur la même ligne en haut, titre et description sur toute la largeur de la carte,
+   « Remplir » aligné en bas de toutes les cartes (avant : texte d'un mot par ligne, délai collé au titre). */
+@media (min-width: 900px) {
+  .rf-choix { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .rf-choix .rf-carte { grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: auto 1fr auto; grid-template-areas: "ico delai" "txt txt" "go go"; row-gap: 12px; align-items: start; padding: 18px; min-height: 200px; }
+  .rf-choix .rf-delai { justify-self: end; align-self: center; }
+  .rf-choix .rf-txt strong { font-size: 16px; }
+  .rf-choix .rf-go { align-self: end; }
+}
+@media (min-width: 1300px) { .rf-choix { grid-template-columns: repeat(5, minmax(0, 1fr)); } }   /* les 5 formulaires sur une ligne (plus de carte seule en dessous) */
+/* b146 — retour « ← Formulaires » discret, aligné sur le titre du formulaire */
+.rf-tete { display: flex; align-items: center; gap: 14px; }
+.rf-tete [data-rf-retour] { background: transparent; border: 1px solid var(--line); color: var(--muted); box-shadow: none; padding: 7px 12px; font-weight: 700; }
+.rf-tete [data-rf-retour]:hover { color: var(--text); border-color: var(--muted); }
+.rf-tete strong { font-size: 18px; }
