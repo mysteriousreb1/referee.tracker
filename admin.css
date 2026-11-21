@@ -914,3 +914,29 @@ select:not([multiple]):not([size]) { -webkit-appearance: none; appearance: none;
 .vz-grid { stroke: rgba(127, 140, 160, .22); stroke-dasharray: 3 5; }
 .vz-svg .vz-ax { font-size: 12px; }
 .vz-svg { max-height: 300px; }
+
+/* ===== b158 — admin plus aéré (captures de Clément) ===== */
+/* Formulaires dans les cartes : un vrai espace entre chaque rangée de champs, les boutons et l'aide */
+.card > .form-grid + .f, .card > .f + .form-grid, .card > .form-grid + .form-grid, .card > .f + .f, .card > .bd-ia + .form-grid { margin-top: 14px; }
+.card > .row, .card > .form-grid + .row, .card > .f + .row { margin-top: 18px; }
+.card > .bd-ia { margin: 4px 0 16px; }
+.bd-aide { margin-top: 14px !important; line-height: 1.65; }
+.form-grid { row-gap: 14px; }
+/* Réglages : « Mode avancé » détaché du pied, pied d'enregistrement plus haut et arrondi comme la carte */
+.cfg-avance { margin: 22px 0 6px !important; }
+.cfg-avance > summary { padding: 6px 0; cursor: pointer; }
+.cfg2-save { margin-top: 18px !important; padding: 16px 20px 18px !important; row-gap: 10px; }
+/* Historique des réglages : lisible, une rubrique par ligne */
+.cfg-hist-v { font-size: 12.5px; line-height: 1.55; max-width: 720px; }
+.cfg-hist-v > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-hist-v b { font-weight: 700; color: var(--text); }
+/* Bilan compta mensuel */
+.bm-l { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.bm-l .f { margin: 0; }
+.bm-to { flex: 1; min-width: 260px; }
+.bm-to .nm-to { width: 100%; }
+.bm-fin { justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 18px; }
+.card-head .sub { line-height: 1.5; text-align: right; }
+/* Tableaux : compteur « N / N ligne(s) » détaché de la carte suivante */
+.tbl + .mut.tiny, .tbl-foot { margin: 8px 2px 18px; display: block; }
+.bm-to .nm-to { height: 42px !important; flex: none !important; min-height: 0 !important; display: block; }

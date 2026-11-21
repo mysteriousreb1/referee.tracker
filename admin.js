@@ -17,6 +17,14 @@
   const minutesTxt = (m) => { m = Number(m) || 0; if (!m) return "—"; if (m < 60) return m + " min"; return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0"); };
   const depuis = (d) => { if (!d) return "jamais"; const h = (Date.now() - new Date(d)) / 36e5; return h < 1 ? "il y a " + Math.round(h * 60) + " min" : h < 48 ? "il y a " + Math.round(h) + " h" : "il y a " + Math.round(h / 24) + " j"; };
   const heures = (d) => (d ? (Date.now() - new Date(d)) / 36e5 : Infinity);
+  // b158 — historique des réglages lisible : une ligne par rubrique (« cd67 : Loisir 18 · U11-U13 20 … ») au lieu du JSON brut
+  const resumeValeur = (v) => {
+    const court = (x) => (x == null ? "—" : typeof x === "object" ? (Array.isArray(x) ? x.length + " élément(s)" : Object.keys(x).length + " réglage(s)") : String(x));
+    if (!v || typeof v !== "object") return esc(court(v));
+    const L = Object.entries(v), lignes = L.slice(0, 4).map(([k, x]) => '<div><b>' + esc(k) + "</b> : " + esc(x && typeof x === "object" && !Array.isArray(x)
+      ? Object.entries(x).slice(0, 4).map(([a, y]) => a + " " + court(y)).join(" · ") + (Object.keys(x).length > 4 ? " …" : "") : court(x)) + "</div>");
+    return lignes.join("") + (L.length > 4 ? '<div class="mut">+ ' + (L.length - 4) + " autre(s)</div>" : "");
+  };
   // b157 — dernière activité réelle : le plus récent entre la dernière identification et la dernière utilisation de l'app (session restée ouverte)
   const vuLe = (u) => { const a = (u.usage || {}).derniere_activite, b = u.derniere_connexion; return !a ? b || "" : !b ? a : (new Date(a) > new Date(b) ? a : b); };
   const vuTxt = (d) => (d ? fmt(d) + " · " + depuis(d) : "jamais");
@@ -154,7 +162,7 @@
       if (tri) { const c = cols.find((x) => x.t === tri); if (c) l.sort((a, b) => { const x = val(a, c), y = val(b, c); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "fr")) * sens; }); }
       cible.innerHTML = '<div class="tbl"><table><thead><tr>' + cols.map((c) => '<th data-tri="' + esc(c.t) + '" class="' + (c.cl || "") + (tri === c.t ? (sens > 0 ? " asc" : " desc") : "") + '">' + esc(c.t) + "</th>").join("") + "</tr></thead><tbody>" +
         (l.length ? l.map((r, i) => '<tr data-i="' + rows.indexOf(r) + '"' + (opts.clic ? ' class="clic"' : "") + ">" + cols.map((c) => '<td class="' + (c.cl || "") + '">' + c.r(r) + "</td>").join("") + "</tr>").join("") : '<tr><td colspan="' + cols.length + '" class="vide">' + esc(opts.vide || "Aucun résultat") + "</td></tr>") +
-        "</tbody></table></div>" + '<p class="mut tiny" style="margin:6px 2px 0">' + l.length + " / " + rows.length + " ligne(s)</p>";
+        "</tbody></table></div>" + '<p class="mut tiny tbl-foot">' + l.length + " / " + rows.length + " ligne(s)</p>";
       cible.querySelectorAll("th[data-tri]").forEach((th) => th.addEventListener("click", () => { if (tri === th.dataset.tri) sens = -sens; else { tri = th.dataset.tri; sens = 1; } rendre(); }));
       if (opts.clic) cible.querySelectorAll("tr.clic").forEach((tr) => tr.addEventListener("click", (ev) => { if (ev.target.closest("button,a")) return; opts.clic(rows[Number(tr.dataset.i)]); }));
       if (opts.action) cible.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", () => opts.action(b.dataset.act, rows[Number(b.closest("tr").dataset.i)], b)));
@@ -1129,7 +1137,10 @@
     const moisDef = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); })();   // b151 — en heure locale (toISOString reculait d'un mois)
     box.innerHTML = '<div class="card bm"><div class="card-head"><h3>Bilan compta mensuel</h3><span class="sub" id="bmEtat">automatique, le 1er du mois à 8 h</span></div>' +
       '<p class="mut tiny">Chaque arbitre actif qui a eu de l\'activité reçoit son bilan du mois écoulé : matchs, indemnités, reçu, reste à percevoir, retards, matchs à venir. Il part tout seul, sans validation de ta part ; chaque arbitre peut l\'arrêter en un clic. Ce n\'est pas une offre : il ne compte pas dans les 2 communications du mois.</p>' +
-      '<div class="row nm-act"><label class="f">Mois<input type="month" id="bmMois" value="' + moisDef + '"></label><button class="btn" id="bmVoir">Aperçu</button><input id="bmTo" class="nm-to" type="email" placeholder="Adresse de l\'exemple (vide : adresse admin)"><button class="btn" id="bmEx">M\'envoyer un exemple</button><button class="btn pri" id="bmAct">…</button></div>' +
+      // b158 — trois lignes aérées au lieu d'une ligne surchargée : voir un mois · s'envoyer un exemple · activer / couper
+      '<div class="bm-l"><label class="f">Mois<input type="month" id="bmMois" value="' + moisDef + '"></label><button class="btn" id="bmVoir">Aperçu</button></div>' +
+      '<div class="bm-l"><label class="f bm-to">Adresse de l\'exemple<input id="bmTo" class="nm-to" type="email" placeholder="vide : adresse admin"></label><button class="btn" id="bmEx">M\'envoyer un exemple</button></div>' +
+      '<div class="bm-l bm-fin"><button class="btn pri" id="bmAct">…</button></div>' +
       '<iframe id="bmVue" class="nm-vue" title="Aperçu du bilan" sandbox="" hidden></iframe></div>';
     const z = (id) => box.querySelector("#" + id);
     let actif = false;
@@ -1518,7 +1529,7 @@
         return '<button data-k="' + k + '" class="cfg2-t' + (k === cfgCle ? " on" : "") + '" style="--c:' + ic[1] + '"><span class="cfg2-ic">' + ic[0] + '</span><span class="cfg2-tx"><em>' + esc(ic[2]) + "</em><b>" + esc(CFG[k].titre) + "</b><small>" + esc(court(CFG[k].desc)) + "</small>" + (r ? '<small class="cfg2-maj">modifié ' + fmt(r.maj_le) + "</small>" : '<small class="cfg2-maj warn">valeurs par défaut</small>') + "</span></button>"; }).join("") + "</div>" +
       '<div class="cfg2-ed"><div class="card"><div class="card-head cfg2-head"><span class="cfg2-ic big" style="--c:' + ((CFG_IC[cfgCle] || [])[1] || "#64748B") + '">' + ((CFG_IC[cfgCle] || [])[0] || "⚙") + '</span><div><h2>' + esc(CFG[cfgCle].titre) + '</h2><p class="mut">' + esc(CFG[cfgCle].desc) + '</p></div><span class="sub">' + (ligne.maj_le ? "modifié " + fmt(ligne.maj_le) : "") + '</span></div><div id="cfgForm"></div>' +
       '<details class="cfg-avance"><summary class="mut tiny">Mode avancé (JSON brut)</summary><textarea id="cfgJson" rows="10"></textarea></details><p id="cfgErr" class="err tiny"></p><div class="row cfg2-save"><button class="btn pri" id="cfgSave">Enregistrer les modifications</button><button class="btn" id="cfgFormToJson">Formulaire → JSON</button><span class="mut tiny">Appliqué dans l\'app immédiatement, dans les moteurs sous 10 minutes. Chaque modification est journalisée.</span></div></div>' +
-      '<div class="card"><div class="card-head"><h3>Historique (10 dernières valeurs)</h3></div>' + ((hist[cfgCle] || []).length ? '<div class="tbl"><table><thead><tr><th>Remplacée le</th><th>Valeur précédente</th><th></th></tr></thead><tbody>' + hist[cfgCle].map((h, i) => "<tr><td>" + fmt(h.maj_le) + '</td><td class="mono tiny">' + esc(JSON.stringify(h.valeur).slice(0, 180)) + '</td><td><button class="btn sm" data-h="' + i + '">Restaurer dans l\'éditeur</button></td></tr>').join("") + "</tbody></table></div>" : '<p class="vide">Aucune modification enregistrée</p>') + "</div></div></div>";
+      '<div class="card"><div class="card-head"><h3>Historique (10 dernières valeurs)</h3></div>' + ((hist[cfgCle] || []).length ? '<div class="tbl"><table><thead><tr><th>Remplacée le</th><th>Valeur précédente</th><th></th></tr></thead><tbody>' + hist[cfgCle].map((h, i) => "<tr><td>" + fmt(h.maj_le) + '</td><td class="cfg-hist-v" title="' + esc(JSON.stringify(h.valeur)) + '">' + resumeValeur(h.valeur) + '</td><td><button class="btn sm" data-h="' + i + '">Restaurer dans l\'éditeur</button></td></tr>').join("") + "</tbody></table></div>" : '<p class="vide">Aucune modification enregistrée</p>') + "</div></div></div>";
     el.querySelectorAll(".cfg2-tuiles button").forEach((b) => b.addEventListener("click", () => { cfgCle = b.dataset.k; rendus.config(false); }));
     const ta = $("cfgJson"); ta.value = JSON.stringify(ligne.valeur, null, 2);
     el.querySelectorAll("button[data-h]").forEach((b) => b.addEventListener("click", () => { ta.value = JSON.stringify(hist[cfgCle][Number(b.dataset.h)].valeur, null, 2); formulaire(JSON.parse(ta.value)); toast("Valeur chargée dans l'éditeur (non enregistrée)", ""); }));
