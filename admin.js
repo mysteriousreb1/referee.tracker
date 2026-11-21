@@ -17,6 +17,9 @@
   const minutesTxt = (m) => { m = Number(m) || 0; if (!m) return "—"; if (m < 60) return m + " min"; return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0"); };
   const depuis = (d) => { if (!d) return "jamais"; const h = (Date.now() - new Date(d)) / 36e5; return h < 1 ? "il y a " + Math.round(h * 60) + " min" : h < 48 ? "il y a " + Math.round(h) + " h" : "il y a " + Math.round(h / 24) + " j"; };
   const heures = (d) => (d ? (Date.now() - new Date(d)) / 36e5 : Infinity);
+  // b157 — dernière activité réelle : le plus récent entre la dernière identification et la dernière utilisation de l'app (session restée ouverte)
+  const vuLe = (u) => { const a = (u.usage || {}).derniere_activite, b = u.derniere_connexion; return !a ? b || "" : !b ? a : (new Date(a) > new Date(b) ? a : b); };
+  const vuTxt = (d) => (d ? fmt(d) + " · " + depuis(d) : "jamais");
   const nomDe = (p, email) => (p && (p.prenom || p.nom_ffbb)) ? [p.prenom, p.nom_ffbb].filter(Boolean).join(" ") : (email || "—");
   const zonesTxt = (z) => { z = z || {}; return [z.cd, z.ligue, z.cf ? "CF" : ""].filter(Boolean).join(" · ") || "—"; };
   const csv = (lignes, nom) => {
@@ -69,7 +72,7 @@
     $("qui").textContent = u.email || "";
     const verifies = (u.factors || []).filter((f) => f.factor_type === "totp" && f.status === "verified");
     if (claims(session().access_token).aal === "aal2") return true;
-    voir("vMfa");
+    voir("vMfa"); setTimeout(() => { try { $("code").focus(); } catch (e) {} }, 60);
     if (verifies.length) { facteur = verifies[0].id; $("mfaEnroll").classList.add("hidden"); }
     else {
       for (const f of (u.factors || []).filter((f) => f.status !== "verified")) { try { await auth("factors/" + f.id, "DELETE"); } catch (e) {} }
@@ -98,6 +101,7 @@
     } catch (e) { $("mfaMsg").textContent = e.message; }
   });
   $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnCode").click(); });
+  $("code").addEventListener("input", (e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 6); e.target.value = v; if (v.length === 6) $("btnCode").click(); });   // b157 — validé tout seul au 6e chiffre
 
   // ---------- UI génériques ----------
   let toastT = null;
@@ -334,7 +338,7 @@
       { t: "Niveau", k: (u) => (u.profil || {}).niveau || "", r: (u) => esc((u.profil || {}).niveau || "—") },
       { t: "Zones", k: (u) => zonesTxt((u.profil || {}).zones), cl: "nw", r: (u) => esc(zonesTxt((u.profil || {}).zones)) },
       { t: "Moteur", k: (u) => ((u.profil || {}).api_url ? 1 : 0), r: (u) => ouiNon((u.profil || {}).api_url) },
-      { t: "Connexion", k: (u) => u.derniere_connexion || "", cl: "nw", r: (u) => '<span title="' + esc(fmt(u.derniere_connexion)) + '">' + esc(depuis(u.derniere_connexion)) + "</span>" },
+      { t: "Dernière activité", k: (u) => vuLe(u), cl: "nw", r: (u) => esc(vuTxt(vuLe(u))) },
       { t: "Matchs", k: "matchs", cl: "num right", r: (u) => u.matchs },
       { t: "Convoc. 7/30 j", k: (u) => (u.convocations || {}).j30 || 0, cl: "num right", r: (u) => ((u.convocations || {}).j7 || 0) + " / " + ((u.convocations || {}).j30 || 0) },
       { t: "Usage 7 j", k: (u) => (u.usage || {}).minutes_7j || 0, cl: "num right", r: (u) => minutesTxt((u.usage || {}).minutes_7j) },
@@ -381,7 +385,7 @@
     const chk = (id, lab, val) => '<label class="chk"><input type="checkbox" id="' + id + '"' + (val ? " checked" : "") + ">" + lab + "</label>";
     $("drawerBody").innerHTML =
       '<div class="row" style="margin-bottom:10px">' + badgeStatut(u.banni ? "suspendu" : p.statut || "actif") + (u.mfa ? badge("2FA", "green") : badge("sans 2FA", "gray")) + (u.invite ? badge("invitation non confirmée", "orange") : "") +
-        badge("créé " + fmtD(u.cree)) + badge("vu " + depuis(u.derniere_connexion)) + badge((f.evaluations || 0) + " évaluation(s)") + (f.consentements && f.consentements.length ? badge("CGU " + f.consentements[0].version, "green") : badge("CGU non acceptées", "red")) +
+        badge("créé " + fmtD(u.cree)) + badge("vu le " + vuTxt(vuLe(u))) + badge((f.evaluations || 0) + " évaluation(s)") + (f.consentements && f.consentements.length ? badge("CGU " + f.consentements[0].version, "green") : badge("CGU non acceptées", "red")) +
         (f.push || []).map((x) => badge("push " + (x.appareil || "appareil") + (x.echecs ? " · " + x.echecs + " éch." : ""), x.echecs >= 3 ? "orange" : "green")).join("") +
         (nonTraitees ? badge(nonTraitees + " alerte(s) non traitée(s)", "orange") : "") + "</div>" +
       '<div class="row" style="margin-bottom:12px"><button class="btn sm" id="fLien">Lien mot de passe</button><button class="btn sm" id="fCode">Régénérer le code 1re connexion</button>' +
@@ -1109,6 +1113,8 @@
       try { const r = await iaRediger(fmt, cons, ctx); opts.appliquer(r, choix.slice()); etat.textContent = "Texte proposé : relis-le avant d'envoyer."; }
       catch (e) { etat.textContent = ""; erreur(e); } finally { ev.target.disabled = false; }
     };
+    // b157 — remis à zéro après un envoi (modifications choisies, consigne, état)
+    return { vider: () => { choix.length = 0; rendre(); box.querySelector(".ia-r-cons").value = ""; etat.textContent = ""; } };
   }
   // b139 — BILAN COMPTA MENSUEL : envoyé tout seul le 1er du mois (fonction Supabase bilan-mensuel + minuteur).
   // Ici : l'activer / le couper, voir l'aperçu, s'envoyer un exemple. Rien n'est validé mois par mois.
@@ -1202,7 +1208,7 @@
       for (let i = 0; i < 4; i++) { poser("nmT" + i, (items[i] || {}).titre || ""); poser("nmX" + i, (items[i] || {}).texte || ""); }
       if (!box.querySelector("#nmPer").value) poser("nmPer", new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase()));
       lire(); box.querySelector("#nmApercu").click(); };
-    assistantIA(box.querySelector(".nm-ia"), { format: "nouveautes", max: 5, ouvert: true, titre: "Créer le mail à partir des modifications",
+    const iaNm = assistantIA(box.querySelector(".nm-ia"), { format: "nouveautes", max: 5, ouvert: true, titre: "Créer le mail à partir des modifications",
       remplir: (c) => remplirMail("", c[0], c.slice(1), c),
       appliquer: (r, c) => remplirMail(r.sujet, r.vedette || {}, r.items || [], c) });
     let nbDest = null;   // b137 — nombre d'arbitres de la dernière simulation (refaite toute seule avant l'envoi si besoin)
@@ -1215,7 +1221,7 @@
     nvMail("etat").then(quota).catch(() => {});   // b137 — compteur affiché dès l'ouverture
     // b138/b142 — une fois programmé OU envoyé, le formulaire est vidé (brouillon local effacé aussi)
     const viderForm = () => { box.querySelectorAll(".nm-g input, .nm fieldset input, .nm fieldset textarea, #nmQuand").forEach((x) => { if (x.id !== "nmSujet") x.value = ""; });
-      box.querySelector("#nmSujet").value = "Les grandes nouveautés de Referee Tracker"; box.querySelector("#nmVue").hidden = true; lire(); try { localStorage.removeItem(CLE); } catch (e) {} };
+      box.querySelector("#nmSujet").value = "Les grandes nouveautés de Referee Tracker"; box.querySelector("#nmVue").hidden = true; lire(); try { localStorage.removeItem(CLE); } catch (e) {} if (iaNm) iaNm.vider(); };
     box.querySelector("#nmProg").onclick = async () => { const v = box.querySelector("#nmQuand").value; if (!v) return toast("Choisis la date et l'heure", "err"); const c = lire(), quand = new Date(v);
       if (!(await confirmer("Programmer l'envoi", "Envoyer « " + esc(c.sujet) + " » aux arbitres le <strong>" + esc(quand.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })) + "</strong> ? Tu pourras l'annuler jusqu'à l'heure prévue.", "Programmer"))) return;
       try { quota(await nvMail("programmer", c, null, null, quand.toISOString())); toast("Envoi programmé", "ok");
@@ -1275,12 +1281,17 @@
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
     // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
     { const N = window.RT_NOUV || {}, L = window.RT_NOUVEAUTES || [];
-      const sortie = N.sortie ? new Date(N.sortie + "T00:00:00") : null, fin = sortie ? new Date(+sortie + 14 * 864e5) : null, actif = sortie && Date.now() < +fin;
-      el.insertAdjacentHTML("afterbegin", '<div class="card nv-auto"><div class="card-head"><h3>Bandeau automatique « Nouvelle version »</h3><span class="sub">' + (actif ? badge("en cours", "green") : badge("terminé", "gray")) + "</span></div>" +
+      const sortie = N.sortie ? new Date(N.sortie + "T00:00:00") : null, fin = sortie ? new Date(+sortie + 14 * 864e5) : null, coupe = tx.nouv_off && tx.nouv_off === N.version, actif = sortie && Date.now() < +fin && !coupe;
+      el.insertAdjacentHTML("afterbegin", '<div class="card nv-auto"><div class="card-head"><h3>Bandeau automatique « Nouvelle version »</h3><span class="sub">' + (actif ? badge("en cours", "green") : coupe ? badge("coupé", "orange") : badge("terminé", "gray")) + "</span></div>" +
         '<div class="nv-apercu"><span class="nv-k">Nouveau</span><p>' + esc(N.texte || "—") + '</p><span class="nv-b">Voir</span></div>' +
         '<p class="mut tiny">Version <b>' + esc(N.version || "—") + "</b> sortie le " + (sortie ? fmtD(sortie) : "—") + ". Chaque arbitre le voit pendant 24 h à partir de sa première ouverture de l'app" + (fin ? ", jusqu'au " + fmtD(fin) + " au plus tard" : "") + ". La croix le masque pour de bon.</p>" +
         (L.length ? '<details class="nv-liste"><summary>Fenêtre « Ce qui change » (' + L.length + " points)</summary><ul>" + L.map((x) => "<li><b>" + esc(x[1]) + "</b> — " + esc(x[2]) + "</li>").join("") + "</ul></details>" : "") +
-        '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js).</p></div>'); }
+        '<div class="row" style="gap:6px;margin-top:6px"><button class="btn" id="nvCouper">' + (coupe ? "Rétablir ce bandeau" : "Couper ce bandeau pour tous") + "</button></div>" +
+        '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js). « Couper » l\'enlève de l\'app de tous les arbitres à leur prochaine ouverture.</p></div>');
+      // b157 — contrôle du bandeau automatique (avant : affiché sans aucun moyen de l'arrêter)
+      el.querySelector("#nvCouper").onclick = async () => {
+        if (!coupe && !(await confirmer("Couper le bandeau", "Retirer le bandeau « Nouvelle version » de l'app de <strong>tous les arbitres</strong> ?", "Couper"))) return;
+        try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, tx, { nouv_off: coupe ? "" : N.version }) }); cache.config = null; toast(coupe ? "Bandeau rétabli" : "Bandeau coupé pour tous", "ok"); rendus.communication(true); } catch (e) { toast(e.message, "err"); } }; }
   };
 
   // ---- Moteurs (tous les arbitres)
@@ -1398,21 +1409,25 @@
     return m.length <= 3 && m === m.toUpperCase() ? m : b.charAt(0).toUpperCase() + b.slice(1); });
   // b150 — CARTE DES MATCHS À VENIR : une épingle par salle (adresse → position via OpenStreetMap, gardée en mémoire sur cet ordinateur).
   async function geoSalle(m) {
-    const q = [m.adresse || m.salle, m.ville].filter(Boolean).join(", "); if (!q) return null;
-    const cle = "rt_geo_" + q.toLowerCase();
-    try { const c = localStorage.getItem(cle); if (c) return JSON.parse(c); } catch (e) {}
-    await new Promise((ok) => setTimeout(ok, 1100));   // règle d'usage OpenStreetMap : 1 demande par seconde
-    try {
-      const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=fr&q=" + encodeURIComponent(q), { headers: { "Accept-Language": "fr" } });
-      const j = await r.json(), p = j && j[0] ? [Number(j[0].lat), Number(j[0].lon)] : null;
-      try { localStorage.setItem(cle, JSON.stringify(p)); } catch (e) {}
-      return p;
-    } catch (e) { return null; }
+    // b157 — un échec n'est plus gardé (avant : « null » en mémoire = salle jamais placée) ; 2e essai avec salle + ville, puis la ville seule.
+    const essais = [[m.adresse || m.salle, m.ville], [m.salle, m.ville], [m.ville]].map((x) => x.filter(Boolean).join(", ")).filter((q, i, t) => q && t.indexOf(q) === i);
+    for (const q of essais) {
+      const cle = "rt_geo_" + q.toLowerCase();
+      try { const c = localStorage.getItem(cle); if (c && c !== "null") return JSON.parse(c); } catch (e) {}
+      await new Promise((ok) => setTimeout(ok, 1100));   // règle d'usage OpenStreetMap : 1 demande par seconde
+      try {
+        const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=fr&q=" + encodeURIComponent(q), { headers: { "Accept-Language": "fr" }, referrerPolicy: "strict-origin-when-cross-origin" });
+        const j = await r.json(), p = j && j[0] ? [Number(j[0].lat), Number(j[0].lon)] : null;
+        if (p) { try { localStorage.setItem(cle, JSON.stringify(p)); } catch (e) {} return p; }
+      } catch (e) {}
+    }
+    return null;
   }
   async function agCarte(box, etat, l) {
     if (!box || typeof L === "undefined") { if (box) box.closest(".card").hidden = true; return; }
     const carte = L.map(box, { scrollWheelZoom: false }).setView([48.58, 7.75], 9);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(carte);
+    // b157 — OpenStreetMap refuse les tuiles demandées sans provenance (403 « Blocked ») : on l'envoie pour les tuiles seulement.
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(carte);
     const parSalle = {};
     l.forEach((m) => { const k = [m.adresse || m.salle, m.ville].filter(Boolean).join("|").toLowerCase(); if (k) (parSalle[k] = parSalle[k] || []).push(m); });
     const groupes = Object.values(parSalle), points = [];
@@ -1423,8 +1438,9 @@
       if (!p || !box.isConnected) continue;
       points.push(p);
       const html = "<b>" + esc(casseNom(g[0].salle || g[0].ville || "")) + "</b><br><span>" + esc(casseNom(g[0].ville || "")) + "</span><hr style=\"border:0;border-top:1px solid #ddd;margin:6px 0\">" +
-        g.map((m) => "<div style=\"margin:4px 0\"><b>" + esc(fmtD(m.date_match)) + "</b> " + esc(m.heure_rdv || "") + " · " + esc(m.prenom || "") + "<br>" + esc([m.recevant, m.visiteur_evenement].filter(Boolean).map(casseNom).join(" – ")) + (m.mon_role ? " <i>(" + esc(m.mon_role) + ")</i>" : "") + "</div>").join("");
-      L.marker(p).addTo(carte).bindPopup(html, { maxWidth: 320 });
+        g.map((m) => "<div style=\"margin:4px 0\"><b>" + esc(fmtD(m.date_match)) + "</b> " + esc(m.heure_rdv || "") + " · <b>" + esc(m.prenom || "") + "</b>" + (m.collegue_nom ? " avec " + esc(casseNom(m.collegue_nom)) : "") + "<br>" + esc([m.recevant, m.visiteur_evenement].filter(Boolean).map(casseNom).join(" – ")) + (m.mon_role ? " <i>(" + esc(m.mon_role) + ")</i>" : "") + "</div>").join("");
+      const qui = [...new Set(g.map((m) => m.prenom).filter(Boolean))].join(", ");   // b157 — prénoms des arbitres visibles au survol de l'épingle
+      L.marker(p).addTo(carte).bindPopup(html, { maxWidth: 320 }).bindTooltip(qui || casseNom(g[0].salle || ""), { direction: "top", offset: [-15, -12] });
       if (points.length === 1) carte.setView(p, 10);
     }
     if (points.length > 1) carte.fitBounds(points, { padding: [30, 30] });
@@ -1480,7 +1496,7 @@
     "pub.baremes": { titre: "Barèmes des comités", desc: "Un barème par comité (CD67, CD75…) : part fixe par catégorie (désigné, QR, interdép., amicaux) · appliqué par les moteurs sous 10 min" },
     "pub.periodes_paiement": { titre: "Échéanciers de paiement", desc: "Par comité et par ligue, par saison · appliqué sous 10 min" },
     "pub.ia": { titre: "IA", desc: "Plafond mensuel et répartition par fonction · appliqué sous 10 min" },
-    "pub.textes": { titre: "Bandeau & maintenance", desc: "Message affiché à tous, mode maintenance · immédiat" },
+    "pub.textes": { titre: "Maintenance", desc: "Écran d'attente pour tous les arbitres · immédiat" },
     "pub.beta": { titre: "Bêta", desc: "Inscriptions ouvertes, nombre maximal" },
     "pub.carburant": { titre: "Carburant", desc: "Prix relevé autour du domicile de chaque arbitre (rayon, fraîcheur, carburant) · prix imposé par mois · appliqué sous 10 min" },
     "pub.mails": { titre: "Textes des e-mails", desc: "Sujet, titre et message des 4 e-mails envoyés aux arbitres (liste d'attente, demande reçue, guides, compte prêt) · immédiat" },
@@ -1610,12 +1626,11 @@
       } else if (cfgCle === "pub.textes") {
         // b81 — bandeau programmable (début / fin, style) + écran de maintenance personnalisable.
         const dt = (x) => (x ? String(x).slice(0, 16) : "");
-        F.innerHTML = '<label class="f">Message du bandeau (vide = aucun)<textarea id="tBand" rows="3" maxlength="300" style="font-family:inherit">' + esc(v.bandeau || "") + "</textarea></label>" +
-          '<div class="form-grid"><label class="f">Afficher à partir du (vide = tout de suite)<input type="datetime-local" id="tDeb" value="' + esc(dt(v.bandeau_debut)) + '"></label><label class="f">Jusqu\'au (vide = sans fin)<input type="datetime-local" id="tFin" value="' + esc(dt(v.bandeau_fin)) + '"></label>' +
-          '<label class="f">Style<select id="tStyle">' + [["info", "Information (bleu)"], ["succes", "Bonne nouvelle (vert)"], ["alerte", "Alerte (orange)"]].map(([k, l]) => '<option value="' + k + '"' + ((v.bandeau_style || "info") === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></label></div>" +
+        // b157 — le bandeau se règle dans Communication › Dans l'app ; ici, seulement la maintenance.
+        F.innerHTML = '<p class="mut tiny">Le bandeau affiché aux arbitres se règle dans <b>Communication › Dans l\'app</b>.</p>' +
           '<div class="row" style="margin-top:8px">' + chk("tMaint", "Mode maintenance (l'app affiche un écran d'attente à tous, l'admin reste accessible)", v.maintenance) + "</div>" +
           '<label class="f">Texte de l\'écran de maintenance (vide = texte standard)<textarea id="tMaintTxt" rows="2" maxlength="300" style="font-family:inherit">' + esc(v.maintenance_texte || "") + "</textarea></label>";
-        lireForm = () => ({ bandeau: F.querySelector("#tBand").value.trim(), bandeau_debut: F.querySelector("#tDeb").value || "", bandeau_fin: F.querySelector("#tFin").value || "", bandeau_style: F.querySelector("#tStyle").value, maintenance: F.querySelector("#tMaint").checked, maintenance_texte: F.querySelector("#tMaintTxt").value.trim() });
+        lireForm = () => Object.assign({}, v, { maintenance: F.querySelector("#tMaint").checked, maintenance_texte: F.querySelector("#tMaintTxt").value.trim() });   // b157 — garde les réglages du bandeau
       } else {
         // b88l — formulaire AUTOMATIQUE pour toutes les autres clés : oui/non, nombres, textes, listes, sous-blocs (2 niveaux). Plus de JSON à taper.
         const lib = (k) => k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -1813,10 +1828,11 @@
       if (sujet.length < 3 || texte.length < 3) return toast("Sujet et message obligatoires", "err");
       const lib = $("msCible").selectedOptions[0].textContent;
       if (!(await confirmer("Envoyer le message", "Envoyer « " + esc(sujet) + " » à <strong>" + esc(lib) + "</strong> (" + destinataires().length + " destinataire(s) après filtres)" + (type === "promo" ? " (sauf ceux qui se sont opposés aux offres : " + destinataires().length + ")" : "") + " ? Chaque arbitre reçoit son propre e-mail (aucune adresse visible des autres).", "Envoyer"))) return;
-      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type, filtres: filtres() }); try { localStorage.removeItem("rt-msg-brouillon"); } catch (e) {} toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok"); $("msTxt").value = ""; } catch (e) { toast(e.message, "err"); }
+      try { const j = await admin("message.envoyer", { cible, sujet, texte, canal, type, filtres: filtres() }); try { localStorage.removeItem("rt-msg-brouillon"); } catch (e) {} toast(j.destinataires + " destinataire(s) · " + j.mails + " e-mail(s) · " + j.pushs + " notification(s)", "ok");
+        $("msTxt").value = ""; $("msSujet").value = ""; $("msModele").value = "0"; if (iaMs) iaMs.vider(); apercu(); /* b157 — formulaire entièrement vidé après l'envoi */ } catch (e) { toast(e.message, "err"); }
     });
     // b136 — assistant IA : mail ou notification selon le canal choisi
-    assistantIA($("msIa"), { format: () => ($("msCanal").value === "push" ? "notification" : "mail"), max: 5,
+    const iaMs = assistantIA($("msIa"), { format: () => ($("msCanal").value === "push" ? "notification" : "mail"), max: 5,
       appliquer: (r) => { if (r.sujet) $("msSujet").value = r.sujet; if (r.texte) $("msTxt").value = r.texte; $("msTxt").dispatchEvent(new Event("input")); } });
     // b80 — test à soi-même, brouillon (gardé dans ce navigateur)
     $("msTest").addEventListener("click", async () => { const sujet = $("msSujet").value.trim(), texte = $("msTxt").value.trim();
@@ -1850,7 +1866,7 @@
       { t: "Ping", k: (u) => (pings[u.id] ? pings[u.id].latence_ms : null), r: (u) => { const p = pings[u.id]; return (p ? (p.erreur ? badge(p.erreur, "red") : p.ping ? badge("OK · " + p.latence_ms + " ms", p.latence_ms > 5000 ? "orange" : "green") : badge("KO · HTTP " + (p.http || "—") + (p.detail ? " · " + p.detail : ""), "red")) : "") + (moteur(u) ? ' <button class="btn sm" data-act="ping">Tester</button>' : ""); } },
       { t: "Dernière synchro", k: (u) => u.derniere_synchro || "", r: (u) => '<span class="' + (moteur(u) && heures(u.derniere_synchro) > 48 ? "err" : "") + '">' + fmt(u.derniere_synchro) + ' <span class="tiny">' + depuis(u.derniere_synchro) + "</span></span>" },
       { t: "Dernier match reçu", k: (u) => u.dernier_match || "", r: (u) => fmt(u.dernier_match) },
-      { t: "Connexion", k: (u) => u.derniere_connexion || "", r: (u) => fmt(u.derniere_connexion) },
+      { t: "Dernière activité", k: (u) => vuLe(u), r: (u) => vuTxt(vuLe(u)) },
       { t: "Push", k: (u) => (u.push || {}).echecs || 0, r: (u) => (u.push && u.push.n ? badge(u.push.n + " appareil(s)", "green") + " " + (u.push.echecs ? badge(u.push.echecs + " échec(s)", u.push.echecs >= 5 ? "red" : "orange") : "") + (u.push.last_ok ? ' <span class="mut tiny">ok ' + depuis(u.push.last_ok) + "</span>" : "") : badge("—", "gray")) },
       { t: "Consentement", k: (u) => (u.consentement || {}).version || "", r: (u) => (u.consentement ? badge("v" + u.consentement.version, "green") + ' <span class="mut tiny">' + fmtD(u.consentement.accepte_le) + "</span>" : badge("aucun", "red")) },
     ], l, { recherche: rechercheCourante, tri: "Dernière synchro", action: (a, u, b) => ping(u.id, b) });
@@ -1961,20 +1977,24 @@
         '<div class="vz-v">' + x.v + "</div>" + (x.tr != null && x.tr !== "" ? '<span class="vz-tr ' + (String(x.tr).startsWith("-") ? "down" : "up") + '">' + (String(x.tr).startsWith("-") ? "▼ " : "▲ ") + esc(String(x.tr).replace(/^[-+]/, "")) + "</span>" : "") +
         (x.s ? '<div class="vz-s">' + x.s + "</div>" : "") + "</div>").join("") + "</div>";
     },
-    aire(series, labels, opts) {   // series [{nom, v:[...], c}] → courbes avec aire dégradée
-      opts = opts || {}; const W = 640, H = opts.h || 200, P = 28, n = labels.length; if (!n) return '<p class="vide">Pas encore de données</p>';
-      const max = Math.max(1, ...series.flatMap((s) => s.v)), x = (i) => P + (n > 1 ? i * (W - 2 * P) / (n - 1) : (W - 2 * P) / 2), y = (v) => H - P - (v / max) * (H - 2 * P);
+    aire(series, labels, opts) {   // series [{nom, v:[...], c}] → courbes lissées avec aire dégradée
+      // b157 — échelle « ronde » avec de la marge (avant : max = valeur max, courbe collée en haut ou écrasée), 5 lignes de fond,
+      // courbes lissées, et dessin sans déformation (avant : preserveAspectRatio="none" écrasait textes et points).
+      opts = opts || {}; const W = 640, H = opts.h || 200, P = 30, n = labels.length; if (!n) return '<p class="vide">Pas encore de données</p>';
+      const brut = Math.max(1, ...series.flatMap((s) => s.v)), ordre = Math.pow(10, Math.floor(Math.log10(brut))), pasY = [1, 2, 2.5, 5, 10].map((k) => k * ordre / 4).find((p) => p * 4 >= brut * 1.1) || ordre * 2.5;
+      const max = pasY * 4, x = (i) => P + 8 + (n > 1 ? i * (W - 2 * P - 8) / (n - 1) : (W - 2 * P) / 2), y = (v) => H - P - (v / max) * (H - 2 * P);
+      const lisse = (pts) => pts.reduce((acc, p, i) => { if (!i) return "M" + p[0].toFixed(1) + " " + p[1].toFixed(1); const q = pts[i - 1], mx = ((q[0] + p[0]) / 2).toFixed(1); return acc + " C" + mx + " " + q[1].toFixed(1) + " " + mx + " " + p[1].toFixed(1) + " " + p[0].toFixed(1) + " " + p[1].toFixed(1); }, "");
       let g = "", d = "";
       series.forEach((s, k) => { const c = s.c || VZ.pal[k]; const id = "g" + Math.random().toString(36).slice(2, 8);
-        const pts = s.v.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1));
-        d += '<linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c + '" stop-opacity=".35"/><stop offset="1" stop-color="' + c + '" stop-opacity="0"/></linearGradient>';
-        g += '<polygon points="' + x(0).toFixed(1) + "," + (H - P) + " " + pts.join(" ") + " " + x(n - 1).toFixed(1) + "," + (H - P) + '" fill="url(#' + id + ')"/>' +
-          '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-          '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(s.v[n - 1]).toFixed(1) + '" r="4.5" fill="' + c + '"/>'; });
-      const grille = [0, .5, 1].map((f) => '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + (H - P - f * (H - 2 * P)) + '" y2="' + (H - P - f * (H - 2 * P)) + '" class="vz-grid"/><text x="' + (P - 6) + '" y="' + (H - P - f * (H - 2 * P) + 4) + '" class="vz-ax" text-anchor="end">' + VZ.n(Math.round(max * f)) + "</text>").join("");
+        const pts = s.v.map((v, i) => [x(i), y(v)]), ligne = lisse(pts);
+        d += '<linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c + '" stop-opacity=".32"/><stop offset="1" stop-color="' + c + '" stop-opacity="0"/></linearGradient>';
+        g += '<path d="' + ligne + " L" + x(n - 1).toFixed(1) + " " + (H - P) + " L" + x(0).toFixed(1) + " " + (H - P) + ' Z" fill="url(#' + id + ')"/>' +
+          '<path d="' + ligne + '" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+          '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(s.v[n - 1]).toFixed(1) + '" r="4.5" fill="' + c + '" stroke="var(--surface, #fff)" stroke-width="2"/>'; });
+      const grille = [0, 1, 2, 3, 4].map((k) => { const yy = (H - P - k / 4 * (H - 2 * P)).toFixed(1); return '<line x1="' + (P + 4) + '" x2="' + (W - P) + '" y1="' + yy + '" y2="' + yy + '" class="vz-grid"/><text x="' + P + '" y="' + (Number(yy) + 4) + '" class="vz-ax" text-anchor="end">' + VZ.n(Math.round(pasY * k * 10) / 10) + "</text>"; }).join("");
       const pas = Math.max(1, Math.ceil(n / 8)), lab = labels.map((l, i) => i % pas === 0 || i === n - 1 ? '<text x="' + x(i) + '" y="' + (H - 8) + '" class="vz-ax" text-anchor="middle">' + esc(l) + "</text>" : "").join("");
       const leg = series.length > 1 ? '<div class="vz-leg">' + series.map((s, k) => '<span><i style="background:' + (s.c || VZ.pal[k]) + '"></i>' + esc(s.nom) + "</span>").join("") + "</div>" : "";
-      return '<svg class="vz-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img"><defs>' + d + "</defs>" + grille + g + lab + "</svg>" + leg;
+      return '<svg class="vz-svg" viewBox="0 0 ' + W + " " + H + '" role="img"><defs>' + d + "</defs>" + grille + g + lab + "</svg>" + leg;
     },
     anneau(parts, centre, sous) {   // [{l, v, c}] → anneau + légende
       const tot = parts.reduce((t, p) => t + (p.v || 0), 0), R = 54, C = 2 * Math.PI * R; let off = 0;
@@ -2285,7 +2305,7 @@
         return '<div class="card ac-sy" style="--c:' + n[1] + '"><div class="ac-sy-h"><span class="badge" style="background:' + n[1] + ';color:#fff">' + n[0] + '</span><b>' + esc(o.meteo.titre || "") + '</b><a class="btn sm" href="#assistant">Voir la synthèse ›</a></div><p class="mut">' + esc(o.meteo.resume || "") + "</p>" +
           ((o.a_faire || []).length ? '<ol class="ac-sy-t">' + o.a_faire.slice(0, 3).map((a) => "<li><b>" + esc(a.titre) + "</b> <span class=\"mut\">" + esc(a.pourquoi || "") + "</span></li>").join("") + "</ol>" : "") +
           (D.length ? '<div class="ac-sy-d">' + D.slice(0, 6).map((x) => '<span class="sy-' + x.sens + '">' + esc(x.l) + " " + (x.d > 0 ? "+" : "") + x.d.toLocaleString("fr-FR") + "</span>").join("") + "</div>" : "") + "</div>"; })()
-      : '<div class="card ac-sy ac-sy-vide"><div><b>Synthèse IA du jour</b><p class="mut">Pas encore lancée aujourd\'hui : 1 minute pour savoir quoi faire et ce qui a bougé depuis hier.</p></div><a class="btn pri" href="#assistant">✦ Lancer la synthèse</a></div>';
+      : "";   // b157 — plus de 2e bloc « Synthèse IA » : le bouton est dans le bandeau « Bonjour Clément »
     const tot = U.length || 0, acc = U.filter((u) => u.accueil_termine).length, avecM = U.filter((u) => u.matchs_saison > 0).length, act30 = U.filter((u) => u.jours_actifs_30j > 0).length;
     const entonnoir = VZ.carte("Activation des comptes", "du compte créé à l'arbitre actif", VZ.barresH([{ l: "Comptes créés", v: tot, c: "#0B1F4D" }, { l: "Accueil terminé", v: acc, c: "#2563EB" }, { l: "Au moins 1 match importé", v: avecM, c: "#7C3AED" }, { l: "Actifs sur 30 jours", v: act30, c: "#16A34A" }, { l: "Actifs sur 7 jours", v: Math.min(K.actifs_7j || 0, tot), c: "#F2B705" }], (v) => v + " · " + pct(v, tot)));
     el.querySelector(".ac-hero").insertAdjacentHTML("afterend", carteSy);

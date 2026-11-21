@@ -595,6 +595,8 @@ function _cacheLire(cle) {
     const brut = localStorage.getItem(cle);
     if (!brut) return null;
     const o = JSON.parse(brut);
+    // b157 — horodatage rafraîchi à part (petite clé) quand les données n'ont pas changé : plus de réécriture du gros bloc
+    if (o && o.t && o.t !== 1) { const t2 = Number(localStorage.getItem(cle + "|t")) || 0; if (t2 > o.t) o.t = t2; }
     // b45 (A35) — âge réel toujours contrôlé (7 jours max), y compris pour une
     // entrée marquée périmée (p = 1 : à revalider, mais horodatage conservé).
     if (!o || !o.d || !o.t || o.t === 1 || Date.now() - o.t >= CACHE_MAX_AGE) { localStorage.removeItem(cle); return null; }
@@ -603,9 +605,10 @@ function _cacheLire(cle) {
   } catch (e) { return null; }
 }
 
-function _cacheEcrire(cle, data) {
+function _cacheEcrire(cle, data, deja) {
   try {
-    localStorage.setItem(cle, JSON.stringify({ t: Date.now(), d: data }));
+    localStorage.setItem(cle, deja ? '{"t":' + Date.now() + ',"d":' + deja + "}" : JSON.stringify({ t: Date.now(), d: data }));
+    localStorage.removeItem(cle + "|t");
   } catch (e) {
     // Quota atteint : on purge les lectures secondaires, puis on retente afin
     // que la liste des matchs — indispensable au rechargement — survive.
@@ -763,11 +766,12 @@ function jsonp(action, extra = {}) {
             // l'erreur depuis le cache et viderait l'interface.
             if (!frais || frais.success === false) return;
             if (_reponseVide(action, frais)) return;   // hoquet serveur : on garde le dernier bon jeu
-            if (JSON.stringify(frais) !== JSON.stringify(hit.d)) {
-              _cacheEcrire(cle, frais);
+            const s = JSON.stringify(frais);   // b157 — une seule sérialisation, réutilisée pour l'écriture
+            if (s !== JSON.stringify(hit.d)) {
+              _cacheEcrire(cle, frais, s);
               _rafraichirEcran(action);
             } else {
-              _cacheEcrire(cle, frais);   // rafraîchit l'horodatage
+              try { localStorage.setItem(cle + "|t", String(Date.now())); } catch (e) {}   // rafraîchit l'horodatage seulement
             }
           })
           .catch(() => { /* hors ligne : on garde l'affichage courant */ });
@@ -2413,6 +2417,8 @@ async function startApp() {
   // b74 — bandeau global et mode maintenance réglés par l'admin (config_globale pub.textes, lisible par tout connecté).
   SB.get("config_globale?select=valeur&cle=eq.pub.textes&limit=1").then(l => {
     const v = (l && l[0] && l[0].valeur) || {};
+    // b157 — l'admin peut couper le bandeau automatique « Nouvelle version » pour tous (valable pour la version coupée)
+    if (v.nouv_off && window.RT_NOUV && v.nouv_off === window.RT_NOUV.version) { window._rtNouvOff = true; const mb = document.getElementById("rtMajBan"); if (mb) mb.remove(); }
     // b81 — bandeau programmé (début / fin, heure de Paris saisie dans l'admin) et style.
     const maint = Date.now(), deb = v.bandeau_debut ? Date.parse(v.bandeau_debut) : 0, fin = v.bandeau_fin ? Date.parse(v.bandeau_fin) : 0;
     const b = (deb && maint < deb) || (fin && maint > fin) ? "" : String(v.bandeau || "").trim().slice(0, 300);

@@ -5973,8 +5973,6 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 @keyframes rtFonduSimple { from { opacity: 0; } }
 .panel.active { animation: rtFonduSimple .15s ease; }
 .panel.rt-entre > *, .panel.rt-entre .kpi, .panel.rt-entre .tel-kpi, .panel.rt-entre .match-card,
-.panel.rt-entre .dl-bar i, .panel.rt-entre .franchise-bar i, .panel.rt-entre .evt-bar i, .panel.rt-entre .pd-bar-t i, .panel.rt-entre .eval-f i,
-.panel.rt-entre .acc-anneau::before, .panel.rt-entre .acc-courbe-l,
 .tab.active svg, .tab.active .tab-icon { animation: none !important; }
 @media (hover: hover) { .kpi:hover { transform: none; } }
 
@@ -5988,4 +5986,80 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 }
 :root[data-theme="light"] .rt-search { background: rgba(255, 255, 255, .55) !important; border-color: rgba(255, 255, 255, .7) !important; box-shadow: 0 20px 50px rgba(11, 31, 59, .18), inset 0 1px 0 rgba(255, 255, 255, .9) !important; }
 .rt-search .rt-search-field, .rt-search select, .rt-search .rt-chip { background-color: color-mix(in srgb, var(--surface) 55%, transparent) !important; }
-@media (min-width: 768px) { .rt-fab { right: auto !important; } }
+
+/* ===== b157 — Recherche : loupe à droite qui s'efface quand le panneau s'ouvre à sa place ; sur téléphone, panneau qui monte du bas ===== */
+.rt-fab { transition: opacity .18s ease, transform .18s ease; }
+.rt-fab.is-cache { opacity: 0; transform: scale(.6); pointer-events: none; }
+@media (max-width: 767px) {
+  .rt-search-layer.is-sheet .rt-search { top: auto !important; left: 8px !important; right: 8px !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important; width: auto !important;
+    max-height: 82vh; border-radius: 24px !important; opacity: 1; transform: translateY(calc(100% + 24px)); transform-origin: 50% 100%;
+    transition: transform .32s cubic-bezier(.2, .8, .2, 1) !important; }
+  .rt-search-layer.is-sheet.is-open .rt-search { transform: none; }
+}
+
+/* ===== b157 — « verre dépoli » commun (bulles i, menus ouverts sur la page) ===== */
+:root { --verre-fond: color-mix(in srgb, var(--surface) 58%, transparent); --verre-bord: rgba(255, 255, 255, .2); --verre-ombre: 0 20px 50px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .22); }
+:root[data-theme="light"] { --verre-fond: rgba(255, 255, 255, .6); --verre-bord: rgba(255, 255, 255, .75); --verre-ombre: 0 20px 50px rgba(11, 31, 59, .18), inset 0 1px 0 rgba(255, 255, 255, .9); }
+.rt-info-ov { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 16px; background: rgba(5, 12, 25, .32); animation: rtCmF .15s ease; }
+.rt-info-ov .rt-info-pop { width: min(400px, 100%); padding: 16px 18px 14px; border-radius: 22px; color: var(--text);
+  background: var(--verre-fond); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid var(--verre-bord); box-shadow: var(--verre-ombre); animation: rtCmB .2s ease; }
+.rt-info-ov .rt-info-txt { font-size: 14px; line-height: 1.55; font-weight: 500; }
+.rt-info-ov .rt-info-txt p { margin: 0 0 8px; }
+.rt-info-ov .rt-info-txt p:last-child { margin-bottom: 0; }
+.rt-info-ov .rt-info-ok { margin-top: 14px !important; padding: 11px !important; border-radius: 12px; font-size: 14px !important; }
+details.rt-info > .rt-info-pop { display: none !important; }
+
+/* ===== b157 — motion design à l'arrivée sur une page seulement : courbes qui se dessinent, points qui apparaissent, aires en fondu
+   (les anneaux et barres reprennent leurs animations b115). Noms d'animation uniques : pas de collision comme en b155. ===== */
+@keyframes rtTraceB { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes rtPopB { from { transform: scale(0); } to { transform: scale(1); } }
+.panel.rt-entre .anim-trace { stroke-dasharray: 1; animation: rtTraceB 1.1s cubic-bezier(.45, 0, .2, 1) both; }
+.panel.rt-entre .anim-fondu { animation: rtFonduSimple .7s .3s ease both; }
+.panel.rt-entre .cf-pt, .panel.rt-entre .acc-courbe-pts span { animation: rtPopB .3s cubic-bezier(.3, 1.6, .5, 1) both; animation-delay: calc(var(--i, 0) * 60ms + .5s); }
+@media (prefers-reduced-motion: reduce) { .panel.rt-entre .anim-trace, .panel.rt-entre .anim-fondu, .panel.rt-entre .cf-pt, .panel.rt-entre .acc-courbe-pts span { animation: none !important; } }
+
+/* b157 — bouton « + Ajouter un match » à droite du titre des listes de matchs */
+.section-title.titre-ajout { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.section-title.titre-ajout .btn-ajout-match { margin-left: auto; font-family: var(--body); font-size: 12.5px; text-transform: none; letter-spacing: 0; padding: 7px 12px; }
+
+/* ===== b157 — logos de compétition homogènes : même tuile blanche arrondie pour tous (logos détourés, logos à fond blanc
+   et codes sans logo écrits en texte), même taille ; échelle de niveau : la ligne « Toi » n'est plus agrandie (le point sortait du trait) ===== */
+img.comp-logo, .comp-logo--txt { background: #fff !important; border: 1px solid rgba(10, 31, 68, .08); border-radius: 10px !important; padding: 3px !important;
+  object-fit: contain; box-sizing: border-box; box-shadow: 0 1px 3px rgba(10, 31, 68, .12); }
+.comp-logo--txt { color: #0A1F44 !important; font-weight: 800; letter-spacing: -.01em; }
+:root[data-theme="dark"] img.comp-logo, :root[data-theme="dark"] .comp-logo--txt { border-color: transparent; }
+.fl-m.moi { transform: none !important; }
+
+/* b157 — formulaires vierges : une ligne par formulaire, « Ouvrir » et « Recevoir par mail » */
+.rf-vierges { margin-top: 22px; max-width: none; }
+@media (min-width: 900px) { .rf-v-liste { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); } }
+.rf-v-t { font-size: 15px; margin: 0 0 8px; }
+.rf-v-liste { display: grid; gap: 8px; }
+.rf-v { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.rf-v-n { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; }
+@media (max-width: 480px) { .rf-v { flex-wrap: wrap; } .rf-v-n { flex-basis: 100%; } .rf-v .small-btn { flex: 1; text-align: center; } }
+
+/* b157 — ajout d'un péage / parking : petit panneau propre, types en boutons, montant avec « € », bouton Ajouter */
+.frais-form { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 6px; padding: 12px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); }
+.fm-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.fm-type { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 7px 12px; font: 700 12.5px var(--body); cursor: pointer; }
+.fm-type.is-on { background: var(--navy-800, #133863); border-color: var(--navy-800, #133863); color: #fff; }
+.fm-ligne { display: flex; gap: 8px; align-items: stretch; }
+.fm-montant { flex: 1; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); }
+.fm-montant:focus-within { border-color: var(--gold, #FFC400); }
+.fm-montant input { flex: 1; min-width: 0; width: auto !important; border: 0 !important; background: transparent !important; padding: 10px 0 !important; font: 700 16px var(--body) !important; color: var(--text); outline: none; }
+.fm-montant span { font-weight: 800; color: var(--muted); }
+.fm-ok { padding: 0 18px !important; border-radius: 12px !important; }
+.frais-add { border-style: solid; background: var(--surface-2); }
+
+/* ===== b157 — verre dépoli sur les menus et fenêtres ouverts par-dessus la page (même style que Recherche & Filtre) ===== */
+.rt-cmenu-box, .lic-menu, .filter-dropdown-panel, .rt-sheet-card, .rt-confirm-card, .notif-panel, .tab-more-panel, .rtm {
+  background: var(--verre-fond) !important; -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid var(--verre-bord) !important; box-shadow: var(--verre-ombre) !important; }
+/* fenêtres avec beaucoup de texte ou de champs (réglages, profil) : verre plus couvrant pour rester lisible */
+.rt-modal-card { background: color-mix(in srgb, var(--surface) 84%, transparent) !important; -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid var(--verre-bord) !important; box-shadow: var(--verre-ombre) !important; }
+:root[data-theme="light"] .rt-modal-card { background: rgba(255, 255, 255, .86) !important; }
+.rt-cmenu-fond, .rtm-ov { background: rgba(5, 12, 25, .3) !important; }
+.frais-form { max-width: 520px; }

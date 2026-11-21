@@ -3,13 +3,12 @@
    À CHAQUE mise en ligne visible pour les arbitres : changer version (bNNN), sortie (AAAA-MM-JJ), la phrase du bandeau
    et 3 à 5 lignes de la liste ; texte validé par Clément avant la mise en ligne. Le bandeau s'affiche seul 24 h pour chaque arbitre. */
 "use strict";
-window.RT_NOUV = { version: "b130", sortie: "2026-11-21", texte: "Nouvelle version : écran de connexion sur un terrain de basket, filière en échelle, rapports plus clairs et Accueil plus lisible sur téléphone." };
+window.RT_NOUV = { version: "b157", sortie: "2026-11-21", texte: "Nouvelle version : montants plus fiables au rechargement, animations plus discrètes, recherche plus légère." };
 window.RT_NOUVEAUTES = [
-  ["◎", "Connexion sur le terrain", "L'écran de connexion se pose au centre d'un terrain de basket. L'écran d'accueil des conditions est aussi plus simple à cocher."],
-  ["▲", "Filière en échelle", "Les grades déjà franchis sont cochés et ta place est mise en avant, avec « Toi »."],
-  ["i", "Bulles d'aide", "Un « i » explique chaque page (Progression, e-Licence, Rapports, Équipement…). Touche « Compris » pour le fermer."],
-  ["!", "Rapports et Règlement", "Chaque formulaire officiel a sa couleur et son délai. Dans Règlement, touche un exemple pour le copier dans ta question."],
-  ["⌂", "Accueil sur téléphone", "Les matchs du week-end sont plus lisibles : heure et montant en haut, équipes sur toute la largeur."]
+  ["€", "Montants fiables", "Les montants affichés ne bougent plus quand tu recharges l'app."],
+  ["◎", "Animations plus discrètes", "Les chiffres et les graphiques s'animent une seule fois, quand tu arrives sur une page."],
+  ["⌕", "Recherche plus légère", "Le panneau Recherche & Filtre s'ouvre à la place de la loupe, en verre transparent."],
+  ["+", "Ajouter un match", "Un bouton sur la liste des matchs explique comment ajouter une convocation, nouvelle ou ancienne."]
 ];
 
 /* b136 — CATALOGUE DES MODIFICATIONS visibles pour les arbitres (le plus récent en haut).
@@ -17,6 +16,8 @@ window.RT_NOUVEAUTES = [
    et le mail se remplit tout seul. grande: true = grande nouveauté (proposée en premier).
    À CHAQUE version visible : ajouter une ligne ici (date, titre court, une phrase pour l'arbitre). */
 window.RT_MODIFS = [
+  { id: "montants-fiables", date: "2026-11-21", grande: false, titre: "Des montants fiables", texte: "Les montants affichés ne bougent plus quand tu recharges l'app." },
+  { id: "ajout-match", date: "2026-11-21", grande: false, titre: "Ajouter un match, simplement", texte: "Un bouton sur la liste des matchs explique comment ajouter une convocation, nouvelle ou ancienne." },
   { id: "connexion-terrain", date: "2026-11-21", grande: false, titre: "Connexion sur un terrain de basket", texte: "L'écran de connexion se pose au centre d'un terrain, et l'écran des conditions est plus simple à cocher." },
   { id: "filiere-echelle", date: "2026-11-21", grande: false, titre: "Ta filière en échelle", texte: "Dans Progression, les grades franchis sont cochés et ta place est marquée « Toi »." },
   { id: "rapports-clairs", date: "2026-11-21", grande: false, titre: "Des rapports plus clairs", texte: "Chaque formulaire officiel a sa couleur et son délai d'envoi bien visible (sous 24 h, sous 72 h)." },

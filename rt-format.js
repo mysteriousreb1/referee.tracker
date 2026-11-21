@@ -15,9 +15,11 @@
   }
   function parcourir(racine) {
     if (!racine) return;
-    if (racine.nodeType === 3) { var p = racine.parentNode; if (p && !IGNORE[p.nodeName] && !(p.closest && p.closest("svg,code,pre,textarea"))) corriger(racine); return; }
+    if (racine.nodeType === 3) { var v0 = racine.nodeValue; if (!v0 || v0.indexOf(".") === -1 && v0.indexOf("€") === -1) return; var p = racine.parentNode; if (p && !IGNORE[p.nodeName] && !(p.closest && p.closest("svg,code,pre,textarea"))) corriger(racine); return; }
     if (racine.nodeType !== 1 || IGNORE[racine.nodeName] || (racine.closest && racine.closest("svg"))) return;
+    // b157 — test du texte AVANT de remonter les parents (closest) : la grande majorité des textes n'ont ni « . » ni « € »
     var w = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
+      var v = n.nodeValue; if (!v || v.indexOf(".") === -1 && v.indexOf("€") === -1) return 2;
       var p = n.parentNode; return p && !IGNORE[p.nodeName] && !(p.closest && p.closest("svg,code,pre,textarea")) ? 1 : 2; } });
     var n; while ((n = w.nextNode())) corriger(n);
   }
