@@ -1250,35 +1250,12 @@ function renderProfile() {
       <p class="rt-help" id="pfPushEtat" style="margin:0"></p>
       <p class="rt-help" id="pfPushDetail" style="margin:0 0 4px"></p>
       <div class="rt-kv">
-        <div><b>Départ conseillé</b><span class="rt-help">Sur l'Accueil, dans les 3 h avant un match.</span></div>
-        <div class="rt-kv-btns">
-          <button type="button" class="rt-btn-ghost" id="pfDepartOn">Activé</button>
-          <button type="button" class="rt-btn-ghost" id="pfDepartOff">Désactivé</button>
-        </div>
-      </div>
-      <div class="rt-kv">
         <div><b>Thème</b></div>
         <div class="rt-kv-btns">
           <button type="button" class="rt-btn-ghost" id="pfThemeClair">Clair</button>
           <button type="button" class="rt-btn-ghost" id="pfThemeSombre">Sombre</button>
           <button type="button" class="rt-btn-ghost" id="pfThemeAuto" title="Suit le réglage clair/sombre de ton téléphone ou ordinateur">Auto</button>
         </div>
-      </div>
-      <div class="rt-kv">
-        <div><b>Taille du texte</b><span class="rt-help">Grossit toute l'app, sur cet appareil.</span></div>
-        <div class="rt-kv-btns" data-pref="rt-texte"><button type="button" class="rt-btn-ghost" data-v="">Normale</button><button type="button" class="rt-btn-ghost" data-v="grand">Grande</button></div>
-      </div>
-      <div class="rt-kv">
-        <div><b>Animations</b><span class="rt-help">Réduites : l'app s'affiche sans effets de mouvement.</span></div>
-        <div class="rt-kv-btns" data-pref="rt-anim"><button type="button" class="rt-btn-ghost" data-v="">Normales</button><button type="button" class="rt-btn-ghost" data-v="calme">Réduites</button></div>
-      </div>
-      <div class="rt-kv">
-        <div><b>Montants</b><span class="rt-help">Masqués : les sommes sont floutées (pratique quand tu montres l'app).</span></div>
-        <div class="rt-kv-btns" data-pref="rt-discret"><button type="button" class="rt-btn-ghost" data-v="">Visibles</button><button type="button" class="rt-btn-ghost" data-v="discret">Masqués</button></div>
-      </div>
-      <div class="rt-kv">
-        <div><b>Ouvrir l'app sur</b><span class="rt-help">La page affichée à l'ouverture.</span></div>
-        <div class="rt-kv-btns"><select id="pfOuverture" aria-label="Page d'ouverture"><option value="">Accueil</option><option value="matchs">Matchs 5×5</option><option value="paiements">Paiements</option><option value="stats">Analyse</option><option value="progression">Progression</option></select></div>
       </div>
     </section>
 

@@ -61,6 +61,7 @@ let state = {
 
 /* b152 — préférences d'affichage de l'appareil : texte plus grand, animations réduites, montants masqués. */
 function rtPrefsAppliquer() {
+  try { ["rt-texte", "rt-anim", "rt-discret", "rt-ouverture"].forEach(k => localStorage.removeItem(k)); localStorage.removeItem("rt_depart"); } catch (e) {}   // b154 — ces réglages ne sont plus proposés : comportement automatique pour tous
   const h = document.documentElement, lire = k => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };
   h.classList.toggle("rt-grand", lire("rt-texte") === "grand");
   h.classList.toggle("rt-calme", lire("rt-anim") === "calme");
@@ -390,7 +391,7 @@ const RECH = {
   majBouton() {
     let b = document.getElementById("rtSearchFab");
     if (!b) {
-      b = document.createElement("button"); b.id = "rtSearchFab"; b.type = "button"; b.className = "rt-fab"; b.setAttribute("aria-label", "Rechercher et filtrer");
+      b = document.createElement("button"); b.id = "rtSearchFab"; b.type = "button"; b.className = "rt-fab"; b.setAttribute("aria-label", "Recherche & Filtre");
       b.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span class="rt-fab-badge" hidden></span>`;
       b.addEventListener("click", () => this.ouvert ? this.fermer() : this.ouvrir());
       document.body.appendChild(b);
@@ -413,6 +414,7 @@ const RECH = {
   },
   ouvrir() {
     this.fermer();
+    const src = [document.getElementById("searchToggleBtn"), document.getElementById("rtSearchFab")].find(x => x && x.offsetParent);   // b154 — le panneau s'ouvre depuis le bouton
     const f = this.lire(), page = state.activeTab;
     const saisons = ["Toutes les saisons", ...getSeasonsFrom2022ToCurrent().slice().reverse()];
     const rowsSaison = state.allRows.filter(r => f.season === "Toutes les saisons" || r._season === f.season);
@@ -429,7 +431,7 @@ const RECH = {
     const nbSel = 1 + (avecPaiement ? 1 : 0) + (avecFormat ? 1 : 0);
     el.innerHTML = `<div class="rt-search-backdrop"></div>
       <section class="rt-search" role="dialog" aria-modal="true" aria-label="Recherche">
-        <header class="rt-search-head"><div><span class="rt-search-kicker">${escapeHtml(this.TITRES[page] || "Recherche")}</span><h3>Rechercher et filtrer</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+        <header class="rt-search-head"><div><span class="rt-search-kicker">${escapeHtml(this.TITRES[page] || "Recherche")}</span><h3>Recherche &amp; Filtre</h3></div><button type="button" class="rt-search-close" id="rtSearchClose" aria-label="Fermer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
         <div class="rt-search-field"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="rtSearchInput" type="search" list="rtSearchSugg" placeholder="Club, salle, ville, collègue, compétition…" value="${escapeHtml(f.search || "")}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="rt-search-clear" id="rtSearchClear" aria-label="Effacer"${f.search ? "" : " hidden"}>✕</button></div>
         <datalist id="rtSearchSugg">${sugg.map(v => `<option value="${escapeHtml(v)}"></option>`).join("")}</datalist>
         ${hist.length ? `<div class="rt-search-sec rt-search-hist"><div class="rt-search-sec-h"><label>Recherches récentes</label><button type="button" class="rt-search-link" id="rtSearchHistClear">Effacer</button></div><div class="rt-chips rt-chips--hist">${hist.map(h => `<button type="button" class="rt-chip rt-chip--hist" data-hist="${escapeHtml(h)}">${escapeHtml(h)}</button>`).join("")}</div></div>` : ""}
@@ -442,6 +444,14 @@ const RECH = {
         <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount" aria-live="polite"></span><div><button type="button" class="rt-btn rt-btn-ghost" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
       </section>`;
     document.body.appendChild(el);
+    if (src) {   // b154 — panneau collé au bouton qui l'ouvre (en haut à droite sur téléphone, en bas à droite sur ordinateur)
+      const r = src.getBoundingClientRect(), p = el.querySelector(".rt-search");
+      if (p) { const enBas = r.top > innerHeight / 2;
+        p.style.transformOrigin = enBas ? "100% 100%" : "100% 0";
+        if (enBas) { p.style.top = "auto"; p.style.bottom = Math.round(innerHeight - r.top + 10) + "px"; }
+        else { p.style.top = Math.round(r.bottom + 10) + "px"; p.style.bottom = "auto"; }
+        p.style.right = Math.max(10, Math.round(innerWidth - r.right)) + "px"; }
+    }
     requestAnimationFrame(() => el.classList.add("is-open"));
     this.ouvert = true;
     const maj = () => {
@@ -708,9 +718,33 @@ function showApiError(err) {
 /* Prix E10 courant, tel que le serveur le voit. Les matchs à venir n'ont pas
    encore de relevé mensuel : sans cette valeur, le navigateur retomberait sur
    le dernier mois connu et annoncerait un carburant différent du serveur. */
+/* b154 — les prix du carburant (et réglages de coûts) du dernier chargement sont gardés sur l'appareil et appliqués
+   AVANT le premier affichage : sans ça, l'app calculait d'abord avec un prix par défaut, puis recalculait une seconde
+   plus tard avec le vrai prix → les montants « bougeaient » à chaque rechargement. */
+const CLE_CFG_PRIX_ = "rt-cfg-prix";
+function appliquerConfigPrix_(cfg) {
+  if (!cfg) return false;
+  if (cfg.couts) state.couts = cfg.couts;
+  if (Array.isArray(cfg.vehicles)) state.vehicles = cfg.vehicles;
+  if (cfg.prix_e10_historique && typeof cfg.prix_e10_historique === "object") {
+    Object.keys(cfg.prix_e10_historique).forEach(k => { const v = Number(cfg.prix_e10_historique[k]); if (/^\d{4}-\d{2}$/.test(k) && v > 0.5 && v < 4) PRIX_E10[k] = v; });
+  }
+  if (cfg.prix_carburant_meta) window.RT_PRIX_META = cfg.prix_carburant_meta;
+  if (cfg.carburants && typeof cfg.carburants === "object") state.carburants = cfg.carburants;
+  const p = Number(cfg.prix_e10_actuel);
+  if (p > 0.5 && p < 4 && p !== state.prixActuel) { state.prixActuel = p; return true; }
+  return false;
+}
 function loadPrixCarburant() {
   jsonp("config")
     .then(res => {
+      if (res && res.config) { const c = res.config;
+        try { localStorage.setItem(CLE_CFG_PRIX_, JSON.stringify({ couts: c.couts, vehicles: c.vehicles, prix_e10_historique: c.prix_e10_historique, prix_carburant_meta: c.prix_carburant_meta, carburants: c.carburants, prix_e10_actuel: c.prix_e10_actuel })); } catch (e) {}
+        const avant = JSON.stringify([state.couts, state.vehicles, state.carburants, state.prixActuel]);
+        appliquerConfigPrix_(c);
+        if (JSON.stringify([state.couts, state.vehicles, state.carburants, state.prixActuel]) !== avant) renderAllSoon_();   // re-calcul seulement si un prix a vraiment changé
+        return;
+      }
       if (res && res.config && res.config.couts) state.couts = res.config.couts;
       if (res && res.config && Array.isArray(res.config.vehicles)) state.vehicles = res.config.vehicles;
       // b41 — historique mensuel E10 depuis l'onglet PRIX_E10 (complète la table codée)
@@ -1064,7 +1098,7 @@ function renderReglement() {
     <div class="regl-wrap">
       <div class="regl-head">
         <div class="regl-head-t">
-          <h2 class="section-title">Règlement <span class="count">IA</span>${infoI_("D'où viennent les règlements ?", "Les règlements utilisés sont les textes officiels publiés (règles FIBA et leur version française). Referee Tracker en garde une copie, reprise telle quelle, sans modification ni détournement, uniquement pour te permettre de chercher plus vite. Pour le 3×3, quelques textes publiés seulement en anglais sont accompagnés d'une traduction automatique. En cas de doute, le texte officiel fait foi. Referee Tracker est un projet indépendant, sans lien avec les instances du basket.")}</h2>
+          <h2 class="section-title">Règlement <span class="count">IA</span>${infoI_("D'où viennent les règlements ?", "Textes officiels FIBA (version française), repris tels quels pour chercher plus vite. Le texte officiel fait foi. Projet indépendant.")}</h2>
           <div class="regl-seg" role="tablist" aria-label="Règlement interrogé">${["5x5", "3x3"].map(c => `<button type="button" role="tab" aria-selected="${(state.reglCat || "5x5") === c}" class="regl-seg-b${(state.reglCat || "5x5") === c ? " is-on" : ""}" data-regl-cat="${c}"><span class="regl-seg-l">Règlement </span>${c === "5x5" ? "5×5" : "3×3"}</button>`).join("")}</div>
           <div class="regl-head-sub">${(state.reglCat || "5x5") === "3x3" ? "Règles officielles FIBA 3×3" : "Règles officielles FIBA 5×5"}${nbDocs === null ? "" : " · " + nbDocs + " document" + (nbDocs > 1 ? "s" : "") + " lu" + (nbDocs > 1 ? "s" : "") + " par l'IA"}${docsInfo && docsInfo.cache ? " · cache chaud" : ""}</div>
         </div>
@@ -1789,8 +1823,8 @@ function renderAccueil() {
         <span class="acc-hero-indem" title="Indemnité prévue">${formatMoney(r._amount)}</span>
       </div>
       <div class="acc-hero-teams">
-        <div class="acc-hero-team">${escapeHtml(rec || vis || "Mission")}${cltPos_(r, "rec")}</div>
-        ${rec && vis && !est3x3 ? `<div class="acc-hero-vs"><span>vs</span></div><div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}${cltPos_(r, "vis")}</div>` : (est3x3 && vis ? `<div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : "")}
+        <div class="acc-hero-team">${nomEtRang_(rec || vis || "Mission", cltPos_(r, "rec"))}</div>
+        ${rec && vis && !est3x3 ? `<div class="acc-hero-vs"><span>vs</span></div><div class="acc-hero-team acc-hero-team--vis">${nomEtRang_(vis, cltPos_(r, "vis"))}</div>` : (est3x3 && vis ? `<div class="acc-hero-team acc-hero-team--vis">${escapeHtml(vis)}</div>` : "")}
       </div>
       <div class="acc-hero-chips">
         <span class="acc-chip acc-chip--niv">${escapeHtml(niv.badge)}</span>
@@ -5329,11 +5363,11 @@ document.addEventListener("click", e => {
   const ok = e.target.closest && e.target.closest(".rt-info-ok");
   document.querySelectorAll("details.rt-info[open]").forEach(d => { if (ok ? d.contains(ok) : !d.contains(e.target)) d.removeAttribute("open"); });
 });
-const INFO_PAGES_ = {
-  elicence: ["À quoi sert cette page ?", "Range ici ta licence de la saison (PDF ou capture) pour l'avoir toujours sur toi. Rien n'est envoyé à la fédération : c'est ta copie personnelle."],
-  rapports: ["À quoi sert cette page ?", "Les formulaires de rapport (incident, faute disqualifiante, réclamation…) se remplissent ici puis s'envoient par toi, depuis ta messagerie. L'app ne transmet rien à ta place."],
-  equipement: ["À quoi sert cette page ?", "Note ce que tu achètes pour arbitrer (tenue, sifflet, chaussures…) : l'app en tient le compte sur la saison, à part : rien n'est retiré de tes indemnités."],
-  progression: ["D'où viennent ces chiffres ?", "Les notes et graphiques sont des estimations calculées à partir des fiches que tu as importées. Seule la fiche officielle fait foi."]
+const INFO_PAGES_ = {   // b154 — textes courts : une ou deux phrases, pas plus
+  elicence: ["Mon espace", "Ta licence de la saison, toujours sur toi. Rien n'est envoyé à la fédération."],
+  rapports: ["Rapports", "Remplis le formulaire officiel ici, puis envoie-le toi-même depuis ta messagerie."],
+  equipement: ["Équipement", "Tes achats d'arbitre (tenue, sifflet…), suivis à part de tes indemnités."],
+  progression: ["D'où viennent ces chiffres ?", "Notes estimées à partir de tes fiches importées. Seule la fiche officielle fait foi."]
 };
 function ouvrirModaleInfo_(titre, html) {
   const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
@@ -5430,7 +5464,7 @@ function renderContactsPanel_() {
   const collegues = "";   // b73 : fiches collègues automatiques retirées de l'app (décision Clément)
   return `
     <div class="cc-bar">
-      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.contactsSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
+      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.contactsSearch ? " is-on" : ""}" data-cc-loupe aria-label="Recherche &amp; Filtre" title="Recherche &amp; Filtre">${ICONE_LOUPE_}<span>Rechercher</span></button>
       <button type="button" class="small-btn" id="contactAjouter">+ Ajouter</button>
     </div>
     <div class="cc-filtres"${state.ccFiltreOuvert || state.contactsSearch ? "" : " hidden"}>
@@ -5533,7 +5567,7 @@ function renderProceduresPanel_() {
   }
   return `
     <div class="cc-bar">
-      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.proceduresSearch ? " is-on" : ""}" data-cc-loupe aria-label="Rechercher et filtrer" title="Rechercher et filtrer">${ICONE_LOUPE_}</button>
+      <button type="button" class="cc-loupe${state.ccFiltreOuvert || state.proceduresSearch ? " is-on" : ""}" data-cc-loupe aria-label="Recherche &amp; Filtre" title="Recherche &amp; Filtre">${ICONE_LOUPE_}<span>Rechercher</span></button>
       <button type="button" class="small-btn" id="procAjouter">+ Ajouter</button>
     </div>
     <div class="cc-filtres"${state.ccFiltreOuvert || state.proceduresSearch ? "" : " hidden"}>
@@ -6046,7 +6080,7 @@ function renderQcm() {
   const s = state.qcmStats;
   const pret = !!state.qcmBank;
   root.innerHTML = `
-    <h2 class="section-title">QCM arbitrage${infoI_("D'où viennent les questions ?", "Les questions viennent des banques de questions officielles de la FFBB destinées à la formation des arbitres (éditions 2025 et 2022). Elles sont reprises telles quelles, sans modification ni détournement, et proposées uniquement dans un but de formation. Referee Tracker est un projet indépendant, sans lien avec la FFBB.")}</h2>
+    <h2 class="section-title">QCM arbitrage${infoI_("D'où viennent les questions ?", "Banques de questions officielles de formation des arbitres (2022 et 2025), reprises telles quelles. Projet indépendant.")}</h2>
     <div class="qz-modes">
       <div class="qz-mode">
         <h3>Entraînement</h3>
@@ -9487,8 +9521,9 @@ function renderPersoTab_(id, titre, fn) {
   const root = document.getElementById(id);
   if (!root) return;
   if (state.contacts === null && !state._contactsErreur && id === "rapports") loadContacts();
-  const info = INFO_PAGES_[id] ? `<div class="rt-info-ligne">${infoI_(...INFO_PAGES_[id])}<span>${escapeHtml(INFO_PAGES_[id][0])}</span></div>` : "";
-  root.innerHTML = `${id === "rapports" ? `<h2 class="section-title">${escapeHtml(titre)}${INFO_PAGES_.rapports ? infoI_(...INFO_PAGES_.rapports) : ""}</h2>` : monEspaceBar_(id) + info}${fn()}`;
+  // b154 — le « i » se met à côté du titre de la page, sans texte à côté
+  const barre = id === "rapports" ? `<h2 class="section-title">${escapeHtml(titre)}${INFO_PAGES_.rapports ? infoI_(...INFO_PAGES_.rapports) : ""}</h2>` : monEspaceBar_(id);
+  root.innerHTML = `${id !== "rapports" && INFO_PAGES_[id] ? barre.replace("</h2>", infoI_(...INFO_PAGES_[id]) + "</h2>") : barre}${fn()}`;
   attachPersoListeners_(root);
 }
 function loadElicence() { persoCharger_("elic", "elicence", r => { state.elicence = r.data || {}; }); }
@@ -10665,6 +10700,14 @@ function classementMatch_(row) {
   CLT.cache[uid] = res;
   return res;
 }
+/* b154 — le classement reste collé au dernier mot du nom (ne part plus seul à la ligne). */
+function nomEtRang_(nom, rang) {
+  const t = String(nom || "");
+  let i = t.lastIndexOf(" ");
+  while (i > 0 && t.length - i <= 4) { const j = t.lastIndexOf(" ", i - 1); if (j < 0) break; i = j; }   // « NANCY - 2 » : « - 2 » reste avec le classement
+  if (!rang) return escapeHtml(t);
+  return i < 0 ? `<span class="nowrap">${escapeHtml(t)}${rang}</span>` : `${escapeHtml(t.slice(0, i))} <span class="nowrap">${escapeHtml(t.slice(i + 1))}${rang}</span>`;
+}
 function cltPos_(row, cote) {
   const c = classementMatch_(row); const t = c && c[cote];
   return t && t.j ? ` <span class="acc-pos">${t.pos}<sup>e</sup></span>` : "";
@@ -10853,3 +10896,5 @@ function rtBandeauMaj_(x) {
   d.querySelector(".rt-majban-go").addEventListener("click", () => { if (x.action === "nouveautes") rtNouveautes_(); else if (typeof setActiveTab === "function") setActiveTab(x.action); fermer(); });
   d.querySelector(".rt-majban-x").addEventListener("click", fermer);
 }
+/* b154 — prix du carburant du dernier chargement appliqués dès le départ (fin de fichier : la table PRIX_E10 est déjà définie). */
+try { appliquerConfigPrix_(JSON.parse(localStorage.getItem(CLE_CFG_PRIX_) || "null")); } catch (e) {}
