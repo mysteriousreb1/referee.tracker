@@ -398,6 +398,9 @@ const RECH = {
     }
     const visible = this.PAGES.includes(state.activeTab);
     b.hidden = !visible;
+    // b156 — sur ordinateur, la loupe est en bas à gauche de la page (à droite elle cachait les montants)
+    const placer = () => { const c = document.querySelector("main.content"); b.style.left = innerWidth > 767 && c ? Math.round(c.getBoundingClientRect().left + 16) + "px" : ""; };
+    placer(); if (!this._placer) { this._placer = placer; addEventListener("resize", placer); }
     const n = this.actifs(), badge = b.querySelector(".rt-fab-badge");
     badge.hidden = !n; badge.textContent = String(n);
     b.classList.toggle("is-filtered", n > 0);
@@ -414,7 +417,7 @@ const RECH = {
   },
   ouvrir() {
     this.fermer();
-    const src = [document.getElementById("searchToggleBtn"), document.getElementById("rtSearchFab")].find(x => x && x.offsetParent);   // b154 — le panneau s'ouvre depuis le bouton
+    const src = [document.getElementById("searchToggleBtn"), document.getElementById("rtSearchFab")].find(x => x && !x.hidden && x.getClientRects().length);   // offsetParent est nul pour un bouton « fixed »   // b154 — le panneau s'ouvre depuis le bouton
     const f = this.lire(), page = state.activeTab;
     const saisons = ["Toutes les saisons", ...getSeasonsFrom2022ToCurrent().slice().reverse()];
     const rowsSaison = state.allRows.filter(r => f.season === "Toutes les saisons" || r._season === f.season);
@@ -444,13 +447,14 @@ const RECH = {
         <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount" aria-live="polite"></span><div><button type="button" class="rt-btn rt-btn-ghost" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
       </section>`;
     document.body.appendChild(el);
-    if (src) {   // b154 — panneau collé au bouton qui l'ouvre (en haut à droite sur téléphone, en bas à droite sur ordinateur)
+    if (src) {   // b156 — le panneau s'ouvre à la place du bouton (il le recouvre), du même côté que lui
       const r = src.getBoundingClientRect(), p = el.querySelector(".rt-search");
-      if (p) { const enBas = r.top > innerHeight / 2;
-        p.style.transformOrigin = enBas ? "100% 100%" : "100% 0";
-        if (enBas) { p.style.top = "auto"; p.style.bottom = Math.round(innerHeight - r.top + 10) + "px"; }
-        else { p.style.top = Math.round(r.bottom + 10) + "px"; p.style.bottom = "auto"; }
-        p.style.right = Math.max(10, Math.round(innerWidth - r.right)) + "px"; }
+      if (p) { const enBas = r.top > innerHeight / 2, aGauche = r.left < innerWidth / 2;
+        p.style.transformOrigin = (aGauche ? "0 " : "100% ") + (enBas ? "100%" : "0");
+        if (enBas) { p.style.top = "auto"; p.style.bottom = Math.max(10, Math.round(innerHeight - r.bottom)) + "px"; }
+        else { p.style.top = Math.round(r.top) + "px"; p.style.bottom = "auto"; }
+        if (aGauche) { p.style.left = Math.max(10, Math.round(r.left)) + "px"; p.style.right = "auto"; }
+        else { p.style.right = Math.max(10, Math.round(innerWidth - r.right)) + "px"; p.style.left = "auto"; } }
     }
     requestAnimationFrame(() => el.classList.add("is-open"));
     this.ouvert = true;
@@ -544,7 +548,6 @@ function animerEntree_(panel, sens) {
   panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"); void panel.offsetWidth;   // relance l'animation CSS
   panel.classList.add("rt-entre"); if (sens) panel.classList.add("rt-de-" + sens);
   clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"), 900);
-  defilerChiffres_(panel);
 }
 /* b118 — téléphone : une seule pastille sous les icônes de la barre du bas, qui glisse vers l'onglet choisi. */
 function placerIndicateurOnglet_() {
@@ -560,25 +563,8 @@ function placerIndicateurOnglet_() {
   nav.classList.add("has-indic");
 }
 window.addEventListener("resize", () => { clearTimeout(placerIndicateurOnglet_._t); placerIndicateurOnglet_._t = setTimeout(placerIndicateurOnglet_, 120); });
-const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v, .acc-big";
-function defilerChiffres_(panel) { panel.querySelectorAll(CHIFFRES_ANIMES_).forEach(defilerChiffre_); }
-// « 1 159,06 € » → défile de 0 à 1159,06 en gardant le format (espaces, virgule, unité).
-function defilerChiffre_(el) {
-  const brut = el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.nodeValue : "";
-  const m = brut.match(/^(\D*?)(-?\d(?:[\d\s\u202f\u00a0]*\d)?(?:,\d+)?)(.*)$/);
-  if (!m) return;
-  const cible = Number(m[2].replace(/[\s\u202f\u00a0]/g, "").replace(",", "."));
-  if (!isFinite(cible) || Math.abs(cible) < 2) return;
-  const dec = (m[2].split(",")[1] || "").length, t0 = performance.now(), duree = 650;
-  const noeud = el.firstChild;
-  const pas = now => {
-    if (!noeud.isConnected) return;   // la page a été redessinée entre-temps
-    const k = Math.min(1, (now - t0) / duree), e = 1 - Math.pow(1 - k, 3);
-    noeud.nodeValue = m[1] + (cible * e).toLocaleString("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + m[3];
-    if (k < 1) requestAnimationFrame(pas); else noeud.nodeValue = brut;
-  };
-  requestAnimationFrame(pas);
-}
+/* b156 — plus de défilement des chiffres (0 → montant) : s'il était relancé pendant qu'il tournait (page redessinée
+   à l'arrivée des données), il pouvait figer une valeur intermédiaire → montants faux et différents à chaque rechargement. */
 /* b116 — Accueil : carte de saison (anneau reçu / en attente, gros chiffres, courbe du net par mois). */
 function accSaisonCarte_(saison, aVenir, recuS, attS) {
   const total = recuS + attS, part = total > 0 ? recuS / total : 0;
@@ -8240,28 +8226,19 @@ function renderEstimation() {
   if (bi) bi.addEventListener("click", () => ouvrirModaleInfo_("Comment c'est calculé", estInfoHtml_(e)));
 }
 
-function estInfoHtml_(e) {
+function estInfoHtml_(e) {   // b156 — version courte
   const F = v => formatMoney(v);
-  return `<p><strong>Méthode</strong> : ${escapeHtml(e.methode)}.</p>
-    ${e.nbHotelPrevu ? `<p>Hôtels prévus : ${e.nbHotelPrevu} nuit(s) conseillée(s) à ${HOTEL_CFG.budget} € max (économie de carburant correspondante : ${F(e.ecoHotel)}, non déduite des km).</p>` : ""}
-    <p><strong>Réalisé</strong> : matchs passés, valeurs réelles.</p>
-    <p><strong>À venir (désignés)</strong> : désignations reçues, valorisées exactement (km réels, prix du carburant de la période).</p>
-    <p><strong>À prévoir</strong> : matchs pas encore reçus. Base : les ${e.prevReste || 0} matchs arbitrés l'an dernier sur la même période restante (${e.prevEcoule || 0} étaient faits à la même date, ${e.rF.n} cette saison), multipliés par ton rythme actuel x${(e.ratioBrut || 1).toFixed(2).replace(".", ",")} (borné entre 0,7 et 1,4) pondéré à ${Math.round((e.poids || 0) * 100)} % de confiance selon l'avancement de la saison, soit x${(e.ratio || 1).toFixed(2).replace(".", ",")}. Sans historique N-1 : rythme actuel réduit de 40 %. Valorisés à ta moyenne par match (${F(e.m.ind)} d'indemnité, ${Math.round(e.m.km)} km), calculée sur cette saison et la précédente tant que la saison compte moins de 30 missions.</p>
-    <p><strong>Fiabilité</strong> : la partie sûre est « Réalisé » + « À venir » (${F(round2(e.rF.ind + e.rA.ind))} d'indemnités). « À prévoir » est une projection : elle suppose que tu seras désigné autant que la saison dernière (${e.prevN} matchs en N-1) au rythme actuel. Plus la saison avance, plus elle devient fiable ; en octobre, compte une marge de ±25 %.</p>
-    <p><strong>Fourchette</strong> : basse = désignations connues seules ; haute = estimation centrale + 25 %.</p>
-    <p><strong>Nouvelle désignation</strong> : tout se recalcule. Elle remplace un match « à prévoir » (le total attendu est le plus grand des deux), puis elle est comptée exactement : le net ne bouge beaucoup que si tu dépasses l'estimation.</p>
-    <p>Hôtels : nuits saisies + nuits conseillées à venir, au budget maximum réglé.</p>`;
+  return `<p><strong>Réalisé</strong> : matchs joués, montants réels.</p>
+    <p><strong>À venir</strong> : désignations reçues, calculées au km près.</p>
+    <p><strong>À prévoir</strong> : matchs pas encore reçus, estimés d'après la saison dernière et ton rythme actuel.</p>
+    <p><strong>Sûr</strong> : ${F(round2(e.rF.ind + e.rA.ind))} d'indemnités (réalisé + à venir). Le reste est une projection, plus fiable à mesure que la saison avance.</p>`;
 }
 
 /* b109 — aide de la rubrique Hôtel (reprend les seuils de HOTEL_CFG). */
-function hotelInfoHtml_() {
+function hotelInfoHtml_() {   // b156 — version courte
   const C = HOTEL_CFG;
-  return `<p><strong>Nuits conseillées</strong> : l'app regarde tes désignations à venir et te conseille une nuit sur place dans deux cas :</p>
-    <p>· <strong>trajet long + match le lendemain</strong> : match à ${C.seuilKm} km ou plus (ou plus de ${C.seuilMin} min de route) et un autre match le lendemain, quand dormir sur place t'évite au moins ${C.ecoMinKm} km de route ;</p>
-    <p>· <strong>retour tardif</strong> : en partant à la fin du match, tu rentrerais après ${hhmmMin_(C.retourMaxMin)}.</p>
-    <p><strong>Net estimé</strong> : carburant économisé moins un hôtel à ${C.budget} € maximum. Le bouton Booking ouvre une recherche près de la salle ; « Enregistrer » prépare la nuit dans le formulaire.</p>
-    <p><strong>Ajouter une nuit</strong> : date, match lié, prix payé, repas et facture (rangée dans ton Drive).</p>
-    <p><strong>Historique</strong> : pour chaque nuit, les indemnités et le carburant des matchs du week-end (jour de la nuit + lendemain), moins l'hôtel et les repas, donnent le net du week-end.</p>`;
+  return `<p>Une nuit est conseillée si le match est loin (${C.seuilKm} km ou plus) avec un autre match le lendemain, ou si tu rentrerais après ${hhmmMin_(C.retourMaxMin)}.</p>
+    <p><strong>Net estimé</strong> : carburant économisé moins l'hôtel (${C.budget} € maximum).</p>`;
 }
 
 /* b84 — un écart négatif = payé AVANT la date prévue : on l'écrit en clair au lieu de « -8 j ». */
@@ -10918,10 +10895,9 @@ try { appliquerConfigPrix_(JSON.parse(localStorage.getItem(CLE_CFG_PRIX_) || "nu
 (function chartStyle_() {
   const go = () => {
     if (typeof Chart === "undefined" || Chart._rtStyle) return; Chart._rtStyle = true;
-    const reduit = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
     const d = Chart.defaults;
     d.font.family = "Montserrat, system-ui, sans-serif"; d.font.size = 12; d.color = "#8A97B0";
-    d.animation = reduit ? false : { duration: 900, easing: "easeOutQuart" };
+    d.animation = false;   // b156 : graphiques affichés directement, sans animation
     d.elements.line.tension = 0.35; d.elements.line.cubicInterpolationMode = "monotone"; d.elements.line.borderWidth = 3;   // « monotone » : la courbe ne dépasse jamais les points (pas de creux sous zéro)
     d.elements.line.borderCapStyle = "round";
     d.elements.point.radius = 3; d.elements.point.hoverRadius = 6; d.elements.point.borderWidth = 2; d.elements.point.hitRadius = 12;
