@@ -16,7 +16,13 @@ const RT_STATS = (function () {
   function _cacheEcrire_(k, v) { return v; }
   function _cacheInvalider_() {}
   function lireCouts_() { return ENV.couts || { prix: [], entretien: [] }; }
-  function prixHistorique_() { return (ENV.prixHistorique && Object.keys(ENV.prixHistorique).length) ? ENV.prixHistorique : PRIX_E10_HISTORIQUE; }
+  // b159 — même table de prix que le reste de l'app (PRIX_E10 d'app.js : relevés locaux du mois, mois gelés et prix imposés compris).
+  // Avant : la table « stats.env » sans les relevés → le mois en cours compté au prix du jour ici, à la moyenne du mois ailleurs
+  // (Analyse 242,59 € de carburant contre 244,74 € dans Export, le 21/11/2026).
+  function prixHistorique_() {
+    const base = (ENV.prixHistorique && Object.keys(ENV.prixHistorique).length) ? ENV.prixHistorique : PRIX_E10_HISTORIQUE;
+    return typeof PRIX_E10 !== "undefined" ? Object.assign({}, base, PRIX_E10) : base;
+  }
   function lirePrixActuel_() { const n = Number(ENV.prixActuel); return (n > 0.5 && n < 4) ? n : 0; }
   function lirePrixGel_(cle) { const v = Number((ENV.prixGel || {})[cle]); return (v > 0.5 && v < 4) ? v : 0; }
   function gelerPrix_() {}            // le gel est fait côté serveur
