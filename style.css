@@ -5788,8 +5788,7 @@ select:not([multiple]):not([size]) {
   padding-right: 40px !important;
 }
 select::-ms-expand { display: none; }
-/* b152 — photo de licence : on recadre vers le visage pour faire sortir l'hologramme FFBB (rond en bas à gauche de la photo officielle). */
-.lic-photo img { transform: scale(1.5); transform-origin: 100% 14%; }
+/* b156 — photo de licence : photo d'origine, sans recadrage (demande de Clément) */
 /* b152 — actions de gestion de la licence dans un menu « ⋯ » */
 .lic-plus { position: relative; margin-left: auto; }
 .lic-plus > summary { list-style: none; cursor: pointer; font-size: 18px; line-height: 1; padding: 6px 14px !important; }
@@ -5926,17 +5925,10 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 .cf-grille { stroke: rgba(127, 140, 160, .14); vector-effect: non-scaling-stroke; stroke-dasharray: 4 6; }
 .cf-tick { stroke: rgba(127, 140, 160, .22); vector-effect: non-scaling-stroke; stroke-dasharray: 2 5; }
 .cf-pts { position: absolute; inset: 0; pointer-events: none; }
-.cf-pt { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--surface); border: 2.5px solid var(--green, #22C55E); pointer-events: auto; cursor: help;
-  transform: scale(0); animation: rtPop .35s cubic-bezier(.3, 1.6, .5, 1) forwards; animation-delay: calc(var(--i) * 70ms + .55s); }
+.cf-pt { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--surface); border: 2.5px solid var(--green, #22C55E); pointer-events: auto; cursor: help; }
 .cf-pt:hover { transform: scale(1.35) !important; }
 .cf-val { position: absolute; right: 2px; transform: translateY(-120%); font-size: 11px; font-weight: 700; color: var(--muted); background: var(--surface); padding: 0 4px; border-radius: 6px; }
 .cf-chart-axis b { color: var(--green, #22C55E); }
-.anim-trace { stroke-dasharray: 1; stroke-dashoffset: 1; animation: rtTrace 1.2s cubic-bezier(.45, 0, .2, 1) forwards; }
-.anim-fondu { opacity: 0; animation: rtFondu .8s .35s ease forwards; }
-@keyframes rtTrace { to { stroke-dashoffset: 0; } }
-@keyframes rtFondu { to { opacity: 1; } }
-@keyframes rtPop { to { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { .anim-trace, .anim-fondu, .cf-pt { animation: none !important; stroke-dashoffset: 0; opacity: 1; transform: none; } }
 /* b155 — petite courbe de l'Accueil : lissée, dégradé, points ronds, tous les mois affichés */
 .acc-courbe { position: relative; }
 .acc-courbe svg { overflow: visible; }
@@ -5944,16 +5936,8 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 .acc-courbe-aire { stroke: none !important; }
 .acc-courbe-z { position: relative; }
 .acc-courbe-pts { position: absolute; inset: 0; pointer-events: none; }
-.acc-courbe-pts span { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); border: 2px solid var(--green, #22C55E); pointer-events: auto; transform: scale(0); animation: rtPop .3s cubic-bezier(.3, 1.6, .5, 1) forwards; animation-delay: calc(var(--i) * 80ms + .5s); }
+.acc-courbe-pts span { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); border: 2px solid var(--green, #22C55E); pointer-events: auto; }
 .acc-courbe-x { display: flex !important; justify-content: space-between; }
-/* b155 — barres et anneau qui se remplissent à l'ouverture */
-.pa-seg, .franchise-bar i, .dl-bar i, .og-bar i, .pd2-bar i { animation: rtMonte .9s cubic-bezier(.2, .8, .2, 1) both; transform-origin: left bottom; }
-.pa-seg { transform-origin: bottom; animation-name: rtMonteV; }
-@keyframes rtMonte { from { transform: scaleX(0); } }
-@keyframes rtMonteV { from { transform: scaleY(0); } }
-.acc-anneau::before { animation: rtAnneau 1.2s cubic-bezier(.2, .8, .2, 1) both; }
-@keyframes rtAnneau { from { --pa: 0; } }
-@media (prefers-reduced-motion: reduce) { .pa-seg, .franchise-bar i, .dl-bar i, .acc-anneau::before, .acc-courbe-pts span { animation: none !important; transform: none !important; } }
 /* b155 — grille d'observation plus légère : pastilles courtes sur une ligne, anneaux plus grands */
 .og-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
 .og-sum > b { min-width: 110px; }
@@ -5984,3 +5968,24 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
 :root[data-theme="light"] input:focus, :root[data-theme="light"] select:focus, :root[data-theme="light"] textarea:focus { background-color: #fff; border-color: var(--navy-600); }
 /* Petites pastilles (onglets internes) : contraste net */
 :root[data-theme="light"] .tabs-mini { background: #fff; }
+
+/* ===== b156 — animations réduites : plus de blocs qui bougent à l'ouverture d'une page, juste un fondu court ===== */
+@keyframes rtFonduSimple { from { opacity: 0; } }
+.panel.active { animation: rtFonduSimple .15s ease; }
+.panel.rt-entre > *, .panel.rt-entre .kpi, .panel.rt-entre .tel-kpi, .panel.rt-entre .match-card,
+.panel.rt-entre .dl-bar i, .panel.rt-entre .franchise-bar i, .panel.rt-entre .evt-bar i, .panel.rt-entre .pd-bar-t i, .panel.rt-entre .eval-f i,
+.panel.rt-entre .acc-anneau::before, .panel.rt-entre .acc-courbe-l,
+.tab.active svg, .tab.active .tab-icon { animation: none !important; }
+@media (hover: hover) { .kpi:hover { transform: none; } }
+
+/* b156 — Recherche & Filtre : verre très léger (on voit la page derrière), loupe en bas à gauche sur ordinateur */
+.rt-search-backdrop { background: transparent !important; }
+.rt-search {
+  background: color-mix(in srgb, var(--surface) 58%, transparent) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, .22) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .25) !important;
+}
+:root[data-theme="light"] .rt-search { background: rgba(255, 255, 255, .55) !important; border-color: rgba(255, 255, 255, .7) !important; box-shadow: 0 20px 50px rgba(11, 31, 59, .18), inset 0 1px 0 rgba(255, 255, 255, .9) !important; }
+.rt-search .rt-search-field, .rt-search select, .rt-search .rt-chip { background-color: color-mix(in srgb, var(--surface) 55%, transparent) !important; }
+@media (min-width: 768px) { .rt-fab { right: auto !important; } }
