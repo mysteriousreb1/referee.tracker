@@ -912,3 +912,5 @@ select:not([multiple]):not([size]) { -webkit-appearance: none; appearance: none;
 /* b157 — graphiques en aire sans déformation (hauteur proportionnelle à la largeur) */
 .vz-svg { height: auto !important; max-height: 320px; }
 .vz-grid { stroke: rgba(127, 140, 160, .22); stroke-dasharray: 3 5; }
+.vz-svg .vz-ax { font-size: 12px; }
+.vz-svg { max-height: 300px; }

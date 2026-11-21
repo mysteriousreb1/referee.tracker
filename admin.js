@@ -1980,7 +1980,7 @@
     aire(series, labels, opts) {   // series [{nom, v:[...], c}] → courbes lissées avec aire dégradée
       // b157 — échelle « ronde » avec de la marge (avant : max = valeur max, courbe collée en haut ou écrasée), 5 lignes de fond,
       // courbes lissées, et dessin sans déformation (avant : preserveAspectRatio="none" écrasait textes et points).
-      opts = opts || {}; const W = 640, H = opts.h || 200, P = 30, n = labels.length; if (!n) return '<p class="vide">Pas encore de données</p>';
+      opts = opts || {}; const W = 400, H = opts.h || 200, P = 30, n = labels.length;   // b157 — format moins allongé : plus haut et lisible dans une demi-carte if (!n) return '<p class="vide">Pas encore de données</p>';
       const brut = Math.max(1, ...series.flatMap((s) => s.v)), ordre = Math.pow(10, Math.floor(Math.log10(brut))), pasY = [1, 2, 2.5, 5, 10].map((k) => k * ordre / 4).find((p) => p * 4 >= brut * 1.1) || ordre * 2.5;
       const max = pasY * 4, x = (i) => P + 8 + (n > 1 ? i * (W - 2 * P - 8) / (n - 1) : (W - 2 * P) / 2), y = (v) => H - P - (v / max) * (H - 2 * P);
       const lisse = (pts) => pts.reduce((acc, p, i) => { if (!i) return "M" + p[0].toFixed(1) + " " + p[1].toFixed(1); const q = pts[i - 1], mx = ((q[0] + p[0]) / 2).toFixed(1); return acc + " C" + mx + " " + q[1].toFixed(1) + " " + mx + " " + p[1].toFixed(1) + " " + p[0].toFixed(1) + " " + p[1].toFixed(1); }, "");
