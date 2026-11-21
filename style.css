@@ -6092,3 +6092,9 @@ body:has(#tabMorePanel:not([hidden])) #rtVoile { z-index: 95; }
 .rf-v-mail[hidden] { display: none; }
 .rf-v-mail input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--text); font: 600 14px var(--body); }
 .rf-v-mail input:focus { outline: none; border-color: var(--gold, #FFC400); }
+
+/* b162 — plus de logo de compétition : colonnes des cartes de match resserrées (ordinateur) */
+@media (min-width: 768px) {
+  .mrow-card .card-head.mrow { grid-template-columns: 64px minmax(0, 1fr) auto 18px; }
+  .we-m { grid-template-columns: 62px minmax(0, 1fr) auto; }
+}

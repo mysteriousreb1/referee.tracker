@@ -1922,7 +1922,6 @@ function renderAccueil() {
     const km = r._kmEff || r._km || 0;
     return `<button type="button" class="we-m ${niv.classe} ${cls}${isExaminateur_(r) ? " is-exam" : ""} acc-vers-match" data-uid="${escapeHtml(uid)}">
       <span class="we-h"><strong>${escapeHtml(fmtHeure(heureDe_(r)) || "—")}</strong>${rdv ? `<small>RDV ${escapeHtml(fmtHeure(rdv) || rdv)}</small>` : ""}</span>
-      <span class="we-logo">${logoCompetition(r)}</span>
       <span class="we-body">
         <span class="we-eq">${escapeHtml(rec || "—")}</span>
         ${vis ? `<span class="we-eq we-eq--vis">${r._format === "3x3" ? "" : "vs "}${escapeHtml(vis)}</span>` : ""}
@@ -2250,49 +2249,9 @@ function renderWeekendGroups(rows, decroissant) {
    Championnat de France et Pré-national ne se noient pas dans le lot :
    ils portent un liseré et un badge propres. */
 
-/* ---------------- logo de compétition ----------------
-   Le code compétition FFBB encode déjà tout ce que porte l'arborescence
-   des logos : championnat, jeune/senior, genre, catégorie ou niveau.
-   « DFU18-P2 » = Départemental Féminin U18, phase 2 → logo DFU18.
-   Les suffixes de phase (-P1, -P2, -5, -7, -FF, -QR, -T1…) ne changent
-   pas le logo : on les retire.
+/* ---------------- code de compétition ----------------
+   « DFU18-P2 » = Départemental Féminin U18, phase 2 → code DFU18 (les suffixes de phase sont retirés). */
 
-   Les fichiers vivent à plat dans img/competitions/, sous le nom qu'ils
-   portent déjà dans le Drive — aucun renommage nécessaire. */
-
-const LOGOS_DISPONIBLES = {
-  /* 3x3 */
-  "3X3":   "3x3.png",
-
-  /* Coupes et phases finales */
-  "CPE":   "Coupe de France de Basket FFBB.png",
-  "FD":    "FFBB LOGO FINALES.png",
-
-  /* National — séniors */
-  "NM1": "NM1.png", "NM2": "NM2.png", "NM3": "NM3.png",
-  "NF1": "NF1.png", "NF2": "NF2.png", "NF3": "NF3.png",
-
-  /* National — jeunes */
-  "NMU15": "NMU15.png", "NMU18": "NMU18.png",
-  "NFU15": "NFU15.png", "NFU18": "NFU18.png",
-
-  /* Région — séniors */
-  "PNM": "PNM.png", "PNF": "PNF.png",
-  "RM2": "RM2.png", "RM3": "RM3.png",
-  "RF2": "RF2.png", "RF3": "RF3.png",
-
-  /* Région — jeunes */
-  "RMU13": "RMU13.png", "RMU15": "RMU15.png", "RMU18": "RMU18.png", "RMU21": "RMU21.png",
-  "RFU13": "RFU13.png", "RFU15": "RFU15.png", "RFU18": "RFU18.png",
-
-  /* Département — séniors */
-  "DM2": "DM2.png", "DM3": "DM3.png",
-  "DF1": "DF1.png", "DF2": "DF2.png", "DF3": "DF3.png",
-
-  /* Département — jeunes */
-  "DMU11": "DMU11.png", "DMU13": "DMU13.png", "DMU21": "DMU21.png",
-  "DFU11": "DFU11.png", "DFU13": "DFU13.png", "DFU15": "DFU15.png", "DFU18": "DFU18.png"
-};
 
 /* Le parsing des convocations range parfois le NUMÉRO de rencontre dans la
    colonne « Code compétition » (« 6 », « 4 »…) : le vrai code ne subsiste
@@ -2322,52 +2281,7 @@ function codeCompetitionCalc_(row) {
   return trouve ? trouve[0].replace(/[^A-Z0-9]/g, "") : "";
 }
 
-function slugCompetition(row) {
-  return codeCompetition(row);
-}
-
-/* Repli en chaîne : GitHub Pages est sensible à la casse et aux extensions.
-   On essaie le nom connu, puis les variantes courantes, puis la pastille texte. */
-/* b47 (A15) — plus de gestionnaire inline onerror (interdit par la CSP) : un seul écouteur
-   global en phase de capture (l'événement error ne remonte pas). */
-document.addEventListener("error", function (ev) {
-  const img = ev.target;
-  if (img && img.tagName === "IMG" && img.classList && img.classList.contains("comp-logo")) logoSuivant_(img);
-}, true);
-function logoSuivant_(img) {
-  const c = (img.dataset.cands || "").split("|").filter(Boolean);
-  const i = Number(img.dataset.i || 0) + 1;
-  if (i < c.length) { img.dataset.i = i; img.src = "img/competitions/" + encodeURIComponent(c[i]); return; }
-  const sp = document.createElement("span");
-  sp.className = "comp-logo comp-logo--txt";
-  sp.textContent = img.dataset.slug || "";
-  img.replaceWith(sp);
-}
-
-/* b20 — DÉCOUVERTE AUTOMATIQUE des logos : la liste du dossier
-   img/competitions/ est lue sur GitHub (API publique, 1 fois par jour, mise
-   en cache). Déposer « DMU18.png » dans le dossier suffit : plus besoin de
-   toucher au code. Le nom du fichier = le code de compétition. */
-/* b73 — liste statique complète (img/competitions) : pas de découverte réseau (CSP). */
-
-/* b18 — Codes sans logo propre : on réutilise le logo de la famille. */
-const LOGOS_ALIAS_ = { "CMUT": "CPE", "ENCOU": "CPE" };
-function logoCompetition(row) {
-  const slug = slugCompetition(row);
-  const alt = cleanText(get(row, "Libellé compétition")) || slug;
-  if (!slug) return "";
-  const fichier = LOGOS_DISPONIBLES[slug] || LOGOS_DISPONIBLES[LOGOS_ALIAS_[slug]];
-  /* b18 — Logo absent du dépôt (DM4, DMU18, PRM…) : pastille texte directe.
-     Avant, le site essayait 12 variantes de nom à chaque affichage
-     → ~150 erreurs 404 par session. Ajouter le fichier dans
-     img/competitions/ ET dans LOGOS_DISPONIBLES pour qu'il s'affiche. */
-  if (!fichier) return `<span class="comp-logo comp-logo--txt" title="${escapeHtml(alt)}">${escapeHtml(slug)}</span>`;
-  const cands = [fichier];
-  return `<img class="comp-logo" src="img/competitions/${encodeURIComponent(cands[0])}"
-               alt="${escapeHtml(alt)}" title="${escapeHtml(alt)}" data-slug="${escapeHtml(slug)}"
-               data-cands="${escapeHtml(cands.join("|"))}" data-i="0"
-               loading="lazy" decoding="async">`;
-}
+/* b162 — logos de compétition retirés des cartes (demande de Clément) : seul le code compétition reste utilisé. */
 
 /* Niveau de la rencontre : toujours renvoyé, jamais null.
    La pastille affiche le CODE de compétition (NM3, PNM, RM2, DM1…),
@@ -2495,7 +2409,6 @@ function renderMatchCard(row) {
     <article class="match-card match-card--niveau mrow-card ${niv.classe}${reglement ? " match-card--reglement" : ""}${examCF ? " is-exam" : ""}${row._isPast ? " is-past" : ""}${state.cartesOuvertes.has(uid) ? " open" : ""}" data-uid="${uid}">
       <div class="card-head mrow" role="button" tabindex="0" aria-expanded="${state.cartesOuvertes.has(uid) ? "true" : "false"}">
         <div class="mrow-date">${row._date ? `<span class="mrow-cal"><b>${escapeHtml(jourCourt)}</b><strong>${row._date.getDate()}</strong><i>${escapeHtml(row._date.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""))}</i></span>` : `<strong>${escapeHtml(date)}</strong>`}${time ? `<span class="mrow-h">${escapeHtml(time)}</span>` : ""}</div>
-        <div class="mrow-logo">${logoCompetition(row)}</div>
         <div class="mrow-main">
           <h3 class="card-title">${escapeHtml(title || "Mission")}</h3>
           <p class="card-sub">${escapeHtml(sous || get(row, "Libellé compétition") || "")}</p>
