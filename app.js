@@ -598,12 +598,13 @@ function accSaisonCarte_(saison, aVenir, recuS, attS) {
     const mois = k => new Date(Math.floor(k / 100), k % 100, 1).toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
     courbe = `<div class="acc-courbe">
       <span class="acc-courbe-t">Ton net, mois par mois</span>
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Net par mois : ${cles.map((k, i) => mois(k) + " " + Math.round(v[i]) + " €").join(", ")}">
-        <polygon class="acc-courbe-aire" points="6,${H} ${ligne} ${W - 6},${H}"/>
-        <polyline class="acc-courbe-l" points="${ligne}" pathLength="100"/>
-        ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6"/>`).join("")}
+      <div class="acc-courbe-z"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Net par mois : ${cles.map((k, i) => mois(k) + " " + Math.round(v[i]) + " €").join(", ")}">
+        <defs><linearGradient id="accDeg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green, #22C55E)" stop-opacity=".35"/><stop offset="1" stop-color="var(--green, #22C55E)" stop-opacity="0"/></linearGradient></defs>
+        <path class="acc-courbe-aire anim-fondu" d="${courbeLisse_(pts)} L ${W - 6} ${H} L 6 ${H} Z" fill="url(#accDeg)"/>
+        <path class="acc-courbe-l anim-trace" d="${courbeLisse_(pts)}" pathLength="1" fill="none"/>
       </svg>
-      <span class="acc-courbe-x"><i>${escapeHtml(mois(cles[0]))}</i><i>${escapeHtml(mois(cles[cles.length - 1]))}</i></span>
+      <div class="acc-courbe-pts">${pts.map((p, i) => `<span style="left:${(p[0] / W * 100).toFixed(2)}%;top:${(p[1] / H * 100).toFixed(2)}%;--i:${i}" title="${escapeHtml(mois(cles[i]))} : ${escapeHtml(formatMoney(v[i]))}"></span>`).join("")}</div></div>
+      <span class="acc-courbe-x">${cles.map(k => `<i>${escapeHtml(mois(k))}</i>`).join("")}</span>
     </div>`;
   }
   return `<section class="acc-saison" aria-label="Ma saison ${escapeHtml(state.selectedSeason || "")}">
@@ -3979,36 +3980,42 @@ function cfTableau_() {
 /* Courbe cumulée des encaissements à venir — SVG maison, aucun canvas :
    pas de problème de dimensionnement quand le panneau est masqué. */
 function cashFlowSparkline_(echeances) {
+  // b155 — graphique redessiné : plus haut, dégradé, courbe qui se trace, points ronds (en HTML : jamais ovales)
   if (!echeances || echeances.length < 2) return "";
-  const W = 640, H = 130, PADX = 10, PADY = 16;
+  const W = 640, H = 210, PADX = 8, PADY = 14;
   const last = echeances[echeances.length - 1];
   const maxCumul = last.cumul || 1;
   const maxJ = Math.max(1, last.jours);
   const px = j => PADX + (Math.max(0, j) / maxJ) * (W - 2 * PADX);
   const py = c => H - PADY - (c / maxCumul) * (H - 2 * PADY);
   let line = `M ${px(0).toFixed(1)} ${py(0).toFixed(1)}`;
-  const dots = [];
-  echeances.forEach(e => {
+  const pts = [];
+  echeances.forEach((e, i) => {
     const X = px(e.jours), Y = py(e.cumul);
     line += ` L ${X.toFixed(1)} ${Y.toFixed(1)}`;
-    dots.push(`<circle cx="${X.toFixed(1)}" cy="${Y.toFixed(1)}" r="3.5" class="cf-dot"><title>${escapeHtml(e.date)} · ${money(e.cumul)} cumulés</title></circle>`);
+    pts.push(`<span class="cf-pt" style="left:${(X / W * 100).toFixed(2)}%;top:${(Y / H * 100).toFixed(2)}%;--i:${i}" title="${escapeHtml(e.date)} · ${escapeHtml(money(e.cumul))} cumulés"></span>`);
   });
   const area = line + ` L ${px(maxJ).toFixed(1)} ${(H - PADY).toFixed(1)} L ${px(0).toFixed(1)} ${(H - PADY).toFixed(1)} Z`;
-  // b74 — graphique expliqué : titre, légende, repères de mois.
   const auj = new Date(); auj.setHours(0, 0, 0, 0);
   const ticks = [];
   for (let m = 1; m <= 12; m++) { const d = new Date(auj.getFullYear(), auj.getMonth() + m, 1); const j = Math.round((d - auj) / 86400000); if (j > maxJ) break; ticks.push({ j, t: d.toLocaleDateString("fr-FR", { month: "short" }) }); }
+  const paliers = [0.5, 1].map(f => ({ y: py(maxCumul * f), t: money(maxCumul * f) }));
   return `
     <div class="cf-chart">
-      <div class="cf-chart-t"><strong>Ce que tu auras touché, date après date</strong><span>Chaque point = un versement prévu. La courbe monte du montant reçu ce jour-là : à droite, le total de tout ce qui reste à percevoir.</span></div>
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Cumul des versements prévus dans le temps">
-        ${ticks.map(k => `<line x1="${px(k.j).toFixed(1)}" x2="${px(k.j).toFixed(1)}" y1="${PADY}" y2="${H - PADY}" class="cf-tick"/>`).join("")}
-        <path d="${area}" class="cf-area"/>
-        <path d="${line}" class="cf-line" fill="none"/>
-        ${dots.join("")}
-      </svg>
+      <div class="cf-chart-t"><strong>Ce que tu auras touché, date après date</strong><span>Chaque point est un versement prévu ; à droite, le total qui reste à percevoir.</span></div>
+      <div class="cf-zone">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Cumul des versements prévus dans le temps">
+          <defs><linearGradient id="cfDeg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green, #22C55E)" stop-opacity=".38"/><stop offset="1" stop-color="var(--green, #22C55E)" stop-opacity="0"/></linearGradient></defs>
+          ${paliers.map(p => `<line x1="0" x2="${W}" y1="${p.y.toFixed(1)}" y2="${p.y.toFixed(1)}" class="cf-grille"/>`).join("")}
+          ${ticks.map(k => `<line x1="${px(k.j).toFixed(1)}" x2="${px(k.j).toFixed(1)}" y1="${PADY}" y2="${H - PADY}" class="cf-tick"/>`).join("")}
+          <path d="${area}" class="cf-area anim-fondu" fill="url(#cfDeg)"/>
+          <path d="${line}" class="cf-line anim-trace" fill="none" pathLength="1"/>
+        </svg>
+        <div class="cf-pts">${pts.join("")}</div>
+        ${paliers.map(p => `<span class="cf-val" style="top:${(p.y / H * 100).toFixed(2)}%">${escapeHtml(p.t)}</span>`).join("")}
+      </div>
       <div class="cf-chart-mois">${ticks.map(k => `<span style="left:${(px(k.j) / W * 100).toFixed(2)}%">${escapeHtml(k.t)}</span>`).join("")}</div>
-      <div class="cf-chart-axis"><span>aujourd'hui · 0 €</span><span>dans ${maxJ} j · ${money(maxCumul)} au total</span></div>
+      <div class="cf-chart-axis"><span>aujourd'hui</span><span>dans ${maxJ} j · <b>${money(maxCumul)}</b></span></div>
     </div>`;
 }
 
@@ -4774,7 +4781,7 @@ function renderLrgebGrille_(evals) {
   const dot = (o, k) => { const m = o.g[k] && o.g[k].mention; return `<i class="og-dot og-${m ? m.c : "na"}" title="${escapeHtml(evalDateCourte_(o.ev) + " · " + (m ? m.lib : "non noté"))}"></i>`; };
   const fleche = k => { const t = tend(k); return t > 0 ? `<b class="og-t og-up" title="en progrès">▲</b>` : t < 0 ? `<b class="og-t og-down" title="en recul">▼</b>` : `<b class="og-t og-eq"></b>`; };
   const anneau = v => { const p = v === null ? 0 : Math.max(0, Math.min(1, v / 20)); const c = v === null ? "var(--line)" : v >= 16 ? "#22c55e" : v >= 12 ? "#3b82f6" : v >= 9 ? "#f59e0b" : "#ef4444"; return `<svg class="og-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" stroke-width="3.5"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(p * 97.4).toFixed(1)} 97.4" transform="rotate(-90 18 18)"/></svg>`; };
-  const puces = (ks, cls, lib0) => ks.length ? `<div class="og-sum ${cls}"><b>${lib0}</b>${ks.slice(0, 4).map(k => `<span class="og-chip"><em>${k}</em>${escapeHtml(lib(k))}</span>`).join("")}${ks.length > 4 ? `<span class="og-plus">+${ks.length - 4}</span>` : ""}</div>` : "";
+  const puces = (ks, cls, lib0) => ks.length ? `<div class="og-sum ${cls}"><b>${lib0}</b>${ks.slice(0, 3).map(k => `<span class="og-chip" title="${escapeHtml(lib(k))}"><em>${k}</em>${escapeHtml(lib(k).split(/\s[(:]/)[0])}</span>`).join("")}${ks.length > 3 ? `<span class="og-plus">+${ks.length - 3}</span>` : ""}</div>` : "";
   return `<div class="table-card og-card">
     <div class="og-head"><div><h3 class="og-titre">${escapeHtml(titre)}</h3>
       <p class="card-sub">${Object.keys(der.g).length} critères · ${obs.length} observation${obs.length > 1 ? "s" : ""}${obs.length > 4 ? " (4 dernières)" : ""} · ${dern.map(o => escapeHtml(evalDateCourte_(o.ev) + (o.ev.championnat ? " " + o.ev.championnat : ""))).join(" → ")}</p></div>
@@ -7705,6 +7712,14 @@ function realFuelCostClient(km, date) {
   return round2((k * consoPour_(date) / 100) * prixCarburantPour(date));
 }
 
+/* b155 — courbe lissée (passe par tous les points, sans dépasser) pour les petits graphiques maison */
+function courbeLisse_(pts) {
+  if (!pts.length) return "";
+  let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2;
+    d += ` C ${mx.toFixed(1)} ${y0.toFixed(1)}, ${mx.toFixed(1)} ${y1.toFixed(1)}, ${x1.toFixed(1)} ${y1.toFixed(1)}`; }
+  return d;
+}
 /* ---------------- Utils ---------------- */
 
 function get(row, key) { return row && row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : ""; }
@@ -10898,3 +10913,24 @@ function rtBandeauMaj_(x) {
 }
 /* b154 — prix du carburant du dernier chargement appliqués dès le départ (fin de fichier : la table PRIX_E10 est déjà définie). */
 try { appliquerConfigPrix_(JSON.parse(localStorage.getItem(CLE_CFG_PRIX_) || "null")); } catch (e) {}
+/* b155 — STYLE COMMUN DES GRAPHIQUES (Chart.js) : courbes arrondies et épaisses, points discrets, barres arrondies,
+   infobulles sombres, police de l'app, et une animation de dessin à l'ouverture (coupée si l'appareil demande moins d'animations). */
+(function chartStyle_() {
+  const go = () => {
+    if (typeof Chart === "undefined" || Chart._rtStyle) return; Chart._rtStyle = true;
+    const reduit = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const d = Chart.defaults;
+    d.font.family = "Montserrat, system-ui, sans-serif"; d.font.size = 12; d.color = "#8A97B0";
+    d.animation = reduit ? false : { duration: 900, easing: "easeOutQuart" };
+    d.elements.line.tension = 0.35; d.elements.line.cubicInterpolationMode = "monotone"; d.elements.line.borderWidth = 3;   // « monotone » : la courbe ne dépasse jamais les points (pas de creux sous zéro)
+    d.elements.line.borderCapStyle = "round";
+    d.elements.point.radius = 3; d.elements.point.hoverRadius = 6; d.elements.point.borderWidth = 2; d.elements.point.hitRadius = 12;
+    d.elements.bar.borderRadius = 8; d.elements.bar.borderSkipped = false;
+    d.elements.arc.borderWidth = 0;
+    d.plugins.legend.labels.usePointStyle = true; d.plugins.legend.labels.boxWidth = 8; d.plugins.legend.labels.padding = 14;
+    Object.assign(d.plugins.tooltip, { backgroundColor: "rgba(11, 18, 32, .94)", titleColor: "#fff", bodyColor: "#E8EDF7", padding: 12, cornerRadius: 12, displayColors: true, boxPadding: 4, titleFont: { weight: "700" } });
+    if (d.scale && d.scale.grid) { d.scale.grid.color = "rgba(127, 140, 160, .12)"; d.scale.grid.drawTicks = false; }
+    if (d.scale) { d.scale.border = Object.assign({}, d.scale.border, { display: false }); d.scale.ticks = Object.assign({}, d.scale.ticks, { padding: 8 }); }
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
