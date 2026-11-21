@@ -398,9 +398,6 @@ const RECH = {
     }
     const visible = this.PAGES.includes(state.activeTab);
     b.hidden = !visible;
-    // b156 — sur ordinateur, la loupe est en bas à gauche de la page (à droite elle cachait les montants)
-    const placer = () => { const c = document.querySelector("main.content"); b.style.left = innerWidth > 767 && c ? Math.round(c.getBoundingClientRect().left + 16) + "px" : ""; };
-    placer(); if (!this._placer) { this._placer = placer; addEventListener("resize", placer); }
     const n = this.actifs(), badge = b.querySelector(".rt-fab-badge");
     badge.hidden = !n; badge.textContent = String(n);
     b.classList.toggle("is-filtered", n > 0);
@@ -447,7 +444,8 @@ const RECH = {
         <footer class="rt-search-foot"><span class="rt-search-count" id="rtSearchCount" aria-live="polite"></span><div><button type="button" class="rt-btn rt-btn-ghost" id="rtSearchReset">Réinitialiser</button><button type="button" class="rt-btn rt-btn-primary" id="rtSearchOk">Voir les résultats</button></div></footer>
       </section>`;
     document.body.appendChild(el);
-    if (src) {   // b156 — le panneau s'ouvre à la place du bouton (il le recouvre), du même côté que lui
+    if (innerWidth <= 767) el.classList.add("is-sheet");   // b157 — téléphone : le panneau monte du bas de l'écran
+    else if (src) {   // b156 — le panneau s'ouvre à la place du bouton (il le recouvre), du même côté que lui
       const r = src.getBoundingClientRect(), p = el.querySelector(".rt-search");
       if (p) { const enBas = r.top > innerHeight / 2, aGauche = r.left < innerWidth / 2;
         p.style.transformOrigin = (aGauche ? "0 " : "100% ") + (enBas ? "100%" : "0");
@@ -458,6 +456,7 @@ const RECH = {
     }
     requestAnimationFrame(() => el.classList.add("is-open"));
     this.ouvert = true;
+    const fab = document.getElementById("rtSearchFab"); if (fab) fab.classList.add("is-cache");   // b157 — la loupe s'efface, le panneau prend sa place
     const maj = () => {
       const nf = { season: el.querySelector(".rt-chip.is-on[data-saison]").dataset.saison, search: normaliserRecherche(el.querySelector("#rtSearchInput").value), niveau: (el.querySelector("#rtSearchNiveau") || {}).value || "", statut: (el.querySelector("#rtSearchStatut") || {}).value || "", format: (el.querySelector("#rtSearchFormat") || {}).value || "" };
       const saisonChange = this.appliquer(nf);
@@ -491,6 +490,7 @@ const RECH = {
     if (el) { el.classList.remove("is-open"); setTimeout(() => el.remove(), 200); }
     if (this._esc) { document.removeEventListener("keydown", this._esc); this._esc = null; }
     this.ouvert = false;
+    const fab = document.getElementById("rtSearchFab"); if (fab) fab.classList.remove("is-cache");
     const h = document.getElementById("searchToggleBtn"); if (h) h.setAttribute("aria-expanded", "false");
   }
 };
@@ -526,6 +526,7 @@ function setActiveTab(tab) {
   if (ongletActif && ongletActif.scrollIntoView) { try { ongletActif.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) {} }
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === tab));
   state.filteredRows = filterRows(state.allRows);
+  if (ongletAvant !== tab) fenetreAnimGraphes_();
   renderTab_(tab);
   if (ongletAvant !== tab) animerEntree_(document.getElementById(tab), sensNavigation_(ongletAvant, tab));
   placerIndicateurOnglet_();
@@ -547,7 +548,37 @@ function animerEntree_(panel, sens) {
   if (!panel || MOINS_ANIM_.matches) return;
   panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"); void panel.offsetWidth;   // relance l'animation CSS
   panel.classList.add("rt-entre"); if (sens) panel.classList.add("rt-de-" + sens);
-  clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"), 900);
+  clearTimeout(panel._rtEntre); panel._rtEntre = setTimeout(() => panel.classList.remove("rt-entre", "rt-de-droite", "rt-de-gauche"), 1700);
+  panel.querySelectorAll(CHIFFRES_ANIMES_).forEach(defilerChiffre_);
+}
+/* b157 — chiffres qui défilent, UNE fois à l'arrivée sur la page. Garde-fou du bug b155 : la valeur finale est mémorisée
+   au premier lancement et n'est jamais relue en cours de défilement ; une page redessinée entre-temps arrête tout. */
+const CHIFFRES_ANIMES_ = ".kpi strong, .tel-kpi strong, .acc-ev-val, .evt-v, .acc-big, .acc-kpi-val";
+const _defile_ = new WeakMap();
+function defilerChiffre_(el) {
+  const noeud = el.firstChild;
+  if (!noeud || noeud.nodeType !== 3) return;
+  const encours = _defile_.get(noeud);
+  const brut = encours ? encours.brut : noeud.nodeValue;
+  if (encours) cancelAnimationFrame(encours.id);
+  const m = brut.match(/^(\D*?)(-?\d(?:[\d\s\u202f\u00a0]*\d)?(?:,\d+)?)(.*)$/);
+  if (!m) return;
+  const cible = Number(m[2].replace(/[\s\u202f\u00a0]/g, "").replace(",", "."));
+  if (!isFinite(cible) || Math.abs(cible) < 2) return;
+  const dec = (m[2].split(",")[1] || "").length, t0 = performance.now(), duree = 700, etat = { brut, id: 0 };
+  const pas = now => {
+    if (!noeud.isConnected) { _defile_.delete(noeud); return; }
+    const k = Math.min(1, (now - t0) / duree), e = 1 - Math.pow(1 - k, 3);
+    if (k < 1) { noeud.nodeValue = m[1] + (cible * e).toLocaleString("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + m[3]; etat.id = requestAnimationFrame(pas); }
+    else { noeud.nodeValue = brut; _defile_.delete(noeud); }
+  };
+  _defile_.set(noeud, etat); etat.id = requestAnimationFrame(pas);
+}
+/* b157 — graphiques animés seulement pendant l'arrivée sur une page (pas aux rafraîchissements de données). */
+function fenetreAnimGraphes_() {
+  if (typeof Chart === "undefined" || MOINS_ANIM_.matches) return;
+  Chart.defaults.animation = { duration: 900, easing: "easeOutQuart" };
+  clearTimeout(fenetreAnimGraphes_._t); fenetreAnimGraphes_._t = setTimeout(() => { Chart.defaults.animation = false; }, 1200);
 }
 /* b118 — téléphone : une seule pastille sous les icônes de la barre du bas, qui glisse vers l'onglet choisi. */
 function placerIndicateurOnglet_() {
@@ -563,8 +594,6 @@ function placerIndicateurOnglet_() {
   nav.classList.add("has-indic");
 }
 window.addEventListener("resize", () => { clearTimeout(placerIndicateurOnglet_._t); placerIndicateurOnglet_._t = setTimeout(placerIndicateurOnglet_, 120); });
-/* b156 — plus de défilement des chiffres (0 → montant) : s'il était relancé pendant qu'il tournait (page redessinée
-   à l'arrivée des données), il pouvait figer une valeur intermédiaire → montants faux et différents à chaque rechargement. */
 /* b116 — Accueil : carte de saison (anneau reçu / en attente, gros chiffres, courbe du net par mois). */
 function accSaisonCarte_(saison, aVenir, recuS, attS) {
   const total = recuS + attS, part = total > 0 ? recuS / total : 0;
@@ -643,7 +672,10 @@ function loadData() {
       // sont un supplément : si leur appel échoue, la liste doit rester à
       // l'écran. C'est l'inverse qui se produisait — une erreur dans
       // loadStats() sautait le rendu et laissait la page à zéro match.
+      const premier = !state._dejaAnime; state._dejaAnime = true;   // b157 — animation au lancement de l'app, une seule fois
+      if (premier) fenetreAnimGraphes_();
       renderAll();
+      if (premier) animerEntree_(document.getElementById(state.activeTab || "accueil"));
 
       // Chargements secondaires étalés : on évite 4 appels Apps Script
       // simultanés qui se ralentissent entre eux et retardent l'affichage.
@@ -1622,6 +1654,22 @@ function isExaminateur_(r) {
   if (r._exam) return true;
   return /examinateur|observateur|[ée]valuateur/i.test([get(r, "Collègue rôle"), get(r, "Collègue nom"), get(r, "Mon rôle")].join(" "));
 }
+/* b157 — retour de Yassine : « ajouter un match, c'est galère ». Bouton visible sur les listes de matchs qui explique
+   les deux cas : nouvelle convocation (transfert du mail FFBB) et anciens matchs (import des PDF). */
+const BTN_AJOUT_MATCH_ = ` <button type="button" class="small-btn secondary btn-ajout-match" data-ajout-match>+ Ajouter un match</button>`;
+document.addEventListener("click", async e => {
+  if (!e.target.closest || !e.target.closest("[data-ajout-match]")) return;
+  let adr = ""; try { const l = await SB.get("profils?select=adresse_reception&limit=1"); adr = (l && l[0] && l[0].adresse_reception) || ""; } catch (err) {}
+  const a = adr ? `<strong style="user-select:all;word-break:break-all">${escapeHtml(adr)}</strong>` : "ton adresse Referee Tracker (dans Mon profil)";
+  ouvrirInfo_("Ajouter un match", `<p><strong>Nouvelle convocation</strong> : transfère le mail de la FFBB (no-reply) à ${a}. Le match apparaît ici en quelques minutes.</p>
+    <p><strong>Anciens matchs</strong> : ${estTel_() ? "sur ordinateur, " : ""}Profil › Mon historique › Importer mes anciens matchs (tes PDF de convocation).</p>
+    ${adr ? `<p><button type="button" class="small-btn secondary" data-copier-adr="${escapeHtml(adr)}">Copier l'adresse</button></p>` : ""}`);
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-copier-adr]"); if (!b) return;
+  const v = b.dataset.copierAdr;
+  try { navigator.clipboard.writeText(v).then(() => { b.textContent = "Adresse copiée ✓"; }); } catch (err) { window.prompt("Copie cette adresse :", v); }
+});
 function renderMatchs() { if (estTel_()) return renderMatchsTel_(); renderMatchPanel("matchs", "5x5", "5×5"); }
 /* b53 — téléphone : 5×5 et 3×3 dans une seule liste, puces de filtre. */
 function renderMatchsTel_() {
@@ -1637,7 +1685,7 @@ function renderMatchsTel_() {
   const tousPasses = state.telTousPasses === true;
   const chip = (v, l) => `<button type="button" class="rt-chip${f === v ? " is-on" : ""}" data-tel-format="${v}">${l}</button>`;
   root.innerHTML = `
-    <h2 class="section-title">À venir <span class="count">${upcoming.length}</span></h2>
+    <h2 class="section-title titre-ajout">À venir <span class="count">${upcoming.length}</span>${BTN_AJOUT_MATCH_}</h2>
     <div class="tel-chips">${chip("tous", "Tous")}${chip("5x5", "5×5 · " + n5)}${chip("3x3", "3×3 · " + n3)}</div>
     ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty("Aucun match à venir pour cette saison.")}
     ${past.length ? `<details class="past-block" data-panel="matchs"${ouvert ? " open" : ""}>
@@ -1663,7 +1711,7 @@ function renderMatchPanel(rootId, format, label) {
   const ouvert = PASSES_OUVERTS[rootId] === true;
 
   root.innerHTML = `
-    <h2 class="section-title">${label} à venir <span class="count">${upcoming.length}</span></h2>
+    <h2 class="section-title titre-ajout">${label} à venir <span class="count">${upcoming.length}</span>${BTN_AJOUT_MATCH_}</h2>
     ${upcoming.length ? renderWeekendGroups(upcoming, false) : empty(`Aucun match ${label} à venir pour cette saison.`)}
     ${past.length ? `
       <details class="past-block" data-panel="${rootId}"${ouvert ? " open" : ""}>
@@ -2656,22 +2704,19 @@ function mapMsg_(el, txt) {
   if (!m) { m = document.createElement("div"); m.className = "card-map-msg"; el.appendChild(m); }
   m.textContent = txt;
 }
-function geoCacheGet_(addr) {
-  state.geocodeCache = state.geocodeCache || {};
-  if (state.geocodeCache[addr]) return state.geocodeCache[addr];
-  try {
-    const o = JSON.parse(localStorage.getItem(GEO_LS_KEY) || "{}");
-    if (o[addr]) { state.geocodeCache[addr] = o[addr]; return o[addr]; }
-  } catch (e) { /* stockage indisponible */ }
-  return null;
+/* b157 — lenteur : le cache d'adresses est lu UNE fois (avant : relu et réécrit en entier à chaque adresse) et limité à 600 adresses. */
+function geoCache_() {
+  if (state._geoCharge) return state.geocodeCache;
+  state._geoCharge = true; let o = {};
+  try { o = JSON.parse(localStorage.getItem(GEO_LS_KEY) || "{}") || {}; } catch (e) { o = {}; }
+  state.geocodeCache = Object.assign(o, state.geocodeCache || {});
+  return state.geocodeCache;
 }
+function geoCacheGet_(addr) { return geoCache_()[addr] || null; }
 function geoCacheSet_(addr, v) {
-  state.geocodeCache = state.geocodeCache || {};
-  state.geocodeCache[addr] = v;
-  try {
-    const o = JSON.parse(localStorage.getItem(GEO_LS_KEY) || "{}");
-    o[addr] = v; localStorage.setItem(GEO_LS_KEY, JSON.stringify(o));
-  } catch (e) { /* stockage indisponible */ }
+  const c = geoCache_(); c[addr] = v;
+  const k = Object.keys(c); if (k.length > 600) k.slice(0, k.length - 600).forEach(x => delete c[x]);
+  clearTimeout(geoCacheSet_._t); geoCacheSet_._t = setTimeout(() => { try { localStorage.setItem(GEO_LS_KEY, JSON.stringify(c)); } catch (e) {} }, 800);
 }
 function fetchJsonTimeout_(url, ms) {
   const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -3178,6 +3223,8 @@ function renderManualStatus_(uid, statutManuel) {
 /* b67 — les cartes ouvertes sont mémorisées dans l'état (state.cartesOuvertes) : un re-rendu en arrière-plan
    (stats, carburant, classements, enjeux… jusqu'à 60 s après l'ouverture) ne les referme plus. */
 function attachCardListeners(root) {
+  // b157 — lenteur : les petites cartes Leaflet des matchs redessinés restaient en mémoire (tuiles + écouteur de redimensionnement).
+  Object.keys(state.maps || {}).forEach(k => { const m = state.maps[k]; try { if (!m || !document.body.contains(m.getContainer())) { if (m) m.remove(); delete state.maps[k]; } } catch (e) { delete state.maps[k]; } });
   root.querySelectorAll(".card-head").forEach(head => {
     const toggle = () => {
       const card = head.closest(".match-card");
@@ -4716,8 +4763,8 @@ function buildEvalCharts_(evals) {
     const tri = evals.slice().sort((a, b) => (evalDate_(b) || 0) - (evalDate_(a) || 0));
     const derniere = tri.find(ev => ev.familles && EVAL_FAM_.filter(([k]) => ev.familles[k] !== null && ev.familles[k] !== undefined).length >= 3);
     AN.charts.evalRadar = new Chart(c2, { type: "radar", data: { labels: EVAL_FAM_.map(x => x[1]), datasets: [
-        ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k] === null || derniere.familles[k] === undefined ? null : n100_(derniere.familles[k])), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5 }] : []),
-        { label: "Moyenne 3 dernières", data: moy.map(v => v === null ? null : n100_(v)), borderColor: "#0A1F44", backgroundColor: "rgba(10,31,68,.06)", borderDash: [5, 4], pointBackgroundColor: "#0A1F44", borderWidth: 1.5 }
+        ...(derniere ? [{ label: "Dernière", data: EVAL_FAM_.map(([k]) => derniere.familles[k] === null || derniere.familles[k] === undefined ? null : n100_(derniere.familles[k])), borderColor: "#f5b400", backgroundColor: "rgba(245,180,0,.22)", pointBackgroundColor: "#f5b400", borderWidth: 2.5, fill: true, tension: 0, cubicInterpolationMode: "default", spanGaps: true }] : []),
+        { label: "Moyenne 3 dernières", data: moy.map(v => v === null ? null : n100_(v)), borderColor: "#5B8DEF", backgroundColor: "rgba(91,141,239,.10)", borderDash: [5, 4], pointBackgroundColor: "#5B8DEF", borderWidth: 2, fill: true, tension: 0, cubicInterpolationMode: "default", spanGaps: true }
       ] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, backdropColor: "transparent", color: AN.COLORS.muted }, grid: { color: grilleGraph_() }, pointLabels: { font: { size: 11.5 }, color: AN.COLORS.muted } } } } });
   }
@@ -5352,9 +5399,25 @@ const ICONE_INFO_ = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden
 function infoI_(titre, texte) {
   return `<details class="rt-info"><summary aria-label="${escapeHtml(titre)}" title="${escapeHtml(titre)}">${ICONE_INFO_}</summary><div class="rt-info-pop" role="note"><b>${escapeHtml(titre)}</b><p>${texte}</p><button type="button" class="rt-info-ok">Compris</button></div></details>`;
 }
+/* b157 — la bulle s'ouvre toujours au milieu de l'écran (ordinateur et téléphone), en verre dépoli, posée sur <body>
+   (dans la page, un bloc animé la décalait vers le « i »). Échap, « Compris » ou un clic à côté la ferment. */
+function ouvrirInfo_(titre, html) {
+  const vieux = document.getElementById("rtInfoOv"); if (vieux) vieux.remove();
+  const ov = document.createElement("div"); ov.id = "rtInfoOv"; ov.className = "rt-info-ov";
+  ov.innerHTML = `<div class="rt-info-pop" role="dialog" aria-modal="true" aria-label="${escapeHtml(titre)}"><b>${escapeHtml(titre)}</b><div class="rt-info-txt">${html}</div><button type="button" class="rt-info-ok">Compris</button></div>`;
+  const fermer = () => { ov.remove(); document.removeEventListener("keydown", esc); };
+  const esc = e => { if (e.key === "Escape") fermer(); };
+  ov.addEventListener("click", e => { if (e.target === ov || e.target.closest(".rt-info-ok")) fermer(); });
+  document.addEventListener("keydown", esc);
+  document.body.appendChild(ov);
+  const ok = ov.querySelector(".rt-info-ok"); if (ok) ok.focus();
+}
 document.addEventListener("click", e => {
-  const ok = e.target.closest && e.target.closest(".rt-info-ok");
-  document.querySelectorAll("details.rt-info[open]").forEach(d => { if (ok ? d.contains(ok) : !d.contains(e.target)) d.removeAttribute("open"); });
+  const sum = e.target.closest && e.target.closest("details.rt-info > summary");
+  if (!sum) return;
+  e.preventDefault();
+  const pop = sum.parentElement.querySelector(".rt-info-pop");
+  if (pop) ouvrirInfo_(sum.getAttribute("aria-label") || "", (pop.querySelector("p") || pop).innerHTML);
 });
 const INFO_PAGES_ = {   // b154 — textes courts : une ou deux phrases, pas plus
   elicence: ["Mon espace", "Ta licence de la saison, toujours sur toi. Rien n'est envoyé à la fédération."],
@@ -5362,20 +5425,7 @@ const INFO_PAGES_ = {   // b154 — textes courts : une ou deux phrases, pas plu
   equipement: ["Équipement", "Tes achats d'arbitre (tenue, sifflet…), suivis à part de tes indemnités."],
   progression: ["D'où viennent ces chiffres ?", "Notes estimées à partir de tes fiches importées. Seule la fiche officielle fait foi."]
 };
-function ouvrirModaleInfo_(titre, html) {
-  const ancien = document.getElementById("rtmDialog"); if (ancien) ancien.remove();
-  const ov = document.createElement("div");
-  ov.id = "rtmDialog"; ov.className = "rtm-ov";
-  ov.innerHTML = `<div class="rtm" role="dialog" aria-modal="true" aria-label="${escapeHtml(titre)}">
-    <div class="rtm-head"><h3>${escapeHtml(titre)}</h3><button type="button" class="rtm-x" aria-label="Fermer">×</button></div>
-    <div class="stat-note">${html}</div></div>`;
-  document.body.appendChild(ov);
-  const esc = e => { if (e.key === "Escape") f(); };
-  const f = () => { ov.remove(); document.removeEventListener("keydown", esc); };
-  ov.addEventListener("click", e => { if (e.target === ov) f(); });
-  ov.querySelector(".rtm-x").addEventListener("click", f);
-  document.addEventListener("keydown", esc);
-}
+function ouvrirModaleInfo_(titre, html) { ouvrirInfo_(titre, html); }   // b157 — même bulle que les « i »
 
 /* b19 — Contacts & Procédures : même design. Cartes compactes, boutons ✉ (mail)
    et ☎ (appel) au lieu de liens texte, engrenage = fenêtre de modification,
@@ -7822,7 +7872,7 @@ function money(v) { return (Number(v) || 0).toLocaleString("fr-FR", { minimumFra
 function formatNumber(v, suffix = "") { return (Number(v) || 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + suffix; }
 function toNumber(v) { if (v === null || v === undefined || v === "") return 0; const n = Number(String(v).replace(",", ".").replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; }
 /* b143 — grille des graphiques discrète, accordée au thème (avant : grille claire très visible en mode sombre). */
-function grilleGraph_() { return document.documentElement.getAttribute("data-theme") === "dark" ? "rgba(255,255,255,.07)" : "rgba(10,31,68,.07)"; }
+function grilleGraph_() { return document.documentElement.getAttribute("data-theme") === "dark" ? "rgba(255,255,255,.12)" : "rgba(10,31,68,.11)"; }   // b157 : lignes de fond visibles
 function round2(n) { return Number((Number(n) || 0).toFixed(2)); }
 function cleanText(v) { return String(v || "").replace(/\s+/g, " ").trim(); }
 function safeUrl_(u) { u = String(u == null ? "" : u).trim(); return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : "#"; }
@@ -8942,6 +8992,7 @@ function renderClassementRentabilite(rows) {
       <div class="renta-filtres">
         <div class="pa-axes">${chip("age", "", "Tous")}${chip("age", "seniors", "Séniors")}${chip("age", "jeunes", "Jeunes")}</div>
         <div class="pa-axes">${chip("niv", "", "Tous niveaux")}${chip("niv", "cd67", escapeHtml(zonesUser_().cd))}${chip("niv", "ligue", escapeHtml(zonesUser_().ligue))}${chip("niv", "cf", "Champ. de France")}</div>
+        <button type="button" class="rt-search-link renta-reset" data-renta-reset hidden>Réinitialiser</button>
       </div>
       ${groupes.map(g => { const [club, age, niv] = g.label.split("||"); return `
         <div class="rank-row" data-age="${age}" data-niv="${niv}" style="display:none">
@@ -8957,11 +9008,14 @@ function renderClassementRentabilite(rows) {
   `;
 }
 document.addEventListener("click", e => {
-  const b = e.target.closest && e.target.closest("[data-renta-age],[data-renta-niv]");
+  const b = e.target.closest && e.target.closest("[data-renta-age],[data-renta-niv],[data-renta-reset]");
   if (!b) return;
   const carte = b.closest(".renta-card");
-  const grp = b.hasAttribute("data-renta-age") ? "age" : "niv";
-  carte.querySelectorAll(`[data-renta-${grp}]`).forEach(x => x.classList.toggle("active", x === b));
+  // b157 — un filtre se retire en le touchant à nouveau, ou avec « Réinitialiser »
+  if (b.hasAttribute("data-renta-reset")) carte.querySelectorAll(".pa-axe.active").forEach(x => x.classList.remove("active"));
+  else { const grp = b.hasAttribute("data-renta-age") ? "age" : "niv", off = b.classList.contains("active");
+    carte.querySelectorAll(`[data-renta-${grp}]`).forEach(x => x.classList.toggle("active", !off && x === b)); }
+  const rz = carte.querySelector("[data-renta-reset]"); if (rz) rz.hidden = !carte.querySelector(".pa-axe.active");
   const age = (carte.querySelector("[data-renta-age].active") || {}).dataset?.rentaAge || "";
   const niv = (carte.querySelector("[data-renta-niv].active") || {}).dataset?.rentaNiv || "";
   let n = 0;
@@ -10008,8 +10062,10 @@ function renderRapportsOfficiels_(ms) {
         return `<button type="button" class="rapp-modele rf-carte" data-rf-form="${escapeHtml(f.id)}" style="--rf:${coul}">
         <span class="rf-ico" aria-hidden="true">${ico}</span><span class="rf-txt"><strong>${escapeHtml(f.titre)}</strong><span class="card-sub">${escapeHtml(sous)}</span></span>
         ${delai ? `<span class="rf-delai">Sous ${escapeHtml(delai)}</span>` : ""}<span class="rf-go">Remplir →</span></button>`; }).join("")}</div>
-      <div class="rf-vierges field"><label for="rfVierge">Besoin d'un formulaire vierge, à imprimer ?</label>
-        <select id="rfVierge"><option value="">Choisir un formulaire…</option>${Object.values(C).map(f => `<option value="${escapeHtml(f.fichier)}">${escapeHtml(f.titre)}</option>`).join("")}</select></div>`;
+      <div class="rf-vierges"><h3 class="rf-v-t">Formulaires vierges</h3>
+        <div class="rf-v-liste">${Object.values(C).map(f => `<div class="rf-v"><span class="rf-v-n">${escapeHtml(f.titre)}</span>
+          <a class="small-btn secondary" href="${escapeHtml(f.fichier)}" target="_blank" rel="noopener">Ouvrir</a>
+          <button type="button" class="small-btn" data-rf-mail="${escapeHtml(f.id)}">Recevoir par mail</button></div>`).join("")}</div></div>`;
   }
   const c = C[e.id];
   const passe = ms.find(x => x._date && x._date <= new Date());   // par défaut : le dernier match joué
@@ -10189,7 +10245,18 @@ async function rfGenerer_(root, enregistrer) {
 }
 function attachRapportsOfficiels_(root) {
   const e = rfEtat_();
-  const vg = root.querySelector("#rfVierge"); if (vg) vg.addEventListener("change", () => { if (vg.value) window.open(vg.value, "_blank", "noopener"); vg.value = ""; });
+  // b157 — formulaires vierges : vrais liens (le menu déroulant + window.open était bloqué sur iPhone) et envoi par mail
+  // depuis l'adresse no-reply du domaine, toujours à l'adresse du compte (fonction Supabase « rapport-vierge »).
+  root.querySelectorAll("[data-rf-mail]").forEach(b => b.addEventListener("click", async () => {
+    const lib = b.textContent; b.disabled = true; b.textContent = "Envoi…";
+    try {
+      const jt = await SB.token();
+      const r = await fetch(SB_URL + "/functions/v1/rapport-vierge", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json", Authorization: "Bearer " + jt }, body: JSON.stringify({ id: b.dataset.rfMail }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error === "LIMITE" ? "Limite de 10 envois par jour atteinte" : "Envoi impossible pour le moment");
+      b.textContent = "Envoyé ✓"; toast("Formulaire envoyé à " + (j.a || "ton adresse"));
+    } catch (e) { b.textContent = lib; b.disabled = false; toast(e.message); }
+  }));
   root.querySelectorAll("[data-rf-form]").forEach(b => b.addEventListener("click", () => { state.rappForm = null; const n = rfEtat_(); n.id = b.dataset.rfForm; rerenderPerso_(); }));
   const ret = root.querySelector("[data-rf-retour]"); if (ret) ret.addEventListener("click", () => { state.rappForm = null; rerenderPerso_(); });
   if (!e.id || !RF_.cartes) return;
@@ -10855,6 +10922,7 @@ const RT_NOUVEAUTES = window.RT_NOUVEAUTES || [];
 function rtMajAuto_() {
   try {
     const cle = "rt-nouv-" + RT_NOUV.version;
+    if (window._rtNouvOff) return null;   // b157 — coupé par l'admin
     if (localStorage.getItem(cle + "-vu") === "1") return null;
     if (Date.now() - Date.parse(RT_NOUV.sortie + "T00:00:00") > 14 * 864e5) return null;
     let debut = Number(localStorage.getItem(cle + "-debut"));
@@ -10905,7 +10973,7 @@ try { appliquerConfigPrix_(JSON.parse(localStorage.getItem(CLE_CFG_PRIX_) || "nu
     d.elements.arc.borderWidth = 0;
     d.plugins.legend.labels.usePointStyle = true; d.plugins.legend.labels.boxWidth = 8; d.plugins.legend.labels.padding = 14;
     Object.assign(d.plugins.tooltip, { backgroundColor: "rgba(11, 18, 32, .94)", titleColor: "#fff", bodyColor: "#E8EDF7", padding: 12, cornerRadius: 12, displayColors: true, boxPadding: 4, titleFont: { weight: "700" } });
-    if (d.scale && d.scale.grid) { d.scale.grid.color = "rgba(127, 140, 160, .12)"; d.scale.grid.drawTicks = false; }
+    if (d.scale && d.scale.grid) { d.scale.grid.color = "rgba(127, 140, 160, .2)"; d.scale.grid.drawTicks = false; }
     if (d.scale) { d.scale.border = Object.assign({}, d.scale.border, { display: false }); d.scale.ticks = Object.assign({}, d.scale.ticks, { padding: 8 }); }
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();

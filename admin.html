@@ -11,7 +11,7 @@
   <link rel="icon" href="./favicon-32.png" />
   <link rel="stylesheet" href="./fonts/fonts.css" />
   <link rel="stylesheet" href="./vendor/leaflet.css" />
-  <link rel="stylesheet" href="./admin.css?v=2026-11-21-b156" />
+  <link rel="stylesheet" href="./admin.css?v=2026-11-21-b157" />
 </head>
 <body>
   <!-- Écrans d'accès -->
@@ -19,7 +19,6 @@
     <div class="gate-card">
       <img src="./apple-touch-icon.png" alt="" class="gate-logo" />
       <h1>Administration</h1>
-      <p>Connecte-toi avec le compte administrateur. Un code à 6 chiffres te sera ensuite demandé.</p>
       <form id="adminLoginForm" class="gate-form" autocomplete="on">
         <label for="adminEmail">E-mail</label>
         <input id="adminEmail" type="email" autocomplete="username" inputmode="email" required />
@@ -28,7 +27,6 @@
         <button class="btn pri" id="adminLoginBtn" type="submit">Se connecter</button>
         <p id="adminLoginMsg" class="mut" role="status"></p>
       </form>
-      <p class="mut tiny">La connexion de l'admin est séparée de celle de <a href="./">l'app</a> : ton compte arbitre reste connecté dans l'app.</p>
     </div>
   </main>
 
@@ -41,10 +39,11 @@
         <div id="qr"></div>
         <p class="mut">Clé manuelle : <code id="secret"></code></p>
       </div>
-      <p id="mfaTxt">Saisis le code à 6 chiffres de ton application d'authentification.</p>
-      <div class="row"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" /><button class="btn pri" id="btnCode">Valider</button></div>
+      <p id="mfaTxt">Saisis le code de ton application d'authentification.</p>
+      <div class="mfa-code"><input id="code" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-label="Code à 6 chiffres" autofocus /></div>
+      <button class="btn pri mfa-ok" id="btnCode">Valider</button>
       <p id="mfaMsg" class="err"></p>
-      <button class="btn sm" id="btnMfaSortir" type="button">Changer de compte</button>
+      <button class="mfa-sortir" id="btnMfaSortir" type="button">Changer de compte</button>
     </div>
   </main>
 
@@ -164,8 +163,8 @@
   <script src="./vendor/leaflet.js"></script>
   <script src="./rt-xlsx.js?v=2026-11-14-b97"></script>
   <script src="./admin-pilotage.js?v=2026-11-14-b97"></script>
-  <script src="./nouveautes.js?v=2026-11-21-b156"></script>
-  <script src="./rt-format.js?v=2026-11-21-b156"></script>
-  <script src="./admin.js?v=2026-11-21-b156"></script>
+  <script src="./nouveautes.js?v=2026-11-21-b157"></script>
+  <script src="./rt-format.js?v=2026-11-21-b157"></script>
+  <script src="./admin.js?v=2026-11-21-b157"></script>
 </body>
 </html>

@@ -141,8 +141,7 @@
             <div class="eq-act">${x.facture_path ? `<button type="button" class="action-link gold" data-eq-voir="${esc(x.facture_path)}">Facture</button>` : `<label class="action-link secondary eq-joindre">Joindre<input type="file" hidden accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" data-eq-joindre="${x.id}" /></label>`}
             <button type="button" class="action-link" data-eq-suppr="${x.id}">Supprimer</button></div></div>
         </article>`).join("")}</div>`;
-      }).join("") : (typeof empty === "function" ? empty("Aucun achat enregistré. Dépose ta première facture ci-dessus.") : "")}
-      <p class="card-sub" style="margin-top:12px">Ces achats sont suivis à part : ils ne sont pas retirés de tes indemnités ni de ton net. Sous le plafond de la franchise des arbitres (onglet Export → Année civile), tu n'as rien à déclarer ni à déduire. Garde quand même tes factures, par exemple si ton comité rembourse une partie de la tenue. Information indicative.</p>`;
+      }).join("") : (typeof empty === "function" ? empty("Aucun achat enregistré. Dépose ta première facture ci-dessus.") : "")}`;
     brancher(root);
   }
 
@@ -229,11 +228,15 @@
       <span class="frais-match-t">${tc ? "Billet, parking" : mode === "passager" ? "Parking, frais" : "Péage, parking"}</span>
       ${l.map(x => `<span class="frais-chip${x.categorie === "amende" ? " is-amende" : ""}" title="${esc(x.libelle || "")}">${esc(libCat(x.categorie))} <b>${eur(num(x.montant_ttc))}</b><button type="button" aria-label="Supprimer" data-fm-del="${x.id}">×</button></span>`).join("")}
       <button type="button" class="frais-add" data-fm-add>${tc && !l.length ? "+ Prix du billet" : "+ Ajouter"}</button>
-      <form class="frais-form" hidden><select aria-label="Type">${opts.map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select>
-        <input type="text" inputmode="decimal" placeholder="Montant €" aria-label="Montant" required maxlength="8"><button type="submit" class="small-btn">OK</button>
+      <form class="frais-form" hidden>
+        <div class="fm-types" role="group" aria-label="Type de frais">${opts.map(([k], i) => `<button type="button" class="fm-type${i ? "" : " is-on"}" data-fm-type="${k}">${COURT_FRAIS[k] || k}</button>`).join("")}</div>
+        <select aria-label="Type" hidden>${opts.map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select>
+        <div class="fm-ligne"><label class="fm-montant"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Montant" required maxlength="8"><span>€</span></label>
+          <button type="submit" class="small-btn fm-ok">Ajouter</button></div>
         <small class="frais-aide" hidden></small></form>
     </div>`;
   };
+  const COURT_FRAIS = { peage: "Péage", telepeage: "Télépéage (relevé)", parking: "Parking", amende: "Amende", deplacement: "Autre", billet: "Billet train / bus" };   // b157 — boutons au lieu d'une liste
   const AIDE_FRAIS = {
     telepeage: "Mets le total du relevé du mois de ce match : il est réparti sur tes matchs déjà joués ce mois-là en voiture, au prorata des km. Une nouvelle saisie remplace l'ancienne.",
     amende: "Déduite du net de ce match. Une amende n'est pas un frais professionnel : elle n'entre pas dans les frais réels de ta déclaration.",
@@ -272,6 +275,9 @@
     const box = t.closest(".frais-match"); if (!box) return;
     ev.stopPropagation();
     if (t.closest("[data-fm-add]")) { const f = box.querySelector(".frais-form"); f.hidden = !f.hidden; if (!f.hidden) f.querySelector("input").focus(); return; }
+    const ty = t.closest("[data-fm-type]");
+    if (ty) { const f = ty.closest(".frais-form"), sel = f.querySelector("select"); f.querySelectorAll(".fm-type").forEach(x => x.classList.toggle("is-on", x === ty));
+      sel.value = ty.dataset.fmType; sel.dispatchEvent(new Event("change", { bubbles: true })); f.querySelector("input").focus(); return; }
     const del = t.closest("[data-fm-del]");
     if (del) { try { await SB.write("DELETE", "depenses?id=eq." + Number(del.dataset.fmDel)); await charger(true); } catch (e) { if (typeof setStatus === "function") setStatus(e.message, "error"); } }
   });
@@ -280,17 +286,17 @@
     ev.preventDefault(); ev.stopPropagation();
     const box = f.closest(".frais-match"), cat = f.querySelector("select").value, mt = r2(num(f.querySelector("input").value));
     if (!(mt > 0 && mt < 1000)) { if (typeof setStatus === "function") setStatus("Montant invalide", "error"); return; }
-    f.querySelector("button").disabled = true;
+    f.querySelector(".fm-ok").disabled = true;
     if (cat === "telepeage") {
       try { const n = await repartirTelepeage(box.dataset.fmDate || new Date().toISOString().slice(0, 10), mt); if (typeof setStatus === "function") setStatus("Télépéage " + eur(mt) + " réparti sur " + n + " match" + (n > 1 ? "s" : ""), "ok"); await charger(true); }
-      catch (e) { f.querySelector("button").disabled = false; if (typeof setStatus === "function") setStatus(e.message, "error"); }
+      catch (e) { f.querySelector(".fm-ok").disabled = false; if (typeof setStatus === "function") setStatus(e.message, "error"); }
       return;
     }
     try {
       await SB.write("POST", "depenses", { date_achat: box.dataset.fmDate || new Date().toISOString().slice(0, 10), categorie: cat, libelle: libCat(cat), montant_ttc: mt, match_uid: box.dataset.fm });
       if (typeof setStatus === "function") setStatus(libCat(cat) + " ajouté : déduit du net du match", "ok");
       await charger(true);
-    } catch (e) { f.querySelector("button").disabled = false; if (typeof setStatus === "function") setStatus(e.message, "error"); }
+    } catch (e) { f.querySelector(".fm-ok").disabled = false; if (typeof setStatus === "function") setStatus(e.message, "error"); }
   });
   // Chargement au démarrage (les cartes de match affichent les frais, le net en tient compte)
   setTimeout(function essai(n) { if (typeof SB !== "undefined" && SB.session) charger(false); else if (n < 20) setTimeout(() => essai(n + 1), 1500); }, 2500, 0);
