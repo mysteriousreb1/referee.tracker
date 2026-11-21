@@ -305,8 +305,9 @@ function setupMoreMenu_() {
     item.innerHTML = `${ico ? ico.outerHTML : ""}<span>${escapeHtml(src ? src.textContent : t)}</span><span class="tab-badge tab-more-badge" data-badge-for="${t}" hidden>0</span>`;
     panel.appendChild(item);
   });
-  // Hors de la grille .tabs pour occuper toute la largeur proprement.
-  nav.parentNode.insertBefore(panel, nav.nextSibling);
+  // Hors de la grille .tabs pour occuper toute la largeur proprement. b160 : posé sur <body>, au-dessus du voile flou
+  // (dans main.content, qui forme sa propre couche, il était flouté avec la page).
+  document.body.appendChild(panel);
 
   const close = () => { panel.hidden = true; more.setAttribute("aria-expanded", "false"); more.classList.remove("active"); };
   more.addEventListener("click", ev => {
@@ -1656,7 +1657,7 @@ function isExaminateur_(r) {
 }
 /* b157 — retour de Yassine : « ajouter un match, c'est galère ». Bouton visible sur les listes de matchs qui explique
    les deux cas : nouvelle convocation (transfert du mail FFBB) et anciens matchs (import des PDF). */
-const BTN_AJOUT_MATCH_ = ` <button type="button" class="small-btn secondary btn-ajout-match" data-ajout-match>+ Ajouter un match</button>`;
+const BTN_AJOUT_MATCH_ = ` <button type="button" class="rt-plus-rond" data-ajout-match aria-label="Ajouter un match" title="Ajouter un match"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>`;   // b160 — même forme que le « i »
 document.addEventListener("click", async e => {
   if (!e.target.closest || !e.target.closest("[data-ajout-match]")) return;
   let adr = ""; try { const l = await SB.get("profils?select=adresse_reception&limit=1"); adr = (l && l[0] && l[0].adresse_reception) || ""; } catch (err) {}
@@ -5399,6 +5400,9 @@ const ICONE_INFO_ = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden
 function infoI_(titre, texte) {
   return `<details class="rt-info"><summary aria-label="${escapeHtml(titre)}" title="${escapeHtml(titre)}">${ICONE_INFO_}</summary><div class="rt-info-pop" role="note"><b>${escapeHtml(titre)}</b><p>${texte}</p><button type="button" class="rt-info-ok">Compris</button></div></details>`;
 }
+/* b160 — voile flou derrière les panneaux qui n'ont pas leur propre fond (notifications, menu « Plus », menu « ⋯ ») :
+   la page disparaît derrière, seul le panneau reste net. Affiché par CSS (:has), rien à gérer ici. */
+(function () { const v = document.createElement("div"); v.id = "rtVoile"; v.setAttribute("aria-hidden", "true"); (document.body ? Promise.resolve() : new Promise(r => document.addEventListener("DOMContentLoaded", r))).then(() => document.body.appendChild(v)); })();
 /* b157 — la bulle s'ouvre toujours au milieu de l'écran (ordinateur et téléphone), en verre dépoli, posée sur <body>
    (dans la page, un bloc animé la décalait vers le « i »). Échap, « Compris » ou un clic à côté la ferment. */
 function ouvrirInfo_(titre, html) {
@@ -9637,8 +9641,19 @@ function licCarteHtml_(e, grand) {
   </div>`;
 }
 /* b152 — menu « ⋯ » de la licence : se ferme en cliquant ailleurs ou avec Échap. */
-document.addEventListener("click", ev => { document.querySelectorAll("details.lic-plus[open]").forEach(d => { if (!d.contains(ev.target) || ev.target.closest(".lic-menu button")) d.removeAttribute("open"); }); });
+document.addEventListener("click", () => { document.querySelectorAll("body > .lic-menu").forEach(m => { if (!m._rtDe || !m._rtDe.isConnected) m.remove(); }); });   // b160 — menu orphelin (page redessinée pendant qu'il était ouvert)
+document.addEventListener("click", ev => { document.querySelectorAll("details.lic-plus[open]").forEach(d => { if ((!d.contains(ev.target) && !(ev.target.closest && ev.target.closest(".lic-menu"))) || ev.target.closest(".lic-menu button")) d.removeAttribute("open"); }); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") document.querySelectorAll("details.lic-plus[open]").forEach(d => d.removeAttribute("open")); });
+// b160 — menu « ⋯ » posé au-dessus du voile flou (sinon il était flouté avec la page) : même place, mais en position fixe.
+document.addEventListener("toggle", ev => {
+  const d = ev.target; if (!d.matches || !d.matches("details.lic-plus")) return;
+  const m = d.querySelector(".lic-menu") || [...document.querySelectorAll("body > .lic-menu")].find(x => x._rtDe === d); if (!m) return;
+  if (!d.open) { m.style.cssText = ""; if (m.parentNode !== d) d.appendChild(m); return; }
+  // la page (main.content) forme sa propre couche : le menu est posé sur <body> le temps de son ouverture
+  const r = d.querySelector("summary").getBoundingClientRect();
+  document.body.appendChild(m); m._rtDe = d;
+  m.style.cssText = `position:fixed;z-index:1200;top:${Math.round(r.bottom + 6)}px;right:${Math.max(10, Math.round(innerWidth - r.right))}px;left:auto`;
+}, true);
 function licCarteBloc_(e) {
   return `<div class="lic-zone">
     ${licCarteHtml_(e, false)}
