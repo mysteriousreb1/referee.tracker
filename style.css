@@ -6063,3 +6063,25 @@ img.comp-logo, .comp-logo--txt { background: #fff !important; border: 1px solid 
 :root[data-theme="light"] .rt-modal-card { background: rgba(255, 255, 255, .86) !important; }
 .rt-cmenu-fond, .rtm-ov { background: rgba(5, 12, 25, .3) !important; }
 .frais-form { max-width: 520px; }
+
+/* ===== b160 — fond flou derrière toute fenêtre ouverte : on ne voit plus que la fenêtre (demande de Clément) ===== */
+.rt-info-ov, .rt-search-backdrop, .rt-cmenu-fond, .rtm-ov, .rt-modal, .rt-confirm, .rt-sheet-back, .rt-consent, .rt-tour, #rtVoile {
+  background: rgba(5, 12, 25, .42) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%) !important; backdrop-filter: blur(16px) saturate(120%) !important; }
+:root[data-theme="light"] .rt-info-ov, :root[data-theme="light"] .rt-search-backdrop, :root[data-theme="light"] .rt-cmenu-fond, :root[data-theme="light"] .rtm-ov,
+:root[data-theme="light"] .rt-modal, :root[data-theme="light"] .rt-confirm, :root[data-theme="light"] .rt-sheet-back, :root[data-theme="light"] #rtVoile { background: rgba(233, 238, 245, .45) !important; }
+.rt-search-layer:not(.is-open) .rt-search-backdrop { opacity: 0; }
+#rtVoile { position: fixed; inset: 0; z-index: 85; opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+body:has(#rtNotifPanel:not([hidden])) #rtVoile, body:has(#tabMorePanel:not([hidden])) #rtVoile, body:has(details.lic-plus[open]) #rtVoile { opacity: 1; pointer-events: auto; }
+body:has(#rtNotifPanel:not([hidden])) #rtVoile { z-index: 1150; }
+body:has(details.lic-plus[open]) #rtVoile { z-index: 1150; }
+
+/* b160 — « Ajouter un match » : petit rond à côté du titre, même forme que le « i » */
+.rt-plus-rond { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 8px; padding: 0; border-radius: 50%; border: 1px solid var(--line, rgba(128,128,128,.3));
+  background: transparent; color: var(--muted); cursor: pointer; vertical-align: middle; transition: background .2s, color .2s, transform .2s; }
+.rt-plus-rond svg { display: block; }
+.rt-plus-rond:hover { background: var(--surface-2); color: var(--text); transform: scale(1.06); }
+.section-title.titre-ajout { display: block; }
+/* b160 — menu « Plus » (téléphone) : voile au-dessus de l'en-tête, panneau au-dessus du voile */
+body:has(#tabMorePanel:not([hidden])) #rtVoile { z-index: 95; }
+#tabMorePanel { z-index: 96 !important; }
