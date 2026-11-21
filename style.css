@@ -5868,3 +5868,49 @@ html.rt-discret .money, html.rt-discret .acc-kpi-val, html.rt-discret .we-eur, h
   .qz-bar { margin: 12px 0 16px; }
 }
 #rtFiliere .fil-box { max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px) !important; }
+
+/* ===== b154 — RECHERCHE & FILTRE : panneau « verre dépoli », ouvert depuis son bouton ===== */
+#searchToggleBtn[hidden] { display: none !important; }   /* la loupe n'apparaît que sur les pages où elle filtre quelque chose */
+.rt-search-backdrop { background: rgba(5, 15, 35, .18) !important; backdrop-filter: none !important; }
+.rt-search {
+  width: min(400px, calc(100vw - 20px)) !important; max-height: min(78vh, 640px); height: auto !important; bottom: auto; left: auto; border-radius: 22px !important; overflow: auto;
+  background: color-mix(in srgb, var(--surface) 86%, transparent) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(170%); backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 24px 60px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .08) !important;
+  transform: scale(.92); opacity: 0; transition: transform .22s cubic-bezier(.2, .8, .2, 1), opacity .18s ease !important;
+}
+.rt-search-layer.is-open .rt-search { transform: none; opacity: 1; }
+:root[data-theme="light"] .rt-search { border-color: rgba(10, 31, 68, .1); }
+.rt-search-foot { position: static !important; margin: 16px 0 0 !important; }
+.rt-fab { width: 46px !important; height: 46px !important; right: 18px !important; bottom: 18px !important; }
+.rt-fab svg { width: 20px; height: 20px; }
+/* b154 — Procédures & Contacts : barre « Rechercher » pleine largeur + « Ajouter » compact, alignés et de même hauteur */
+.cc-bar { justify-content: space-between !important; flex-wrap: nowrap; gap: 10px; margin: 14px 0 10px; }
+.cc-loupe { flex: 1 1 auto; width: auto !important; height: 42px !important; padding: 0 14px; gap: 10px; justify-content: flex-start !important; border-radius: 14px !important; color: var(--muted) !important; font: 600 14px var(--body); }
+.cc-loupe span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-bar .small-btn { height: 42px; padding: 0 16px; border-radius: 14px; white-space: nowrap; flex: 0 0 auto; }
+@media (min-width: 900px) { .cc-loupe { flex: 0 1 320px; } }
+/* b154 — bulles d'aide plus légères */
+.rt-info > .rt-info-pop { padding: 14px 16px 12px !important; max-width: 380px !important; }
+.rt-info-pop > b { font-size: 14px !important; margin-bottom: 4px !important; }
+.rt-info-pop > p { font-size: 13.5px !important; line-height: 1.55 !important; }
+.rt-info-ok { margin-top: 10px !important; padding: 8px !important; font-size: 13px !important; }
+.section-title .rt-info { margin-left: 10px; }
+.nowrap { white-space: nowrap; }
+/* b154 — téléphone : la salutation tient sur une ligne, sans grande carte vide sous le menu */
+#accueil .acc-welcome { background: none !important; box-shadow: none !important; border: 0 !important; padding: 0 !important; margin: 4px 0 12px !important; min-height: 0 !important; }
+#accueil .acc-welcome-hi { color: var(--text) !important; font-size: 24px; }
+#accueil .acc-welcome-date { color: var(--muted) !important; }
+/* b154 — page de connexion : plus de terrain dessiné (rendu peu net) ; fond dégradé sobre avec deux halos de couleur */
+.rt-login::before { background: radial-gradient(60% 45% at 15% 10%, rgba(37, 99, 235, .28), transparent 70%), radial-gradient(55% 40% at 90% 95%, rgba(245, 180, 0, .14), transparent 70%) !important; opacity: 1 !important; }
+/* b154 — RÈGLEMENT sur téléphone : bouton Documents discret, accueil plus compact, exemples jamais cachés par le champ de saisie */
+#reglDocsBtn { background: transparent !important; border: 1px solid var(--line) !important; color: var(--text) !important; box-shadow: none !important; padding: 7px 14px !important; font-size: 13px !important; }
+@media (max-width: 767px) {
+  .regl-empty { padding: 14px 4px 110px !important; text-align: left; }
+  .regl-empty-ico { display: none !important; }
+  .regl-empty h3 { font-size: 18px !important; margin-bottom: 6px; }
+  .regl-empty p { font-size: 14px !important; margin: 0 0 14px !important; }
+  .regl-exs > span { display: block; text-align: left; margin-bottom: 8px; }
+  .regl-ex-chip { font-size: 14px !important; padding: 12px 14px 12px 36px !important; text-align: left; position: relative; }
+}
+@media (max-width: 767px) { .rt-search { left: 10px !important; right: 10px !important; width: auto !important; } }   /* b154 — téléphone : panneau dans l'écran, sous la loupe */
