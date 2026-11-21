@@ -6085,3 +6085,10 @@ body:has(details.lic-plus[open]) #rtVoile { z-index: 1150; }
 /* b160 — menu « Plus » (téléphone) : voile au-dessus de l'en-tête, panneau au-dessus du voile */
 body:has(#tabMorePanel:not([hidden])) #rtVoile { z-index: 95; }
 #tabMorePanel { z-index: 96 !important; }
+
+/* b161 — formulaire vierge : adresse du destinataire sous la ligne */
+.rf-v { flex-wrap: wrap; }
+.rf-v-mail { flex-basis: 100%; display: flex; gap: 8px; margin-top: 4px; }
+.rf-v-mail[hidden] { display: none; }
+.rf-v-mail input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--text); font: 600 14px var(--body); }
+.rf-v-mail input:focus { outline: none; border-color: var(--gold, #FFC400); }

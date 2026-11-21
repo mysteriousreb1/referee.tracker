@@ -10080,7 +10080,8 @@ function renderRapportsOfficiels_(ms) {
       <div class="rf-vierges"><h3 class="rf-v-t">Formulaires vierges</h3>
         <div class="rf-v-liste">${Object.values(C).map(f => `<div class="rf-v"><span class="rf-v-n">${escapeHtml(f.titre)}</span>
           <a class="small-btn secondary" href="${escapeHtml(f.fichier)}" target="_blank" rel="noopener">Ouvrir</a>
-          <button type="button" class="small-btn" data-rf-mail="${escapeHtml(f.id)}">Recevoir par mail</button></div>`).join("")}</div></div>`;
+          <button type="button" class="small-btn" data-rf-mail="${escapeHtml(f.id)}">Envoyer par mail</button>
+          <form class="rf-v-mail" data-rf-form-mail="${escapeHtml(f.id)}" hidden><input type="email" required autocomplete="email" inputmode="email" placeholder="Adresse du destinataire" aria-label="Adresse du destinataire"><button type="submit" class="small-btn">Envoyer</button></form></div>`).join("")}</div></div>`;
   }
   const c = C[e.id];
   const passe = ms.find(x => x._date && x._date <= new Date());   // par défaut : le dernier match joué
@@ -10262,15 +10263,25 @@ function attachRapportsOfficiels_(root) {
   const e = rfEtat_();
   // b157 — formulaires vierges : vrais liens (le menu déroulant + window.open était bloqué sur iPhone) et envoi par mail
   // depuis l'adresse no-reply du domaine, toujours à l'adresse du compte (fonction Supabase « rapport-vierge »).
-  root.querySelectorAll("[data-rf-mail]").forEach(b => b.addEventListener("click", async () => {
-    const lib = b.textContent; b.disabled = true; b.textContent = "Envoi…";
+  // b161 — « Envoyer par mail » demande l'adresse du destinataire (commission, délégué…) ; la dernière adresse est proposée.
+  root.querySelectorAll("[data-rf-mail]").forEach(b => b.addEventListener("click", () => {
+    const f = b.parentElement.querySelector("form.rf-v-mail"); if (!f) return;
+    f.hidden = !f.hidden; const inp = f.querySelector("input");
+    if (!f.hidden) { try { inp.value = inp.value || localStorage.getItem("rt-rf-dest") || ""; } catch (e) {} inp.focus(); }
+  }));
+  root.querySelectorAll("form.rf-v-mail").forEach(f => f.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const inp = f.querySelector("input"), ok = f.querySelector("button"), a = inp.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(a)) { toast("Adresse e-mail invalide"); inp.focus(); return; }
+    ok.disabled = true; ok.textContent = "Envoi…";
     try {
       const jt = await SB.token();
-      const r = await fetch(SB_URL + "/functions/v1/rapport-vierge", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json", Authorization: "Bearer " + jt }, body: JSON.stringify({ id: b.dataset.rfMail }) });
+      const r = await fetch(SB_URL + "/functions/v1/rapport-vierge", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json", Authorization: "Bearer " + jt }, body: JSON.stringify({ id: f.dataset.rfFormMail, a }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error === "LIMITE" ? "Limite de 10 envois par jour atteinte" : "Envoi impossible pour le moment");
-      b.textContent = "Envoyé ✓"; toast("Formulaire envoyé à " + (j.a || "ton adresse"));
-    } catch (e) { b.textContent = lib; b.disabled = false; toast(e.message); }
+      if (!r.ok || !j.ok) throw new Error(j.error === "LIMITE" ? "Limite de 10 envois par jour atteinte" : j.error === "ADRESSE" ? "Adresse e-mail invalide" : "Envoi impossible pour le moment");
+      try { localStorage.setItem("rt-rf-dest", a); } catch (e) {}
+      toast("Formulaire envoyé à " + a); f.hidden = true; ok.textContent = "Envoyer"; ok.disabled = false;
+    } catch (e) { ok.textContent = "Envoyer"; ok.disabled = false; toast(e.message); }
   }));
   root.querySelectorAll("[data-rf-form]").forEach(b => b.addEventListener("click", () => { state.rappForm = null; const n = rfEtat_(); n.id = b.dataset.rfForm; rerenderPerso_(); }));
   const ret = root.querySelector("[data-rf-retour]"); if (ret) ret.addEventListener("click", () => { state.rappForm = null; rerenderPerso_(); });
@@ -10935,6 +10946,7 @@ const RT_NOUV = window.RT_NOUV || { version: "", sortie: "1970-01-01", texte: ""
 const RT_NOUVEAUTES = window.RT_NOUVEAUTES || [];
 // Bandeau automatique : 24 h à partir de la 1re ouverture de cette version (dans les 14 jours qui suivent sa sortie), ✕ le masque.
 function rtMajAuto_() {
+  return null;   // b161 — plus de bandeau automatique « Nouvelle version » à chaque mise en ligne (demande de Clément)
   try {
     const cle = "rt-nouv-" + RT_NOUV.version;
     if (window._rtNouvOff) return null;   // b157 — coupé par l'admin
