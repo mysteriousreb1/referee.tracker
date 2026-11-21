@@ -30,8 +30,11 @@
   const vuTxt = (d) => (d ? fmt(d) + " · " + depuis(d) : "jamais");
   const nomDe = (p, email) => (p && (p.prenom || p.nom_ffbb)) ? [p.prenom, p.nom_ffbb].filter(Boolean).join(" ") : (email || "—");
   const zonesTxt = (z) => { z = z || {}; return [z.cd, z.ligue, z.cf ? "CF" : ""].filter(Boolean).join(" · ") || "—"; };
+  // b163 (audit sécurité) — une cellule qui commence par = + - @ (sauf un vrai nombre) est lue comme une formule par Excel :
+  // on la neutralise avec une apostrophe. Un arbitre choisit son prénom, ses contacts, ses messages : ils finissent dans ces exports.
+  const csvCel = (c) => { let v = String(c == null ? "" : c); if (/^[=+\-@\t\r]/.test(v) && !/^[+-]?\d[\d\s.,]*$/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
   const csv = (lignes, nom) => {
-    const t = lignes.map((l) => l.map((c) => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(";")).join("\r\n");
+    const t = lignes.map((l) => l.map(csvCel).join(";")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + t], { type: "text/csv;charset=utf-8" })); a.download = nom; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
   const copier = (t) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(new Error("Presse-papiers indisponible"))).then(() => toast("Copié ✓", "ok"), (e) => toast(e.message, "err"));
@@ -1440,7 +1443,7 @@
       const html = "<b>" + esc(casseNom(g[0].salle || g[0].ville || "")) + "</b><br><span>" + esc(casseNom(g[0].ville || "")) + "</span><hr style=\"border:0;border-top:1px solid #ddd;margin:6px 0\">" +
         g.map((m) => "<div style=\"margin:4px 0\"><b>" + esc(fmtD(m.date_match)) + "</b> " + esc(m.heure_rdv || "") + " · <b>" + esc(m.prenom || "") + "</b>" + (m.collegue_nom ? " avec " + esc(casseNom(m.collegue_nom)) : "") + "<br>" + esc([m.recevant, m.visiteur_evenement].filter(Boolean).map(casseNom).join(" – ")) + (m.mon_role ? " <i>(" + esc(m.mon_role) + ")</i>" : "") + "</div>").join("");
       const qui = [...new Set(g.map((m) => m.prenom).filter(Boolean))].join(", ");   // b157 — prénoms des arbitres visibles au survol de l'épingle
-      L.marker(p).addTo(carte).bindPopup(html, { maxWidth: 320 }).bindTooltip(qui || casseNom(g[0].salle || ""), { direction: "top", offset: [-15, -12] });
+      L.marker(p).addTo(carte).bindPopup(html, { maxWidth: 320 }).bindTooltip(esc(qui || casseNom(g[0].salle || "")), { direction: "top", offset: [-15, -12] });   // b163 : échappé (Leaflet insère ce texte comme du HTML)
       if (points.length === 1) carte.setView(p, 10);
     }
     if (points.length > 1) carte.fitBounds(points, { padding: [30, 30] });
@@ -1788,7 +1791,7 @@
       z.querySelector("#dfCd").addEventListener("change", (e) => { diff.cd = e.target.value; rendDiff(); });
       z.querySelector("#dfTous").addEventListener("click", () => { diff.q = ""; diff.etat = ""; diff.cd = ""; rendDiff(); });
       z.querySelector("#dfCsv").addEventListener("click", () => {
-        const cel = (v) => { v = String(v == null ? "" : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+        const cel = csvCel;
         const lignes = [["Prénom", "Nom", "E-mail", "Téléphone", "Statut", "Comité", "Ligue", "Niveau", "Offres", "WhatsApp", "Choix le", "Source"]].concat(d.map((a) => { const p = a.profil || {}, c = comm(a); return [p.prenom, p.nom_ffbb, p.email_connexion || a.email, p.telephone, p.statut, valSeg(a, "cd"), valSeg(a, "ligue"), p.niveau, etatComm(a), c.whatsapp === true ? "oui" : "non", c.date ? fmt(c.date) : "", c.source || ""]; }));
         const blob = new Blob(["\ufeff" + lignes.map((r) => r.map(cel).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
         const lien = document.createElement("a"); lien.href = URL.createObjectURL(blob); lien.download = "referee-tracker-diffusion-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(lien); lien.click(); setTimeout(() => { URL.revokeObjectURL(lien.href); lien.remove(); }, 500); });
@@ -2322,7 +2325,7 @@
   // coût IA par fonction et par arbitre, santé du transfert, prévision du stock de moteurs. Export CSV de chaque tableau.
   const AN_CSV = {};
   function anCsv(nom, entetes, lignes) {
-    AN_CSV[nom] = () => { const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    AN_CSV[nom] = () => { const q = csvCel;
       const t = "﻿" + [entetes.map(q).join(";")].concat(lignes.map((l) => l.map(q).join(";"))).join("\n");
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })); a.download = "referee-tracker-" + nom + "-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click(); };
     return '<button type="button" class="btn sm an-csv" data-csv="' + nom + '">Exporter CSV</button>';

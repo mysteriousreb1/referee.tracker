@@ -94,7 +94,7 @@ const Session = {
     try {
       [TOKEN_KEY, EMAIL_KEY, SINCE_KEY, CFG_KEY, "rt-reglement-hist-v1", "rt_logos_v1", "rt-alertes-traitees-v2", "rt_pay_ecarts", "rt_rb_payeurs_v1", "rt_last_matchs"].forEach(k => localStorage.removeItem(k));
       Object.keys(localStorage).filter(k => k.indexOf("rt_c_") === 0 || k.indexOf("rt_rb_") === 0 || k.indexOf("rt_pay") === 0 ||
-        /^(rt-rapp-brouillon:|rt-reglement-hist-|rt-rf-mail|rt_rech_hist|rt-checklist-|rt-pd-coches|rt_qcm_themes|rt-import-masque|rt-histo-masque)/.test(k)).forEach(k => localStorage.removeItem(k));   // b122 : brouillons et historiques perso aussi
+        /^(rt-rapp-brouillon:|rt-reglement-hist-|rt-rf-mail|rt_rech_hist|rt-checklist-|rt-pd-coches|rt_qcm_themes|rt-import-masque|rt-histo-masque|rt-api-url:|rt-geo-v2|rt-rf-dest|rt-ffbb-res-|rt-cfg-prix|rt_push_endpoint)/.test(k)).forEach(k => localStorage.removeItem(k));   // b122 : brouillons et historiques perso aussi
       sessionStorage.clear();
     } catch (e) {}
   }
@@ -385,6 +385,15 @@ const SB = {
     const s = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_in: Number(p.get("expires_in") || 3600) };
     const type = p.get("type") || "";
     if (!s.access_token || !s.refresh_token) return null;
+    // b163 (audit sécurité) — une session reçue par l'adresse de la page n'est acceptée que pour un vrai lien
+    // d'invitation ou de mot de passe, et jamais à la place d'un AUTRE compte déjà connecté. Avant : n'importe quel lien
+    // « #access_token=… » connectait en silence au compte de celui qui l'avait fabriqué (la victime y déposait ensuite ses données).
+    const sujet = t => { try { let b = String(t || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "="; return String(JSON.parse(atob(b)).sub || ""); } catch (e) { return ""; } };
+    const actuel = sujet((this.session || {}).access_token), recu = sujet(s.access_token);
+    if (["recovery", "invite", "signup", "magiclink"].indexOf(type) === -1 || !recu || (actuel && actuel !== recu)) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      return actuel ? null : { erreur: "lien_invalide" };
+    }
     this.save(s);
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     return { type };
@@ -1049,7 +1058,7 @@ function hideLogin() {
 async function logout() {
   // b47 (A14) — 1) Apps Script oublie le jeton, 2) Supabase révoque la session, 3) purge locale, 4) rechargement.
   const token = Session.token;
-  try { await Promise.race([apiCall("logout", { token }, false), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}
+  try { await Promise.race([apiCall("logout", { token }, true), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}   // b163 : au moteur de l'arbitre (avant : au moteur par défaut, qui n'avait rien à oublier)
   // b57 (audit F08) — l'appareil cesse de recevoir les notifications de ce compte AVANT la fin de session.
   try { if (typeof PUSH !== "undefined" && PUSH.supporte()) await Promise.race([PUSH.desactiver(), new Promise(ok => setTimeout(ok, 4000))]); } catch (e) {}
   try { await SB.signOut(); } catch (e) {}

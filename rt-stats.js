@@ -117,7 +117,7 @@ const RT_STATS = (function () {
   "2026-04": 1.995,
   "2026-05": 2.0273,
   "2026-06": 1.868,
-  // Saison 2026/2027 — prix reel releve secteur Kaltenhouse (bascule 2,26 EUR/L sur matchs passes)
+  // Saison 2026/2027 — prix reel releve localement (bascule 2,26 EUR/L sur matchs passes)
   "2026-08": 2.26,
   "2026-09": 2.26
   };
