@@ -1190,7 +1190,8 @@
   }
   function nouveautesCarte(box) {
     const CLE = "rt_admin_mail_nouveautes";
-    let d = null; try { d = JSON.parse(localStorage.getItem(CLE) || "null"); } catch (e) {}
+    // b161 — plus de brouillon gardé dans le navigateur : le formulaire s'ouvre toujours vide (les anciens textes restaient affichés)
+    let d = null; try { localStorage.removeItem(CLE); } catch (e) {}
     d = d || { sujet: "Les grandes nouveautés de Referee Tracker", periode: "", vedette: { titre: "", texte: "", bouton: "", lien: "" }, items: [{}, {}, {}, {}].map(() => ({ titre: "", texte: "" })) };
     const ch = (id, lib, val, max, zone) => '<label class="nm-f"><span>' + lib + "</span>" + (zone ? '<textarea id="' + id + '" maxlength="' + max + '" rows="2">' + esc(val || "") + "</textarea>" : '<input id="' + id + '" maxlength="' + max + '" value="' + esc(val || "") + '">') + "</label>";
     box.innerHTML = '<div class="card nm"><div class="card-head"><h3>Mail « Les grandes nouveautés »</h3><span class="sub" id="nmQuota">2 envois maximum par mois</span></div>' +
@@ -1210,7 +1211,7 @@
       '<div id="nmProgL"></div><div id="nmRes"></div><iframe id="nmVue" class="nm-vue" title="Aperçu du mail" sandbox="" hidden></iframe></div>';
     const val = (id) => box.querySelector("#" + id).value.trim();
     const lire = () => { const c = { sujet: val("nmSujet"), periode: val("nmPer"), vedette: { titre: val("nmVt"), texte: val("nmVx"), bouton: val("nmVb"), lien: val("nmVl") }, items: d.items.map((x, i) => ({ titre: val("nmT" + i), texte: val("nmX" + i) })) };
-      try { localStorage.setItem(CLE, JSON.stringify(c)); } catch (e) {} return c; };
+      return c; };
     const res = box.querySelector("#nmRes"), env = box.querySelector("#nmEnv");
     // b136 — les 5 modifications choisies (dans l'ordre) remplissent le mail : la 1re en vedette, les suivantes en cartes
     const poser = (id, v) => { const e = box.querySelector("#" + id); if (e && v !== undefined && v !== null) e.value = String(v); };
@@ -1290,19 +1291,7 @@
     bandeauCarte($("coBand"));
     el.querySelector("#coCfgT").onclick = () => { cfgCle = "pub.textes"; };
     bannieres(el.querySelector("#coAnn")).catch((e) => { el.querySelector("#coAnn").innerHTML = '<p class="err">Bannières : ' + esc(e.message) + "</p>"; });
-    // b122 — bandeau automatique de la nouvelle version (nouveautes.js, le même fichier que l'app)
-    { const N = window.RT_NOUV || {}, L = window.RT_NOUVEAUTES || [];
-      const sortie = N.sortie ? new Date(N.sortie + "T00:00:00") : null, fin = sortie ? new Date(+sortie + 14 * 864e5) : null, coupe = tx.nouv_off && tx.nouv_off === N.version, actif = sortie && Date.now() < +fin && !coupe;
-      el.insertAdjacentHTML("afterbegin", '<div class="card nv-auto"><div class="card-head"><h3>Bandeau automatique « Nouvelle version »</h3><span class="sub">' + (actif ? badge("en cours", "green") : coupe ? badge("coupé", "orange") : badge("terminé", "gray")) + "</span></div>" +
-        '<div class="nv-apercu"><span class="nv-k">Nouveau</span><p>' + esc(N.texte || "—") + '</p><span class="nv-b">Voir</span></div>' +
-        '<p class="mut tiny">Version <b>' + esc(N.version || "—") + "</b> sortie le " + (sortie ? fmtD(sortie) : "—") + ". Chaque arbitre le voit pendant 24 h à partir de sa première ouverture de l'app" + (fin ? ", jusqu'au " + fmtD(fin) + " au plus tard" : "") + ". La croix le masque pour de bon.</p>" +
-        (L.length ? '<details class="nv-liste"><summary>Fenêtre « Ce qui change » (' + L.length + " points)</summary><ul>" + L.map((x) => "<li><b>" + esc(x[1]) + "</b> — " + esc(x[2]) + "</li>").join("") + "</ul></details>" : "") +
-        '<div class="row" style="gap:6px;margin-top:6px"><button class="btn" id="nvCouper">' + (coupe ? "Rétablir ce bandeau" : "Couper ce bandeau pour tous") + "</button></div>" +
-        '<p class="mut tiny">Le texte change à chaque mise en ligne, après ta validation (fichier nouveautes.js). « Couper » l\'enlève de l\'app de tous les arbitres à leur prochaine ouverture.</p></div>');
-      // b157 — contrôle du bandeau automatique (avant : affiché sans aucun moyen de l'arrêter)
-      el.querySelector("#nvCouper").onclick = async () => {
-        if (!coupe && !(await confirmer("Couper le bandeau", "Retirer le bandeau « Nouvelle version » de l'app de <strong>tous les arbitres</strong> ?", "Couper"))) return;
-        try { await admin("config.set", { cle: "pub.textes", valeur: Object.assign({}, tx, { nouv_off: coupe ? "" : N.version }) }); cache.config = null; toast(coupe ? "Bandeau rétabli" : "Bandeau coupé pour tous", "ok"); rendus.communication(true); } catch (e) { toast(e.message, "err"); } }; }
+    // b161 — bandeau automatique « Nouvelle version » supprimé de l'app : plus de carte ici.
   };
 
   // ---- Moteurs (tous les arbitres)
