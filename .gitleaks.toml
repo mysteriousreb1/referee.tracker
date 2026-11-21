@@ -8,7 +8,8 @@ useDefault = true
 [[rules]]
 id = "rt-adresse-domicile"
 description = "Adresse ou coordonnées GPS du domicile"
-regex = '''(?i)(faisans|kaltenhouse|48\.82\d*\s*,\s*7\.80\d*|"?lat"?\s*[:=]\s*48\.8|"?lon"?\s*[:=]\s*7\.8)'''
+# b163 — règle générique (toute coordonnée précise écrite en dur) : la règle elle-même ne doit rien révéler du domicile.
+regex = '''(?i)("?(lat|latitude)"?\s*[:=]\s*4\d\.\d{3,}|"?(lon|lng|longitude)"?\s*[:=]\s*-?\d\.\d{3,}|4\d\.\d{4,}\s*,\s*-?\d\.\d{4,})'''
 
 [[rules]]
 id = "rt-telephone"

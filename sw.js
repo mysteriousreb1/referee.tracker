@@ -1,13 +1,13 @@
 /* Referee Tracker — service worker : notifications push (PWA iPhone / Android / desktop)
    + b66 : cache de l'application (ouverture instantanée, lecture hors-ligne de la coquille).
    Les données (matchs, paiements) restent gérées par le site (localStorage) : rien d'autre n'est intercepté. */
-const VERSION = "2026-11-21-b162";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
+const VERSION = "2026-11-21-b163";                  // même valeur que <meta name="rt-version"> (rt-deploy.sh la remplace)
 const CACHE = "rt-" + VERSION;
-const COQUILLE = ["./", "./index.html", "./app.js?v=" + VERSION, "./nouveautes.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION, "./rt-equipement.js?v=" + VERSION,
+const COQUILLE = ["./", "./index.html", "./rt-garde.js?v=" + VERSION, "./app.js?v=" + VERSION, "./nouveautes.js?v=" + VERSION, "./rt-auth.js?v=" + VERSION, "./rt-stats.js?v=" + VERSION, "./rt-equipement.js?v=" + VERSION,
   "./style.css?v=" + VERSION, "./manifest.json?v=" + VERSION, "./favicon-32.png?v=" + VERSION, "./apple-touch-icon.png?v=" + VERSION,
   "./img/logo-icon.png?v=" + VERSION, "./img/icon-192.png", "./img/icon-512.png",
   // b70 — polices et bibliothèques auto-hébergées (plus aucune requête tierce)
-  "./fonts/fonts.css?v=2026-11-21-b162", "./fonts/montserrat-latin-500-normal.woff2", "./fonts/montserrat-latin-600-normal.woff2", "./fonts/montserrat-latin-700-normal.woff2", "./fonts/montserrat-latin-800-normal.woff2",
+  "./fonts/fonts.css?v=2026-11-21-b163", "./fonts/montserrat-latin-500-normal.woff2", "./fonts/montserrat-latin-600-normal.woff2", "./fonts/montserrat-latin-700-normal.woff2", "./fonts/montserrat-latin-800-normal.woff2",
   "./fonts/jetbrains-mono-latin-500-normal.woff2", "./fonts/jetbrains-mono-latin-700-normal.woff2", "./vendor/leaflet.css", "./vendor/leaflet.js", "./vendor/chart.umd.min.js"];
 
 self.addEventListener("install", e => {
@@ -34,8 +34,10 @@ self.addEventListener("fetch", e => {
   }
   // 2) Pages et autres fichiers du site : réseau d'abord, cache en secours (hors-ligne).
   // b82 — pages : on revalide toujours auprès du serveur (sinon une ancienne version de l'admin peut rester affichée).
+  // b163 — une adresse avec d'autres paramètres que ?v= (lien signé du questionnaire, ?recu=…) n'est jamais gardée en cache.
+  const sansSecret = [...url.searchParams.keys()].every(k => k === "v");
   e.respondWith(fetch(req, req.mode === "navigate" ? { cache: "no-cache" } : undefined).then(r => {
-    if (r && r.ok) caches.open(CACHE).then(c => c.put(req, r.clone()));
+    if (r && r.ok && sansSecret) caches.open(CACHE).then(c => c.put(req, r.clone()));
     return r;
   }).catch(() => caches.match(req, { ignoreSearch: req.mode === "navigate" }).then(hit => hit || (req.mode === "navigate" ? caches.match("./index.html") : undefined))));
 });
@@ -54,7 +56,8 @@ self.addEventListener("push", e => {
 });
 self.addEventListener("notificationclick", e => {
   e.notification.close();
-  const cible = (e.notification.data && e.notification.data.url) || "./";
+  let cible = (e.notification.data && e.notification.data.url) || "./";
+  try { if (new URL(cible, self.location.href).origin !== self.location.origin) cible = "./"; } catch (err) { cible = "./"; }   // b163 — une notification n'ouvre que l'app
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(liste => {
     for (const c of liste) { if ("focus" in c) { c.navigate && c.navigate(cible); return c.focus(); } }
     return self.clients.openWindow(cible);
